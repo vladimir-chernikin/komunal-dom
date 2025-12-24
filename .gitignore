@@ -64,3 +64,4 @@ logs/
 *_secrets.*
 secrets.txt
 credentials.json
+CREDENTIALS.md
