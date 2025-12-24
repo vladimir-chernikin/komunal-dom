@@ -1,0 +1,244 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Управление КЛАДР - УК "Аспект"{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0">
+                    <i class="fas fa-map"></i>
+                    Управление КЛАДР
+                </h1>
+                <div>
+                    <a href="{% url 'portal:admin_page' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Назад
+                    </a>
+                    <a href="/admin/kladr/" class="btn btn-primary">
+                        <i class="fas fa-cog"></i> Django Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-map-marker-alt"></i>
+                        Адресные объекты
+                    </h5>
+                </div>
+                <div class="card-body text-center">
+                    <h3 class="text-primary">{{ stats.address_objects }}</h3>
+                    <p class="mb-1">Всего объектов</p>
+                    <small class="text-success">Активно: {{ stats.active_objects }}</small>
+                </div>
+                <div class="card-footer">
+                    <a href="{% url 'portal:kladr_objects' %}" class="btn btn-outline-primary btn-sm w-100">
+                        <i class="fas fa-list"></i> Список
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-building"></i>
+                        Здания
+                    </h5>
+                </div>
+                <div class="card-body text-center">
+                    <h3 class="text-success">{{ stats.buildings }}</h3>
+                    <p class="mb-0">Всего зданий</p>
+                </div>
+                <div class="card-footer">
+                    <a href="{% url 'portal:kladr_buildings' %}" class="btn btn-outline-success btn-sm w-100">
+                        <i class="fas fa-list"></i> Список
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="fas fa-draw-polygon"></i>
+                        Зоны обслуживания
+                    </h5>
+                </div>
+                <div class="card-body text-center">
+                    <h3 class="text-warning">{{ stats.service_areas }}</h3>
+                    <p class="mb-0">Зон обслуживания</p>
+                </div>
+                <div class="card-footer">
+                    <a href="{% url 'portal:kladr_service_areas' %}" class="btn btn-outline-warning btn-sm w-100">
+                        <i class="fas fa-list"></i> Список
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-import"></i>
+                        Импорт данных
+                    </h5>
+                </div>
+                <div class="card-body text-center">
+                    <h3 class="text-info">{{ recent_imports|length }}</h3>
+                    <p class="mb-0">Последних операций</p>
+                </div>
+                <div class="card-footer">
+                    <a href="{% url 'portal:kladr_import_logs' %}" class="btn btn-outline-info btn-sm w-100">
+                        <i class="fas fa-history"></i> Логи
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Быстрые действия -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bolt"></i>
+                        Быстрые действия
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'portal:kladr_objects' %}" class="btn btn-primary w-100">
+                                <i class="fas fa-map-marker-alt"></i>
+                                Адресные объекты
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'portal:kladr_buildings' %}" class="btn btn-success w-100">
+                                <i class="fas fa-building"></i>
+                                Здания
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'portal:kladr_service_areas' %}" class="btn btn-warning w-100">
+                                <i class="fas fa-draw-polygon"></i>
+                                Зоны обслуживания
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="/admin/kladr/kladraddressobject/add/" class="btn btn-outline-primary w-100">
+                                <i class="fas fa-plus"></i>
+                                Добавить объект
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Последние операции импорта -->
+    {% if recent_imports %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history"></i>
+                        Последние операции импорта
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Операция</th>
+                                    <th>Файл</th>
+                                    <th>Обработано</th>
+                                    <th>Успешно</th>
+                                    <th>Ошибок</th>
+                                    <th>Дата</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in recent_imports %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-{% if log.operation_type == 'import' %}success{% elif log.operation_type == 'update' %}warning{% else %}danger{% endif %}">
+                                            {{ log.get_operation_type_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ log.file_name }}</td>
+                                    <td>{{ log.records_processed }}</td>
+                                    <td class="text-success">{{ log.records_successful }}</td>
+                                    <td class="text-danger">{{ log.records_failed }}</td>
+                                    <td>{{ log.started_at|date:"d.m.Y H:i" }}</td>
+                                    <td>
+                                        <a href="/admin/kladr/dataimportlog/{{ log.id }}/change/" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Информация о системе -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle"></i>
+                        Информация о КЛАДР
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Структура данных:</h6>
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-map text-primary"></i> <strong>Адресные объекты:</strong> иерархическая структура адресов</li>
+                                <li><i class="fas fa-building text-success"></i> <strong>Здания:</strong> привязка к улицам с характеристиками</li>
+                                <li><i class="fas fa-draw-polygon text-warning"></i> <strong>Зоны обслуживания:</strong> объединение зданий в зоны УК</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Уровни адресных объектов:</h6>
+                            <ul class="list-unstyled small">
+                                <li><span class="badge bg-primary">Уровень 1</span> Регион</li>
+                                <li><span class="badge bg-primary">Уровень 2</span> Район</li>
+                                <li><span class="badge bg-primary">Уровень 3</span> Город</li>
+                                <li><span class="badge bg-primary">Уровень 4</span> Населенный пункт</li>
+                                <li><span class="badge bg-primary">Уровень 5</span> Улица</li>
+                                <li><span class="badge bg-primary">Уровень 6</span> Здание</li>
+                                <li><span class="badge bg-primary">Уровень 7</span> Помещение</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

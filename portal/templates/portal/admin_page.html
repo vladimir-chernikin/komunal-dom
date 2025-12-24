@@ -1,0 +1,212 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Административная панель - УК "Аспект"{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h3 mb-4">
+                <i class="fas fa-cogs"></i>
+                Административная панель
+                {% if user.userprofile.is_django_admin %}
+                    <small class="text-muted">(Django Admin)</small>
+                {% else %}
+                    <small class="text-muted">(DBA)</small>
+                {% endif %}
+            </h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Статистика пользователей -->
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users"></i>
+                        Пользователи
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <h4 class="text-primary">{{ user_stats.total }}</h4>
+                            <small>Всего</small>
+                        </div>
+                        <div class="col-6">
+                            <h4 class="text-success">{{ user_stats.active_recently }}</h4>
+                            <small>Активны</small>
+                        </div>
+                    </div>
+                    <hr>
+                    <h6>По ролям:</h6>
+                    {% for role_name, count in user_stats.by_role.items %}
+                    <div class="d-flex justify-content-between">
+                        <span>{{ role_name }}:</span>
+                        <strong>{{ count }}</strong>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="card-footer">
+                    <a href="{% url 'portal:user_management' %}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-user-cog"></i> Управление
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Статистика файлов -->
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-folder"></i>
+                        Файлы
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <h4 class="text-success">{{ file_stats.total }}</h4>
+                            <small>Всего файлов</small>
+                        </div>
+                        <div class="col-6">
+                            <h4 class="text-info">{{ file_stats.unique_users }}</h4>
+                            <small>Пользователей</small>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="text-center">
+                        <h6>Общий размер:</h6>
+                        <h5 class="text-primary">
+                            {% if file_stats.total_size > 1024*1024 %}
+                                {{ file_stats.total_size|floatformat:1 }} МБ
+                            {% else %}
+                                {{ file_stats.total_size|floatformat:0 }} КБ
+                            {% endif %}
+                        </h5>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <a href="{% url 'file_manager:all_files' %}" class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-folder-open"></i> Все файлы
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Статистика AI промптов -->
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="fas fa-robot"></i>
+                        AI Промпты
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <h4 class="text-warning">{{ prompt_stats.total }}</h4>
+                            <small>Всего</small>
+                        </div>
+                        <div class="col-6">
+                            <h4 class="text-success">{{ prompt_stats.active }}</h4>
+                            <small>Активны</small>
+                        </div>
+                    </div>
+                    <hr>
+                    <h6>По типам:</h6>
+                    <small>
+                    {% for type_name, count in prompt_stats.by_type.items %}
+                        {{ type_name }}: {{ count }}<br>
+                    {% endfor %}
+                    </small>
+                </div>
+                <div class="card-footer">
+                    <a href="{% url 'portal:prompt_management' %}" class="btn btn-outline-warning btn-sm">
+                        <i class="fas fa-cog"></i> Управление
+                    </a>
+                    <a href="/admin/portal/aiprompt/" class="btn btn-outline-primary btn-sm ms-1">
+                        <i class="fas fa-edit"></i> Редактировать
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Быстрые действия -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bolt"></i>
+                        Быстрые действия
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-2">
+                            <a href="/admin/" class="btn btn-primary w-100">
+                                <i class="fas fa-cog"></i>
+                                Django Admin
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'file_manager:file_list' %}" class="btn btn-success w-100">
+                                <i class="fas fa-folder"></i>
+                                Файловый менеджер
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="/admin/portal/userprofile/" class="btn btn-info w-100">
+                                <i class="fas fa-user-edit"></i>
+                                Профили пользователей
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'portal:kladr_management' %}" class="btn btn-warning w-100">
+                                <i class="fas fa-map"></i>
+                                КЛАДР адреса
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Системная информация -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle"></i>
+                        Системная информация
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Telegram бот:</h6>
+                            <p class="mb-1">Статус: <span class="badge bg-success">Активен</span></p>
+                            <p class="mb-1">Имя: Сигизмунд Лазоревич</p>
+                            <p class="mb-1">AI: YandexGPT интеграция</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>База данных:</h6>
+                            <p class="mb-1">Тип: PostgreSQL</p>
+                            <p class="mb-1">Адресных объектов: <strong>{{ kladr_stats.address_objects|default:"-" }}</strong></p>
+                            <p class="mb-1">Зданий: <strong>{{ kladr_stats.buildings|default:"-" }}</strong></p>
+                            <p class="mb-1">Зон обслуживания: <strong>{{ kladr_stats.service_areas|default:"-" }}</strong></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

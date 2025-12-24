@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}УК Аспект{% endblock %}</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Дополнительные стили -->
+    {% block extra_css %}{% endblock %}
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f8f9fa;
+        }
+
+        .navbar {
+            background: #2c3e50;
+        }
+
+        .navbar-brand {
+            font-weight: 600;
+            font-size: 20px;
+        }
+
+        .main-container {
+            padding: 20px;
+            min-height: calc(100vh - 200px);
+        }
+
+        .footer {
+            background: #2c3e50;
+            color: white;
+            padding: 20px 0;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">УК Аспект</a>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Главная</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/chat/">AI Чат</a>
+                    </li>
+                    {% if user.is_authenticated %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="/files/">Файлы</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/admin/">Админка</a>
+                        </li>
+                    {% endif %}
+                </ul>
+
+                <ul class="navbar-nav">
+                    {% if user.is_authenticated %}
+                        <li class="nav-item">
+                            <span class="nav-link">{{ user.username }}</span>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/logout/">Выйти</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="/admin/login/">Войти</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Основной контент -->
+    <div class="main-container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Футер -->
+    <footer class="footer">
+        <div class="container text-center">
+            <p class="mb-0">УК Аспект &copy; 2025. Все права защищены.</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Дополнительные скрипты -->
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

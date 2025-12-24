@@ -1,0 +1,164 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}ООО "Аспект" - Управляющая компания в Сочи{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero-section {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        padding: 120px 0;
+        margin-bottom: 50px;
+    }
+    .feature-icon {
+        font-size: 3rem;
+        color: #2a5298;
+        margin-bottom: 20px;
+    }
+    .contact-info {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 30px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="hero-section">
+    <div class="container text-center">
+        <h1 class="display-4 fw-bold mb-4">ООО "Аспект"</h1>
+        <p class="lead mb-5">Профессиональная управляющая компания в городе Сочи</p>
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <p class="fs-5">
+                    Предоставляем полный комплекс услуг по управлению многоквартирными домами,
+                    обеспечивая комфорт и безопасность для наших жителей.
+                </p>
+            </div>
+        </div>
+        {% if not user.is_authenticated %}
+            <div class="mt-4">
+                <a href="/admin/login/" class="btn btn-light btn-lg me-3">
+                    <i class="fas fa-sign-in-alt"></i> Войти в личный кабинет
+                </a>
+                <a href="#contacts" class="btn btn-outline-light btn-lg">
+                    <i class="fas fa-phone"></i> Контакты
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</section>
+
+<div class="container">
+    <div class="row mb-5">
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <i class="fas fa-building feature-icon"></i>
+                    <h4 class="card-title">Управление недвижимостью</h4>
+                    <p class="card-text">
+                        Профессиональное управление многоквартирными домами
+                        и коммерческой недвижимостью.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <i class="fas fa-tools feature-icon"></i>
+                    <h4 class="card-title">Техническое обслуживание</h4>
+                    <p class="card-text">
+                        Регулярное техническое обслуживание и ремонт
+                        инженерных систем зданий.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <i class="fas fa-users feature-icon"></i>
+                    <h4 class="card-title">Работа с жильцами</h4>
+                    <p class="card-text">
+                        Оперативная обработка заявок и качественный сервис
+                        для всех жителей обслуживаемых домов.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-info-circle"></i> О компании</h4>
+                </div>
+                <div class="card-body">
+                    <p>
+                        ООО "Аспект" - это надежная управляющая компания с многолетним опытом
+                        работы на рынке недвижимости в городе Сочи. Мы специализируемся на
+                        комплексном управлении жилыми и коммерческими объектами.
+                    </p>
+                    <p>
+                        Наша миссия - создание комфортных и безопасных условий для жизни
+                        и работы жителей, а также сохранение и увеличение стоимости
+                        обслуживаемой недвижимости.
+                    </p>
+                    <p>
+                        Компания работает в строгом соответствии с законодательством
+                        РФ и применяет современные методы управления.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 mb-4" id="contacts">
+            <div class="contact-info">
+                <h4 class="mb-4"><i class="fas fa-phone"></i> Контакты</h4>
+
+                <div class="mb-3">
+                    <i class="fas fa-map-marker-alt text-primary"></i>
+                    <strong>Адрес:</strong><br>
+                    г. Сочи, ул. Навагинская, 12а
+                </div>
+
+                <div class="mb-3">
+                    <i class="fas fa-phone text-primary"></i>
+                    <strong>Телефон:</strong><br>
+                    +7 (862) 265-78-90
+                </div>
+
+                <div class="mb-3">
+                    <i class="fas fa-phone text-primary"></i>
+                    <strong>Горячая линия (круглосуточно):</strong><br>
+                    +7 (800) 555-35-35
+                </div>
+
+                <div class="mb-3">
+                    <i class="fas fa-envelope text-primary"></i>
+                    <strong>Email:</strong><br>
+                    info@aspekt-sochi.ru
+                </div>
+
+                <div class="mb-3">
+                    <i class="fas fa-clock text-primary"></i>
+                    <strong>Режим работы:</strong><br>
+                    Пн-Пт: 9:00 - 18:00<br>
+                    Сб: 10:00 - 16:00<br>
+                    Вс: выходной
+                </div>
+
+                <div class="mt-4">
+                    <button class="btn btn-primary" onclick="window.location.href='/admin/login/'">
+                        <i class="fas fa-user-circle"></i> Войти в личный кабинет
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

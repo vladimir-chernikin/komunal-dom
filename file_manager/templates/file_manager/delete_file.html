@@ -1,0 +1,45 @@
+{% extends 'file_manager/base.html' %}
+
+{% block title %}Удаление файла - {{ block.super }}{% endblock %}
+
+{% block file_content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h3><i class="fas fa-exclamation-triangle"></i> Подтверждение удаления</h3>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">Вы уверены, что хотите удалить этот файл?</p>
+
+                <div class="alert alert-light">
+                    <h5><i class="fas fa-file"></i> {{ file.filename }}</h5>
+                    <p class="mb-1"><strong>Размер:</strong> {{ file.file_size|filesizeformat }}</p>
+                    <p class="mb-0"><strong>Дата загрузки:</strong> {{ file.uploaded_at|date:"d.m.Y H:i" }}</p>
+                    {% if file.description %}
+                        <p class="mb-0"><strong>Описание:</strong> {{ file.description }}</p>
+                    {% endif %}
+                </div>
+
+                <form method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Удалить файл
+                    </button>
+                </form>
+
+                <a href="{% url 'file_manager:file_list' %}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Отмена
+                </a>
+            </div>
+        </div>
+
+        <div class="mt-3 text-center">
+            <small class="text-muted">
+                <i class="fas fa-info-circle"></i>
+                Это действие нельзя отменить. Файл будет безвозвратно удален.
+            </small>
+        </div>
+    </div>
+</div>
+{% endblock %}
