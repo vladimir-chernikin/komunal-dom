@@ -168,7 +168,28 @@ class MainAgent:
         if is_followup and dialog_history:
             # Ищем предыдущее сообщение пользователя для объединения контекста
             previous_user_messages = [msg for msg in dialog_history if msg.get('role') == 'user']
+
+            # ИСПРАВЛЕНО (2025-12-25): Исключаем текущее сообщение из истории если оно там есть
+            # (потому что MessageHandlerService логирует ДО вызова MainAgent)
+            if previous_user_messages and previous_user_messages[-1].get('text', '') == message_text:
+                previous_user_messages = previous_user_messages[:-1]
+                logger.info(f"Followup: исключено текущее сообщение из истории (уже в БД)")
+
+            # ИСПРАВЛЕНО (2025-12-25): Исключаем приветствия из контекста
+            GREETING_KEYWORDS = ['привет', 'здравств', 'хай', 'hello', 'hi', 'добрый день', 'доброе утро', 'добрый вечер']
+            non_greeting_messages = [
+                msg for msg in previous_user_messages
+                if not any(kw in msg.get('text', '').lower() for kw in GREETING_KEYWORDS)
+            ]
+            if len(non_greeting_messages) < len(previous_user_messages):
+                logger.info(f"Followup: исключены приветствия из истории: {len(previous_user_messages) - len(non_greeting_messages)} шт")
+            previous_user_messages = non_greeting_messages
+
             if previous_user_messages:
+                # ИСПРАВЛЕНО (2025-12-25): Отладочный вывод
+                logger.info(f"Followup: всего user сообщений в истории: {len(previous_user_messages)}")
+                logger.info(f"Followup: последние 2 текста: {[m.get('text', '')[:30] for m in previous_user_messages[-2:]]}")
+
                 # Берем последние 2 пользовательских сообщения для контекста
                 recent_user_texts = [msg.get('text', '') for msg in previous_user_messages[-2:]]
                 # Объединяем: "предыдущий текст + текущий текст"
@@ -511,10 +532,13 @@ class MainAgent:
                 'is_followup': is_followup
             }
 
+        # ИСПРАВЛЕНО (2025-12-25): Используем отфильтрованных кандидатов вместо всех
+        filtered_candidates = clarification_result.get('filtered_candidates', candidates_with_attrs)
+
         return {
             'status': 'AMBIGUOUS',
-            'candidates': [c['all_data'][0] for c in candidates_data],
-            'candidate_names': candidate_names,
+            'candidates': filtered_candidates,  # ИСПРАВЛЕНО: отфильтрованные кандидаты
+            'candidate_names': [c.get('service_name', c.get('scenario_name', 'Unknown')) for c in filtered_candidates],
             'message': clarification_result['message'],
             'needs_clarification': True,
             'clarification_type': 'intersection_multiple',
@@ -606,10 +630,13 @@ class MainAgent:
                 'is_followup': is_followup
             }
 
+        # ИСПРАВЛЕНО (2025-12-25): Используем отфильтрованных кандидатов
+        filtered_candidates = clarification_result.get('filtered_candidates', candidates_with_attrs)
+
         return {
             'status': 'AMBIGUOUS',
-            'candidates': [c['all_data'][0] for c in candidates_data[:5]],
-            'candidate_names': candidate_names,
+            'candidates': filtered_candidates,  # ИСПРАВЛЕНО: отфильтрованные кандидаты
+            'candidate_names': [c.get('service_name', c.get('scenario_name', 'Unknown')) for c in filtered_candidates],
             'message': clarification_result['message'],
             'needs_clarification': True,
             'clarification_type': 'no_intersection',
@@ -742,7 +769,9 @@ class MainAgent:
 
     def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None) -> Dict:
         """
-        Извлекает фильтры (location, category, incident) из текста сообщения и истории диалога
+        Извлекает фильтры (location, category, incident, object_description) из текста сообщения и истории диалога
+
+        ИСПРАВЛЕНО (2025-12-25): Добавлен вызов FilterDetectionService для object_description
 
         Args:
             message_text: Текст сообщения пользователя
@@ -752,80 +781,53 @@ class MainAgent:
             Dict: {
                 'location': 'Индивидуальное' | 'Общедомовое' | None,
                 'category': 'Водоснабжение' | ... | None,
-                'incident': 'Инцидент' | 'Запрос' | None
+                'incident': 'Инцидент' | 'Запрос' | None,
+                'object_description': 'описание объекта' | None
             }
         """
         filters = {
             'location': None,
             'category': None,
-            'incident': None
+            'incident': None,
+            'object_description': None  # ИСПРАВЛЕНО (2025-12-25)
         }
 
-        # Объединяем текущее сообщение с историей для анализа
-        combined_text = message_text.lower()
-        if dialog_history:
-            for msg in dialog_history[-5:]:  # Берем последние 5 сообщений
-                if msg.get('role') == 'user':
-                    combined_text += ' ' + msg.get('text', '').lower()
+        # ИСПРАВЛЕНО (2025-12-25): Сначала пробуем FilterDetectionService для object_description
+        if self.filter_detection:
+            try:
+                # ИСПРАВЛЕНО: Используем await вместо asyncio.run()
+                # Но это не async функция, поэтому сохраняем как есть и вызываем через sync wrapper
+                def call_filter_sync():
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Если уже в event loop - создаем задачу
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            future = pool.submit(asyncio.run, self.filter_detection.detect_filters(message_text, dialog_history or []))
+                            return future.result()
+                    else:
+                        return asyncio.run(self.filter_detection.detect_filters(message_text, dialog_history or []))
 
-        logger.info(f"Анализ текста для извлечения фильтров: '{combined_text[:100]}...'")
+                filter_result = call_filter_sync()
+                if filter_result.get('status') == 'success':
+                    filter_svc_filters = filter_result.get('filters', {})
+                    # Если FilterDetectionService вернул значения - используем их
+                    if filter_svc_filters.get('location_type'):
+                        filters['location'] = filter_svc_filters['location_type']
+                    if filter_svc_filters.get('category'):
+                        filters['category'] = filter_svc_filters['category']
+                    if filter_svc_filters.get('incident_type'):
+                        filters['incident'] = filter_svc_filters['incident_type']
+                    if filter_svc_filters.get('object_description'):
+                        filters['object_description'] = filter_svc_filters['object_description']
+                        logger.info(f"FilterDetectionService извлек object_description: {filters['object_description']}")
+            except Exception as e:
+                logger.warning(f"Ошибка вызова FilterDetectionService: {e}")
 
-        # ===== ИЗВЛЕЧЕНИЕ ЛОКАЦИИ =====
-        # Проверки на "Индивидуальное" (в квартире)
-        individual_keywords = [
-            'квартир', 'в квартире', 'моей квартир', 'в моей квартир',
-            'домой', 'дома', 'в доме', 'в моем',
-            'в ванной', 'ванной', 'кухн', 'на кухн', 'в комнат',
-            'индивид'
-        ]
-        if any(kw in combined_text for kw in individual_keywords):
-            filters['location'] = 'Индивидуальное'
-            logger.info(f"Извлечена локация: Индивидуальное")
-
-        # Проверки на "Общедомовое" (подъезд, лифт и т.д.)
-        common_keywords = [
-            'подъезд', 'лифт', 'лестниц', 'подвал', 'крыш',
-            'общедом', 'общее', 'на улице', 'у подъезд',
-            'обществ', 'парадн'
-        ]
-        if any(kw in combined_text for kw in common_keywords):
-            filters['location'] = 'Общедомовое'
-            logger.info(f"Извлечена локация: Общедомовое")
-
-        # ===== ИЗВЛЕЧЕНИЕ КАТЕГОРИИ =====
-        category_keywords = {
-            'Водоснабжение': ['вод', 'теч', 'протека', 'капа', 'засор', 'канализ', 'сантехник', 'труба', 'кран'],
-            'Отопление': ['отопл', 'батарей', 'батар', 'радиатор', 'тепл', 'холодн'],
-            'Электричество': ['электр', 'свет', 'розетк', 'провод', 'выключа'],
-            'Конструктив': ['крыш', 'стен', 'пол', 'потолок', 'фундамент', 'окон'],
-            'Лифт': ['лифт'],
-        }
-
-        for category, keywords in category_keywords.items():
-            if any(kw in combined_text for kw in keywords):
-                filters['category'] = category
-                logger.info(f"Извлечена категория: {category}")
-                break
-
-        # ===== ИЗВЛЕЧЕНИЕ ТИПА ИНЦИДЕНТА =====
-        # Инцидент (авария, поломка)
-        incident_keywords = [
-            'сломал', 'поломк', 'не работ', 'теч', 'протека',
-            'засор', 'закупор', 'авари', 'urgence', 'поврежд',
-            'прорв', 'лопнул', 'разорв', 'лопа', 'рван'
-        ]
-        if any(kw in combined_text for kw in incident_keywords):
-            filters['incident'] = 'Инцидент'
-            logger.info(f"Извлечен тип инцидента: Инцидент")
-
-        # Запрос (информация, услуга)
-        request_keywords = [
-            'хочу', 'нужн', 'узнат', 'спраши', 'как', 'почем',
-            'покаж', 'информ', 'вопрос', 'пров'
-        ]
-        if any(kw in combined_text for kw in request_keywords):
-            filters['incident'] = 'Запрос'
-            logger.info(f"Извлечен тип инцидента: Запрос")
+        # УДАЛЕНО (2025-12-25): Весь fallback хардкод keywords удален
+        # FilterDetectionService теперь является единственным источником фильтров
+        # Это соответствует архитектуре без хардкода данных
 
         return filters
 
@@ -838,12 +840,14 @@ class MainAgent:
 
         ИСПРАВЛЕНО: Добавлен анализ истории диалога для исключения уже отвеченных вопросов
         ИСПРАВЛЕНО: Возвращает Dict с status вместо строки
+        ИСПРАВЛЕНО (2025-12-25): Возвращает filtered_candidates для итеративного уточнения
         """
         if not candidates_with_attrs:
             return {
                 'status': 'AMBIGUOUS',
                 'message': self._generate_clarification_questions(),
-                'single_candidate': None
+                'single_candidate': None,
+                'filtered_candidates': []
             }
 
         # ИЗВЛЕКАЕМ ФИЛЬТРЫ ИЗ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ И ИСТОРИИ ДИАЛОГА
@@ -851,8 +855,9 @@ class MainAgent:
         known_location = extracted_filters['location']
         known_category = extracted_filters['category']
         known_incident = extracted_filters['incident']
+        known_object = extracted_filters.get('object_description', '')  # ИСПРАВЛЕНО (2025-12-25)
 
-        logger.info(f"Извлеченные фильтры: location={known_location}, category={known_category}, incident={known_incident}")
+        logger.info(f"Извлеченные фильтры: location={known_location}, category={known_category}, incident={known_incident}, object={known_object}")
 
         # Фильтруем кандидатов на основе известной информации
         filtered_candidates = candidates_with_attrs
@@ -861,7 +866,7 @@ class MainAgent:
             logger.info(f"Отфильтровано по location_type={known_location}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
         if known_category:
-            # Более мягкая фильтрация по категории (частичное совпадение)
+            # Прямое совпадение категории (FilterDetectionService уже возвращает корректную категорию)
             filtered_candidates = [c for c in filtered_candidates if known_category.lower() in c.get('category', '').lower()]
             logger.info(f"Отфильтровано по category={known_category}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
@@ -869,6 +874,71 @@ class MainAgent:
             # Фильтрация по типу инцидента
             filtered_candidates = [c for c in filtered_candidates if known_incident in c.get('incident_type', '')]
             logger.info(f"Отфильтровано по incident_type={known_incident}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
+
+        # ИСПРАВЛЕНО (2025-12-25): Ранжирование через LLM вместо хардкода keywords
+        if known_object and len(filtered_candidates) > 1:
+            logger.info(f"Ранжирование {len(filtered_candidates)} кандидатов по object_description='{known_object}' через LLM")
+
+            if self.filter_detection:
+                try:
+                    # Используем ThreadPoolExecutor для вызова async из sync контекста
+                    def call_ranking_sync():
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            import concurrent.futures
+                            with concurrent.futures.ThreadPoolExecutor() as pool:
+                                future = pool.submit(
+                                    asyncio.run,
+                                    self.filter_detection.rank_candidates_by_relevance(
+                                        message_text=original_message,
+                                        candidates=filtered_candidates,
+                                        dialog_history=dialog_history
+                                    )
+                                )
+                                return future.result()
+                        return asyncio.run(
+                            self.filter_detection.rank_candidates_by_relevance(
+                                message_text=original_message,
+                                candidates=filtered_candidates,
+                                dialog_history=dialog_history
+                            )
+                        )
+
+                    ranking_result = call_ranking_sync()
+
+                    if ranking_result.get('status') == 'success':
+                        recommended_id = ranking_result.get('recommended_id')
+                        confidence = ranking_result.get('confidence', 0.0)
+                        reason = ranking_result.get('reason', '')
+
+                        # Находим рекомендованного кандидата
+                        recommended_candidate = None
+                        for c in filtered_candidates:
+                            if c.get('service_id') == recommended_id:
+                                recommended_candidate = c
+                                break
+
+                        if recommended_candidate:
+                            logger.info(
+                                f"LLM рекомендовал: {recommended_candidate['service_name']} "
+                                f"(ID: {recommended_id}, confidence: {confidence})"
+                            )
+
+                            # Если confidence > 0.7, выбираем этого кандидата
+                            if confidence >= 0.7:
+                                logger.info(f"По LLM ранжированию выбран кандидат: {recommended_candidate['service_name']}")
+                                filtered_candidates = [recommended_candidate]
+                            else:
+                                logger.info(f"LLM confidence слишком низкий ({confidence}), оставляем всех кандидатов")
+                        else:
+                            logger.warning(f"LLM вернул невалидный recommended_id={recommended_id}")
+                    else:
+                        logger.warning(f"LLM ранжирование не удалось: {ranking_result.get('error')}")
+
+                except Exception as e:
+                    logger.error(f"Ошибка вызова LLM ранжирования: {e}")
+            else:
+                logger.warning("FilterDetectionService недоступен, пропускаем ранжирование")
 
         # Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if len(filtered_candidates) == 1:
@@ -878,7 +948,8 @@ class MainAgent:
             return {
                 'status': 'SUCCESS',
                 'message': f"Понял, у вас: {candidate['service_name']}",
-                'single_candidate': candidate
+                'single_candidate': candidate,
+                'filtered_candidates': filtered_candidates
             }
 
         # ИСПРАВЛЕНО: Если осталось несколько кандидатов с одинаковыми атрибутами - пробуем уточнить по keywords
@@ -898,14 +969,16 @@ class MainAgent:
                     return {
                         'status': 'AMBIGUOUS',
                         'message': f"Уточните, пожалуйста, что именно произошло:\n• " + "\n• ".join(names),
-                        'single_candidate': None
+                        'single_candidate': None,
+                        'filtered_candidates': filtered_candidates
                     }
 
                 # Если кандидатов много - возвращаем общий вопрос
                 return {
                     'status': 'AMBIGUOUS',
                     'message': f"Уточните, пожалуйста, детали проблемы (выберите один из вариантов ниже)",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
         # Если осталось 0 кандидатов после фильтрации - используем оригинальный список
@@ -939,7 +1012,8 @@ class MainAgent:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Где именно это произошло: в квартире у вас или на территории общедомового имущества?",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
             # Иначе перечисляем найденные локации
@@ -948,13 +1022,15 @@ class MainAgent:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': f"Уточните, пожалуйста: это произошло {loc_list[0].lower()} или {loc_list[1].lower()}?",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
             else:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Где именно это произошло?\n• " + "\n• ".join(loc_list) + "\n\nПожалуйста, уточните.",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
         # ===== ПРИОРИТЕТ 2: Тип инцидента (Инцидент vs Запрос) =====
@@ -966,7 +1042,8 @@ class MainAgent:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Уточните, пожалуйста: у вас аварийная ситуация (поломка, течь и т.п.) или вам нужна информация/услуга?",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
         # ===== ПРИОРИТЕТ 3: Категория проблемы =====
@@ -984,28 +1061,32 @@ class MainAgent:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Это проблема с водой (течь, засор) или с отоплением?",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
             if has_water and has_electric:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Проблема с водоснабжением или с электричеством?",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
             if has_lift and (has_water or has_heating or has_electric):
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Проблема с лифтом или с коммуникациями (вода, свет, отопление)?",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
             if has_construct and has_water:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Это проблема с конструкцией (крыша, стены) или с сантехникой?",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
             # Если много категорий - спрашиваем что именно
@@ -1013,7 +1094,8 @@ class MainAgent:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Уточните, пожалуйста, о какой проблеме речь:\n• " + "\n• ".join(categories) + "\n\nОпишите подробнее.",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
         # ===== ФОЛЛБЕК: Анализ исходного сообщения =====
@@ -1027,7 +1109,8 @@ class MainAgent:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Где именно это произошло? Пожалуйста, опишите подробнее.",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
             # Если говорится о поломке - спрашиваем что
@@ -1035,15 +1118,17 @@ class MainAgent:
                 return {
                     'status': 'AMBIGUOUS',
                     'message': "Что именно сломалось? Опишите, пожалуйста, подробнее.",
-                    'single_candidate': None
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
                 }
 
         # ===== ОБЩИЙ ВОПРОС (открытый, без перечисления вариантов) =====
         return {
             'status': 'AMBIGUOUS',
             'message': "Пожалуйста, уточните где именно это произошло и опишите подробнее, что случилось.",
-            'single_candidate': None
-        }
+            'single_candidate': None,
+                    'filtered_candidates': filtered_candidates
+                }
 
     async def _run_ai_search(self, message_text: str) -> Dict:
         """Запуск AIAgentService"""
@@ -1158,10 +1243,13 @@ class MainAgent:
                 'is_followup': is_followup
             }
 
+        # ИСПРАВЛЕНО (2025-12-25): Используем отфильтрованных кандидатов
+        filtered_candidates = clarification_result.get('filtered_candidates', candidates_with_attrs)
+
         return {
             'status': 'AMBIGUOUS',
-            'candidates': candidates[:3],
-            'candidate_names': [c.get('service_name', 'Unknown') for c in candidates[:3]],
+            'candidates': filtered_candidates,  # ИСПРАВЛЕНО: отфильтрованные кандидаты
+            'candidate_names': [c.get('service_name', c.get('scenario_name', 'Unknown')) for c in filtered_candidates],
             'message': clarification_result['message'],
             'needs_clarification': True,
             'clarification_type': 'context',
@@ -1177,88 +1265,17 @@ class MainAgent:
         return """Я не совсем понял проблему. Опишите пожалуйста, что именно случилось и где это произошло."""
 
     def _generate_context_clarification_question(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False) -> str:
-        """Генерирует уточняющий вопрос для понимания контекста"""
+        """
+        Генерирует уточняющий вопрос для понимания контекста
 
-        # Проверяем наличие услуг с разными типами локации
-        # Упрощенный анализ на основе названий услуг
-        try:
-            # Анализируем названия услуг на предмет локации
-            inside_keywords = ['квартир', 'в квартире', 'моя']
-            common_keywords = ['лифт', 'подъезд', 'лестниц', 'крыш', 'подвал', 'общ']
+        ИСПРАВЛЕНО (2025-12-25): Удален хардкод keywords
+        Теперь используется общий вопрос без классификации
+        """
+        # УДАЛЕНО: Весь хардкод keywords для локаций и инцидентов
+        # FilterDetectionService и LLM должны определять фильтры
 
-            has_inside = any(any(keyword in candidate.get('service_name', '').lower() for keyword in inside_keywords) for candidate in candidates)
-            has_common = any(any(keyword in candidate.get('service_name', '').lower() for keyword in common_keywords) for candidate in candidates)
-
-            # Если есть оба типа локаций - задаем ключевой вопрос
-            if has_inside and has_common:
-                return """Где именно это произошло: в квартире у вас или на территории общедомового имущества?
-
-Это поможет мне точно определить нужную услугу."""
-        except Exception as e:
-            logger.error(f"Ошибка анализа локаций: {e}")
-
-        # Анализируем типы кандидатов для генерации релевантного вопроса
-        location_keywords = {
-            'квартира': ['квартир', 'в квартире'],
-            'подвал': ['подвал', 'в подвале'],
-            'крыша': ['крыш', 'крыши', 'с крыши'],
-            'лифт': ['лифт', 'лифта'],
-            'общие зоны': ['подъезд', 'лестниц', 'коридор', 'обществ'],
-            'коммуникации': ['вод', 'отопление', 'канализац', 'электрич', 'газ']
-        }
-
-        incident_keywords = {
-            'течь': ['теч', 'протека', 'капа', 'утечка'],
-            'поломка': ['сломал', 'не работает', 'поломк', 'испортил'],
-            'отсутствие': ['нет', 'отсутству', 'пропал'],
-            'засор': ['засор', 'забил', 'пробка'],
-            'ремонт': ['ремонт', 'починить', 'восстановить']
-        }
-
-        # Находим ключевые слова в названиях услуг
-        found_locations = []
-        found_incidents = []
-
-        for candidate in candidates:
-            name = candidate.get('service_name', '').lower()
-            for location, keywords in location_keywords.items():
-                if any(keyword in name for keyword in keywords):
-                    found_locations.append(location)
-
-            for incident, keywords in incident_keywords.items():
-                if any(keyword in name for keyword in keywords):
-                    found_incidents.append(incident)
-
-        # Убираем дубликаты
-        found_locations = list(set(found_locations))
-        found_incidents = list(set(found_incidents))
-
-        # Генерируем вопрос на основе анализа
-        if found_locations and found_incidents:
-            if len(found_locations) > 1:
-                location_question = "Где именно это произошло?\n• " + '\n• '.join(found_locations)
-            else:
-                location_question = f"Где именно это произошло: {found_locations[0]}?"
-
-            return f"{location_question}\n\nОпишите подробнее, пожалуйста."
-
-        elif found_locations:
-            if len(found_locations) > 1:
-                return f"Где именно проблема?\n• " + '\n• '.join(found_locations) + "\n\nПожалуйста, уточните."
-            else:
-                return f"Где {found_locations[0]}. Опишите, пожалуйста, что именно случилось."
-
-        elif found_incidents:
-            return f"{found_incidents[0].capitalize()}. Уточните, пожалуйста, где именно это произошло."
-
-        # Общий уточняющий вопрос
-        base_question = "Чтобы я точнее понял проблему, пожалуйста, уточните:\n• Что именно произошло?\n• Где именно это произошло: в квартире у вас или на территории общедомового имущества?\n• Когда это началось?"
-
-        # Если это уточняющее сообщение, даем более конкретный вопрос
-        if is_followup and original_message:
-            return f"Спасибо за уточнение! Чтобы лучше понять ситуацию с '{original_message}', пожалуйста, уточните:\n• Точные детали проблемы\n• Где именно это произошло: в квартире у вас или на территории общедомового имущества?\n• Когда и как это произошло"
-
-        return base_question
+        # Общий уточняющий вопрос без хардкода
+        return "Пожалуйста, уточните детали проблемы. Опишите что именно случилось и где это произошло."
 
     def _create_error_result(self, error_message: str) -> Dict:
         return {

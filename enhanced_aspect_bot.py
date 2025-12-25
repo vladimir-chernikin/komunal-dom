@@ -19,8 +19,8 @@ from datetime import datetime
 from decouple import config
 
 # Telegram imports
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # Django setup
 sys.path.append('/var/www/komunal-dom_ru')
@@ -254,34 +254,18 @@ class EnhancedAspectBot:
         )
 
     def detect_message_type(self, text: str) -> str:
-        """Определяет тип сообщения по ключевым словам"""
-        text_lower = text.lower()
+        """
+        Определяет тип сообщения
 
-        # Признаки запроса на обслуживание
-        service_keywords = [
-            'протека', 'течет', 'капа', 'прорыв', 'засор', 'забился', 'нет', 'не работает',
-            'сломал', 'повред', 'авари', 'проблем', 'неисправн', 'ремонт', 'замен',
-            'отключил', 'перегор', 'шум', 'скрип', 'дежур', 'заявк', 'вызов'
-        ]
+        ИСПРАВЛЕНО (2025-12-25): Удален хардкод keywords
+        Теперь всегда считаем SERVICE_REQUEST - пусть MainAgent разбирается
+        """
+        # УДАЛЕНО: Весь хардкод service_keywords и address_keywords
+        # FilterDetectionService и MainAgent должны определять что нужно пользователю
 
-        # Признаки запроса адреса
-        address_keywords = [
-            'адрес', 'улица', 'ул.', 'дом', 'д.', 'квартира', 'кв.', 'подъезд',
-            'живу', 'проживаю', 'обслуживани'
-        ]
-
-        # Считаем количество ключевых слов
-        service_count = sum(1 for kw in service_keywords if kw in text_lower)
-        address_count = sum(1 for kw in address_keywords if kw in text_lower)
-
-        # Если больше признаков обслуживания - это заявка
-        if service_count > address_count:
-            return 'SERVICE_REQUEST'
-        elif address_count > 0:
-            return 'ADDRESS_CHECK'
-        else:
-            # По умолчанию считаем заявкой
-            return 'SERVICE_REQUEST'
+        # Всегда считаем заявкой на обслуживание
+        # Если пользователь хочет проверить адрес - он скажет об этом явно
+        return 'SERVICE_REQUEST'
 
     async def handle_service_request(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
         """Обработка запроса на создание заявки через MessageHandlerService"""
@@ -353,23 +337,13 @@ class EnhancedAspectBot:
                     state.address_components = address_components
                     state.confidence = result['raw_result'].get('confidence', 0.8)
 
-                    # ИСПРАВЛЕНО: Сначала подтверждаем услугу, потом запрашиваем адрес
+                    # ИСПРАВЛЕНО: Голосовой интерфейс - без кнопок!
+                    # Сначала подтверждаем услугу, потом запрашиваем адрес
                     state.mode = 'CONFIRMATION'
 
-                    # Создаем клавиатуру для подтверждения
-                    keyboard = [
-                        [InlineKeyboardButton("Да, верно", callback_data='confirm_yes')],
-                        [InlineKeyboardButton("Нет, другая проблема", callback_data='confirm_no')],
-                        [InlineKeyboardButton("Отмена", callback_data='confirm_cancel')]
-                    ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    confirm_text = f"Правильно ли я понял, что у вас: {service_name}? Ответьте да или нет, или опишите проблему другими словами."
 
-                    confirm_text = f"Правильно ли я понял, что у вас: {service_name}?"
-
-                    await update.message.reply_text(
-                        confirm_text,
-                        reply_markup=reply_markup
-                    )
+                    await update.message.reply_text(confirm_text)
                     return
 
                 # Если нужна детализация (AMBIGUOUS)
@@ -435,24 +409,14 @@ class EnhancedAspectBot:
                     # Переходим к подтверждению
                     state.mode = 'CONFIRMATION'
 
-                    # Создаем клавиатуру для подтверждения
-                    keyboard = [
-                        [InlineKeyboardButton("Да, все верно", callback_data='confirm_yes')],
-                        [InlineKeyboardButton("Нет, изменить", callback_data='confirm_no')],
-                        [InlineKeyboardButton("Отмена", callback_data='confirm_cancel')]
-                    ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-
+                    # ИСПРАВЛЕНО: Голосовой интерфейс - без кнопок!
                     confirm_text = f"Проверьте информацию:\n\n"
                     confirm_text += f"Услуга: {state.current_service_name}\n"
                     if address_string:
                         confirm_text += f"Адрес: {address_string}\n"
-                    confirm_text += f"\nВсе верно?"
+                    confirm_text += f"\nВсе верно? Ответьте да или нет."
 
-                    await update.message.reply_text(
-                        confirm_text,
-                        reply_markup=reply_markup
-                    )
+                    await update.message.reply_text(confirm_text)
                     return
 
             # Если адрес не распознан - просим уточнить
@@ -469,83 +433,42 @@ class EnhancedAspectBot:
                 "Ошибка при обработке адреса. Попробуйте еще раз."
             )
 
-    async def handle_confirmation_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка кнопок подтверждения"""
-        query = update.callback_query
-        await query.answer()
-
+    async def finalize_application(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Финализация заявки - создание в БД и подтверждение пользователю"""
         user = update.effective_user
         state = self.get_conversation_state(user.id)
 
-        if query.data == 'confirm_yes':
-            # Подтверждение услуги - теперь запрашиваем адрес
-            try:
-                # ИСПРАВЛЕНО: Если адрес еще не указан - запрашиваем
-                if not state.address_components or not state.address_components.get('street'):
-                    state.mode = 'ADDRESS_INPUT'
-                    await query.edit_message_text(
-                        f"Принято! Услуга: {state.current_service_name}\n\n"
-                        "Пожалуйста, укажите адрес:\n"
-                        "Улица и номер дома (и квартиры, если нужно)\n\n"
-                        "Например: ул. Ленина, д. 5, кв. 10"
-                    )
-                    return
+        try:
+            # Создание заявки через БД (или через сервис в будущем)
+            # Пока просто подтверждаем прием
+            ticket_number = f"TK-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-                # Если адрес есть - создаем заявку
-                # ИСПРАВЛЕНО: Создание заявки через БД напрямую (или через сервис в будущем)
-                # Пока просто подтверждаем прием
-                ticket_number = f"TK-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            # Формируем сообщение
+            confirm_text = f"Заявка успешно принята!\n\n"
+            confirm_text += f"Номер: {ticket_number}\n"
+            confirm_text += f"Услуга: {state.current_service_name}\n"
+            if state.current_address:
+                confirm_text += f"Адрес: {state.current_address}\n"
+            confirm_text += f"\nНаши специалисты свяжутся с вами в ближайшее время."
 
-                # Формируем сообщение
-                confirm_text = f"Заявка успешно принята!\n\n"
-                confirm_text += f"Номер: {ticket_number}\n"
-                confirm_text += f"Услуга: {state.current_service_name}\n"
-                if state.current_address:
-                    confirm_text += f"Адрес: {state.current_address}\n"
-                confirm_text += f"\nНаши специалисты свяжутся с вами в ближайшее время."
+            await update.message.reply_text(confirm_text)
 
-                await query.edit_message_text(confirm_text)
+            # TODO: Здесь будет создание заявки в БД через Django models
+            # from tickets.models import Ticket
+            # ticket = Ticket.objects.create(...)
+            # ticket.save()
 
-                # TODO: Здесь будет создание заявки в БД через Django models
-                # from tickets.models import Ticket
-                # ticket = Ticket.objects.create(...)
-                # ticket.save()
-
-                # Сбрасываем состояние
-                state.mode = 'ADDRESS_CHECK'
-                state.current_service_id = None
-                state.current_address = None
-                state.address_components = None
-
-            except Exception as e:
-                logger.error(f"Ошибка при создании заявки: {e}")
-                await query.edit_message_text(
-                    "Произошла ошибка при создании заявки. Пожалуйста, позвоните в УК."
-                )
-
-        elif query.data == 'confirm_no':
-            # Пользователь говорит что услуга определена неверно
-            # ИСПРАВЛЕНО: Сбрасываем состояние и просим описать проблему заново
+            # Сбрасываем состояние
             state.mode = 'ADDRESS_CHECK'
             state.current_service_id = None
             state.current_service_name = None
             state.current_address = None
             state.address_components = None
 
-            await query.edit_message_text(
-                "Понял! Опишите вашу проблему другими словами, и я попробую определить услугу заново."
-            )
-
-        elif query.data == 'confirm_cancel':
-            # Отмена
-            state.mode = 'ADDRESS_CHECK'
-            state.current_service_id = None
-            state.current_address = None
-            await query.edit_message_text(
-                "Создание заявки отменено.\n\n"
-                "Я готов к новым запросам. Используйте:\n"
-                "/service - для создания заявки\n"
-                "/address - для проверки адреса"
+        except Exception as e:
+            logger.error(f"Ошибка при создании заявки: {e}")
+            await update.message.reply_text(
+                "Произошла ошибка при создании заявки. Пожалуйста, позвоните в УК."
             )
 
     async def show_streets(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -666,10 +589,10 @@ class EnhancedAspectBot:
         if self.contains_profanity(text):
             state.warnings_count += 1
             if state.warnings_count >= 2:
-                await update.message.reply_text("⚠️ За многократное использование нецензурной лексики диалог будет прекращен.")
+                await update.message.reply_text("За многократное использование нецензурной лексики диалог будет прекращен.")
                 return
             else:
-                await update.message.reply_text("🚫 Пожалуйста, избегайте нецензурной лексики в сообщениях.")
+                await update.message.reply_text("Пожалуйста, избегайте нецензурной лексики в сообщениях.")
                 return
 
         # Обработка в зависимости от режима
@@ -678,6 +601,45 @@ class EnhancedAspectBot:
 
         elif state.mode == 'ADDRESS_INPUT':
             await self.handle_address_input(update, context, text)
+
+        elif state.mode == 'CONFIRMATION':
+            # ИСПРАВЛЕНО: Голосовой интерфейс - обрабатываем текстовые "да"/"нет"
+            text_lower = text.lower().strip()
+
+            # Слова подтверждения
+            confirmation_words = ['да', 'верно', 'правильно', 'точно', 'так', 'согласен', 'подтверждаю', 'yes', 'y']
+
+            # Слова отрицания
+            denial_words = ['нет', 'неправ', 'не та', 'другая', 'не то', 'ошиб', 'неверно', 'no', 'n']
+
+            if any(word in text_lower for word in confirmation_words):
+                # Подтверждение - создаем заявку или запрашиваем адрес
+                if not state.address_components or not state.address_components.get('street'):
+                    state.mode = 'ADDRESS_INPUT'
+                    await update.message.reply_text(
+                        f"Принято! Услуга: {state.current_service_name}\n\n"
+                        "Пожалуйста, укажите адрес:\n"
+                        "Улица и номер дома (и квартиры, если нужно)\n\n"
+                        "Например: ул. Ленина, д. 5, кв. 10"
+                    )
+                else:
+                    # Все данные есть - создаем заявку
+                    await self.finalize_application(update, context)
+                    return
+
+            elif any(word in text_lower for word in denial_words):
+                # Отрицание - сбрасываем и просим описать заново
+                state.mode = 'ADDRESS_CHECK'
+                state.current_service_id = None
+                state.current_service_name = None
+                await update.message.reply_text(
+                    "Понял! Опишите вашу проблему другими словами, и я попробую определить услугу заново."
+                )
+            else:
+                # Не понял ответа
+                await update.message.reply_text(
+                    "Пожалуйста, ответьте да или нет, или опишите проблему другими словами."
+                )
 
         elif state.mode == 'ADDRESS_CHECK':
             # Автоопределение типа сообщения
@@ -701,7 +663,7 @@ class EnhancedAspectBot:
         if update and hasattr(update, 'message'):
             try:
                 await update.message.reply_text(
-                    "😔 Произошла ошибка. Пожалуйста, попробуйте позже."
+                    "Произошла ошибка. Пожалуйста, попробуйте позже."
                 )
             except:
                 pass
@@ -733,13 +695,13 @@ def main():
     application.add_handler(CommandHandler("service", bot.service_command))
     application.add_handler(CommandHandler("address", bot.address_command))
     application.add_handler(CommandHandler("cancel", bot.cancel_command))
-    application.add_handler(CallbackQueryHandler(bot.handle_confirmation_callback))
+    # ИСПРАВЛЕНО: Убран CallbackQueryHandler - голосовой интерфейс без кнопок
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
     # Добавление обработчика ошибок
     application.add_error_handler(bot.error_handler)
 
-    print(f"🚀 Улучшенный бот {bot.bot_name} v2.0 запускается с системой обнаружения услуг...")
+    print(f"Улучшенный бот {bot.bot_name} v2.0 запускается с системой обнаружения услуг...")
 
     # Запуск бота
     application.run_polling(allowed_updates=Update.ALL_TYPES)

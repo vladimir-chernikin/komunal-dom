@@ -149,9 +149,19 @@ class MessageHandlerService:
                 }
 
             # Вызываем MainAgent
-            # ИСПРАВЛЕНО: is_followup=True если есть предыдущие сообщения пользователя
-            user_messages_count = len([m for m in dialog_history if m.get('role') == 'user'])
-            is_followup = user_messages_count > 1
+            # ИСПРАВЛЕНО: is_followup=True если есть предыдущие сообщения пользователя кроме приветствий
+            user_messages = [m for m in dialog_history if m.get('role') == 'user']
+
+            # ИСПРАВЛЕНО (2025-12-25): Исключаем приветствия из контекста
+            non_greeting_messages = [
+                m for m in user_messages
+                if not self.message_cleaner or not self.message_cleaner.is_greeting_only(m.get('text', ''))
+            ]
+
+            is_followup = len(non_greeting_messages) > 1
+
+            if is_followup:
+                logger.info(f"MessageHandler: is_followup=True (контекстных сообщений: {len(non_greeting_messages)})")
 
             result = await self.main_agent.process_service_detection(
                 message_text=search_text,  # ИСПРАВЛЕНО: используем очищенный текст
