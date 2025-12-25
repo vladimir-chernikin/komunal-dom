@@ -288,6 +288,24 @@ class EnhancedAspectBot:
         user = update.effective_user
         state = self.get_conversation_state(user.id)
 
+        # ИСПРАВЛЕНО: Обработка "нет", "неправильно" для режима CONFIRMATION
+        if state.mode == 'CONFIRMATION':
+            text_lower = text.lower().strip()
+            # Слова отмены/отказа
+            denial_words = ['нет', 'неправ', 'не та', 'другая', 'не то', 'ошиб', 'неверно']
+            if any(word in text_lower for word in denial_words):
+                # Сбрасываем состояние и просим описать заново
+                state.mode = 'ADDRESS_CHECK'
+                state.current_service_id = None
+                state.current_service_name = None
+                state.current_address = None
+                state.address_components = None
+
+                await update.message.reply_text(
+                    "Понял! Опишите вашу проблему другими словами, и я попробую определить услугу заново."
+                )
+                return
+
         if not self.message_handler:
             await update.message.reply_text(
                 "К сожалению, система определения услуг временно недоступна.\n"
@@ -335,33 +353,18 @@ class EnhancedAspectBot:
                     state.address_components = address_components
                     state.confidence = result['raw_result'].get('confidence', 0.8)
 
-                    # Если адрес не найден - запрашиваем
-                    if not address_components.get('street') or not address_components.get('house_number'):
-                        state.mode = 'ADDRESS_INPUT'
-                        await update.message.reply_text(
-                            f"{response}\n\n"
-                            f"Пожалуйста, укажите адрес:\n"
-                            "Улица и номер дома (и квартиры, если нужно)\n\n"
-                            "Например: ул. Ленина, д. 5, кв. 10"
-                        )
-                        return
-
-                    # Если адрес найден - переходим к подтверждению
+                    # ИСПРАВЛЕНО: Сначала подтверждаем услугу, потом запрашиваем адрес
                     state.mode = 'CONFIRMATION'
 
                     # Создаем клавиатуру для подтверждения
                     keyboard = [
-                        [InlineKeyboardButton("Да, все верно", callback_data='confirm_yes')],
-                        [InlineKeyboardButton("Нет, изменить", callback_data='confirm_no')],
+                        [InlineKeyboardButton("Да, верно", callback_data='confirm_yes')],
+                        [InlineKeyboardButton("Нет, другая проблема", callback_data='confirm_no')],
                         [InlineKeyboardButton("Отмена", callback_data='confirm_cancel')]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
 
-                    confirm_text = f"Проверьте информацию:\n\n"
-                    confirm_text += f"Услуга: {service_name}\n"
-                    if address_string:
-                        confirm_text += f"Адрес: {address_string}\n"
-                    confirm_text += f"\nВсе верно?"
+                    confirm_text = f"Правильно ли я понял, что у вас: {service_name}?"
 
                     await update.message.reply_text(
                         confirm_text,
@@ -475,8 +478,20 @@ class EnhancedAspectBot:
         state = self.get_conversation_state(user.id)
 
         if query.data == 'confirm_yes':
-            # Подтверждение - создаем заявку
+            # Подтверждение услуги - теперь запрашиваем адрес
             try:
+                # ИСПРАВЛЕНО: Если адрес еще не указан - запрашиваем
+                if not state.address_components or not state.address_components.get('street'):
+                    state.mode = 'ADDRESS_INPUT'
+                    await query.edit_message_text(
+                        f"Принято! Услуга: {state.current_service_name}\n\n"
+                        "Пожалуйста, укажите адрес:\n"
+                        "Улица и номер дома (и квартиры, если нужно)\n\n"
+                        "Например: ул. Ленина, д. 5, кв. 10"
+                    )
+                    return
+
+                # Если адрес есть - создаем заявку
                 # ИСПРАВЛЕНО: Создание заявки через БД напрямую (или через сервис в будущем)
                 # Пока просто подтверждаем прием
                 ticket_number = f"TK-{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -509,14 +524,16 @@ class EnhancedAspectBot:
                 )
 
         elif query.data == 'confirm_no':
-            # Пользователь хочет изменить
-            state.mode = 'ADDRESS_INPUT'
+            # Пользователь говорит что услуга определена неверно
+            # ИСПРАВЛЕНО: Сбрасываем состояние и просим описать проблему заново
+            state.mode = 'ADDRESS_CHECK'
+            state.current_service_id = None
+            state.current_service_name = None
+            state.current_address = None
+            state.address_components = None
+
             await query.edit_message_text(
-                "Что именно нужно изменить?\n\n"
-                "Отправьте:\n"
-                "- /service - выбрать другую услугу\n"
-                "- Адрес в формате 'ул. Название, д. Номер, кв. Номер'\n\n"
-                "Или /cancel для отмены"
+                "Понял! Опишите вашу проблему другими словами, и я попробую определить услугу заново."
             )
 
         elif query.data == 'confirm_cancel':

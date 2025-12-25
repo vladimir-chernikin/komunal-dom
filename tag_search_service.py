@@ -60,12 +60,21 @@ class TagSearchService:
                         # Извлекаем теги
                         tag_list = [tag.strip().lower() for tag in tags.split(',') if tag.strip()]
 
+                        # ИСПРАВЛЕНО: Разбиваем теги-фразы на отдельные слова
+                        # "течет труба" -> ["течет", "труба", "течет труба"]
+                        expanded_tags = set(tag_list)
+                        for tag in tag_list:
+                            # Если тег содержит пробел - разбиваем на слова
+                            if ' ' in tag:
+                                words = tag.split()
+                                expanded_tags.update(words)
+
                         # Дополняем словами из названия и описания
                         name_words = self._tokenize_text(scenario_name)
                         desc_words = self._tokenize_text(description)
 
                         # Все поисковые термины для этой услуги
-                        all_search_terms = set(tag_list + name_words + desc_words)
+                        all_search_terms = set(expanded_tags) | set(name_words) | set(desc_words)
 
                         service_cache[service_id] = {
                             'service_id': service_id,
@@ -96,9 +105,10 @@ class TagSearchService:
         # Разбиваем на слова
         words = text.split()
 
-        # Фильтруем короткие слова (минимум 5 букв)
-        # Слишком короткие слова типа "течь", "вода" создают ложные срабатывания
-        return [w for w in words if len(w) > 4]
+        # ИСПРАВЛЕНО: Фильтруем короткие слова (минимум 3 буквы)
+        # "течь", "вода", "кран" - важные слова из 4 букв!
+        # Предлоги и союзы ("и", "в", "на", "у") - 1-2 буквы - отсеиваем
+        return [w for w in words if len(w) > 2]
 
     async def search(self, message_text: str) -> Dict:
         """
@@ -178,14 +188,14 @@ class TagSearchService:
         Использует pymorphy2 для морфологии и rapidfuzz для нечеткого совпадения
 
         ИСПРАВЛЕНО: Убрана агрессивная логика вхождения term in word
-        ИСПРАВЛЕНО: Минимальная длина слов увеличена до 5 букв
+        ИСПРАВЛЕНО: Минимальная длина слов уменьшена до 3 букв (было 5)
         """
         morph = self._get_morph()
 
-        # Нормализуем слова сообщения (только слова >= 5 букв)
+        # Нормализуем слова сообщения (только слова >= 3 букв)
         message_normalized = set()
         for word in message_words:
-            if len(word) < 5:
+            if len(word) < 3:
                 continue
             parsed = morph.parse(word)[0]
             message_normalized.add(parsed.normal_form)

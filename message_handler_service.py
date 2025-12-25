@@ -149,8 +149,9 @@ class MessageHandlerService:
                 }
 
             # Вызываем MainAgent
-            # Устанавливаем is_followup=True если есть история диалога (более 2 сообщений)
-            is_followup = len(dialog_history) > 2
+            # ИСПРАВЛЕНО: is_followup=True если есть предыдущие сообщения пользователя
+            user_messages_count = len([m for m in dialog_history if m.get('role') == 'user'])
+            is_followup = user_messages_count > 1
 
             result = await self.main_agent.process_service_detection(
                 message_text=search_text,  # ИСПРАВЛЕНО: используем очищенный текст

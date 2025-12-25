@@ -161,9 +161,21 @@ class MainAgent:
         else:
             logger.info(f"Главный Агент начал обработку: '{message_text[:50]}...'")
 
-        # Формируем поисковый текст: ВСЕГДА используем message_text как основу
-        # dialog_history используется ТОЛЬКО для извлечения фильтров, НЕ для поиска услуг
+        # Формируем поисковый текст
+        # ИСПРАВЛЕНО: Для followup сообщений объединяем с предыдущим пользовательским сообщением
         search_text = message_text
+
+        if is_followup and dialog_history:
+            # Ищем предыдущее сообщение пользователя для объединения контекста
+            previous_user_messages = [msg for msg in dialog_history if msg.get('role') == 'user']
+            if previous_user_messages:
+                # Берем последние 2 пользовательских сообщения для контекста
+                recent_user_texts = [msg.get('text', '') for msg in previous_user_messages[-2:]]
+                # Объединяем: "предыдущий текст + текущий текст"
+                combined_text = ' '.join(recent_user_texts + [message_text])
+                search_text = combined_text
+                logger.info(f"Followup: объединен контекст: '{search_text[:150]}...'")
+
         logger.info(f"Поисковый текст: '{search_text[:100]}...'")
 
         # ДОБАВЛЕНО: Извлекаем адрес из сообщения (если доступен AddressExtractor)
@@ -355,10 +367,10 @@ class MainAgent:
                             result = {
                                 'status': 'SUCCESS',
                                 'service_id': candidate['service_id'],
-                                'service_name': candidate['scenario_name'],
+                                'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
                                 'confidence': filter_result.get('confidence', 0.8),
                                 'source': 'filter_detection',
-                                'message': f"Понял, у вас: {candidate['scenario_name']}. Это правильно?",
+                                'message': f"Понял, у вас: {candidate.get('service_name', candidate.get('scenario_name'))}. Это правильно?",
                                 'candidates': [candidate],
                                 'needs_confirmation': True,
                                 'is_followup': is_followup
@@ -482,13 +494,28 @@ class MainAgent:
         candidates_with_attrs = await self._load_candidates_attributes(candidates_data)
 
         # Генерируем умный уточняющий вопрос с учетом истории
-        clarification_message = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+        clarification_result = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+
+        # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
+        if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
+            candidate = clarification_result['single_candidate']
+            return {
+                'status': 'SUCCESS',
+                'service_id': candidate['service_id'],
+                'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                'confidence': 1.0,
+                'source': 'filtered_search',
+                'message': clarification_result['message'],
+                'candidates': candidates_data[:1],
+                'needs_confirmation': False,
+                'is_followup': is_followup
+            }
 
         return {
             'status': 'AMBIGUOUS',
             'candidates': [c['all_data'][0] for c in candidates_data],
             'candidate_names': candidate_names,
-            'message': clarification_message,
+            'message': clarification_result['message'],
             'needs_clarification': True,
             'clarification_type': 'intersection_multiple',
             'is_followup': is_followup
@@ -562,13 +589,28 @@ class MainAgent:
         candidates_with_attrs = await self._load_candidates_attributes(candidates_data[:5])
 
         # Генерируем умный уточняющий вопрос с учетом истории
-        clarification_message = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+        clarification_result = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+
+        # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
+        if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
+            candidate = clarification_result['single_candidate']
+            return {
+                'status': 'SUCCESS',
+                'service_id': candidate['service_id'],
+                'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                'confidence': 1.0,
+                'source': 'filtered_search',
+                'message': clarification_result['message'],
+                'candidates': candidates_data[:1],
+                'needs_confirmation': False,
+                'is_followup': is_followup
+            }
 
         return {
             'status': 'AMBIGUOUS',
             'candidates': [c['all_data'][0] for c in candidates_data[:5]],
             'candidate_names': candidate_names,
-            'message': clarification_message,
+            'message': clarification_result['message'],
             'needs_clarification': True,
             'clarification_type': 'no_intersection',
             'is_followup': is_followup
@@ -787,7 +829,7 @@ class MainAgent:
 
         return filters
 
-    def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> str:
+    def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -795,9 +837,14 @@ class MainAgent:
         и задает вопрос именно по этим параметрам, НЕ перечисляя услуги
 
         ИСПРАВЛЕНО: Добавлен анализ истории диалога для исключения уже отвеченных вопросов
+        ИСПРАВЛЕНО: Возвращает Dict с status вместо строки
         """
         if not candidates_with_attrs:
-            return self._generate_clarification_questions()
+            return {
+                'status': 'AMBIGUOUS',
+                'message': self._generate_clarification_questions(),
+                'single_candidate': None
+            }
 
         # ИЗВЛЕКАЕМ ФИЛЬТРЫ ИЗ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ И ИСТОРИИ ДИАЛОГА
         extracted_filters = self._extract_filters_from_message(original_message, dialog_history)
@@ -828,7 +875,38 @@ class MainAgent:
             # Услуга определена после фильтрации!
             candidate = filtered_candidates[0]
             logger.info(f"После фильтрации остался 1 кандидат: {candidate['service_name']} (ID: {candidate['service_id']})")
-            return f"Правильно ли я понял, что у вас проблема: {candidate['service_name']}?"
+            return {
+                'status': 'SUCCESS',
+                'message': f"Понял, у вас: {candidate['service_name']}",
+                'single_candidate': candidate
+            }
+
+        # ИСПРАВЛЕНО: Если осталось несколько кандидатов с одинаковыми атрибутами - пробуем уточнить по keywords
+        if len(filtered_candidates) > 1:
+            # Проверяем все ли кандидаты имеют одинаковые location, category, incident
+            locations = set(c.get('location_type') for c in filtered_candidates if c.get('location_type'))
+            categories = set(c.get('category') for c in filtered_candidates if c.get('category'))
+            incidents = set(c.get('incident_type') for c in filtered_candidates if c.get('incident_type'))
+
+            if len(locations) == 1 and len(categories) == 1 and len(incidents) == 1:
+                # Все кандидаты имеют одинаковые атрибуты - уточняем по описанию
+                names = [c.get('service_name', c.get('scenario_name', 'Unknown')) for c in filtered_candidates]
+                logger.info(f"Кандидаты имеют одинаковые атрибуты, уточняем: {names}")
+
+                # Генерируем вопрос на основе названий
+                if len(names) <= 3:
+                    return {
+                        'status': 'AMBIGUOUS',
+                        'message': f"Уточните, пожалуйста, что именно произошло:\n• " + "\n• ".join(names),
+                        'single_candidate': None
+                    }
+
+                # Если кандидатов много - возвращаем общий вопрос
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': f"Уточните, пожалуйста, детали проблемы (выберите один из вариантов ниже)",
+                    'single_candidate': None
+                }
 
         # Если осталось 0 кандидатов после фильтрации - используем оригинальный список
         if not filtered_candidates:
@@ -858,14 +936,26 @@ class MainAgent:
             has_common = any('общедом' in loc.lower() or 'общее' in loc.lower() for loc in location_types)
 
             if has_individual and has_common:
-                return "Где именно это произошло: в квартире у вас или на территории общедомового имущества?"
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Где именно это произошло: в квартире у вас или на территории общедомового имущества?",
+                    'single_candidate': None
+                }
 
             # Иначе перечисляем найденные локации
             loc_list = list(location_types)
             if len(loc_list) == 2:
-                return f"Уточните, пожалуйста: это произошло {loc_list[0].lower()} или {loc_list[1].lower()}?"
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': f"Уточните, пожалуйста: это произошло {loc_list[0].lower()} или {loc_list[1].lower()}?",
+                    'single_candidate': None
+                }
             else:
-                return "Где именно это произошло?\n• " + "\n• ".join(loc_list) + "\n\nПожалуйста, уточните."
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Где именно это произошло?\n• " + "\n• ".join(loc_list) + "\n\nПожалуйста, уточните.",
+                    'single_candidate': None
+                }
 
         # ===== ПРИОРИТЕТ 2: Тип инцидента (Инцидент vs Запрос) =====
         if len(incident_types) >= 2:
@@ -873,7 +963,11 @@ class MainAgent:
             has_request = any('запрос' in inc.lower() or 'заявк' in inc.lower() for inc in incident_types)
 
             if has_incident and has_request:
-                return "Уточните, пожалуйста: у вас аварийная ситуация (поломка, течь и т.п.) или вам нужна информация/услуга?"
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Уточните, пожалуйста: у вас аварийная ситуация (поломка, течь и т.п.) или вам нужна информация/услуга?",
+                    'single_candidate': None
+                }
 
         # ===== ПРИОРИТЕТ 3: Категория проблемы =====
         # Если категория уже известна - пропускаем этот вопрос
@@ -887,20 +981,40 @@ class MainAgent:
 
             # Специфичные вопросы по парам категорий
             if has_water and has_heating:
-                return "Это проблема с водой (течь, засор) или с отоплением?"
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Это проблема с водой (течь, засор) или с отоплением?",
+                    'single_candidate': None
+                }
 
             if has_water and has_electric:
-                return "Проблема с водоснабжением или с электричеством?"
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Проблема с водоснабжением или с электричеством?",
+                    'single_candidate': None
+                }
 
             if has_lift and (has_water or has_heating or has_electric):
-                return "Проблема с лифтом или с коммуникациями (вода, свет, отопление)?"
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Проблема с лифтом или с коммуникациями (вода, свет, отопление)?",
+                    'single_candidate': None
+                }
 
             if has_construct and has_water:
-                return "Это проблема с конструкцией (крыша, стены) или с сантехникой?"
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Это проблема с конструкцией (крыша, стены) или с сантехникой?",
+                    'single_candidate': None
+                }
 
             # Если много категорий - спрашиваем что именно
             if len(categories) <= 4:
-                return "Уточните, пожалуйста, о какой проблеме речь:\n• " + "\n• ".join(categories) + "\n\nОпишите подробнее."
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Уточните, пожалуйста, о какой проблеме речь:\n• " + "\n• ".join(categories) + "\n\nОпишите подробнее.",
+                    'single_candidate': None
+                }
 
         # ===== ФОЛЛБЕК: Анализ исходного сообщения =====
         if original_message:
@@ -910,14 +1024,26 @@ class MainAgent:
             # ИСПРАВЛЕНО: Генерируем простые открытые вопросы, НЕ перечисляем варианты
             # Если говорится о течи - спрашиваем где (открытый вопрос)
             if any(word in original_lower for word in ['теч', 'течет', 'протека', 'капа', 'утечк', 'льет']):
-                return "Где именно это произошло? Пожалуйста, опишите подробнее."
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Где именно это произошло? Пожалуйста, опишите подробнее.",
+                    'single_candidate': None
+                }
 
             # Если говорится о поломке - спрашиваем что
             if any(word in original_lower for word in ['сломал', 'не работ', 'поломк']):
-                return "Что именно сломалось? Опишите, пожалуйста, подробнее."
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': "Что именно сломалось? Опишите, пожалуйста, подробнее.",
+                    'single_candidate': None
+                }
 
         # ===== ОБЩИЙ ВОПРОС (открытый, без перечисления вариантов) =====
-        return "Пожалуйста, уточните где именно это произошло и опишите подробнее, что случилось."
+        return {
+            'status': 'AMBIGUOUS',
+            'message': "Пожалуйста, уточните где именно это произошло и опишите подробнее, что случилось.",
+            'single_candidate': None
+        }
 
     async def _run_ai_search(self, message_text: str) -> Dict:
         """Запуск AIAgentService"""
@@ -1015,13 +1141,28 @@ class MainAgent:
         # ИСПРАВЛЕНО: Загружаем атрибуты из БД вместо пустых значений
         candidates_with_attrs = await self._load_candidates_attributes(candidates[:3])
 
-        clarification_message = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+        clarification_result = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+
+        # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
+        if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
+            candidate = clarification_result['single_candidate']
+            return {
+                'status': 'SUCCESS',
+                'service_id': candidate['service_id'],
+                'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                'confidence': 1.0,
+                'source': 'filtered_search',
+                'message': clarification_result['message'],
+                'candidates': candidates[:1],
+                'needs_confirmation': False,
+                'is_followup': is_followup
+            }
 
         return {
             'status': 'AMBIGUOUS',
             'candidates': candidates[:3],
             'candidate_names': [c.get('service_name', 'Unknown') for c in candidates[:3]],
-            'message': clarification_message,
+            'message': clarification_result['message'],
             'needs_clarification': True,
             'clarification_type': 'context',
             'is_followup': is_followup
