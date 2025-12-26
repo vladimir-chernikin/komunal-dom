@@ -1539,7 +1539,7 @@ class MainAgent:
                     txtPrb=None
                 ),
                 'candidates': [],
-                'metadata': result_metadata
+                'metadata': {}
             }
 
         # Если 1 кандидат - но нужно проверить confidence
@@ -1577,7 +1577,7 @@ class MainAgent:
                 'status': 'AMBIGUOUS',
                 'message': question,
                 'candidates': unique_candidates[:10],  # Первые 10 кандидатов
-                'metadata': result_metadata
+                'metadata': {}
             }
 
     async def _ask_ai_what_happened(self, message_text: str, dialog_history: List[Dict],
