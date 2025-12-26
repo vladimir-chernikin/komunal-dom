@@ -32,6 +32,54 @@ class SemanticSearchService:
             self.morph = pymorphy2.MorphAnalyzer()
         return self.morph
 
+    def _calculate_adaptive_threshold(self, message_text: str) -> tuple:
+        """
+        Адаптивный расчет порога и лимита в зависимости от длины запроса
+
+        ИСПРАВЛЕНО (2025-12-25): Адаптивный порог вместо фиксированного 0.2
+        ИСПРАВЛЕНО (2025-12-26): Увеличены пороги для уменьшения ложных срабатываний
+
+        Args:
+            message_text: Текст сообщения
+
+        Returns:
+            tuple: (threshold, limit) - порог уверенности и лимит результатов
+        """
+        # Считаем количество слов
+        words = message_text.strip().split()
+        word_count = len(words)
+
+        # Считаем количество символов
+        char_count = len(message_text.strip())
+
+        # Определяем категорию запроса (ИСПРАВЛЕНО: повышены пороги)
+        if word_count <= 2 and char_count < 15:
+            # Короткий запрос: "у меня течет", "сломался"
+            # ИСПРАВЛЕНО: 0.10 -> 0.25 чтобы отсекать слабые совпадения
+            threshold = 0.25
+            limit = 3
+            category = "короткий"
+        elif word_count <= 5 and char_count < 40:
+            # Средний запрос: "у меня прорвало трубу в ванной"
+            # ИСПРАВЛЕНО: 0.15 -> 0.30
+            threshold = 0.30
+            limit = 5
+            category = "средний"
+        else:
+            # Длинный запрос: подробное описание проблемы
+            # ИСПРАВЛЕНО: 0.20 -> 0.35
+            threshold = 0.35
+            limit = 7
+            category = "длинный"
+
+        logger.info(
+            f"SemanticSearch: запрос '{message_text[:30]}...' -> "
+            f"категория='{category}' (слов:{word_count}, символов:{char_count}), "
+            f"порог={threshold}, лимит={limit}"
+        )
+
+        return threshold, limit
+
     def _init_semantic_patterns(self) -> Dict:
         """Инициализация семантических паттернов для анализа"""
         return {
@@ -259,12 +307,50 @@ class SemanticSearchService:
         Сопоставляет семантические признаки с услугами
         ИСПРАВЛЕНО: Использует денормализованные колонки (incident_type, category, location_type)
         ИСПРАВЛЕНО: НЕ требует обязательного совпадения по location_type если пользователь не указал локацию
+        ИСПРАВЛЕНО (2025-12-26): Добавлена проверка на соответствие ОБЕИМ признакам (incident + category)
         """
         service_scores = {}
 
         for service_id, service_info in self.service_cache.items():
             score = 0.0
             reasons = []
+
+            # ИСПРАВЛЕНИЕ: Проверяем что услуга соответствует ОБЩИМ признакам, не только incident_type
+            # Если есть признак категории (water, electricity, etc.) - услуга ДОЛЖНА к ней относиться
+
+            # Определяем требуемые категории из features
+            required_categories = set()
+            if 'water' in features:
+                required_categories.update(['Водоснабжение', 'Санитария'])
+            if 'electricity' in features:
+                required_categories.add('Электричество')
+            if 'heating' in features:
+                required_categories.add('Отопление')
+            if 'construction' in features:
+                required_categories.update(['Ремонт МАФ и покрытий', 'Конструктив'])
+            if 'cleaning' in features:
+                required_categories.add('Санитария')
+            if 'landscape' in features:
+                required_categories.add('Озеленение')
+            if 'elevator' in features:
+                required_categories.add('Лифты')
+            if 'roof' in features:
+                required_categories.add('Конструктив')
+
+            # Если есть требуемые категории - проверяем соответствие
+            if required_categories:
+                service_category = (service_info.get('category') or '').strip()
+                service_name = (service_info.get('scenario_name') or '').strip()
+
+                # Проверяем что услуга относится хотя бы к одной требуемой категории
+                category_match = any(
+                    cat.lower() in service_category.lower() or cat.lower() in service_name.lower()
+                    for cat in required_categories
+                )
+
+                if not category_match:
+                    # Услуга не соответствует требуемым категориям - пропускаем
+                    continue
 
             # Анализ по типу (incident_type)
             if 'incident' in features:
@@ -343,30 +429,38 @@ class SemanticSearchService:
             if not service_scores:
                 return {'candidates': []}
 
-            # Конвертируем в нужный формат JSON
+            # ИСПРАВЛЕНО (2025-12-25): Адаптивный порог и ТОП-N
+            threshold, limit = self._calculate_adaptive_threshold(message_text)
+
+            # Конвертируем в нужный формат JSON с адаптивным порогом
+            # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
             candidates = []
             for service_id, confidence in service_scores.items():
-                if confidence >= 0.2:  # ИСПРАВЛЕНО: Снижен порог с 0.3 до 0.2
-                    service_name = self.service_cache[service_id]['scenario_name']
+                if confidence >= threshold:  # Адаптивный порог
+                    service_data = self.service_cache[service_id]
+                    service_name = service_data['scenario_name']
                     candidates.append({
                         'service_id': service_id,
                         'service_name': service_name,
                         'confidence': round(confidence, 3),
-                        'source': 'semantic_search'
+                        'source': 'semantic_search',
+                        'incident_type': service_data.get('incident_type', ''),
+                        'category': service_data.get('category', ''),
+                        'location_type': service_data.get('location_type', '')
                     })
 
-            # Сортируем по уверенности убыванию
+            # Сортируем по уверенности убыванию и берем ТОП-N
             candidates.sort(key=lambda x: x['confidence'], reverse=True)
 
             result = {
                 'status': 'success',
-                'candidates': candidates[:5],
+                'candidates': candidates[:limit],  # Адаптивный лимит
                 'semantic_features': features,
                 'total_matches': len(candidates),
                 'method': 'semantic_search'
             }
 
-            logger.info(f"SemanticSearch: найдено услуг: {len(candidates)}")
+            logger.info(f"SemanticSearch: найдено услуг: {len(candidates)} (порог: {threshold}, лимит: {limit})")
             return result
 
         except Exception as e:

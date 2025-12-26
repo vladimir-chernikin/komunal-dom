@@ -37,15 +37,18 @@ class TagSearchService:
         try:
             def load_sync():
                 with connection.cursor() as cursor:
-                    # Загружаем услуги из services_catalog с их тегами
+                    # Загружаем услуги из services_catalog с их тегами и атрибутами
+                    # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
                     cursor.execute("""
                         SELECT sc.service_id, sc.scenario_name, sc.description_for_search,
+                               sc.incident_type, sc.category, sc.location_type,
                                COALESCE(string_agg(rt.tag_name, ','), '') as tags
                         FROM services_catalog sc
                         LEFT JOIN service_tags st ON sc.service_id = st.service_id
                         LEFT JOIN ref_tags rt ON st.tag_id = rt.tag_id AND rt.is_active = TRUE
                         WHERE sc.is_active = TRUE
-                        GROUP BY sc.service_id, sc.scenario_name, sc.description_for_search
+                        GROUP BY sc.service_id, sc.scenario_name, sc.description_for_search,
+                                 sc.incident_type, sc.category, sc.location_type
                         ORDER BY sc.service_id
                     """)
                     services = cursor.fetchall()
@@ -55,7 +58,10 @@ class TagSearchService:
                         service_id = row[0]
                         scenario_name = row[1]
                         description = row[2] or ""
-                        tags = row[3] or ""
+                        incident_type = row[3] or ""
+                        category = row[4] or ""
+                        location_type = row[5] or ""
+                        tags = row[6] or ""
 
                         # Извлекаем теги
                         tag_list = [tag.strip().lower() for tag in tags.split(',') if tag.strip()]
@@ -80,6 +86,9 @@ class TagSearchService:
                             'service_id': service_id,
                             'service_name': scenario_name,
                             'description': description,
+                            'incident_type': incident_type,
+                            'category': category,
+                            'location_type': location_type,
                             'search_terms': all_search_terms
                         }
                     return service_cache
@@ -138,6 +147,7 @@ class TagSearchService:
                     matching_service_ids.add(service_id)
 
             # Формируем результат
+            # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
             candidates = []
             for service_id in matching_service_ids:
                 service_data = self.service_cache[service_id]
@@ -145,7 +155,10 @@ class TagSearchService:
                     "service_id": service_id,
                     "service_name": service_data['service_name'],
                     "confidence": 1.0,  # По ТЗ: если есть в множестве = 100%
-                    "source": "tag_search"
+                    "source": "tag_search",
+                    "incident_type": service_data.get('incident_type', ''),
+                    "category": service_data.get('category', ''),
+                    "location_type": service_data.get('location_type', '')
                 })
 
             if candidates:
@@ -205,12 +218,13 @@ class TagSearchService:
         for term in search_terms:
             term_lower = term.lower()
 
-            # Пропускаем слишком короткие термины (минимум 5 букв)
-            if len(term_lower) < 5:
+            # ИСПРАВЛЕНО (2025-12-25): Пропускаем слишком короткие термины (минимум 4 букв)
+            # "труба", "кран", "течь" - важные слова из 4-5 букв
+            if len(term_lower) < 4:
                 continue
 
-            # Проверяем что длина слова сообщения >= 5 букв
-            valid_words = [w for w in message_words if len(w) >= 5]
+            # ИСПРАВЛЕНО (2025-12-25): Проверяем что длина слова сообщения >= 4 букв
+            valid_words = [w for w in message_words if len(w) >= 4]
 
             # Прямое совпадение
             if any(word == term_lower for word in valid_words):
@@ -223,12 +237,14 @@ class TagSearchService:
             # Вхождение слова в терм (ТОЛЬКО если word достаточно длинный)
             # УБРАНО: term_lower in word - создает ложные срабатывания
             for word in valid_words:
-                if len(word) >= 6 and word in term_lower:
+                # ИСПРАВЛЕНО (2025-12-25): Снижено до 5 букв
+                if len(word) >= 5 and word in term_lower:
                     return True
 
             # Нечеткое совпадение (для опечаток) - только для длинных слов
             for word in valid_words:
-                if len(word) >= 6 and len(term_lower) >= 6:
+                # ИСПРАВЛЕНО (2025-12-25): Снижено до 5 букв
+                if len(word) >= 5 and len(term_lower) >= 5:
                     if fuzz.ratio(word, term_lower) > 85:
                         return True
 

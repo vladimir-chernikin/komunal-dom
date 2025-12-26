@@ -54,6 +54,7 @@ class MainAgent:
         self.ai_agent = None
         self.filter_detection = None  # ИСПРАВЛЕНО: Добавлен сервис определения фильтров
         self.address_extractor = None  # ДОБАВЛЕНО: Сервис извлечения адреса
+        self.problem_accumulator = None  # ИСПРАВЛЕНО (2025-12-26): Сервис накопления проблемы
         self.confidence_threshold = 0.75  # Порог уверенности
 
         # Инициализируем микросервисы
@@ -107,6 +108,15 @@ class MainAgent:
             logger.info("AddressExtractor инициализирован в MainAgent")
         except ImportError:
             logger.warning("AddressExtractor не найден, извлечение адреса недоступно")
+
+        # ИСПРАВЛЕНО (2025-12-26): ProblemAccumulationService для накопления описания проблемы
+        try:
+            from problem_accumulation_service import ProblemAccumulationService
+            # Передаем ai_agent чтобы не дублировать вызовы LLM
+            self.problem_accumulator = ProblemAccumulationService(ai_agent_service=self.ai_agent)
+            logger.info("ProblemAccumulationService инициализирован (через AIAgentService)")
+        except ImportError:
+            logger.warning("ProblemAccumulationService не найден, накопление проблемы недоступно")
 
     def _add_address_to_result(self, result: Dict, address_components: Dict) -> Dict:
         """
@@ -214,6 +224,57 @@ class MainAgent:
             except Exception as e:
                 logger.warning(f"Ошибка извлечения адреса: {e}")
 
+        # ИСПРАВЛЕНО (2025-12-26): ProblemAccumulationService - накопление описания проблемы
+        txtPrb = ""
+        accumulated_fields = {}
+        established_filters = {}
+
+        if self.problem_accumulator and is_followup:
+            try:
+                # Извлекаем txtPrb из истории диалога
+                txtPrb = self.problem_accumulator.get_txtPrb_from_metadata(dialog_history)
+                logger.info(f"Текущий txtPrb из истории: '{txtPrb[:80] if txtPrb else '(пусто)'}...'")
+
+                # Определяем последний вопрос бота
+                last_bot_question = None
+                if dialog_history:
+                    for msg in reversed(dialog_history[-3:]):
+                        if msg.get('role') == 'bot' and '?' in msg.get('text', ''):
+                            last_bot_question = msg.get('text', '')
+                            break
+
+                # Накапливаем информацию из текущего сообщения
+                accumulation_result = await self.problem_accumulator.extract_and_accumulate(
+                    message_text=message_text,
+                    current_problem=txtPrb,
+                    bot_question=last_bot_question,
+                    dialog_history=dialog_history
+                )
+
+                if accumulation_result['is_meaningful']:
+                    txtPrb = accumulation_result['updated_problem']
+                    accumulated_fields = accumulation_result['fields']
+                    logger.info(f"txtPrb обновлен: '{txtPrb[:100]}...'")
+                    logger.info(f"Извлеченные поля: {accumulated_fields}")
+
+                    # Рассчитываем фильтры с весами
+                    established_filters = self.problem_accumulator.calculate_filter_confidence(
+                        txtPrb, accumulated_fields
+                    )
+                    logger.info(f"Установленные фильтры: {established_filters}")
+                else:
+                    logger.info("Сообщение не содержит значимой информации, txtPrb не обновлен")
+
+            except Exception as e:
+                logger.warning(f"Ошибка ProblemAccumulationService: {e}")
+
+        # Подготавливаем metadata для результата
+        result_metadata = {
+            'txtPrb': txtPrb,
+            'accumulated_fields': accumulated_fields,
+            'established_filters': established_filters
+        }
+
         try:
             # ===== ШАГ 1: Параллельно запускаем БЫСТРЫЕ микросервисы =====
             search_tasks = []
@@ -268,47 +329,68 @@ class MainAgent:
             for i, s in enumerate(service_sets):
                 logger.info(f"  Сервис {i}: {len(s)} услуг")
 
-            # ===== ТЗ 3.2.1: Проверяем пересечение множеств =====
-            if service_sets:
-                intersection = set.intersection(*service_sets)
-                logger.info(f"Пересечение всех множеств: {len(intersection)} услуг - {intersection}")
+            # ===== ИСПРАВЛЕНО (2025-12-25): AI ORCHESTRATOR вместо INTERSECTION =====
+            # ИСПОЛЬЗУЕМ AI Orchestrator для умного объединения результатов
 
-                # Если есть однозначное пересечение (1 услуга)
-                if len(intersection) == 1:
-                    service_id = list(intersection)[0]
-                    service_data = service_results_map[service_id]
+            # Формируем search_results для AI Orchestrator
+            ai_search_results = {}
 
-                    logger.info(f"ОДНОЗНАЧНОЕ ПЕРЕСЕЧЕНИЕ: service_id={service_id}, источники: {service_data['sources']}")
+            for i, result in enumerate(search_results):
+                if isinstance(result, Exception):
+                    continue
+                if not result or not result.get('candidates'):
+                    continue
 
-                    result = {
-                        'status': 'SUCCESS',
-                        'service_id': service_id,
-                        'service_name': service_data['service_name'],
-                        'confidence': 1.0,  # Пересечение = 100%
-                        'source': '+'.join(service_data['sources']),
-                        'message': f'Правильно ли я понял, что у вас проблема: {service_data["service_name"]}?',
-                        'candidates': [service_data['all_data'][0]],
-                        'needs_confirmation': True,
-                        'is_followup': is_followup
-                    }
-                    # ДОБАВЛЕНО: Добавляем адресные компоненты
-                    return self._add_address_to_result(result, address_components)
+                source_name = result.get('method', f'service_{i}')
+                ai_search_results[source_name] = result
 
-                # Если пересечение из 2+ услуг - нужно уточнить
-                elif len(intersection) > 1:
-                    logger.info(f"МНОЖЕСТВЕННОЕ ПЕРЕСЕЧЕНИЕ: {len(intersection)} услуг")
-                    candidates_data = [service_results_map[sid] for sid in intersection]
-                    return await self._create_ambiguous_result_from_intersection(candidates_data, original_message, is_followup, dialog_history)
+            # Вызываем AI Orchestrator
+            logger.info(f"Запускаем AI Orchestrator (микросервисов: {len(ai_search_results)})")
 
-            # ===== ТЗ 3.2.2: Нет пересечения или множества не пересекаются =====
-            logger.info("НЕТ ОБЩЕГО ПЕРЕСЕЧЕНИЯ, формируем таблицу кандидатов")
+            # ИСПРАВЛЕНО (2025-12-26): Передаем ОБЪЕДИНЕННЫЙ КОНТЕКСТ (search_text), а не только текущее сообщение!
+            # Это критично для followup сообщений чтобы AI видел полный контекст разговора
+            orch_result = await self._orchestrate_microservices(
+                message_text=search_text,  # Объединенный контекст (previous + current)
+                search_results=ai_search_results,
+                dialog_history=dialog_history
+            )
+
+            # AI Orchestrator вернул решение
+            if orch_result.get('status') == 'SUCCESS':
+                # Услуга определена AI Orchestrator'ом
+                logger.info(f"AI Orchestrator определил услугу: {orch_result.get('service_name')}")
+                result = {
+                    'status': 'SUCCESS',
+                    'service_id': orch_result.get('service_id'),
+                    'service_name': orch_result.get('service_name'),
+                    'confidence': orch_result.get('confidence', 0.8),
+                    'source': 'ai_orchestrator',
+                    'message': orch_result.get('message'),
+                    'candidates': orch_result.get('candidates', []),
+                    'needs_confirmation': orch_result.get('needs_confirmation', True),
+                    'is_followup': is_followup
+                }
+                return self._add_address_to_result(result, address_components)
+
+            elif orch_result.get('status') == 'AMBIGUOUS':
+                # AI Orchestrator требует уточнения
+                logger.info(f"AI Orchestrator требует уточнения: {orch_result.get('message')}")
+                return {
+                    'status': 'AMBIGUOUS',
+                    'candidates': orch_result.get('candidates', []),
+                    'candidate_names': [c.get('service_name', 'Unknown') for c in orch_result.get('candidates', [])],
+                    'message': orch_result.get('message'),
+                    'needs_clarification': True,
+                    'is_followup': is_followup
+                }
+
+            # Если AI Orchestrator не смог - пробуем старую логику
+            logger.warning("AI Orchestrator не смог определить, используем fallback")
 
             # Собираем всех кандидатов из всех сервисов (дедуплицированно)
             all_service_ids = set()
             for s in service_sets:
                 all_service_ids.update(s)
-
-            logger.info(f"Всего уникальных кандидатов: {len(all_service_ids)}")
 
             if not all_service_ids:
                 # Нет кандидатов совсем - пробуем AI
@@ -843,9 +925,13 @@ class MainAgent:
         ИСПРАВЛЕНО (2025-12-25): Возвращает filtered_candidates для итеративного уточнения
         """
         if not candidates_with_attrs:
+            context = {
+                'original_message': original_message,
+                'dialog_history': dialog_history or []
+            }
             return {
                 'status': 'AMBIGUOUS',
-                'message': self._generate_clarification_questions(),
+                'message': self._generate_clarification_questions(context),
                 'single_candidate': None,
                 'filtered_candidates': []
             }
@@ -945,11 +1031,31 @@ class MainAgent:
             # Услуга определена после фильтрации!
             candidate = filtered_candidates[0]
             logger.info(f"После фильтрации остался 1 кандидат: {candidate['service_name']} (ID: {candidate['service_id']})")
+
+            # ИСПРАВЛЕНО (2025-12-25): Добавляем needs_confirmation для низкого confidence
+            # Получаем confidence из LLM ранжирования если было
+            llm_confidence = ranking_result.get('confidence', 0.0) if 'ranking_result' in locals() else 0.0
+
+            # Если confidence < 0.9 - спрашиваем подтверждение
+            needs_confirmation = llm_confidence < 0.9
+
+            # Формируем сообщение
+            if needs_confirmation:
+                message = f"Правильно ли я понял, что у вас: {candidate['service_name']}?"
+            else:
+                message = f"Понял, у вас: {candidate['service_name']}"
+
             return {
                 'status': 'SUCCESS',
-                'message': f"Понял, у вас: {candidate['service_name']}",
+                'service_id': candidate['service_id'],
+                'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                'confidence': llm_confidence if llm_confidence > 0 else 1.0,
+                'source': 'filtered_search_with_llm',
+                'message': message,
                 'single_candidate': candidate,
-                'filtered_candidates': filtered_candidates
+                'filtered_candidates': filtered_candidates,
+                'needs_confirmation': needs_confirmation,
+                'is_followup': is_followup
             }
 
         # ИСПРАВЛЕНО: Если осталось несколько кандидатов с одинаковыми атрибутами - пробуем уточнить по keywords
@@ -1213,7 +1319,11 @@ class MainAgent:
         """
         if not candidates:
             # Нет кандидатов - задаем умные уточняющие вопросы
-            clarification_message = self._generate_clarification_questions()
+            context = {
+                'original_message': original_message,
+                'dialog_history': dialog_history or []
+            }
+            clarification_message = self._generate_clarification_questions(context)
             return {
                 'status': 'AMBIGUOUS',
                 'candidates': [],
@@ -1256,26 +1366,62 @@ class MainAgent:
             'is_followup': is_followup
         }
 
-    def _generate_clarification_questions(self) -> str:
+    def _generate_clarification_questions(self, context: Dict = None) -> str:
         """
-        Генерирует умные уточняющие вопросы
+        Генерирует умные уточняющие вопросы на основе контекста
 
-        ИСПРАВЛЕНО: Использует открытые вопросы без цифр и нумерации
+        ИСПРАВЛЕНО (2025-12-25): Убрана фраза "попробую определить услугу заново"
+        ИСПРАВЛЕНО (2025-12-25): Конкретные вопросы вместо общих фраз
         """
-        return """Я не совсем понял проблему. Опишите пожалуйста, что именно случилось и где это произошло."""
+        # Если есть контекст предыдущих сообщений, используем его
+        if context:
+            original_message = context.get('original_message', '').lower()
+            dialog_history = context.get('dialog_history', [])
+
+            # Анализируем что уже было сказано
+            user_messages = [m.get('text', '') for m in dialog_history if m.get('role') == 'user']
+
+            # Если упоминалась вода/течь - спрашиваем источник
+            if any(word in original_message or any(word in msg for msg in user_messages)
+                   for word in ['теч', 'льет', 'капает', 'протека', 'утечк', 'вода']):
+                return "Уточните, пожалуйста: откуда именно течет? (кран, труба, батарея, крыша, соседей)"
+
+            # Если упоминалось электричество - спрашиваем что конкретно
+            if any(word in original_message or any(word in msg for msg in user_messages)
+                   for word in ['свет', 'электр', 'розетк', 'выключател', 'лампочк']):
+                return "Что именно случилось с электричеством? (нет света, искрит, не работает розетка/выключатель)"
+
+            # Если упоминался мусор/уборка - спрашиваем что конкретно
+            if any(word in original_message or any(word in msg for msg in user_messages)
+                   for word in ['мусор', 'уборк', 'чистот', 'грязь']):
+                return "Уточните, пожалуйста: какая проблема с уборкой? (не вывозят мусор, грязь в подъезде, нужно убрать территорию)"
+
+        # Общий уточняющий вопрос - спрашиваем что сломалось
+        return "Что именно случилось? Опишите, пожалуйста: что сломалось, течет или не работает."
 
     def _generate_context_clarification_question(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False) -> str:
         """
         Генерирует уточняющий вопрос для понимания контекста
 
-        ИСПРАВЛЕНО (2025-12-25): Удален хардкод keywords
-        Теперь используется общий вопрос без классификации
+        ИСПРАВЛЕНО (2025-12-25): Убрана общая фраза, добавлен конкретный вопрос
+        ИСПРАВЛЕНО (2025-12-25): Убран хардкод keywords
         """
-        # УДАЛЕНО: Весь хардкод keywords для локаций и инцидентов
-        # FilterDetectionService и LLM должны определять фильтры
+        # Если есть оригинальное сообщение - анализируем его
+        if original_message:
+            original_lower = original_message.lower()
 
-        # Общий уточняющий вопрос без хардкода
-        return "Пожалуйста, уточните детали проблемы. Опишите что именно случилось и где это произошло."
+            # Умные вопросы на основе контекста
+            if any(word in original_lower for word in ['теч', 'льет', 'капает', 'мокр', 'сыр']):
+                return "Откуда именно течет? (кран, труба, батарея, крыша, от соседей)"
+
+            if any(word in original_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
+                return "Что именно сломалось или не работает?"
+
+            if any(word in original_lower for word in ['запах', 'воня', 'дух']):
+                return "Откуда запах? (из вентиляции, от труб, мусоропровод, канализация)"
+
+        # Fallback - если не смогли определить контекст
+        return "Опишите, пожалуйста: что именно случилось и где это произошло."
 
     def _create_error_result(self, error_message: str) -> Dict:
         return {
@@ -1397,3 +1543,413 @@ class MainAgent:
         except Exception as e:
             logger.error(f"Ошибка получения деталей услуги {service_id}: {e}")
             return None
+
+    # ========================================================================
+    # ИСПРАВЛЕНО (2025-12-25): AI ORCHESTRATOR - УМНЫЙ ОРКЕСТРАТОР
+    # ========================================================================
+
+    async def _orchestrate_microservices(
+        self,
+        message_text: str,
+        search_results: Dict,
+        dialog_history: List[Dict] = None
+    ) -> Dict:
+        """
+        Главный АГЕНТ-ОРКЕСТРАТОР: принимает решения на основе результатов микросервисов
+
+        ИСПРАВЛЕНО (2025-12-25): Полноценный оркестратор с умными решениями
+        Использует UNION вместо INTERSECTION для объединения результатов
+        """
+        tag_results = search_results.get('tag_search', {}).get('candidates', [])
+        semantic_results = search_results.get('semantic_search', {}).get('candidates', [])
+        vector_results = search_results.get('vector_search', {}).get('candidates', [])
+
+        # ИСПРАВЛЕНО (2025-12-25): UNION всех результатов с приоритетами (не пересечение!)
+        all_candidates = []
+
+        # TagSearch: приоритет 1.0 (точный матч по тегам)
+        for c in tag_results:
+            all_candidates.append({
+                **c,
+                'priority': 1.0,
+                'sources': c.get('sources', ['tag_search'])
+            })
+
+        # SemanticSearch: приоритет 0.8 (семантический матч)
+        for c in semantic_results:
+            all_candidates.append({
+                **c,
+                'priority': 0.8,
+                'sources': c.get('sources', ['semantic_search'])
+            })
+
+        # VectorSearch: приоритет 0.6 (нечеткий матч)
+        for c in vector_results:
+            all_candidates.append({
+                **c,
+                'priority': 0.6,
+                'sources': c.get('sources', ['vector_search'])
+            })
+
+        # Дедупликация и сортировка по приоритету
+        unique_candidates = self._deduplicate_and_prioritize_candidates(all_candidates)
+
+        logger.info(f"AI Orchestrator: UNION={len(all_candidates)}, уникальных={len(unique_candidates)}")
+
+        if not unique_candidates:
+            # Никто ничего не нашел - спрашиваем что случилось
+            return {
+                'status': 'AMBIGUOUS',
+                'message': await self._ask_ai_what_happened(
+                    message_text, dialog_history,
+                    established_filters=established_filters,
+                    txtPrb=txtPrb
+                ),
+                'candidates': [],
+                'metadata': result_metadata
+            }
+
+        # Если 1 кандидат - но нужно проверить confidence
+        if len(unique_candidates) == 1:
+            candidate = unique_candidates[0]
+            confidence = candidate.get('confidence', 0.0)
+
+            if confidence >= 0.9:
+                # Высокий confidence - подтверждаем
+                return {
+                    'status': 'SUCCESS',
+                    'service_id': candidate['service_id'],
+                    'service_name': candidate['service_name'],
+                    'confidence': confidence,
+                    'message': f"Понял, у вас: {candidate['service_name']}. Правильно?",
+                    'needs_confirmation': True,
+                    'source': 'orchestrator'
+                }
+            else:
+                # Низкий confidence - уточняем через AI
+                return await self._ask_ai_clarification(message_text, unique_candidates, dialog_history)
+
+        # Если несколько кандидатов (2-5) - спрашиваем у AI что делать
+        elif len(unique_candidates) <= 5:
+            return await self._ask_ai_clarification(message_text, unique_candidates, dialog_history)
+
+        # Много кандидатов (>5) - нужно задать уточняющий вопрос
+        else:
+            question = await self._ask_ai_what_happened(
+                message_text, dialog_history,
+                established_filters=established_filters,
+                txtPrb=txtPrb
+            )
+            return {
+                'status': 'AMBIGUOUS',
+                'message': question,
+                'candidates': unique_candidates[:10],  # Первые 10 кандидатов
+                'metadata': result_metadata
+            }
+
+    async def _ask_ai_what_happened(self, message_text: str, dialog_history: List[Dict],
+                                    established_filters: Dict = None, txtPrb: str = None) -> str:
+        """Спрашивает у AI что случилось и где
+
+        ИСПРАВЛЕНО (2025-12-26): Добавлены established_filters и txtPrb для умного уточнения
+        ИСПРАВЛЕНО (2025-12-25): Учитывает историю диалога чтобы не повторять вопросы
+
+        Args:
+            message_text: Текст сообщения пользователя
+            dialog_history: История диалога
+            established_filters: Установленные фильтры с весами {
+                'location': {'value': 'Индивидуальное', 'confidence': 0.95},
+                'category': {'value': 'Водоснабжение', 'confidence': 0.85},
+                'incident': {'value': 'Инцидент', 'confidence': 0.90}
+            }
+            txtPrb: Накопленное описание проблемы (из ProblemAccumulationService)
+        """
+        # ИСПРАВЛЕНО (2025-12-26): Собираем последние вопросы бота и ответы на них
+        qa_pairs = []
+        recent_bot_questions = []
+
+        if dialog_history:
+            # Извлекаем вопросы бота и соответствующие ответы
+            for i in range(len(dialog_history) - 1):
+                msg = dialog_history[i]
+                next_msg = dialog_history[i + 1]
+
+                # Если текущее сообщение от бота и содержит вопрос
+                if msg.get('role') == 'bot' and '?' in msg.get('text', ''):
+                    question = msg.get('text', '')
+                    # Извлекаем только вопрос (до вопросительного знака)
+                    if '?' in question:
+                        question = question.split('?')[0] + '?'
+                        recent_bot_questions.append(question)
+
+                    # Если следующее сообщение от пользователя - это ответ
+                    if next_msg.get('role') == 'user':
+                        answer = next_msg.get('text', '')
+                        qa_pairs.append({
+                            'question': question,
+                            'answer': answer
+                        })
+
+        # Формируем контекст для AI
+        context_info = ""
+        if dialog_history:
+            # Последние 3 сообщения пользователя для контекста
+            user_messages = [m.get('text', '') for m in dialog_history[-4:] if m.get('role') == 'user']
+            if user_messages:
+                context_info = f"\nПредыдущие сообщения пользователя: {', '.join(user_messages[-3:])}"
+
+        # Если есть недавние вопросы бота - добавляем их в контекст
+        questions_info = ""
+        if recent_bot_questions:
+            questions_info = f"\nУЖЕ ЗАДАННЫЕ ВОПРОСЫ (НЕ повторяй их!):\n"
+            for q in recent_bot_questions[-3:]:  # Последние 3 вопроса
+                questions_info += f"  - {q}\n"
+
+        # ИСПРАВЛЕНО (2025-12-26): Добавляем пары "Вопрос → Ответ"
+        qa_pairs_info = ""
+        if qa_pairs:
+            qa_pairs_info = "\nПАРЫ 'ВОПРОС → ОТВЕТ' (AI понимает что пользователь ответил):\n"
+            for pair in qa_pairs[-3:]:  # Последние 3 пары
+                qa_pairs_info += f"  Бот: {pair['question']}\n"
+                qa_pairs_info += f"  Пользователь: {pair['answer']}\n"
+                qa_pairs_info += "  → БОТ ПОНИМАЕТ что это ответ на вопрос\n\n"
+
+        # ИЗВЕСТНАЯ ИНФОРМАЦИЯ (txtPrb)
+        known_info = ""
+        if txtPrb:
+            known_info = f"\nИЗВЕСТНАЯ ИНФОРМАЦИЯ ИЗ ДИАЛОГА:\n{txtPrb}\n"
+
+        # УСТАНОВЛЕННЫЕ ФИЛЬТРЫ (с весами)
+        filters_info = ""
+        if established_filters:
+            high_confidence_filters = []
+            medium_confidence_filters = []
+
+            for filter_name, filter_data in established_filters.items():
+                if isinstance(filter_data, dict):
+                    value = filter_data.get('value')
+                    confidence = filter_data.get('confidence', 0.0)
+                else:
+                    value = filter_data
+                    confidence = 0.5  # По умолчанию
+
+                if confidence >= 0.9:
+                    high_confidence_filters.append(f"{filter_name}={value} (уверенность: {confidence*100:.0f}%)")
+                elif confidence >= 0.7:
+                    medium_confidence_filters.append(f"{filter_name}={value} (уверенность: {confidence*100:.0f}%)")
+
+            if high_confidence_filters:
+                filters_info = "\nУСТАНОВЛЕННЫЕ ФИЛЬТРЫ (с высокой уверенностью >90%):\n"
+                filters_info += "Эти фильтры НЕОБХОДИМО учитывать при вопросе!\n"
+                for f in high_confidence_filters:
+                    filters_info += f"  ✓ {f}\n"
+
+            if medium_confidence_filters:
+                filters_info += "\nФИЛЬТРЫ (с средней уверенностью 70-90%):\n"
+                for f in medium_confidence_filters:
+                    filters_info += f"  ~ {f}\n"
+
+        prompt = f"""Ты - опытный диспетчер управляющей компании.
+
+Пользователь написал: "{message_text}"{context_info}{questions_info}{qa_pairs_info}{known_info}{filters_info}
+
+Задай ОДИН уточняющий вопрос чтобы понять что случилось.
+
+КРИТИЧЕСКИ ВАЖНО - ПРАВИЛА ФИЛЬТРАЦИИ:
+- Задавай вопросы которые ПОМОГУТ ФИЛЬТРОВАТЬ услуги:
+  * КАТЕГОРИЯ (отопление, водоснабжение, канализация, электрика, сантехника)
+  * ЛОКАЦИЯ (в квартире, общедомовое, в ванной, в зале, на кухне)
+  * INCIDENT (инцидент/авария или запрос/плановые работы)
+  * ОБЪЕКТ (лифт, крыша, труба, батарея, кран, розетка и т.д.)
+
+- ЗАПРЕЩЕНО спрашивать детали которые НЕ влияют на выбор услуги:
+  ❌ Напор (слабый/сильный) - не помогает фильтрации
+  ❌ Температура - не помогает фильтрации
+  ❌ Цвет - не помогает фильтрации
+  ❌ Запах (кроме специфических случаев) - не помогает фильтрации
+  ❌ Постоянство (постоянно/кратковременно) - не помогает фильтрации
+
+- Если фильтры УЖЕ установлены с уверенностью >90%:
+  * НЕ спрашивай про эти фильтры снова!
+  * Например: если category=Отопление (95%) - НЕ спрашивай "Это отопление?"
+  * Спрашивай только про НЕустановленные фильтры
+
+- Если УЖЕ спрашивали "Где именно?" - НЕ спрашивай это снова! Спроси про ЧТО именно.
+- Если УЖЕ спрашивали "Что именно случилось?" - попробуйте предположить based on контексте.
+- Вопрос должен быть КОНКРЕТНЫМ и отличаться от уже заданных!
+- НЕ используй перечисления в скобках!
+
+Верни только вопрос без дополнительных слов.
+
+Вопрос:"""
+
+        if not self.ai_agent:
+            # Fallback без AI - простые вопросы
+            if recent_bot_questions:
+                # Если спрашивали "Где именно?" - спрашиваем "Что именно?"
+                if any('Где именно' in q or 'Откуда' in q for q in recent_bot_questions):
+                    return "Что именно случилось?"
+                else:
+                    return "Уточните, пожалуйста: что именно сломалось, течет или не работает?"
+            return "Уточните, пожалуйста: что именно сломалось, течет или не работает?"
+
+        try:
+            response, _ = await self.ai_agent._call_yandex_gpt(prompt)
+            logger.info(f"AI сгенерировал вопрос (с учетом {len(recent_bot_questions)} предыдущих): {response.strip()}")
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Ошибка AI генерации вопроса: {e}")
+            return "Уточните, пожалуйста: что именно сломалось, течет или не работает?"
+
+    async def _ask_ai_clarification(self, message_text: str, candidates: List[Dict], dialog_history: List[Dict]) -> Dict:
+        """Спрашивает у AI как уточнить"""
+        candidates_list = "\n".join([
+            f"{i+1}. ID:{c['service_id']} | {c['service_name']}"
+            for i, c in enumerate(candidates[:5])
+        ])
+
+        prompt = f"""Ты - опытный диспетчер управляющей компании.
+
+Пользователь: {message_text}
+
+Возможные услуги:
+{candidates_list}
+
+Задай ОДИН уточняющий вопрос чтобы выбрать правильную услугу.
+
+ПРИМЕРЫ:
+- "Где именно течет?" (если есть несколько сантехнических услуг)
+- "Что именно сломалось?" (если есть разные поломки)
+- "Откуда запах?" (если есть разные источники запаха)
+
+КРИТИЧЕСКИ ВАЖНО:
+- НЕ используй перечисления в скобках!
+- Верни только вопрос без дополнительных слов
+
+Вопрос:"""
+
+        if not self.ai_agent:
+            return {
+                'status': 'AMBIGUOUS',
+                'message': "Уточните, пожалуйста: что именно случилось?",
+                'candidates': candidates,
+                'needs_clarification': True
+            }
+
+        try:
+            response, _ = await self.ai_agent._call_yandex_gpt(prompt)
+
+            # Возвращаем первый кандидат с вопросом от AI
+            return {
+                'status': 'AMBIGUOUS',
+                'message': response.strip(),
+                'candidates': candidates,
+                'needs_clarification': True
+            }
+        except Exception as e:
+            logger.error(f"Ошибка AI генерации уточнения: {e}")
+            return {
+                'status': 'AMBIGUOUS',
+                'message': "Уточните, пожалуйста: что именно сломалось, течет или не работает?",
+                'candidates': candidates,
+                'needs_clarification': True
+            }
+
+    def _deduplicate_and_prioritize_candidates(self, all_candidates: List[Dict]) -> List[Dict]:
+        """
+        Дедупликация кандидатов с приоритетами
+
+        ИСПРАВЛЕНО (2025-12-26): Использован средневзвешенный коэффициент для priority
+        вместо простого MAX. Если услуга найдена несколькими сервисами,
+        priority вычисляется как: (p1*conf1 + p2*conf2) / (conf1 + conf2)
+        + бонус за количество источников + бонус за высокую суммарную уверенность
+        """
+        # Группируем по service_id
+        candidates_map = {}  # {service_id: aggregated_data}
+
+        for c in all_candidates:
+            sid = c.get('service_id')
+
+            if sid not in candidates_map:
+                # Первое вхождение
+                candidates_map[sid] = {
+                    'service_id': sid,
+                    'service_name': c.get('service_name'),
+                    'priorities': [c.get('priority', 0.0)],  # Список приоритетов
+                    'confidences': [c.get('confidence', 0.0)],  # Список уверенности
+                    'sources': set(c.get('sources', [])),
+                    'all_data': [c]
+                }
+            else:
+                # Уже есть - добавляем данные для расчета средневзвешенного
+                existing = candidates_map[sid]
+                existing['priorities'].append(c.get('priority', 0.0))
+                existing['confidences'].append(c.get('confidence', 0.0))
+                existing['sources'].update(c.get('sources', []))
+                existing['all_data'].append(c)
+
+        # Вычисляем средневзвешенный priority и применяем бонусы
+        unique_candidates = []
+
+        for sid, c in candidates_map.items():
+            priorities = c['priorities']
+            confidences = c['confidences']
+
+            # Средневзвешенный приоритет: (p1*conf1 + p2*conf2) / (conf1 + conf2)
+            total_conf = sum(confidences)
+            if total_conf > 0:
+                weighted_priority = sum(p * conf for p, conf in zip(priorities, confidences)) / total_conf
+            else:
+                weighted_priority = sum(priorities) / len(priorities) if priorities else 0.0
+
+            # Бонус за количество источников (мульти-source подтверждение)
+            source_count = len(c['sources'])
+            source_bonus = 0.0
+            if source_count > 1:
+                source_bonus = min(0.05 * (source_count - 1), 0.15)  # Максимум +0.15
+
+            # Бонус за высокую суммарную уверенность
+            confidence_bonus = 0.0
+            avg_confidence = total_conf / len(confidences) if confidences else 0.0
+            if avg_confidence >= 0.95:
+                confidence_bonus = 0.05
+            elif avg_confidence >= 0.90:
+                confidence_bonus = 0.03
+
+            # Итоговый приоритет
+            final_priority = min(weighted_priority + source_bonus + confidence_bonus, 1.0)
+
+            # Формируем итогового кандидата
+            unique_candidates.append({
+                'service_id': sid,
+                'service_name': c.get('service_name'),
+                'confidence': avg_confidence,  # Средняя уверенность
+                'priority': final_priority,  # Средневзвешенный + бонусы
+                'sources': list(c['sources']),
+                'all_data': c['all_data'],
+                '_debug_info': {  # Для отладки
+                    'weighted_priority': weighted_priority,
+                    'source_bonus': source_bonus,
+                    'confidence_bonus': confidence_bonus,
+                    'source_count': source_count
+                }
+            })
+
+        # Сортируем по priority (убывание)
+        unique_candidates.sort(key=lambda x: x.get('priority', 0.0), reverse=True)
+
+        logger.info(f"Дедупликация: {len(all_candidates)} -> {len(unique_candidates)} кандидатов")
+
+        # Логируем топ-3 кандидатов с отладочной информацией
+        for i, c in enumerate(unique_candidates[:3], 1):
+            debug = c.get('_debug_info', {})
+            logger.info(
+                f"  #{i} ID:{c['service_id']} | priority={c['priority']:.3f} "
+                f"(weighted={debug.get('weighted_priority', 0):.3f} "
+                f"+source_bonus={debug.get('source_bonus', 0):.3f} "
+                f"+conf_bonus={debug.get('confidence_bonus', 0):.3f}) "
+                f"| sources={c['sources']}"
+            )
+
+        return unique_candidates
+

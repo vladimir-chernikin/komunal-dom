@@ -27,20 +27,25 @@ class VectorSearchService:
         try:
             def load_sync():
                 with connection.cursor() as cursor:
+                    # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
                     cursor.execute("""
-                        SELECT service_id, scenario_name, description_for_search
+                        SELECT service_id, scenario_name, description_for_search,
+                               incident_type, category, location_type
                         FROM services_catalog
                         WHERE is_active = TRUE
                     """)
                     services = cursor.fetchall()
 
                 service_cache = {}
-                for service_id, scenario_name, description in services:
+                for service_id, scenario_name, description, incident_type, category, location_type in services:
                     search_text = f"{scenario_name} {description or ''}".lower()
                     service_cache[service_id] = {
                         'service_id': service_id,
                         'service_name': scenario_name,
                         'description': description or '',
+                        'incident_type': incident_type or '',
+                        'category': category or '',
+                        'location_type': location_type or '',
                         'search_text': search_text
                     }
 
@@ -97,21 +102,72 @@ class VectorSearchService:
                 'candidates': []
             }
 
+    def _calculate_adaptive_threshold(self, message_text: str) -> tuple:
+        """
+        Адаптивный расчет порога и лимита в зависимости от длины запроса
+
+        ИСПРАВЛЕНО (2025-12-25): Адаптивный порог вместо фиксированного 0.2
+
+        Args:
+            message_text: Текст сообщения
+
+        Returns:
+            tuple: (threshold, limit) - порог похожести и лимит результатов
+        """
+        # Считаем количество слов
+        words = message_text.strip().split()
+        word_count = len(words)
+
+        # Считаем количество символов
+        char_count = len(message_text.strip())
+
+        # Определяем категорию запроса
+        if word_count <= 2 and char_count < 15:
+            # Короткий запрос: "у меня течет", "сломался"
+            threshold = 0.12
+            limit = 5
+            category = "короткий"
+        elif word_count <= 5 and char_count < 40:
+            # Средний запрос: "у меня прорвало трубу в ванной"
+            threshold = 0.18
+            limit = 7
+            category = "средний"
+        else:
+            # Длинный запрос: подробное описание проблемы
+            threshold = 0.25
+            limit = 10
+            category = "длинный"
+
+        logger.info(
+            f"VectorSearch: запрос '{message_text[:30]}...' -> "
+            f"категория='{category}' (слов:{word_count}, символов:{char_count}), "
+            f"порог={threshold}, лимит={limit}"
+        )
+
+        return threshold, limit
+
     async def _search_with_pg_trgm(self, message_text: str) -> List[Dict]:
         """
         Поиск с использованием pg_trgm через SQL
 
-        ИСПРАВЛЕНО: Для коротких запросов (< 5 букв) используем ILIKE вместо word_similarity
+        ИСПРАВЛЕНО (2025-12-25): Адаптивный порог и ТОП-N вместо фиксированного
         """
         try:
             def search_sync():
                 with connection.cursor() as cursor:
-                    # Для коротких запросов используем ILIKE (точное вхождение)
-                    if len(message_text) < 5:
+                    # Вычисляем адаптивный порог и лимит
+                    threshold, limit = self._calculate_adaptive_threshold(message_text)
+
+                    # Для очень коротких запросов (< 5 букв) используем ILIKE
+                    # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
+                    if len(message_text.strip()) < 5:
                         cursor.execute("""
                             SELECT
                                 sc.service_id,
                                 sc.scenario_name as service_name,
+                                sc.incident_type,
+                                sc.category,
+                                sc.location_type,
                                 0.5 as similarity
                             FROM services_catalog sc
                             WHERE sc.is_active = TRUE
@@ -119,14 +175,18 @@ class VectorSearchService:
                                   sc.scenario_name ILIKE %s
                                   OR sc.description_for_search ILIKE %s
                               )
-                            LIMIT 10
-                        """, [f'%{message_text}%', f'%{message_text}%'])
+                            LIMIT %s
+                        """, [f'%{message_text}%', f'%{message_text}%', limit])
                     else:
-                        # Для длинных запросов используем word_similarity
+                        # Для остальных запросов используем word_similarity с адаптивным порогом
+                        # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
                         cursor.execute("""
                             SELECT
                                 sc.service_id,
                                 sc.scenario_name as service_name,
+                                sc.incident_type,
+                                sc.category,
+                                sc.location_type,
                                 COALESCE(
                                     GREATEST(
                                         word_similarity(%s, sc.scenario_name),
@@ -137,25 +197,31 @@ class VectorSearchService:
                             FROM services_catalog sc
                             WHERE sc.is_active = TRUE
                               AND (
-                                  word_similarity(%s, sc.scenario_name) > 0.2
-                                  OR word_similarity(%s, sc.description_for_search) > 0.2
+                                  word_similarity(%s, sc.scenario_name) > %s
+                                  OR word_similarity(%s, sc.description_for_search) > %s
                               )
                             ORDER BY similarity DESC
-                            LIMIT 10
-                        """, [message_text, message_text, message_text, message_text])
+                            LIMIT %s
+                        """, [message_text, message_text, message_text, threshold, message_text, threshold, limit])
 
                     results = cursor.fetchall()
 
+                # Фильтруем по адаптивному порогу и возвращаем ТОП-N
+                # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type в candidates
                 candidates = []
-                for service_id, service_name, similarity in results:
-                    if similarity > 0.2:
+                for service_id, service_name, incident_type, category, location_type, similarity in results:
+                    if similarity >= threshold:  # Используем адаптивный порог
                         candidates.append({
                             'service_id': service_id,
                             'service_name': service_name,
                             'confidence': round(similarity, 3),
-                            'source': 'vector_search'
+                            'source': 'vector_search',
+                            'incident_type': incident_type or '',
+                            'category': category or '',
+                            'location_type': location_type or ''
                         })
 
+                logger.info(f"VectorSearch: найдено {len(candidates)} кандидатов (порог: {threshold})")
                 return candidates
 
             return await sync_to_async(search_sync)()
