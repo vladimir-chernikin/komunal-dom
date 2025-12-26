@@ -606,7 +606,7 @@ class MainAgent:
         candidates_with_attrs = await self._load_candidates_attributes(candidates_data)
 
         # Генерируем умный уточняющий вопрос с учетом истории
-        clarification_result = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
@@ -704,7 +704,7 @@ class MainAgent:
         candidates_with_attrs = await self._load_candidates_attributes(candidates_data[:5])
 
         # Генерируем умный уточняющий вопрос с учетом истории
-        clarification_result = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
@@ -922,7 +922,7 @@ class MainAgent:
 
         return filters
 
-    def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> Dict:
+    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -1140,135 +1140,34 @@ class MainAgent:
             except Exception as e:
                 logger.warning(f"Ошибка получения clarification скрипта: {e}")
 
-        # Fallback на существующую логику (будет удален после полного перехода на скрипты)
-        # ===== ПРИОРИТЕТ 1: Локализация (квартира vs общедомовое) =====
-        # Если локация уже известна - пропускаем этот вопрос
-        if not known_location and len(location_types) >= 2:
-            # Проверяем есть ли оба основных типа локации
-            has_individual = any('индивид' in loc.lower() or 'квартир' in loc.lower() for loc in location_types)
-            has_common = any('общедом' in loc.lower() or 'общее' in loc.lower() for loc in location_types)
+        # ИСПРАВЛЕНО (2025-12-26): Используем CommunicativeScriptsService для fallback сообщения
+        # вместо хардкода вопросов
+        if self.communicative_scripts:
+            try:
+                dialog_turn = len(dialog_history) if dialog_history else 1
+                fallback_message = await self.communicative_scripts.get_fallback_message(
+                    channel='telegram',  # TODO: получать из контекста
+                    candidate_count=len(filtered_candidates),
+                    is_followup=is_followup,
+                    dialog_turn=dialog_turn
+                )
 
-            if has_individual and has_common:
                 return {
                     'status': 'AMBIGUOUS',
-                    'message': "Где именно это произошло: в квартире у вас или на территории общедомового имущества?",
+                    'message': fallback_message,
                     'single_candidate': None,
                     'filtered_candidates': filtered_candidates
                 }
+            except Exception as e:
+                logger.error(f"Ошибка получения fallback сообщения: {e}")
 
-            # Иначе перечисляем найденные локации
-            loc_list = list(location_types)
-            if len(loc_list) == 2:
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': f"Уточните, пожалуйста: это произошло {loc_list[0].lower()} или {loc_list[1].lower()}?",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-            else:
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Где именно это произошло?\n• " + "\n• ".join(loc_list) + "\n\nПожалуйста, уточните.",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-        # ===== ПРИОРИТЕТ 2: Тип инцидента (Инцидент vs Запрос) =====
-        if len(incident_types) >= 2:
-            has_incident = any('инцид' in inc.lower() for inc in incident_types)
-            has_request = any('запрос' in inc.lower() or 'заявк' in inc.lower() for inc in incident_types)
-
-            if has_incident and has_request:
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Уточните, пожалуйста: у вас аварийная ситуация (поломка, течь и т.п.) или вам нужна информация/услуга?",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-        # ===== ПРИОРИТЕТ 3: Категория проблемы =====
-        # Если категория уже известна - пропускаем этот вопрос
-        if not known_category and len(categories) >= 2:
-            # Анализируем категории для умного вопроса
-            has_water = any('вод' in cat.lower() or 'сантехник' in cat.lower() or 'канализ' in cat.lower() for cat in categories)
-            has_heating = any('отопл' in cat.lower() for cat in categories)
-            has_electric = any('электр' in cat.lower() for cat in categories)
-            has_construct = any('конструк' in cat.lower() for cat in categories)
-            has_lift = any('лифт' in cat.lower() for cat in categories)
-
-            # Специфичные вопросы по парам категорий
-            if has_water and has_heating:
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Это проблема с водой (течь, засор) или с отоплением?",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-            if has_water and has_electric:
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Проблема с водоснабжением или с электричеством?",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-            if has_lift and (has_water or has_heating or has_electric):
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Проблема с лифтом или с коммуникациями (вода, свет, отопление)?",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-            if has_construct and has_water:
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Это проблема с конструкцией (крыша, стены) или с сантехникой?",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-            # Если много категорий - спрашиваем что именно
-            if len(categories) <= 4:
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Уточните, пожалуйста, о какой проблеме речь:\n• " + "\n• ".join(categories) + "\n\nОпишите подробнее.",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-        # ===== ФОЛЛБЕК: Анализ исходного сообщения =====
-        if original_message:
-            # Ищем контекст в исходном сообщении
-            original_lower = original_message.lower()
-
-            # ИСПРАВЛЕНО: Генерируем простые открытые вопросы, НЕ перечисляем варианты
-            # Если говорится о течи - спрашиваем где (открытый вопрос)
-            if any(word in original_lower for word in ['теч', 'течет', 'протека', 'капа', 'утечк', 'льет']):
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Где именно это произошло? Пожалуйста, опишите подробнее.",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-            # Если говорится о поломке - спрашиваем что
-            if any(word in original_lower for word in ['сломал', 'не работ', 'поломк']):
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': "Что именно сломалось? Опишите, пожалуйста, подробнее.",
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-
-        # ===== ОБЩИЙ ВОПРОС (открытый, без перечисления вариантов) =====
+        # КРИТИЧЕСКИЙ fallback если CommunicativeScriptsService недоступен
         return {
             'status': 'AMBIGUOUS',
             'message': "Пожалуйста, уточните где именно это произошло и опишите подробнее, что случилось.",
             'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
+            'filtered_candidates': filtered_candidates
+        }
 
     async def _run_ai_search(self, message_text: str) -> Dict:
         """Запуск AIAgentService"""
@@ -1370,7 +1269,7 @@ class MainAgent:
         # ИСПРАВЛЕНО: Загружаем атрибуты из БД вместо пустых значений
         candidates_with_attrs = await self._load_candidates_attributes(candidates[:3])
 
-        clarification_result = self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):

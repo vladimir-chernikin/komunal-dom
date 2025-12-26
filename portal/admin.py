@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
-from .models import UserProfile, AIPrompt
+from .models import UserProfile, AIPrompt, SemanticPattern
 
 
 # Отключаем стандартную регистрацию User
@@ -148,3 +148,40 @@ class AIPromptAdmin(admin.ModelAdmin):
         css = {
             'all': ('/static/css/admin_custom.css',)
         }
+
+@admin.register(SemanticPattern)
+class SemanticPatternAdmin(admin.ModelAdmin):
+    """Админка для семантических паттернов"""
+
+    list_display = [
+        'pattern_type',
+        'keyword',
+        'weight',
+        'is_active',
+        'notes_preview'
+    ]
+
+    list_filter = ['pattern_type', 'is_active']
+    search_fields = ['keyword', 'notes']
+    list_editable = ['is_active', 'weight']
+    ordering = ['pattern_type', '-weight', 'keyword']
+
+    fieldsets = (
+        ('Основное', {
+            'fields': ('pattern_type', 'keyword', 'weight')
+        }),
+        ('Статус и метаданные', {
+            'fields': ('is_active', 'notes')
+        }),
+        ('Системная информация', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    readonly_fields = ['created_at', 'updated_at']
+
+    def notes_preview(self, obj):
+        """Предпросмотр заметок"""
+        return obj.notes[:50] + '...' if obj.notes and len(obj.notes) > 50 else obj.notes or ''
+    notes_preview.short_description = 'Заметки'
