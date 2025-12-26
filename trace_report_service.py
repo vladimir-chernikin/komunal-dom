@@ -233,8 +233,20 @@ METADATA:
         details += "\n"
         return details
 
-    def _format_metadata(self, metadata: Dict, indent: str = "  ") -> str:
+    def _format_metadata(self, metadata, indent: str = "  ") -> str:
         """Форматирует metadata для вывода."""
+        import json
+
+        # Если metadata - строка, пробуем распарсить JSON
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except:
+                return f"{indent}{metadata}"
+
+        if not isinstance(metadata, dict):
+            return f"{indent}{metadata}"
+
         lines = []
         for key, value in metadata.items():
             if key == 'txtPrb':

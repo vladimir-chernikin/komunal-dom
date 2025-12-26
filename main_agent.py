@@ -118,6 +118,15 @@ class MainAgent:
         except ImportError:
             logger.warning("ProblemAccumulationService не найден, накопление проблемы недоступно")
 
+        # ИСПРАВЛЕНО (2025-12-26): CommunicativeScriptsService для управления фразами бота
+        try:
+            from communicative_scripts_service import CommunicativeScriptsService
+            self.communicative_scripts = CommunicativeScriptsService()
+            logger.info("CommunicativeScriptsService инициализирован")
+        except ImportError:
+            logger.warning("CommunicativeScriptsService не найден, fallback скрипты недоступны")
+            self.communicative_scripts = None
+
     def _add_address_to_result(self, result: Dict, address_components: Dict) -> Dict:
         """
         Добавляет адресные компоненты к результату
@@ -1107,6 +1116,31 @@ class MainAgent:
 
         logger.info(f"Анализ кандидатов: locations={location_types}, categories={categories}, incidents={incident_types}")
 
+        # ИСПРАВЛЕНО (2025-12-26): Используем CommunicativeScriptsService вместо хардкода
+        # Если CommunicativeScriptsService доступен - пробуем получить скрипт
+        if self.communicative_scripts:
+            # Формируем контекст для поиска скрипта
+            dialog_turn = len(dialog_history) if dialog_history else 1
+
+            # Пробуем получить clarification скрипт
+            try:
+                clarification_script = self.communicative_scripts.get_clarification_script(
+                    candidates=filtered_candidates,
+                    channel='telegram'  # TODO: получать из контекста
+                )
+
+                if clarification_script:
+                    logger.info(f"Используем clarification скрипт: {clarification_script[:50]}...")
+                    return {
+                        'status': 'AMBIGUOUS',
+                        'message': clarification_script,
+                        'single_candidate': None,
+                        'filtered_candidates': filtered_candidates
+                    }
+            except Exception as e:
+                logger.warning(f"Ошибка получения clarification скрипта: {e}")
+
+        # Fallback на существующую логику (будет удален после полного перехода на скрипты)
         # ===== ПРИОРИТЕТ 1: Локализация (квартира vs общедомовое) =====
         # Если локация уже известна - пропускаем этот вопрос
         if not known_location and len(location_types) >= 2:
