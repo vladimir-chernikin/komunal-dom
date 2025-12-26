@@ -1535,8 +1535,8 @@ class MainAgent:
                 'status': 'AMBIGUOUS',
                 'message': await self._ask_ai_what_happened(
                     message_text, dialog_history,
-                    established_filters=established_filters,
-                    txtPrb=txtPrb
+                    established_filters=None,
+                    txtPrb=None
                 ),
                 'candidates': [],
                 'metadata': result_metadata
@@ -1570,8 +1570,8 @@ class MainAgent:
         else:
             question = await self._ask_ai_what_happened(
                 message_text, dialog_history,
-                established_filters=established_filters,
-                txtPrb=txtPrb
+                established_filters=None,
+                txtPrb=None
             )
             return {
                 'status': 'AMBIGUOUS',
