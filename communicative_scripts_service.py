@@ -30,7 +30,7 @@ class CommunicativeScriptsService:
         self._cache_timestamp = None
         logger.info("CommunicativeScriptsService инициализирован")
 
-    def get_script(self, context: Dict) -> Optional[str]:
+    async def get_script(self, context: Dict) -> Optional[str]:
         """
         Получить скрипт по контексту
 
@@ -84,7 +84,7 @@ class CommunicativeScriptsService:
 
                 return list(scripts)
 
-            scripts = sync_to_async(find_script_sync)()
+            scripts = await sync_to_async(find_script_sync)()
 
             if not scripts:
                 logger.warning(f"Скрипты не найдены: channel={channel}, type={script_type}")
@@ -230,7 +230,7 @@ class CommunicativeScriptsService:
 
         return message
 
-    def get_clarification_script(
+    async def get_clarification_script(
         self,
         candidates: list,
         channel: str = 'telegram'
@@ -286,7 +286,7 @@ class CommunicativeScriptsService:
 
             return list(scripts)
 
-        scripts = sync_to_async(find_clarification_sync)()
+        scripts = await sync_to_async(find_clarification_sync)()
 
         for script in scripts:
             # Проверяем условия

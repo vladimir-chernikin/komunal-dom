@@ -356,12 +356,14 @@ class MainAgent:
             # Вызываем AI Orchestrator
             logger.info(f"Запускаем AI Orchestrator (микросервисов: {len(ai_search_results)})")
 
-            # ИСПРАВЛЕНО (2025-12-26): Передаем ОБЪЕДИНЕННЫЙ КОНТЕКСТ (search_text), а не только текущее сообщение!
+            # ИСПРАВЛЕНО (2025-12-27): Передаем ОБЪЕДИНЕННЫЙ КОНТЕКСТ + txtPrb + established_filters
             # Это критично для followup сообщений чтобы AI видел полный контекст разговора
             orch_result = await self._orchestrate_microservices(
                 message_text=search_text,  # Объединенный контекст (previous + current)
                 search_results=ai_search_results,
-                dialog_history=dialog_history
+                dialog_history=dialog_history,
+                txtPrb=txtPrb,  # Накопленное описание проблемы
+                established_filters=established_filters  # Установленные фильтры
             )
 
             # AI Orchestrator вернул решение
@@ -1124,7 +1126,7 @@ class MainAgent:
 
             # Пробуем получить clarification скрипт
             try:
-                clarification_script = self.communicative_scripts.get_clarification_script(
+                clarification_script = await self.communicative_scripts.get_clarification_script(
                     candidates=filtered_candidates,
                     channel='telegram'  # TODO: получать из контекста
                 )
@@ -1485,7 +1487,9 @@ class MainAgent:
         self,
         message_text: str,
         search_results: Dict,
-        dialog_history: List[Dict] = None
+        dialog_history: List[Dict] = None,
+        txtPrb: str = None,
+        established_filters: Dict = None
     ) -> Dict:
         """
         Главный АГЕНТ-ОРКЕСТРАТОР: принимает решения на основе результатов микросервисов
@@ -1535,8 +1539,8 @@ class MainAgent:
                 'status': 'AMBIGUOUS',
                 'message': await self._ask_ai_what_happened(
                     message_text, dialog_history,
-                    established_filters=None,
-                    txtPrb=None
+                    established_filters=established_filters,  # ИСПРАВЛЕНО: передаем фильтры
+                    txtPrb=txtPrb  # ИСПРАВЛЕНО: передаем txtPrb
                 ),
                 'candidates': [],
                 'metadata': {}
@@ -1570,8 +1574,8 @@ class MainAgent:
         else:
             question = await self._ask_ai_what_happened(
                 message_text, dialog_history,
-                established_filters=None,
-                txtPrb=None
+                established_filters=established_filters,  # ИСПРАВЛЕНО: передаем фильтры
+                txtPrb=txtPrb  # ИСПРАВЛЕНО: передаем txtPrb
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -1579,229 +1583,105 @@ class MainAgent:
                 'candidates': unique_candidates[:10],  # Первые 10 кандидатов
                 'metadata': {}
             }
-
+    
+    
     async def _ask_ai_what_happened(self, message_text: str, dialog_history: List[Dict],
                                     established_filters: Dict = None, txtPrb: str = None) -> str:
         """Спрашивает у AI что случилось и где
 
-        ИСПРАВЛЕНО (2025-12-26): Добавлены established_filters и txtPrb для умного уточнения
+        ИСПРАВЛЕНО (2025-12-26): Использует CommunicativeScriptsService вместо AI генерации
         ИСПРАВЛЕНО (2025-12-25): Учитывает историю диалога чтобы не повторять вопросы
 
         Args:
             message_text: Текст сообщения пользователя
             dialog_history: История диалога
-            established_filters: Установленные фильтры с весами {
-                'location': {'value': 'Индивидуальное', 'confidence': 0.95},
-                'category': {'value': 'Водоснабжение', 'confidence': 0.85},
-                'incident': {'value': 'Инцидент', 'confidence': 0.90}
-            }
+            established_filters: Установленные фильтры с весами
             txtPrb: Накопленное описание проблемы (из ProblemAccumulationService)
         """
-        # ИСПРАВЛЕНО (2025-12-26): Собираем последние вопросы бота и ответы на них
-        qa_pairs = []
+        # Вычисляем dialog_turn
+        dialog_turn = len(dialog_history) if dialog_history else 1
+
+        # Определяем is_followup
+        is_followup = dialog_turn > 1
+
+        # Собираем последние вопросы бота
         recent_bot_questions = []
-
         if dialog_history:
-            # Извлекаем вопросы бота и соответствующие ответы
-            for i in range(len(dialog_history) - 1):
-                msg = dialog_history[i]
-                next_msg = dialog_history[i + 1]
-
-                # Если текущее сообщение от бота и содержит вопрос
+            for msg in dialog_history:
                 if msg.get('role') == 'bot' and '?' in msg.get('text', ''):
                     question = msg.get('text', '')
-                    # Извлекаем только вопрос (до вопросительного знака)
                     if '?' in question:
                         question = question.split('?')[0] + '?'
                         recent_bot_questions.append(question)
 
-                    # Если следующее сообщение от пользователя - это ответ
-                    if next_msg.get('role') == 'user':
-                        answer = next_msg.get('text', '')
-                        qa_pairs.append({
-                            'question': question,
-                            'answer': answer
-                        })
-
-        # Формируем контекст для AI
-        context_info = ""
-        if dialog_history:
-            # Последние 3 сообщения пользователя для контекста
-            user_messages = [m.get('text', '') for m in dialog_history[-4:] if m.get('role') == 'user']
-            if user_messages:
-                context_info = f"\nПредыдущие сообщения пользователя: {', '.join(user_messages[-3:])}"
-
-        # Если есть недавние вопросы бота - добавляем их в контекст
-        questions_info = ""
-        if recent_bot_questions:
-            questions_info = f"\nУЖЕ ЗАДАННЫЕ ВОПРОСЫ (НЕ повторяй их!):\n"
-            for q in recent_bot_questions[-3:]:  # Последние 3 вопроса
-                questions_info += f"  - {q}\n"
-
-        # ИСПРАВЛЕНО (2025-12-26): Добавляем пары "Вопрос → Ответ"
-        qa_pairs_info = ""
-        if qa_pairs:
-            qa_pairs_info = "\nПАРЫ 'ВОПРОС → ОТВЕТ' (AI понимает что пользователь ответил):\n"
-            for pair in qa_pairs[-3:]:  # Последние 3 пары
-                qa_pairs_info += f"  Бот: {pair['question']}\n"
-                qa_pairs_info += f"  Пользователь: {pair['answer']}\n"
-                qa_pairs_info += "  → БОТ ПОНИМАЕТ что это ответ на вопрос\n\n"
-
-        # ИЗВЕСТНАЯ ИНФОРМАЦИЯ (txtPrb)
-        known_info = ""
+        # Логирование контекста
         if txtPrb:
-            known_info = f"\nИЗВЕСТНАЯ ИНФОРМАЦИЯ ИЗ ДИАЛОГА:\n{txtPrb}\n"
-
-        # УСТАНОВЛЕННЫЕ ФИЛЬТРЫ (с весами)
-        filters_info = ""
+            logger.info(f"txtPrb: {txtPrb}")
         if established_filters:
-            high_confidence_filters = []
-            medium_confidence_filters = []
+            logger.info(f"established_filters: {established_filters}")
+        if recent_bot_questions:
+            logger.info(f"recent_bot_questions: {recent_bot_questions}")
 
-            for filter_name, filter_data in established_filters.items():
-                if isinstance(filter_data, dict):
-                    value = filter_data.get('value')
-                    confidence = filter_data.get('confidence', 0.0)
-                else:
-                    value = filter_data
-                    confidence = 0.5  # По умолчанию
+        # ИСПОЛЬЗУЕМ CommunicativeScriptsService вместо AI
+        if self.communicative_scripts:
+            try:
+                fallback_message = await self.communicative_scripts.get_fallback_message(
+                    channel='telegram',  # TODO: получать из контекста
+                    candidate_count=0,
+                    is_followup=is_followup,
+                    dialog_turn=dialog_turn
+                )
 
-                if confidence >= 0.9:
-                    high_confidence_filters.append(f"{filter_name}={value} (уверенность: {confidence*100:.0f}%)")
-                elif confidence >= 0.7:
-                    medium_confidence_filters.append(f"{filter_name}={value} (уверенность: {confidence*100:.0f}%)")
+                logger.info(f"CommunicativeScripts вернул вопрос (turn={dialog_turn}, followup={is_followup}): {fallback_message}")
+                return fallback_message
 
-            if high_confidence_filters:
-                filters_info = "\nУСТАНОВЛЕННЫЕ ФИЛЬТРЫ (с высокой уверенностью >90%):\n"
-                filters_info += "Эти фильтры НЕОБХОДИМО учитывать при вопросе!\n"
-                for f in high_confidence_filters:
-                    filters_info += f"  ✓ {f}\n"
+            except Exception as e:
+                logger.error(f"Ошибка CommunicativeScriptsService: {e}")
 
-            if medium_confidence_filters:
-                filters_info += "\nФИЛЬТРЫ (с средней уверенностью 70-90%):\n"
-                for f in medium_confidence_filters:
-                    filters_info += f"  ~ {f}\n"
-
-        prompt = f"""Ты - опытный диспетчер управляющей компании.
-
-Пользователь написал: "{message_text}"{context_info}{questions_info}{qa_pairs_info}{known_info}{filters_info}
-
-Задай ОДИН уточняющий вопрос чтобы понять что случилось.
-
-КРИТИЧЕСКИ ВАЖНО - ПРАВИЛА ВОПРОСОВ:
-✅ ОБЯЗАТЕЛЬНО: Задавай ТОЛЬКО ОТКРЫТЫЕ вопросы!
-  ✅ ПРАВИЛЬНО: "Где именно течет?"
-  ✅ ПРАВИЛЬНО: "Что именно сломалось?"
-  ✅ ПРАВИЛЬНО: "Опишите подробнее что случилось"
-
-❌ ЗАПРЕЩЕНО: Закрытые вопросы с альтернативами "или... или"
-  ❌ "Где именно: в квартире или за её пределами?"
-  ❌ "Это авария или нужна помощь?"
-  ❌ "В системе отопления, электричестве или водоснабжении?"
-  ❌ "В ванной, на кухне или в зале?"
-
-❌ ЗАПРЕЩЕНО: Перечисления вариантов в скобках
-  ❌ "Что случилось? (течь/засор/поломка)"
-  ❌ "Где? (квартира/подъезд/улица)"
-
-КРИТИЧЕСКИ ВАЖНО - ПРАВИЛА ФИЛЬТРАЦИИ:
-- Задавай вопросы которые ПОМОГУТ ФИЛЬТРОВАТЬ услуги:
-  * КАТЕГОРИЯ (отопление, водоснабжение, канализация, электрика, сантехника)
-  * ЛОКАЦИЯ (в квартире, общедомовое, в ванной, в зале, на кухне)
-  * INCIDENT (инцидент/авария или запрос/плановые работы)
-  * ОБЪЕКТ (лифт, крыша, труба, батарея, кран, розетка и т.д.)
-
-- ЗАПРЕЩЕНО спрашивать детали которые НЕ влияют на выбор услуги:
-  ❌ Напор (слабый/сильный) - не помогает фильтрации
-  ❌ Температура - не помогает фильтрации
-  ❌ Цвет - не помогает фильтрации
-  ❌ Запах (кроме специфических случаев) - не помогает фильтрации
-  ❌ Постоянство (постоянно/кратковременно) - не помогает фильтрации
-
-- Если фильтры УЖЕ установлены с уверенностью >90%:
-  * НЕ спрашивай про эти фильтры снова!
-  * Например: если category=Отопление (95%) - НЕ спрашивай "Это отопление?"
-  * Спрашивай только про НЕустановленные фильтры
-
-- Если УЖЕ спрашивали "Где именно?" - НЕ спрашивай это снова! Спроси про ЧТО именно.
-- Если УЖЕ спрашивали "Что именно случилось?" - попробуйте предположить based on контексте.
-- Вопрос должен быть КОНКРЕТНЫМ и отличаться от уже заданных!
-
-Верни только вопрос без дополнительных слов.
-
-Вопрос:"""
-
-        if not self.ai_agent:
-            # Fallback без AI - простые ОТКРЫТЫЕ вопросы
-            if recent_bot_questions:
-                # Если спрашивали "Где именно?" - спрашиваем "Что именно?"
-                if any('Где именно' in q or 'Откуда' in q for q in recent_bot_questions):
-                    return "Что именно случилось?"
-                else:
-                    return "Опишите подробнее что случилось."
-            return "Опишите подробнее что случилось."
-
-        try:
-            response, _ = await self.ai_agent._call_yandex_gpt(prompt)
-            logger.info(f"AI сгенерировал вопрос (с учетом {len(recent_bot_questions)} предыдущих): {response.strip()}")
-            return response.strip()
-        except Exception as e:
-            logger.error(f"Ошибка AI генерации вопроса: {e}")
-            return "Опишите подробнее что случилось."
+        # Fallback без CommunicativeScriptsService - простые ОТКРЫТЫЕ вопросы
+        if recent_bot_questions:
+            # Если спрашивали "Где именно?" - спрашиваем "Что именно?"
+            if any('Где именно' in q or 'Откуда' in q for q in recent_bot_questions):
+                return "Что именно случилось?"
+            else:
+                return "Опишите подробнее что случилось."
+        return "Опишите подробнее что случилось."
 
     async def _ask_ai_clarification(self, message_text: str, candidates: List[Dict], dialog_history: List[Dict]) -> Dict:
-        """Спрашивает у AI как уточнить"""
-        candidates_list = "\n".join([
-            f"{i+1}. ID:{c['service_id']} | {c['service_name']}"
-            for i, c in enumerate(candidates[:5])
-        ])
+        """Спрашивает как уточнить - использует CommunicativeScriptsService
 
-        prompt = f"""Ты - опытный диспетчер управляющей компании.
+        ИСПРАВЛЕНО (2025-12-26): Вместо AI использует CommunicativeScriptsService
+        """
+        # Вычисляем dialog_turn и is_followup
+        dialog_turn = len(dialog_history) if dialog_history else 1
+        is_followup = dialog_turn > 1
 
-Пользователь: {message_text}
+        # ИСПОЛЬЗУЕМ CommunicativeScriptsService вместо AI
+        if self.communicative_scripts:
+            try:
+                fallback_message = await self.communicative_scripts.get_fallback_message(
+                    channel='telegram',
+                    candidate_count=len(candidates),
+                    is_followup=is_followup,
+                    dialog_turn=dialog_turn
+                )
 
-Возможные услуги:
-{candidates_list}
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': fallback_message,
+                    'candidates': candidates,
+                    'needs_clarification': True
+                }
+            except Exception as e:
+                logger.error(f"Ошибка CommunicativeScriptsService в _ask_ai_clarification: {e}")
 
-Задай ОДИН уточняющий вопрос чтобы выбрать правильную услугу.
-
-ПРИМЕРЫ:
-- "Где именно течет?" (если есть несколько сантехнических услуг)
-- "Что именно сломалось?" (если есть разные поломки)
-- "Откуда запах?" (если есть разные источники запаха)
-
-КРИТИЧЕСКИ ВАЖНО:
-- НЕ используй перечисления в скобках!
-- Верни только вопрос без дополнительных слов
-
-Вопрос:"""
-
-        if not self.ai_agent:
-            return {
-                'status': 'AMBIGUOUS',
-                'message': "Уточните, пожалуйста: что именно случилось?",
-                'candidates': candidates,
-                'needs_clarification': True
-            }
-
-        try:
-            response, _ = await self.ai_agent._call_yandex_gpt(prompt)
-
-            # Возвращаем первый кандидат с вопросом от AI
-            return {
-                'status': 'AMBIGUOUS',
-                'message': response.strip(),
-                'candidates': candidates,
-                'needs_clarification': True
-            }
-        except Exception as e:
-            logger.error(f"Ошибка AI генерации уточнения: {e}")
-            return {
-                'status': 'AMBIGUOUS',
-                'message': "Уточните, пожалуйста: что именно сломалось, течет или не работает?",
-                'candidates': candidates,
-                'needs_clarification': True
-            }
+        # Fallback без CommunicativeScriptsService - ОТКРЫТЫЕ вопросы
+        return {
+            'status': 'AMBIGUOUS',
+            'message': "Опишите подробнее что именно произошло.",
+            'candidates': candidates,
+            'needs_clarification': True
+        }
 
     def _deduplicate_and_prioritize_candidates(self, all_candidates: List[Dict]) -> List[Dict]:
         """
