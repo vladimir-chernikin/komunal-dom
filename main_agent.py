@@ -260,19 +260,22 @@ class MainAgent:
                     dialog_history=dialog_history
                 )
 
-                if accumulation_result['is_meaningful']:
-                    txtPrb = accumulation_result['updated_problem']
-                    accumulated_fields = accumulation_result['fields']
-                    logger.info(f"txtPrb обновлен: '{txtPrb[:100]}...'")
-                    logger.info(f"Извлеченные поля: {accumulated_fields}")
+                # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
+                # Короткие ответы типа "в квартире" важны для контекста!
+                txtPrb = accumulation_result['updated_problem']
+                accumulated_fields = accumulation_result['fields']
 
-                    # Рассчитываем фильтры с весами
-                    established_filters = self.problem_accumulator.calculate_filter_confidence(
-                        txtPrb, accumulated_fields
-                    )
-                    logger.info(f"Установленные фильтры: {established_filters}")
+                if accumulation_result['is_meaningful']:
+                    logger.info(f"txtPrb обновлен (содержательный): '{txtPrb[:100]}...'")
+                    logger.info(f"Извлеченные поля: {accumulated_fields}")
                 else:
-                    logger.info("Сообщение не содержит значимой информации, txtPrb не обновлен")
+                    logger.info(f"txtPrb обновлен (короткий ответ): '{txtPrb[:100]}...'")
+
+                # Рассчитываем фильтры с весами
+                established_filters = self.problem_accumulator.calculate_filter_confidence(
+                    txtPrb, accumulated_fields
+                )
+                logger.info(f"Установленные фильтры: {established_filters}")
 
             except Exception as e:
                 logger.warning(f"Ошибка ProblemAccumulationService: {e}")
@@ -1663,9 +1666,27 @@ class MainAgent:
         #     if cached:
         #         return cached
 
+        # ИСПРАВЛЕНО (2025-12-27): Добавляем контекст txtPrb и previous questions в промпт
+        # Собираем предыдущие вопросы бота
+        recent_bot_questions = []
+        if dialog_history:
+            for msg in dialog_history:
+                if msg.get('role') == 'bot' and '?' in msg.get('text', ''):
+                    question = msg.get('text', '')
+                    if '?' in question:
+                        question = question.split('?')[0] + '?'
+                        recent_bot_questions.append(question)
+
+        # Формируем контекст
+        context_info = ""
+        if recent_bot_questions:
+            context_info = f"\nУЖЕ ЗАДАННЫЕ ВОПРОСЫ (НЕ ПОВТОРЯЙ!):\n"
+            for q in recent_bot_questions[-3:]:
+                context_info += f"  - {q}\n"
+
         # МАКСИМАЛЬНО ПРОСТОЙ И ЖЁСТКИЙ ПРОМПТ
         prompt = f"""Пользователь написал: "{message_text}"
-
+{context_info}
 Возможные услуги:
 {chr(10).join(f"{i+1}. {c['service_name']}" for i, c in enumerate(candidates[:5]))}
 
@@ -1675,6 +1696,7 @@ class MainAgent:
 - Закрытые вопросы с "ИЛИ"
 - Перечисления через запятую
 - Вопросы в скобках
+- ПОВТОРЯТЬ уже заданные вопросы
 
 ✅ ПРАВИЛЬНО:
 - "Где именно течет?"
