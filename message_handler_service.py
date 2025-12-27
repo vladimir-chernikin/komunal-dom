@@ -204,7 +204,17 @@ class MessageHandlerService:
             bot_response = self._extract_bot_response(result)
 
             # 6. Логируем исходящее сообщение (ответ бота)
+            # ИСПРАВЛЕНО (2025-12-27): Добавляем txtPrb и metadata в outbound сообщения
             if bot_response:
+                # Формируем metadata для outbound сообщения
+                outbound_metadata = {'service_result': result}
+
+                # Добавляем txtPrb если есть в result
+                if '_metadata' in result and 'txtPrb' in result['_metadata']:
+                    outbound_metadata['txtPrb'] = result['_metadata']['txtPrb']
+                    outbound_metadata['accumulated_fields'] = result['_metadata'].get('accumulated_fields', {})
+                    outbound_metadata['established_filters'] = result['_metadata'].get('established_filters', {})
+
                 await self._log_message(
                     text=bot_response,
                     user_id=user_id,
@@ -212,7 +222,7 @@ class MessageHandlerService:
                     message_id=f"bot_{uuid.uuid4().hex[:16]}",
                     session_id=session_id,
                     direction='outbound',
-                    metadata={'service_result': result}
+                    metadata=outbound_metadata
                 )
 
             logger.info(

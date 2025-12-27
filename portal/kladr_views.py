@@ -222,9 +222,17 @@ def service_area_detail(request, area_id):
     area = get_object_or_404(ServiceArea, id=area_id)
     buildings = area.buildings.select_related('address_object').all()
 
+    # Вычисляем статистику
+    total_porch_count = sum(b.porch_count or 0 for b in buildings)
+    buildings_with_elevator = sum(1 for b in buildings if b.has_elevator)
+    total_square = sum(b.square_total or 0 for b in buildings)
+
     context = {
         'area': area,
         'buildings': buildings,
+        'total_porch_count': total_porch_count,
+        'buildings_with_elevator': buildings_with_elevator,
+        'total_square': total_square,
     }
     return render(request, 'portal/kladr/service_area_detail.html', context)
 

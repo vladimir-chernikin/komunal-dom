@@ -5,12 +5,12 @@
 {% block extra_css %}
 <style>
     .file-icon {
-        font-size: 2rem;
+        font-size: 1.2rem;
         color: #0d6efd;
     }
     .file-size {
         color: #6c757d;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
     }
 
     /* Активный пункт меню Файлы */
@@ -24,28 +24,9 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-2">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>
-                    <i class="fas fa-folder text-primary"></i>
-                    Файловый менеджер
-                </h2>
-                <div>
-                    {% if user.is_authenticated %}
-                        {% if user.userprofile.is_django_admin or user.userprofile.is_dba %}
-                            <a href="{% url 'file_manager:all_files' %}" class="btn btn-outline-primary me-2">
-                                <i class="fas fa-list"></i> Все файлы системы
-                            </a>
-                        {% endif %}
-                        <a href="{% url 'file_manager:upload_file' %}" class="btn btn-primary">
-                            <i class="fas fa-upload"></i> Загрузить файл
-                        </a>
-                    {% endif %}
-                </div>
-            </div>
-
             {% if messages %}
                 {% for message in messages %}
                     <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">

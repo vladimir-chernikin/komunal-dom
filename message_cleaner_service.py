@@ -19,6 +19,7 @@ MessageCleanerService - сервис очистки сообщений от му
 import logging
 import re
 from typing import Dict, Optional, Tuple
+import pymorphy2
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class MessageCleanerService:
     1. Базовая очистка - удаление явных приветствий
     2. Удаление стоп-слов в начале сообщения
     3. LLM-очистка (опционально) для сложных случаев
+    4. ИСПРАВЛЕНО (2025-12-25): Коррекция опечаток
     """
 
     # Списки приветствий для очистки
@@ -40,6 +42,18 @@ class MessageCleanerService:
         'хей', 'hello', 'hi', 'салют', 'приветствую',
         'доброго времени суток', 'доброго дня'
     ]
+
+    # ИСПРАВЛЕНО (2025-12-25): Частые опечатки и их исправления
+    COMMON_TYPOS = {
+        'тетчет': 'течет',
+        'течат': 'течет',
+        'тецт': 'течет',
+        'течетт': 'течет',
+        'ванных': 'ванной',  # "у меня течет ванных" → "у меня течет в ванной"
+        'потолок': 'потолка',  # "затекает с потолок" → "затекает с потолка"
+        'крыш': 'крыши',     # "протечка крыш" → "протечка крыши"
+        'труб': 'трубы',     # "прорыв труб" (если речь об одной)
+    }
 
     # Слова-заполнители, не несущие смысла
     FILLER_WORDS = [
@@ -101,6 +115,13 @@ class MessageCleanerService:
         cleaned_text = self._remove_greetings(cleaned_text)
         if cleaned_text != original_text.strip():
             metadata['removed_greeting'] = True
+
+        # ИСПРАВЛЕНО (2025-12-25): Шаг 1.5 - Коррекция опечаток
+        cleaned_text = self._correct_typos(cleaned_text)
+        if cleaned_text != original_text.strip():
+            metadata['typos_corrected'] = True
+            metadata['original'] = original_text.strip()
+            metadata['corrected'] = cleaned_text
 
         # Шаг 2: Удаление слов-заполнителей
         before_filler = cleaned_text
@@ -317,6 +338,39 @@ class MessageCleanerService:
         meaningful = [w for w in words if w not in stop_words and len(w) > 2]
 
         return meaningful
+
+    def _correct_typos(self, text: str) -> str:
+        """
+        ИСПРАВЛЕНО (2025-12-25): Коррекция частых опечаток
+
+        Исправляет опечатки типа:
+        - "тетчет" → "течет"
+        - "ванных" → "ванной"
+        - "потолок" → "потолка"
+        """
+        if not text:
+            return text
+
+        words = text.split()
+        corrected_words = []
+
+        for word in words:
+            word_lower = word.lower()
+
+            # Проверяем есть ли слово в списке опечаток
+            if word_lower in self.COMMON_TYPOS:
+                corrected = self.COMMON_TYPOS[word_lower]
+
+                # Сохраняем регистр первого символа
+                if word[0].isupper():
+                    corrected = corrected[0].upper() + corrected[1:]
+
+                logger.info(f"Исправлена опечатка: '{word}' → '{corrected}'")
+                corrected_words.append(corrected)
+            else:
+                corrected_words.append(word)
+
+        return ' '.join(corrected_words)
 
 
 # Для тестирования

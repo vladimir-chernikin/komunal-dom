@@ -5,13 +5,17 @@
 {% block extra_css %}
 <style>
 .quick-action-card {
-    transition: transform 0.2s ease-in-out;
+    border: 1px solid #dee2e6;
+    position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 .quick-action-card:hover {
-    transform: translateY(-3px);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 .quick-action-card .card-body {
-    min-height: 120px;
+    min-height: 60px;
+    padding: 10px;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -19,27 +23,56 @@
     text-align: center;
 }
 .quick-action-card .card-body i {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
+    font-size: 1.3rem;
+    margin-bottom: 0.25rem;
+}
+.quick-action-card .card-body h6 {
+    font-size: 12px;
+    margin: 0;
+    color: #212529;
+}
+.quick-action-card .card-body small {
+    font-size: 10px;
+}
+.card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.card-header {
+    padding: 6px 10px;
+    font-size: 13px;
+}
+.card-body {
+    padding: 10px;
+}
+.card-footer {
+    padding: 6px 10px;
+}
+.card-body h4 {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+.card-body h6 {
+    font-size: 13px;
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-2">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3 mb-0">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h1 class="h4 mb-0">
                     <i class="fas fa-database"></i>
-                    Панель менеджера данных (DBA)
+                    Панель DBA
                 </h1>
                 <div>
-                    <a href="{% url 'portal:dashboard' %}" class="btn btn-outline-secondary">
+                    <a href="{% url 'portal:dashboard' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="fas fa-arrow-left"></i> Назад
                     </a>
-                    <a href="/admin/kladr/" class="btn btn-primary">
-                        <i class="fas fa-cog"></i> Django Admin
+                    <a href="/admin/kladr/" class="btn btn-primary btn-sm">
+                        <i class="fas fa-cog"></i> Django
                     </a>
                 </div>
             </div>
@@ -47,18 +80,14 @@
     </div>
 
     <!-- Информационная карточка -->
-    <div class="row mb-4">
+    <div class="row mb-2">
         <div class="col-12">
             <div class="card bg-warning bg-opacity-10">
-                <div class="card-body">
+                <div class="card-body" style="padding: 8px 10px;">
                     <div class="d-flex align-items-center">
-                        <i class="fas fa-info-circle fa-2x text-warning me-3"></i>
-                        <div>
-                            <h5 class="mb-1">Добро пожаловать в панель менеджера данных!</h5>
-                            <p class="mb-0 text-muted">
-                                Здесь вы можете управлять файлами, настройками бота, адресной базой КЛАДР и другими справочными данными системы.
-                                Управление пользователями доступно только администраторам Django.
-                            </p>
+                        <i class="fas fa-info-circle text-warning me-2" style="font-size: 1.2rem;"></i>
+                        <div style="font-size: 12px;">
+                            Управление AI промптами, файлами, КЛАДР и другими данными системы
                         </div>
                     </div>
                 </div>
@@ -67,105 +96,88 @@
     </div>
 
     <!-- Статистика по системным данным -->
-    <div class="row mb-4">
-        <div class="col-md-3 mb-3">
+    <div class="row mb-2">
+        <div class="col-md-3 mb-2">
             <div class="card">
                 <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-robot"></i>
-                        AI Промпты
-                    </h5>
+                    <h6 class="mb-0" style="font-size: 12px;">
+                        <i class="fas fa-robot"></i> AI Промпты
+                    </h6>
                 </div>
-                <div class="card-body text-center">
-                    <h4 class="text-success">{{ prompt_stats.total }}</h4>
-                    <p class="mb-0">Всего промптов</p>
-                    <div class="mt-2">
-                        <small class="text-muted">Активных: {{ prompt_stats.active }}</small>
-                    </div>
+                <div class="card-body text-center" style="padding: 8px;">
+                    <h4 class="text-success mb-0" style="font-size: 1.3rem;">{{ prompt_stats.total }}</h4>
+                    <small class="text-muted">Всего / Активных: {{ prompt_stats.active }}</small>
                 </div>
-                <div class="card-footer">
-                    <a href="{% url 'portal:prompt_management' %}" class="btn btn-outline-success btn-sm w-100">
+                <div class="card-footer" style="padding: 4px 6px;">
+                    <a href="{% url 'portal:prompt_management' %}" class="btn btn-outline-success btn-sm w-100" style="font-size: 11px; padding: 4px 8px;">
                         <i class="fas fa-cog"></i> Управление
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-3 mb-3">
+        <div class="col-md-3 mb-2">
             <div class="card">
                 <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-folder"></i>
-                        Файлы
-                    </h5>
+                    <h6 class="mb-0" style="font-size: 12px;">
+                        <i class="fas fa-folder"></i> Файлы
+                    </h6>
                 </div>
-                <div class="card-body text-center">
-                    <h4 class="text-info">{{ file_stats.total }}</h4>
-                    <p class="mb-0">Всего файлов</p>
-                    <div class="mt-2">
-                        <small class="text-muted">
-                            {% if file_stats.total_size > 1024*1024 %}
+                <div class="card-body text-center" style="padding: 8px;">
+                    <h4 class="text-info mb-0" style="font-size: 1.3rem;">{{ file_stats.total }}</h4>
+                    <small class="text-muted">
+                        {% if file_stats.total > 0 %}
+                            {% if file_stats.total_size > 1048576 %}
                                 {{ file_stats.total_size|floatformat:1 }} МБ
                             {% else %}
                                 {{ file_stats.total_size|floatformat:0 }} КБ
                             {% endif %}
-                        </small>
-                    </div>
+                        {% else %}
+                            0 КБ
+                        {% endif %}
+                    </small>
                 </div>
-                <div class="card-footer">
-                    <a href="{% url 'file_manager:all_files' %}" class="btn btn-outline-info btn-sm w-100">
+                <div class="card-footer" style="padding: 4px 6px;">
+                    <a href="{% url 'file_manager:all_files' %}" class="btn btn-outline-info btn-sm w-100" style="font-size: 11px; padding: 4px 8px;">
                         <i class="fas fa-folder-open"></i> Все файлы
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-3 mb-3">
+        <div class="col-md-3 mb-2">
             <div class="card">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-map"></i>
-                        КЛАДР
-                    </h5>
+                    <h6 class="mb-0" style="font-size: 12px;">
+                        <i class="fas fa-map"></i> КЛАДР
+                    </h6>
                 </div>
-                <div class="card-body text-center">
-                    <h4 class="text-primary">{{ kladr_stats.address_objects }}</h4>
-                    <p class="mb-0">Объектов</p>
-                    <div class="mt-2">
-                        <small class="text-muted">
-                            Зданий: {{ kladr_stats.buildings }}<br>
-                            Зон: {{ kladr_stats.service_areas }}
-                        </small>
-                    </div>
+                <div class="card-body text-center" style="padding: 8px;">
+                    <h4 class="text-primary mb-0" style="font-size: 1.3rem;">{{ kladr_stats.address_objects|default:"-" }}</h4>
+                    <small class="text-muted">{{ kladr_stats.buildings|default:"-" }} зданий / {{ kladr_stats.service_areas|default:"-" }} зон</small>
                 </div>
-                <div class="card-footer">
-                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-primary btn-sm w-100">
+                <div class="card-footer" style="padding: 4px 6px;">
+                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-primary btn-sm w-100" style="font-size: 11px; padding: 4px 8px;">
                         <i class="fas fa-map-marked-alt"></i> Управление
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-3 mb-3">
+        <div class="col-md-3 mb-2">
             <div class="card">
                 <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-server"></i>
-                        Система
-                    </h5>
+                    <h6 class="mb-0" style="font-size: 12px;">
+                        <i class="fas fa-comments"></i> Диалоги
+                    </h6>
                 </div>
-                <div class="card-body text-center">
-                    <h4 class="text-secondary">
-                        <i class="fas fa-check-circle text-success"></i>
-                    </h4>
-                    <p class="mb-0">Статус</p>
-                    <div class="mt-2">
-                        <small class="text-muted">Все системы работают</small>
-                    </div>
+                <div class="card-body text-center" style="padding: 8px;">
+                    <i class="fas fa-search-plus text-secondary" style="font-size: 1.3rem;"></i>
+                    <p class="mb-0" style="font-size: 11px;">Трассировка</p>
                 </div>
-                <div class="card-footer">
-                    <a href="/admin/" class="btn btn-outline-secondary btn-sm w-100">
-                        <i class="fas fa-cogs"></i> Тех. панель
+                <div class="card-footer" style="padding: 4px 6px;">
+                    <a href="{% url 'portal:dialog_trace' %}" class="btn btn-outline-secondary btn-sm w-100" style="font-size: 11px; padding: 4px 8px;">
+                        <i class="fas fa-binoculars"></i> Трассировка
                     </a>
                 </div>
             </div>
@@ -173,59 +185,62 @@
     </div>
 
     <!-- Быстрые действия -->
-    <div class="row mb-4">
+    <div class="row mb-2">
         <div class="col-12">
             <div class="card">
-                <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-bolt"></i>
-                        Быстрые действия
-                    </h5>
+                <div class="card-header bg-dark text-white" style="padding: 6px 10px; font-size: 13px;">
+                    <h6 class="mb-0" style="font-size: 13px;">
+                        <i class="fas fa-bolt"></i> Быстрые действия
+                    </h6>
                 </div>
-                <div class="card-body">
+                <div class="card-body" style="padding: 8px;">
                     <div class="row">
-                        <div class="col-md-3 mb-3">
-                            <div class="card quick-action-card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <i class="fas fa-robot text-primary"></i>
-                                    <h6>AI Промпты</h6>
-                                    <small class="text-muted">Настройка бота</small>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'portal:prompt_management' %}" class="text-decoration-none">
+                                <div class="card quick-action-card">
+                                    <div class="card-body">
+                                        <i class="fas fa-robot text-primary"></i>
+                                        <h6>AI Промпты</h6>
+                                        <small class="text-muted">Настройка бота</small>
+                                    </div>
                                 </div>
-                            </div>
-                            <a href="{% url 'portal:prompt_management' %}" class="stretched-link"></a>
+                            </a>
                         </div>
 
-                        <div class="col-md-3 mb-3">
-                            <div class="card quick-action-card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <i class="fas fa-folder text-info"></i>
-                                    <h6>Файлы</h6>
-                                    <small class="text-muted">Все файлы системы</small>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'file_manager:all_files' %}" class="text-decoration-none">
+                                <div class="card quick-action-card">
+                                    <div class="card-body">
+                                        <i class="fas fa-folder text-info"></i>
+                                        <h6>Файлы</h6>
+                                        <small class="text-muted">Все файлы</small>
+                                    </div>
                                 </div>
-                            </div>
-                            <a href="{% url 'file_manager:all_files' %}" class="stretched-link"></a>
+                            </a>
                         </div>
 
-                        <div class="col-md-3 mb-3">
-                            <div class="card quick-action-card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <i class="fas fa-map text-warning"></i>
-                                    <h6>КЛАДР</h6>
-                                    <small class="text-muted">Адресная база</small>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'portal:kladr_management' %}" class="text-decoration-none">
+                                <div class="card quick-action-card">
+                                    <div class="card-body">
+                                        <i class="fas fa-map text-warning"></i>
+                                        <h6>КЛАДР</h6>
+                                        <small class="text-muted">Адресная база</small>
+                                    </div>
                                 </div>
-                            </div>
-                            <a href="{% url 'portal:kladr_management' %}" class="stretched-link"></a>
+                            </a>
                         </div>
 
-                        <div class="col-md-3 mb-3">
-                            <div class="card quick-action-card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <i class="fas fa-cogs text-secondary"></i>
-                                    <h6>Тех. панель</h6>
-                                    <small class="text-muted">Django Admin</small>
+                        <div class="col-md-3 mb-2">
+                            <a href="{% url 'portal:dialog_trace' %}" class="text-decoration-none">
+                                <div class="card quick-action-card">
+                                    <div class="card-body">
+                                        <i class="fas fa-comments text-secondary"></i>
+                                        <h6>Трассировка</h6>
+                                        <small class="text-muted">Анализ</small>
+                                    </div>
                                 </div>
-                            </div>
-                            <a href="/admin/" class="stretched-link"></a>
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -235,47 +250,50 @@
 
     <!-- Подробная статистика -->
     <div class="row">
-        <div class="col-md-6 mb-4">
+        <div class="col-md-6 mb-2">
             <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-robot"></i>
-                        Детально по AI промптам
-                    </h5>
+                <div class="card-header bg-success text-white" style="padding: 6px 10px;">
+                    <h6 class="mb-0" style="font-size: 12px;">
+                        <i class="fas fa-robot"></i> Детально по AI промптам
+                    </h6>
                 </div>
-                <div class="card-body">
-                    <h6>Распределение по типам:</h6>
-                    {% for type_name, type_count in prompt_stats.by_type.items %}
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span>{{ type_name }}:</span>
-                        <span class="badge bg-primary">{{ type_count }}</span>
-                    </div>
-                    {% endfor %}
+                <div class="card-body" style="padding: 8px;">
+                    <small style="font-size: 11px;">
+                        {% if prompt_stats.by_type %}
+                            {% for type_name, type_count in prompt_stats.by_type.items %}
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span>{{ type_name }}:</span>
+                                <span class="badge bg-primary" style="font-size: 10px;">{{ type_count }}</span>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-muted">Нет данных</span>
+                        {% endif %}
+                    </small>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-6 mb-4">
+        <div class="col-md-6 mb-2">
             <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-map"></i>
-                        Детально по КЛАДР
-                    </h5>
+                <div class="card-header bg-primary text-white" style="padding: 6px 10px;">
+                    <h6 class="mb-0" style="font-size: 12px;">
+                        <i class="fas fa-map"></i> Детально по КЛАДР
+                    </h6>
                 </div>
-                <div class="card-body">
+                <div class="card-body" style="padding: 8px;">
                     <div class="row text-center">
                         <div class="col-4">
-                            <h4 class="text-primary">{{ kladr_stats.address_objects }}</h4>
-                            <small class="text-muted">Адресных объектов</small>
+                            <h4 class="text-primary mb-0" style="font-size: 1.2rem;">{{ kladr_stats.address_objects|default:"-" }}</h4>
+                            <small class="text-muted" style="font-size: 9px;">Объектов</small>
                         </div>
                         <div class="col-4">
-                            <h4 class="text-success">{{ kladr_stats.buildings }}</h4>
-                            <small class="text-muted">Зданий</small>
+                            <h4 class="text-success mb-0" style="font-size: 1.2rem;">{{ kladr_stats.buildings|default:"-" }}</h4>
+                            <small class="text-muted" style="font-size: 9px;">Зданий</small>
                         </div>
                         <div class="col-4">
-                            <h4 class="text-warning">{{ kladr_stats.service_areas }}</h4>
-                            <small class="text-muted">Зон обслуживания</small>
+                            <h4 class="text-warning mb-0" style="font-size: 1.2rem;">{{ kladr_stats.service_areas|default:"-" }}</h4>
+                            <small class="text-muted" style="font-size: 9px;">Зон</small>
                         </div>
                     </div>
                 </div>
@@ -287,50 +305,23 @@
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header bg-dark text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-info-circle"></i>
-                        Системная информация
-                    </h5>
+                <div class="card-header bg-dark text-white" style="padding: 6px 10px;">
+                    <h6 class="mb-0" style="font-size: 12px;">
+                        <i class="fas fa-info-circle"></i> Системная информация
+                    </h6>
                 </div>
-                <div class="card-body">
+                <div class="card-body" style="padding: 8px;">
                     <div class="row">
                         <div class="col-md-6">
-                            <h6>Telegram бот "Сигизмунд Лазоревич":</h6>
-                            <p class="small mb-1">
-                                <i class="fas fa-robot text-success"></i>
-                                <span class="badge bg-success">Активен</span>
-                                - Проверка адресов в зоне обслуживания
-                            </p>
-                            <p class="small mb-1">
-                                <i class="fas fa-cog text-warning"></i>
-                                <span class="badge bg-warning">AI интеграция</span>
-                                - YandexGPT API
-                            </p>
-                            <p class="small mb-0">
-                                <i class="fas fa-comments text-info"></i>
-                                <span class="badge bg-info">Управление промптами</span>
-                                - Из Базы данных
-                            </p>
+                            <small style="font-size: 11px;">
+                                <strong>Telegram бот:</strong> <span class="badge bg-success" style="font-size: 9px;">Активен</span> Проверка адресов<br>
+                                <strong>AI:</strong> <span class="badge bg-warning" style="font-size: 9px;">YandexGPT</span>
+                            </small>
                         </div>
                         <div class="col-md-6">
-                            <h6>База данных:</h6>
-                            <p class="small mb-1">
-                                <i class="fas fa-database text-primary"></i>
-                                <strong>Тип:</strong> PostgreSQL 16
-                            </p>
-                            <p class="small mb-1">
-                                <i class="fas fa-map text-warning"></i>
-                                <strong>Адресных объектов:</strong> {{ kladr_stats.address_objects }}
-                            </p>
-                            <p class="small mb-1">
-                                <i class="fas fa-building text-success"></i>
-                                <strong>Зданий:</strong> {{ kladr_stats.buildings }}
-                            </p>
-                            <p class="small mb-0">
-                                <i class="fas fa-draw-polygon text-info"></i>
-                                <strong>Зон обслуживания:</strong> {{ kladr_stats.service_areas }}
-                            </p>
+                            <small style="font-size: 11px;">
+                                <strong>БД:</strong> PostgreSQL 16 | <strong>Объектов:</strong> {{ kladr_stats.address_objects|default:"-" }} | <strong>Зданий:</strong> {{ kladr_stats.buildings|default:"-" }}
+                            </small>
                         </div>
                     </div>
                 </div>

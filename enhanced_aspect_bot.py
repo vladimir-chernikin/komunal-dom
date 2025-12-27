@@ -278,16 +278,17 @@ class EnhancedAspectBot:
             # Слова отмены/отказа
             denial_words = ['нет', 'неправ', 'не та', 'другая', 'не то', 'ошиб', 'неверно']
             if any(word in text_lower for word in denial_words):
-                # Сбрасываем состояние и просим описать заново
+                # ИСПРАВЛЕНО (2025-12-25): Умный вопрос от AI агента вместо хардкода
                 state.mode = 'ADDRESS_CHECK'
                 state.current_service_id = None
                 state.current_service_name = None
                 state.current_address = None
                 state.address_components = None
 
-                await update.message.reply_text(
-                    "Понял! Опишите вашу проблему другими словами, и я попробую определить услугу заново."
-                )
+                # ИСПРАВЛЕНО (2025-12-25): Используем AI агента для умного вопроса
+                clarification = await self._ask_ai_clarification(text, state)
+
+                await update.message.reply_text(clarification)
                 return
 
         if not self.message_handler:
@@ -337,11 +338,13 @@ class EnhancedAspectBot:
                     state.address_components = address_components
                     state.confidence = result['raw_result'].get('confidence', 0.8)
 
-                    # ИСПРАВЛЕНО: Голосовой интерфейс - без кнопок!
-                    # Сначала подтверждаем услугу, потом запрашиваем адрес
+                    # ИСПРАВЛЕНО (2025-12-25): ИСПОЛЬЗУЕМ сообщение от MainAgent!
+                    # КРИТИЧЕСКИ ВАЖНО: НЕ добавлять "Ответьте да или нет" - это закрытый вопрос!
+                    # КРИТИЧЕСКИ ВАЖНО: НЕ добавлять "опишите проблему другими словами" - запрещенная фраза!
                     state.mode = 'CONFIRMATION'
 
-                    confirm_text = f"Правильно ли я понял, что у вас: {service_name}? Ответьте да или нет, или опишите проблему другими словами."
+                    # Используем ИЗНАЧАЛЬНОЕ сообщение от MainAgent (без изменений!)
+                    confirm_text = result['raw_result'].get('message', f"Правильно ли я понял, что у вас: {service_name}?")
 
                     await update.message.reply_text(confirm_text)
                     return
@@ -409,12 +412,13 @@ class EnhancedAspectBot:
                     # Переходим к подтверждению
                     state.mode = 'CONFIRMATION'
 
-                    # ИСПРАВЛЕНО: Голосовой интерфейс - без кнопок!
+                    # ИСПРАВЛЕНО (2025-12-25): Голосовой интерфейс - открытые вопросы!
+                    # КРИТИЧЕСКИ ВАЖНО: НЕ добавлять "Ответьте да или нет" - это закрытый вопрос!
                     confirm_text = f"Проверьте информацию:\n\n"
                     confirm_text += f"Услуга: {state.current_service_name}\n"
                     if address_string:
                         confirm_text += f"Адрес: {address_string}\n"
-                    confirm_text += f"\nВсе верно? Ответьте да или нет."
+                    confirm_text += f"\nВсе верно?"
 
                     await update.message.reply_text(confirm_text)
                     return
@@ -628,17 +632,16 @@ class EnhancedAspectBot:
                     return
 
             elif any(word in text_lower for word in denial_words):
-                # Отрицание - сбрасываем и просим описать заново
+                # ИСПРАВЛЕНО (2025-12-25): Умный вопрос от AI агента вместо хардкода
                 state.mode = 'ADDRESS_CHECK'
                 state.current_service_id = None
                 state.current_service_name = None
-                await update.message.reply_text(
-                    "Понял! Опишите вашу проблему другими словами, и я попробую определить услугу заново."
-                )
+                clarification = await self._ask_ai_clarification(text, state)
+                await update.message.reply_text(clarification)
             else:
-                # Не понял ответа
+                # ИСПРАВЛЕНО (2025-12-25): Убрана фраза "опишите проблему другими словами"
                 await update.message.reply_text(
-                    "Пожалуйста, ответьте да или нет, или опишите проблему другими словами."
+                    "Пожалуйста, ответьте да или нет, или уточните что именно случилось."
                 )
 
         elif state.mode == 'ADDRESS_CHECK':
@@ -654,6 +657,45 @@ class EnhancedAspectBot:
         else:
             # По умолчанию - проверка адреса
             await self.check_address_with_ai(update, context, text)
+
+    async def _ask_ai_clarification(self, text: str, state: ServiceBotState) -> str:
+        """
+        ИСПРАВЛЕНО (2025-12-25): Спрашивает у AI агента как уточнить
+
+        УБРАНО: Хардкод с перечислениями "(кран, труба, батарея)"
+        ДОБАВЛЕНО: AI генерация вопросов без перечислений
+        """
+        # Собираем контекст
+        last_msg = state.last_user_message if state else ""
+        context = f"Последнее сообщение: {last_msg}\nТекущее: {text}"
+
+        prompt = f"""Ты - опытный диспетчер управляющей компании.
+
+{context}
+
+Задай ОДИН уточняющий вопрос чтобы понять проблему пользователя.
+
+ПРИМЕРЫ:
+- "Где именно течет?" (если упоминалась вода/течь)
+- "Что именно сломалось?" (если поломка)
+- "Откуда запах?" (если запах)
+
+КРИТИЧЕСКИ ВАЖНО:
+- НЕ используй перечисления в скобках!
+- Вопрос должен быть КОНКРЕТНЫМ
+- Верни только вопрос без дополнительных слов
+
+Вопрос:"""
+
+        if not self.message_handler or not self.message_handler.main_agent:
+            return "Уточните, пожалуйста: что именно случилось?"
+
+        try:
+            response, _ = await self.message_handler.main_agent.ai_agent._call_yandex_gpt(prompt)
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Ошибка AI генерации вопроса: {e}")
+            return "Уточните, пожалуйста: что именно сломалось, течет или не работает?"
 
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик ошибок"""

@@ -1,313 +1,546 @@
 {% extends 'portal/base.html' %}
 
-{% block title %}Личный кабинет - ООО "Аспект"{% endblock %}
+{% block title %}Личный кабинет - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Карточки с hover эффектами */
+.admin-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.admin-actions-row > div {
+    flex: 1 1 calc(25% - 1rem);
+    min-width: 200px;
+}
+
+.quick-action-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    height: 100%;
+}
+
+.quick-action-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+
+.quick-action-card .card-body {
+    min-height: 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 0.75rem 0.5rem;
+}
+
+.quick-action-card i {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    transition: transform 0.3s;
+}
+
+.quick-action-card:hover i {
+    transform: scale(1.1);
+}
+
+/* Статистические карточки */
+.stat-card {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: all 0.3s;
+}
+
+.stat-card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+
+.stat-card .card-body {
+    padding: 1rem;
+}
+
+.stat-card h5 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+/* Профильная карточка */
+.profile-card {
+    border: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.profile-avatar {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 0.75rem;
+}
+
+.profile-avatar i {
+    font-size: 1.75rem;
+    color: white;
+}
+
+/* Список быстрых ссылок */
+.quick-links .list-group-item {
+    border: none;
+    border-bottom: 1px solid #f0f0f0;
+    transition: all 0.2s;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+}
+
+.quick-links .list-group-item:hover {
+    background-color: #f8f9fa;
+    padding-left: 1.5rem;
+}
+
+.quick-links .list-group-item i {
+    margin-right: 0.75rem;
+    width: 20px;
+    text-align: center;
+}
+
+/* AI Чат карточка */
+.ai-chat-card {
+    border: none;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 8px 24px rgba(118, 75, 162, 0.3);
+    transition: all 0.3s;
+}
+
+.ai-chat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 32px rgba(118, 75, 162, 0.4);
+}
+
+.ai-chat-card .card-body {
+    padding: 1.25rem;
+}
+
+.ai-chat-card h5 {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.ai-chat-card p {
+    opacity: 0.9;
+    margin-bottom: 1rem;
+}
+
+.ai-chat-card .btn-light {
+    background: white;
+    color: #667eea;
+    border: none;
+    padding: 0.5rem 1.5rem;
+    font-weight: 600;
+    transition: all 0.3s;
+    font-size: 0.9rem;
+}
+
+.ai-chat-card .btn-light:hover {
+    background: #f8f9fa;
+    transform: scale(1.05);
+}
+
+/* Секция заголовков */
+.section-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.section-header i {
+    margin-right: 0.75rem;
+    opacity: 0.7;
+}
+
+/* Анимация появления */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.col-md-3, .col-md-4, .col-md-8 {
+    animation: fadeInUp 0.5s ease-out;
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="row">
+<div class="container mt-3">
+    <!-- Заголовок страницы -->
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="card">
-                <div class="card-header {% if user_role == 'django_admin' %}bg-danger{% elif user_role == 'dba' %}bg-warning{% else %}bg-success{% endif %} text-white">
-                    <h2 class="mb-0">
-                        <i class="fas fa-user"></i> Личный кабинет
-                    </h2>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h4 mb-1">
+                        <i class="fas fa-home text-primary"></i>
+                        Личный кабинет
+                    </h1>
+                    <p class="text-muted mb-0 small">
+                        Добро пожаловать, {{ user.first_name|default:user.username }}
+                    </p>
                 </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-8">
-                            <!-- Чат будет здесь -->
-                            <div class="card mb-4">
-                                <div class="card-header bg-primary text-white">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-robot"></i> AI Диспетчер
-                                    </h5>
-                                </div>
-                                <div class="card-body">
-                                    <p class="mb-3">Опишите вашу проблему, и AI поможет определить нужную услугу.</p>
-                                    <a href="{% url 'message_handler:chat_interface' %}" class="btn btn-primary btn-lg">
-                                        <i class="fas fa-comments"></i> Открыть чат с диспетчером
-                                    </a>
-                                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge
+                        {% if user_role == 'django_admin' %}bg-danger{% elif user_role == 'dba' %}bg-warning text-dark{% else %}bg-success{% endif %}
+                        fs-6 px-3 py-2">
+                        {% if user_role == 'django_admin' %}
+                            <i class="fas fa-crown"></i> Администратор Django
+                        {% elif user_role == 'dba' %}
+                            <i class="fas fa-database"></i> DBA
+                        {% else %}
+                            <i class="fas fa-user"></i> Сотрудник УК
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- AI Диспетчер - главная карточка -->
+            <div class="card ai-chat-card mb-3">
+                <div class="card-body text-center">
+                    <i class="fas fa-robot fa-2x mb-2"></i>
+                    <h5 class="mb-2"><i class="fas fa-sparkles"></i> AI Диспетчер</h5>
+                    <p class="mb-3 small">
+                        Опишите вашу проблему, и искусственный интеллект поможет определить нужную услугу
+                    </p>
+                    <a href="{% url 'message_handler:chat_interface' %}" class="btn btn-light">
+                        <i class="fas fa-comments"></i>
+                        Открыть чат с диспетчером
+                    </a>
+                </div>
+            </div>
+
+            <!-- Административные функции -->
+            {% if user_role == 'django_admin' or user_role == 'dba' %}
+            <div class="mb-3">
+                <div class="section-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-cogs"></i>
+                        Административные функции
+                    </h6>
+                </div>
+                <div class="row admin-actions-row">
+                    {% if user_role == 'django_admin' %}
+                    <div class="col-6 col-md-3 mb-2">
+                        <div class="card quick-action-card">
+                            <div class="card-body py-2">
+                                <a href="/admin/" class="text-decoration-none text-dark">
+                                    <i class="fas fa-cogs text-danger"></i>
+                                    <h6 class="mb-0 small">Админ панель</h6>
+                                    <small class="text-muted" style="font-size: 0.65rem;">Django Admin</small>
+                                </a>
                             </div>
-
-                            <!-- Дополнительные функции для администраторов -->
-                            {% if user_role == 'django_admin' or user_role == 'dba' %}
-                            <div class="mt-4">
-                                <h5 class="mb-3">
-                                    <i class="fas fa-cogs"></i> Административные функции
-                                </h5>
-                                <div class="row">
-                                    {% if user_role == 'django_admin' %}
-                                    <div class="col-md-4 mb-3">
-                                        <a href="/admin/" class="btn btn-danger btn-lg w-100">
-                                            <i class="fas fa-cogs"></i><br>
-                                            <small>Админ панель Django</small>
-                                        </a>
-                                    </div>
-                                    {% endif %}
-
-                                    <div class="col-md-4 mb-3">
-                                        <a href="{% url 'file_manager:all_files' %}" class="btn btn-primary btn-lg w-100">
-                                            <i class="fas fa-folder"></i><br>
-                                            <small>Все файлы системы</small>
-                                        </a>
-                                    </div>
-
-                                    {% if user_role == 'django_admin' %}
-                                    <div class="col-md-4 mb-3">
-                                        <a href="{% url 'portal:admin_page' %}" class="btn btn-warning btn-lg w-100">
-                                            <i class="fas fa-users"></i><br>
-                                            <small>Пользователи системы</small>
-                                        </a>
-                                    </div>
-                                    {% elif user_role == 'dba' %}
-                                    <div class="col-md-4 mb-3">
-                                        <a href="{% url 'portal:dba_page' %}" class="btn btn-warning btn-lg w-100">
-                                            <i class="fas fa-database"></i><br>
-                                            <small>Панель DBA</small>
-                                        </a>
-                                    </div>
-                                    {% endif %}
-                                    {% if user_role == 'django_admin' or user_role == 'dba' %}
-                                    <div class="col-md-4 mb-3">
-                                        <a href="{% url 'portal:kladr_management' %}" class="btn btn-success btn-lg w-100">
-                                            <i class="fas fa-map"></i><br>
-                                            <small>Управление КЛАДР</small>
-                                        </a>
-                                    </div>
-                                    {% endif %}
-                                </div>
-                            </div>
-
-                            <!-- Статистика для администраторов -->
-                            <div class="mt-4">
-                                <h5 class="mb-3">
-                                    <i class="fas fa-chart-bar"></i> Статистика
-                                </h5>
-                                <div class="row">
-                                    <div class="col-md-3">
-                                        <div class="card text-center">
-                                            <div class="card-body">
-                                                <h4 class="text-primary">{{ total_users }}</h4>
-                                                <p class="mb-0">Всего пользователей</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="card text-center">
-                                            <div class="card-body">
-                                                <h4 class="text-warning">{{ dba_count }}</h4>
-                                                <p class="mb-0">Менеджеров</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="card text-center">
-                                            <div class="card-body">
-                                                <h4 class="text-info">{{ uk_user_count }}</h4>
-                                                <p class="mb-0">Сотрудников УК</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="card text-center">
-                                            <div class="card-body">
-                                                <h4 class="text-secondary">{{ resident_count }}</h4>
-                                                <p class="mb-0">Жителей</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Статистика по КЛАДР для администраторов -->
-                                {% if user_role == 'django_admin' or user_role == 'dba' %}
-                                <h5 class="mb-3 mt-4">
-                                    <i class="fas fa-map"></i> Адресная база КЛАДР
-                                </h5>
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <div class="card text-center">
-                                            <div class="card-body">
-                                                <h4 class="text-primary">{{ kladr_stats.address_objects|default:"-" }}</h4>
-                                                <p class="mb-0">Адресных объектов</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="card text-center">
-                                            <div class="card-body">
-                                                <h4 class="text-success">{{ kladr_stats.buildings|default:"-" }}</h4>
-                                                <p class="mb-0">Зданий</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="card text-center">
-                                            <div class="card-body">
-                                                <h4 class="text-warning">{{ kladr_stats.service_areas|default:"-" }}</h4>
-                                                <p class="mb-0">Зон обслуживания</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endif %}
-                            </div>
-                            {% endif %}
                         </div>
+                    </div>
+                    {% endif %}
 
-                        <div class="col-md-4">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-user"></i> Ваш профиль
-                                    </h5>
-                                </div>
-                                <div class="card-body text-center">
-                                    <i class="fas fa-user-circle fa-4x text-muted mb-3"></i>
-                                    <p class="text-muted">{{ user.username }}</p>
-                                    <span class="badge {% if user_role == 'django_admin' %}bg-danger{% elif user_role == 'dba' %}bg-warning{% else %}bg-info{% endif %} fs-6">
-                                        {% if user_role == 'django_admin' %}
-                                            Администратор Django
-                                        {% elif user_role == 'dba' %}
-                                            DBA - Менеджер данных
-                                        {% else %}
-                                            Сотрудник УК
-                                        {% endif %}
-                                    </span>
-                                </div>
+                    <div class="col-6 col-md-3 mb-2">
+                        <div class="card quick-action-card">
+                            <div class="card-body py-2">
+                                <a href="{% url 'file_manager:all_files' %}" class="text-decoration-none text-dark">
+                                    <i class="fas fa-folder-open text-primary"></i>
+                                    <h6 class="mb-0 small">Файлы</h6>
+                                    <small class="text-muted" style="font-size: 0.65rem;">Все файлы системы</small>
+                                </a>
                             </div>
+                        </div>
+                    </div>
 
-                            <!-- Ваши данные - перемещено под профиль -->
-                            <div class="card mt-3">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-id-card"></i> Ваши данные
-                                    </h5>
-                                </div>
-                                <div class="card-body">
-                                    <table class="table table-sm table-borderless">
-                                        <tr>
-                                            <td class="text-muted"><strong>Логин:</strong></td>
-                                            <td>{{ user.username }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-muted"><strong>Email:</strong></td>
-                                            <td>{{ user.email|default:"-" }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-muted"><strong>Роль:</strong></td>
-                                            <td>
-                                                <span class="badge {% if user_role == 'django_admin' %}bg-danger{% elif user_role == 'dba' %}bg-warning{% else %}bg-info{% endif %}">
-                                                    {% if user_role == 'django_admin' %}
-                                                        Администратор Django
-                                                    {% elif user_role == 'dba' %}
-                                                        DBA - Менеджер данных
-                                                    {% else %}
-                                                        Сотрудник УК
-                                                    {% endif %}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                        {% if user_profile.phone %}
-                                        <tr>
-                                            <td class="text-muted"><strong>Телефон:</strong></td>
-                                            <td>{{ user_profile.phone }}</td>
-                                        </tr>
-                                        {% endif %}
-                                        {% if user_profile.address %}
-                                        <tr>
-                                            <td class="text-muted"><strong>Адрес:</strong></td>
-                                            <td>{{ user_profile.address }}</td>
-                                        </tr>
-                                        {% endif %}
-                                        <tr>
-                                            <td class="text-muted"><strong>Регистрация:</strong></td>
-                                            <td>{{ user.date_joined|date:"d.m.Y" }}</td>
-                                        </tr>
-                                    </table>
-                                </div>
+                    {% if user_role == 'django_admin' %}
+                    <div class="col-6 col-md-3 mb-2">
+                        <div class="card quick-action-card">
+                            <div class="card-body py-2">
+                                <a href="{% url 'portal:admin_page' %}" class="text-decoration-none text-dark">
+                                    <i class="fas fa-users-cog text-warning"></i>
+                                    <h6 class="mb-0 small">Пользователи</h6>
+                                    <small class="text-muted" style="font-size: 0.65rem;">Управление</small>
+                                </a>
                             </div>
-
-                            <div class="card mt-3">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-link"></i> Быстрые ссылки
-                                    </h5>
-                                </div>
-                                <div class="card-body p-0">
-                                    <div class="list-group list-group-flush">
-                                        <a href="{% url 'message_handler:chat_interface' %}" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-robot"></i> AI Чат диспетчера
-                                        </a>
-                                        <a href="{% url 'file_manager:file_list' %}" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-folder"></i> Мои файлы
-                                        </a>
-                                        <a href="/subscribers/" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-users"></i> Абоненты
-                                        </a>
-                                        {% if user_role == 'django_admin' or user_role == 'dba' %}
-                                        <a href="{% url 'portal:kladr_management' %}" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-map"></i> Управление КЛАДР
-                                        </a>
-                                        {% endif %}
-                                        {% if user_role == 'django_admin' %}
-                                        <a href="/admin/" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-cog"></i> Django Админ
-                                        </a>
-                                        {% endif %}
-                                        {% if user_role == 'django_admin' %}
-                                        <a href="{% url 'portal:admin_page' %}" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-users-cog"></i> Управление пользователями
-                                        </a>
-                                        {% elif user_role == 'dba' %}
-                                        <a href="{% url 'portal:dba_page' %}" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-database"></i> Панель DBA
-                                        </a>
-                                        {% endif %}
-                                        {% if user_role == 'django_admin' or user_role == 'dba' %}
-                                        <a href="{% url 'portal:prompt_management' %}" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-robot"></i> AI промпты
-                                        </a>
-                                        {% endif %}
-                                        <a href="/logout/" class="list-group-item list-group-item-action text-danger">
-                                            <i class="fas fa-sign-out-alt"></i> Выйти
-                                        </a>
-                                    </div>
-                                </div>
+                        </div>
+                    </div>
+                    {% elif user_role == 'dba' %}
+                    <div class="col-6 col-md-3 mb-2">
+                        <div class="card quick-action-card">
+                            <div class="card-body py-2">
+                                <a href="{% url 'portal:dba_page' %}" class="text-decoration-none text-dark">
+                                    <i class="fas fa-database text-warning"></i>
+                                    <h6 class="mb-0 small">Панель DBA</h6>
+                                    <small class="text-muted" style="font-size: 0.65rem;">Менеджер данных</small>
+                                </a>
                             </div>
+                        </div>
+                    </div>
+                    {% endif %}
 
-                            <!-- Информация о системе для DBA -->
-                            {% if user_role == 'django_admin' or user_role == 'dba' %}
-                            <div class="card mt-3">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-info-circle"></i> Система
-                                    </h5>
-                                </div>
-                                <div class="card-body">
-                                    <h6>Telegram бот:</h6>
-                                    <p class="small mb-1">
-                                        <i class="fas fa-robot text-success"></i>
-                                        Статус: <span class="badge bg-success">Активен</span>
-                                    </p>
-                                    <p class="small mb-0">Имя: Сигизмунд Лазоревич</p>
-
-                                    <h6 class="mt-3">База данных:</h6>
-                                    <p class="small mb-1">
-                                        <i class="fas fa-database text-primary"></i>
-                                        Тип: PostgreSQL
-                                    </p>
-                                    <p class="small mb-0">
-                                        <i class="fas fa-map text-info"></i>
-                                        Адресов: <strong>{{ kladr_stats.address_objects|default:"-" }}</strong>
-                                    </p>
-                                </div>
+                    {% if user_role == 'django_admin' or user_role == 'dba' %}
+                    <div class="col-6 col-md-3 mb-2">
+                        <div class="card quick-action-card">
+                            <div class="card-body py-2">
+                                <a href="{% url 'portal:kladr_management' %}" class="text-decoration-none text-dark">
+                                    <i class="fas fa-map-marked-alt text-success"></i>
+                                    <h6 class="mb-0 small">КЛАДР</h6>
+                                    <small class="text-muted" style="font-size: 0.65rem;">Адресная база</small>
+                                </a>
                             </div>
-                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if user_role == 'django_admin' or user_role == 'dba' %}
+                    <div class="col-6 col-md-3 mb-2">
+                        <div class="card quick-action-card">
+                            <div class="card-body py-2">
+                                <a href="{% url 'portal:prompt_management' %}" class="text-decoration-none text-dark">
+                                    <i class="fas fa-robot text-info"></i>
+                                    <h6 class="mb-0 small">AI Промпты</h6>
+                                    <small class="text-muted" style="font-size: 0.65rem;">Настройка бота</small>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Статистика -->
+            {% if user_role == 'django_admin' or user_role == 'dba' %}
+            <div>
+                <div class="section-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-bar"></i>
+                        Статистика системы
+                    </h6>
+                </div>
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <div class="card stat-card">
+                            <div class="card-body text-center py-2">
+                                <h5 class="text-primary mb-1">{{ total_users }}</h5>
+                                <p class="text-muted mb-0 small">
+                                    <i class="fas fa-users"></i> Пользователей
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <div class="card stat-card">
+                            <div class="card-body text-center py-2">
+                                <h5 class="text-warning mb-1">{{ dba_count }}</h5>
+                                <p class="text-muted mb-0 small">
+                                    <i class="fas fa-database"></i> Менеджеров
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <div class="card stat-card">
+                            <div class="card-body text-center py-2">
+                                <h5 class="text-info mb-1">{{ uk_user_count }}</h5>
+                                <p class="text-muted mb-0 small">
+                                    <i class="fas fa-building"></i> Сотрудников УК
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3 mb-2">
+                        <div class="card stat-card">
+                            <div class="card-body text-center py-2">
+                                <h5 class="text-secondary mb-1">{{ resident_count }}</h5>
+                                <p class="text-muted mb-0 small">
+                                    <i class="fas fa-home"></i> Жителей
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Статистика КЛАДР -->
+                <div class="row mt-2">
+                    <div class="col-md-4 mb-2">
+                        <div class="card stat-card">
+                            <div class="card-body text-center py-2">
+                                <h5 class="text-primary mb-1">{{ kladr_stats.address_objects|default:"-" }}</h5>
+                                <p class="text-muted mb-0 small">
+                                    <i class="fas fa-map-marker-alt"></i> Адресных объектов
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4 mb-2">
+                        <div class="card stat-card">
+                            <div class="card-body text-center py-2">
+                                <h5 class="text-success mb-1">{{ kladr_stats.buildings|default:"-" }}</h5>
+                                <p class="text-muted mb-0 small">
+                                    <i class="fas fa-building"></i> Зданий
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4 mb-2">
+                        <div class="card stat-card">
+                            <div class="card-body text-center py-2">
+                                <h5 class="text-info mb-1">{{ kladr_stats.service_areas|default:"-" }}</h5>
+                                <p class="text-muted mb-0 small">
+                                    <i class="fas fa-draw-polygon"></i> Зон обслуживания
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+            {% endif %}
+        </div>
+
+        <!-- Правая колонка - Профиль -->
+        <div class="col-lg-4">
+            <!-- Профиль пользователя -->
+            <div class="card profile-card mb-3">
+                <div class="card-body text-center">
+                    <div class="profile-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <h6 class="mb-1">{{ user.get_full_name|default:user.username }}</h6>
+                    <p class="text-muted mb-2 small">{{ user.email|default:"-" }}</p>
+                    <span class="badge
+                        {% if user_role == 'django_admin' %}bg-danger{% elif user_role == 'dba' %}bg-warning text-dark{% else %}bg-info{% endif %}
+                        fs-6">
+                        {% if user_role == 'django_admin' %}
+                            Администратор Django
+                        {% elif user_role == 'dba' %}
+                            DBA - Менеджер данных
+                        {% else %}
+                            Сотрудник УК
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Быстрые ссылки -->
+            <div class="card profile-card mb-3">
+                <div class="card-header bg-transparent">
+                    <h6 class="mb-0">
+                        <i class="fas fa-link"></i>
+                        Быстрые ссылки
+                    </h6>
+                </div>
+                <div class="list-group list-group-flush quick-links">
+                    <a href="{% url 'message_handler:chat_interface' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-robot text-primary"></i>
+                        AI Чат диспетчера
+                    </a>
+                    <a href="{% url 'file_manager:file_list' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-folder text-warning"></i>
+                        Мои файлы
+                    </a>
+                    <a href="/subscribers/" class="list-group-item list-group-item-action">
+                        <i class="fas fa-users text-info"></i>
+                        Абоненты
+                    </a>
+                    {% if user_role == 'django_admin' or user_role == 'dba' %}
+                    <a href="{% url 'portal:kladr_management' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-map-marked-alt text-success"></i>
+                        Управление КЛАДР
+                    </a>
+                    {% endif %}
+                    {% if user_role == 'django_admin' %}
+                    <a href="/admin/" class="list-group-item list-group-item-action">
+                        <i class="fas fa-cog text-secondary"></i>
+                        Django Админ
+                    </a>
+                    {% endif %}
+                    {% if user_role == 'django_admin' %}
+                    <a href="{% url 'portal:admin_page' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-users-cog text-secondary"></i>
+                        Управление пользователями
+                    </a>
+                    {% elif user_role == 'dba' %}
+                    <a href="{% url 'portal:dba_page' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-database text-secondary"></i>
+                        Панель DBA
+                    </a>
+                    {% endif %}
+                    {% if user_role == 'django_admin' or user_role == 'dba' %}
+                    <a href="{% url 'portal:prompt_management' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-robot text-secondary"></i>
+                        AI промпты
+                    </a>
+                    {% endif %}
+                    <a href="/logout/" class="list-group-item list-group-item-action text-danger">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Выйти
+                    </a>
+                </div>
+            </div>
+
+            <!-- Информация о системе -->
+            {% if user_role == 'django_admin' or user_role == 'dba' %}
+            <div class="card profile-card">
+                <div class="card-header bg-transparent py-2">
+                    <h6 class="mb-0 small">
+                        <i class="fas fa-info-circle"></i>
+                        Система
+                    </h6>
+                </div>
+                <div class="card-body py-2">
+                    <div class="mb-2">
+                        <h6 class="small text-muted mb-1">
+                            <i class="fab fa-telegram"></i> Telegram бот
+                        </h6>
+                        <p class="small mb-0">
+                            <span class="badge bg-success">Активен</span>
+                            <span class="ms-1">Сигизмунд Лазоревич</span>
+                        </p>
+                    </div>
+
+                    <hr class="my-2">
+
+                    <div>
+                        <h6 class="small text-muted mb-1">
+                            <i class="fas fa-database"></i> База данных
+                        </h6>
+                        <p class="small mb-0">
+                            <span class="text-muted">Тип:</span>
+                            <strong>PostgreSQL 16</strong>
+                        </p>
+                        <p class="small mb-0">
+                            <span class="text-muted">Адресов:</span>
+                            <strong>{{ kladr_stats.address_objects|default:"-" }}</strong>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

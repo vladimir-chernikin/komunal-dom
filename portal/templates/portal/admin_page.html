@@ -80,7 +80,7 @@
                     <div class="text-center">
                         <h6>Общий размер:</h6>
                         <h5 class="text-primary">
-                            {% if file_stats.total_size > 1024*1024 %}
+                            {% if file_stats.total_size > 1048576 %}
                                 {{ file_stats.total_size|floatformat:1 }} МБ
                             {% else %}
                                 {{ file_stats.total_size|floatformat:0 }} КБ

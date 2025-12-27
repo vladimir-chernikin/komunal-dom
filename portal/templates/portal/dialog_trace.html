@@ -1,0 +1,347 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Трассировка диалогов - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+.message-card {
+    transition: all 0.2s ease-in-out;
+}
+.message-card:hover {
+    transform: translateX(5px);
+}
+.message-inbound {
+    border-left: 4px solid #28a745;
+}
+.message-outbound {
+    border-left: 4px solid #007bff;
+}
+.pre-wrap {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+.session-item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+    padding: 0.5rem 0.75rem !important;
+    border-left: 3px solid transparent;
+}
+.session-item:hover {
+    background-color: #f8f9fa;
+}
+.session-item.active {
+    background-color: #e7f3ff;
+    border-left-color: #007bff;
+}
+.file-link {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+.file-link:hover {
+    color: #007bff;
+}
+.messages-container {
+    max-height: 700px;
+    overflow-y: auto;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-2">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h1 class="h4 mb-0">
+                    <i class="fas fa-binoculars"></i>
+                    Трассировка диалогов
+                </h1>
+                <div>
+                    <a href="{% url 'portal:dba_page' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left"></i> Назад
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Две колонки: выбор сессии и просмотр -->
+    <div class="row mb-2">
+        <!-- Левая колонка: список сессий -->
+        <div class="col-lg-6 col-md-5">
+            <div class="card h-100">
+                <div class="card-header bg-success text-white py-2">
+                    <small class="fw-bold mb-0">
+                        <i class="fas fa-list"></i>
+                        Сессии (хронология)
+                    </small>
+                </div>
+                <div class="card-body p-0">
+                    <div id="sessionsList" style="max-height: 800px; overflow-y: auto;">
+                        <div class="text-center text-muted py-5">
+                            <div class="spinner-border text-success" role="status"></div>
+                            <p class="mt-3 mb-0 small">Загрузка сессий...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Правая колонка: просмотр -->
+        <div class="col-lg-6 col-md-7">
+            <!-- Вкладки: Трассировка, Файлы отчетов -->
+            <ul class="nav nav-tabs mb-2" id="traceTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="trace-tab" data-bs-toggle="tab" data-bs-target="#tracePanel" type="button" role="tab">
+                        <i class="fas fa-comments"></i> Трассировка
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="files-tab" data-bs-toggle="tab" data-bs-target="#filesPanel" type="button" role="tab">
+                        <i class="fas fa-file-alt"></i> Файлы отчетов
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content">
+                <!-- Панель трассировки -->
+                <div class="tab-pane fade show active" id="tracePanel" role="tabpanel">
+                    <div class="card h-100">
+                        <div class="card-header bg-primary text-white py-2">
+                            <small class="fw-bold mb-0">
+                                <i class="fas fa-history"></i>
+                                История сообщений
+                            </small>
+                        </div>
+                        <div class="card-body p-2 messages-container" id="messagesContainer">
+                            <div class="text-center text-muted py-5">
+                                <i class="fas fa-hand-pointer fa-3x mb-3"></i>
+                                <p class="mb-0">Выберите сессию из списка слева</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Панель файлов -->
+                <div class="tab-pane fade" id="filesPanel" role="tabpanel">
+                    <div class="card h-100">
+                        <div class="card-header bg-info text-white py-2">
+                            <small class="fw-bold mb-0">
+                                <i class="fas fa-file-alt"></i>
+                                Файлы отчетов из /tmp/
+                            </small>
+                        </div>
+                        <div class="card-body p-2 messages-container" id="filesContainer">
+                            <div class="text-center text-muted py-5">
+                                <div class="spinner-border text-info" role="status"></div>
+                                <p class="mt-3 mb-0 small">Загрузка списка файлов...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Загрузка сессий при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    loadSessions();
+    loadReportFiles();
+});
+
+let selectedSession = null;
+
+// Загрузка списка сессий
+async function loadSessions() {
+    const container = document.getElementById('sessionsList');
+
+    try {
+        const response = await fetch('/api/dialog-sessions/');
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-danger m-3">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.sessions || data.sessions.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning m-3">Сессии не найдены</div>';
+            return;
+        }
+
+        // Отобразить сессии
+        let html = '';
+        data.sessions.forEach(session => {
+            const time = new Date(session.last_message).toLocaleString('ru-RU');
+            const icon = session.channel === 'telegram' ? '<i class="fab fa-telegram"></i>' :
+                         session.channel === 'web' ? '<i class="fas fa-globe"></i>' :
+                         '<i class="fas fa-comment"></i>';
+
+            html += `
+                <div class="list-group-item session-item" onclick="loadTrace('${session.session_id}')" style="cursor: pointer;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${icon} ${session.session_id}</strong>
+                            <br>
+                            <small class="text-muted">
+                                <i class="fas fa-envelope"></i> ${session.message_count} сообщений
+                            </small>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">
+                                <i class="fas fa-clock"></i> ${time}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error:', error);
+        container.innerHTML = '<div class="alert alert-danger m-3">Ошибка загрузки сессий</div>';
+    }
+}
+
+// Загрузка трассировки по выбранной сессии
+async function loadTrace(sessionId) {
+    const container = document.getElementById('messagesContainer');
+    selectedSession = sessionId;
+
+    // Подсветка выбранной сессии
+    document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.currentTarget.classList.add('active');
+
+    // Показать загрузку
+    container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Загрузка сообщений...</p></div>';
+
+    try {
+        const response = await fetch(`/api/dialog-trace/?session_id=${encodeURIComponent(sessionId)}`);
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.messages || data.messages.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">Сообщения не найдены</div>';
+            return;
+        }
+
+        // Отобразить сообщения
+        let html = '<div class="alert alert-info alert-sm mb-3">';
+        html += `<small><strong>Session:</strong> <code class="small">${sessionId.substring(0, 20)}...</code> | <strong>Сообщений:</strong> ${data.total}</small>`;
+        html += '</div>';
+
+        data.messages.forEach((msg, index) => {
+            const isInbound = msg.direction === 'inbound';
+            const bgClass = isInbound ? 'bg-light' : 'bg-white';
+            const borderClass = isInbound ? 'message-inbound' : 'message-outbound';
+            const icon = isInbound ? '<i class="fas fa-user text-success"></i>' : '<i class="fas fa-robot text-primary"></i>';
+            const directionLabel = isInbound ? 'Пользователь' : 'Бот';
+            const time = new Date(msg.created_at).toLocaleString('ru-RU');
+
+            html += `
+                <div class="card message-card ${bgClass} ${borderClass} mb-2">
+                    <div class="card-body p-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="fw-bold">${icon} ${directionLabel}</small>
+                            <span class="badge ${isInbound ? 'bg-success' : 'bg-primary'}" style="font-size: 0.7rem;">${msg.direction}</span>
+                        </div>
+                        <div class="pre-wrap bg-white border p-2 rounded small">${msg.text}</div>
+                        <div class="d-flex justify-content-between align-items-center mt-2">
+                            <small class="text-muted" style="font-size: 0.75rem;">
+                                <i class="fas fa-clock"></i> ${time}
+                            </small>
+                            <small class="text-muted" style="font-size: 0.75rem;">
+                                <i class="fas fa-comment-alt"></i> ${msg.channel}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+
+        // Переключиться на вкладку трассировки
+        document.getElementById('trace-tab').click();
+
+    } catch (error) {
+        console.error('Error:', error);
+        container.innerHTML = '<div class="alert alert-danger">Ошибка загрузки сообщений</div>';
+    }
+}
+
+// Загрузка файлов отчетов
+async function loadReportFiles() {
+    const container = document.getElementById('filesContainer');
+
+    try {
+        const response = await fetch('/api/dialog-reports/');
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.files || data.files.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">Файлы не найдены</div>';
+            return;
+        }
+
+        // Отобразить файлы
+        let html = '<div class="list-group">';
+        data.files.forEach(file => {
+            const time = new Date(file.modified * 1000).toLocaleString('ru-RU');
+            const size = file.size > 1024 ? (file.size / 1024).toFixed(1) + ' КБ' : file.size + ' Б';
+
+            // Определить иконку по типу файла
+            let icon = 'fas fa-file';
+            if (file.name.includes('FULL_ANALYSIS')) icon = 'fas fa-file-alt text-danger';
+            else if (file.name.includes('DIALOG_TRACE')) icon = 'fas fa-file-code text-primary';
+            else if (file.name.includes('FINAL_FIX')) icon = 'fas fa-file-signature text-warning';
+
+            html += `
+                <div class="list-group-item file-link" onclick="viewReport('${file.name}')" style="cursor: pointer;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="${icon}"></i>
+                            <strong> ${file.name}</strong>
+                            <br>
+                            <small class="text-muted">${size}</small>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">
+                                <i class="fas fa-clock"></i> ${time}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        container.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error:', error);
+        container.innerHTML = '<div class="alert alert-danger">Ошибка загрузки файлов</div>';
+    }
+}
+
+// Просмотр файла отчета
+function viewReport(filename) {
+    // Открываем страницу с просмотром файла
+    window.location.href = `/admin-uk/dialog-trace/${encodeURIComponent(filename)}/`;
+}
+</script>
+{% endblock %}

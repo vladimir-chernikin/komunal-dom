@@ -277,6 +277,65 @@ class MainAgent:
                 )
                 logger.info(f"Установленные фильтры: {established_filters}")
 
+                # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
+                # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
+                if dialog_history and len(dialog_history) >= 4:
+                    # Получаем последние 2-3 ответа пользователя
+                    user_responses = []
+                    for msg in reversed(dialog_history[-6:]):
+                        # ИСПРАВЛЕНО: Используем 'role' вместо 'direction'
+                        if msg.get('role') == 'user':
+                            user_responses.append(msg.get('text', '').strip().lower())
+                            if len(user_responses) >= 3:
+                                break
+
+                    # Проверяем есть ли повторения
+                    if len(user_responses) >= 2 and user_responses[0] == user_responses[1]:
+                        repeated_answer = user_responses[0]
+                        logger.warning(f"⚠️ Обнаружен повторяющийся ответ: '{repeated_answer}' (2+ раза)")
+
+                        # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА меняем стратегию при повторяющихся ответах
+                        # Не проверяем уверенность фильтров - если пользователь повторяет, значит нужно менять вопрос!
+
+                        # Проверяем: сколько раз повторяется?
+                        repeat_count = 1
+                        for i in range(1, len(user_responses)):
+                            if user_responses[i] == repeated_answer:
+                                repeat_count += 1
+                            else:
+                                break
+
+                        logger.info(f"⚠️ Ответ повторяется {repeat_count} раз")
+
+                        # Меняем сообщение в зависимости от количества повторений
+                        if repeat_count >= 3:
+                            # 3+ повторения - просим описать проблему другими словами
+                            message = 'Пожалуйста, опишите проблему другими словами. Что именно случилось?'
+                        else:
+                            # 2 повтора - задаем более конкретный вопрос
+                            message = 'Уточните, пожалуйста: что именно произошло?'
+
+                        logger.info("⚠️ Меняем стратегию: задаем другой вопрос")
+
+                        # Возвращаем специальный результат
+                        result_metadata = {
+                            'txtPrb': txtPrb,
+                            'accumulated_fields': accumulated_fields,
+                            'established_filters': established_filters,
+                            'repeated_answer_detected': True,
+                            'repeat_count': repeat_count
+                        }
+
+                        return {
+                            'status': 'AMBIGUOUS',
+                            'candidates': [],
+                            'candidate_names': [],
+                            'message': message,
+                            'needs_clarification': True,
+                            'is_followup': is_followup,
+                            '_metadata': result_metadata
+                        }
+
             except Exception as e:
                 logger.warning(f"Ошибка ProblemAccumulationService: {e}")
 
@@ -382,7 +441,8 @@ class MainAgent:
                     'message': orch_result.get('message'),
                     'candidates': orch_result.get('candidates', []),
                     'needs_confirmation': orch_result.get('needs_confirmation', True),
-                    'is_followup': is_followup
+                    'is_followup': is_followup,
+                    '_metadata': result_metadata  # ИСПРАВЛЕНО (2025-12-27): Добавляем metadata
                 }
                 return self._add_address_to_result(result, address_components)
 
@@ -395,7 +455,8 @@ class MainAgent:
                     'candidate_names': [c.get('service_name', 'Unknown') for c in orch_result.get('candidates', [])],
                     'message': orch_result.get('message'),
                     'needs_clarification': True,
-                    'is_followup': is_followup
+                    'is_followup': is_followup,
+                    '_metadata': result_metadata  # ИСПРАВЛЕНО (2025-12-27): Добавляем metadata
                 }
 
             # Если AI Orchestrator не смог - пробуем старую логику
@@ -422,7 +483,8 @@ class MainAgent:
                                 'source': 'ai_agent',
                                 'message': f'Правильно ли я понял, что у вас проблема: {ai_candidates[0]["service_name"]}?',
                                 'candidates': ai_candidates,
-                                'needs_confirmation': True
+                                'needs_confirmation': True,
+                                '_metadata': result_metadata  # ИСПРАВЛЕНО (2025-12-27): Добавляем metadata
                             }
                             return self._add_address_to_result(result, address_components)
 
@@ -1684,25 +1746,41 @@ class MainAgent:
             for q in recent_bot_questions[-3:]:
                 context_info += f"  - {q}\n"
 
-        # МАКСИМАЛЬНО ПРОСТОЙ И ЖЁСТКИЙ ПРОМПТ
+        # СУПЕР-ЖЁСТКИЙ ПРОМПТ с конкретными примерами (2025-12-27)
         prompt = f"""Пользователь написал: "{message_text}"
 {context_info}
 Возможные услуги:
 {chr(10).join(f"{i+1}. {c['service_name']}" for i, c in enumerate(candidates[:5]))}
 
-ЗАДАЙ ОДИН ВОПРОС.
+ЗАДАЙ ОДИН ОТКРЫТЫЙ ВОПРОС без вариантов ответа.
 
-❌ ЗАПРЕЩЕНО:
-- Закрытые вопросы с "ИЛИ"
-- Перечисления через запятую
-- Вопросы в скобках
-- ПОВТОРЯТЬ уже заданные вопросы
+══════════════════════════════════════════════════════════════════════════════
+🚫 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕННЫЕ ПРИМЕРЫ (НЕПРАВИЛЬНО):
+🚫 "Где именно — в квартире или за её пределами?"
+🚫 "Что конкретно течёт: труба, кран, батарея?"
+🚫 "Требуется ли ремонт водопроводных или канализационных труб?"
+🚫 "Это отопление или водоснабжение?"
+🚫 "Где именно произошла протечка — в системе отопления общедомовой, в квартире или это общедомовой прорыв труб?"
 
-✅ ПРАВИЛЬНО:
-- "Где именно течет?"
-- "Что именно сломалось?"
+═════════════════════════════════════════════════════════════════════════════
+✅ ПРАВИЛЬНЫЕ ПРИМЕРЫ (ОТКРЫТЫЕ ВОПРОСЫ):
+✅ "Где именно течет?"
+✅ "Что именно сломалось?"
+✅ "Опишите подробнее что случилось."
+✅ "Уточните где именно это произошло."
 
-Верни ТОЛЬКО вопрос без слов "Вопрос:" и других пояснений:"""
+═════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+1. ❌ НЕ использовать слово "или" (в любом регистре)
+2. ❌ НЕ перечислять варианты через запятую
+3. ❌ НЕ использовать скобки с вариантами
+4. ❌ НЕ использовать тире с вариантами
+5. ❌ НЕ предлагать выбор из списка
+6. ✅ Вопрос должен начинаться с: Где/Что/Какой/Опишите/Уточните
+7. ✅ Только ОДИН вопрос
+8. ❌ НЕ повторять уже заданные вопросы выше
+
+Верни ТОЛЬКО текст вопроса БЕЗ слов "Вопрос:", "Ответ:" и других пояснений:"""
 
         if not self.ai_agent:
             return {
@@ -1714,11 +1792,56 @@ class MainAgent:
 
         try:
             response, _ = await self.ai_agent._call_yandex_gpt(prompt)
-            logger.info(f"AI сгенерировал вопрос для {len(candidates)} кандидатов: {response.strip()}")
+            ai_question = response.strip()
+            logger.info(f"AI сгенерировал вопрос для {len(candidates)} кандидатов: {ai_question}")
+
+            # ИСПРАВЛЕНО (2025-12-27): Post-processing проверка на запрещённые паттерны
+            question_lower = ai_question.lower()
+
+            # Запрещённые паттерны
+            has_ili = ' или ' in question_lower or question_lower.endswith(' или')
+            has_comma_enumeration = ',' in ai_question and '?' in ai_question
+            has_parens = '(' in ai_question and ')' in ai_question
+            has_dash_variants = ' — ' in ai_question or ' - ' in ai_question
+
+            # Проверка на перечисление (несколько слов с большой буквы через запятую)
+            has_multiple_options = False
+            if has_comma_enumeration:
+                parts = ai_question.split('?')[0].split(',')
+                if len(parts) >= 2:
+                    # Проверяем есть ли несколько слов с большой буквы (перечисление вариантов)
+                    capitalized_parts = [p.strip() for p in parts if p.strip() and p.strip()[0].isupper()]
+                    has_multiple_options = len(capitalized_parts) >= 2
+
+            if has_ili or has_multiple_options or has_parens or has_dash_variants:
+                logger.warning(
+                    f"⚠️ AI сгенерировал запрещённый паттерн! "
+                    f"или={has_ili}, перечисление={has_multiple_options}, "
+                    f"скобки={has_parens}, тире={has_dash_variants}"
+                )
+                logger.warning(f"❌ Запрещённый вопрос: {ai_question}")
+
+                # Используем CommunicativeScriptsService как fallback
+                if self.communicative_scripts:
+                    try:
+                        dialog_turn = len(dialog_history) if dialog_history else 1
+                        fallback_message = await self.communicative_scripts.get_fallback_message(
+                            channel='telegram',
+                            candidate_count=len(candidates),
+                            is_followup=dialog_turn > 1,
+                            dialog_turn=dialog_turn
+                        )
+                        logger.info(f"✅ Заменяем на fallback: {fallback_message}")
+                        ai_question = fallback_message
+                    except Exception as e:
+                        logger.error(f"Ошибка получения fallback: {e}")
+                        ai_question = "Опишите подробнее что именно произошло."
+                else:
+                    ai_question = "Опишите подробнее что именно произошло."
 
             return {
                 'status': 'AMBIGUOUS',
-                'message': response.strip(),
+                'message': ai_question,
                 'candidates': candidates,
                 'needs_clarification': True
             }

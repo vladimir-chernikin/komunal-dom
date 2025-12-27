@@ -156,9 +156,16 @@ def prompt_management(request):
 
     prompts = AIPrompt.objects.all().order_by('prompt_type', 'prompt_id')
 
+    # Подсчет статистики по типам промптов
+    prompt_types_with_stats = [
+        (name, code, prompts.filter(prompt_type=code).count())
+        for name, code in AIPrompt.PROMPT_TYPES
+    ]
+
     context = {
         'prompts': prompts,
         'prompt_types': AIPrompt.PROMPT_TYPES,
+        'prompt_types_with_stats': prompt_types_with_stats,
     }
 
     return render(request, 'portal/prompt_management.html', context)

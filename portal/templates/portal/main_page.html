@@ -5,20 +5,46 @@
 {% block extra_css %}
 <style>
     .hero-section {
-        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
         color: white;
-        padding: 120px 0;
-        margin-bottom: 50px;
+        padding: 50px 0;
+        margin-bottom: 40px;
     }
     .feature-icon {
-        font-size: 3rem;
-        color: #2a5298;
-        margin-bottom: 20px;
+        font-size: 1.8rem;
+        color: #6366f1;
+        margin-bottom: 12px;
     }
     .contact-info {
-        background: #f8f9fa;
-        border-radius: 10px;
-        padding: 30px;
+        background: #fafafa;
+        border-radius: 8px;
+        padding: 20px;
+        border: 1px solid #e5e7eb;
+    }
+    .feature-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        border: 1px solid #f3f4f6;
+    }
+    .feature-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.15) !important;
+        border-color: #6366f1;
+    }
+    .info-list {
+        list-style: none;
+        padding-left: 0;
+    }
+    .info-list li {
+        padding-left: 24px;
+        position: relative;
+        margin-bottom: 8px;
+    }
+    .info-list li:before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: #6366f1;
+        font-weight: bold;
     }
 </style>
 {% endblock %}
@@ -26,23 +52,22 @@
 {% block content %}
 <section class="hero-section">
     <div class="container text-center">
-        <h1 class="display-4 fw-bold mb-4">ООО "Аспект"</h1>
-        <p class="lead mb-5">Профессиональная управляющая компания в городе Сочи</p>
+        <h1 class="h2 fw-bold mb-2">ООО "Аспект"</h1>
+        <p class="lead mb-4">Управляющая компания в Сочи</p>
         <div class="row justify-content-center">
             <div class="col-md-8">
-                <p class="fs-5">
-                    Предоставляем полный комплекс услуг по управлению многоквартирными домами,
-                    обеспечивая комфорт и безопасность для наших жителей.
+                <p class="mb-4 opacity-75">
+                    Комфорт и безопасность для жителей многоквартирных домов
                 </p>
             </div>
         </div>
         {% if not user.is_authenticated %}
-            <div class="mt-4">
-                <a href="/admin/login/" class="btn btn-light btn-lg me-3">
-                    <i class="fas fa-sign-in-alt"></i> Войти в личный кабинет
+            <div class="mt-2">
+                <a href="/admin/login/" class="btn btn-light btn-sm me-2">
+                    Войти в кабинет
                 </a>
-                <a href="#contacts" class="btn btn-outline-light btn-lg">
-                    <i class="fas fa-phone"></i> Контакты
+                <a href="#contacts" class="btn btn-outline-light btn-sm">
+                    Контакты
                 </a>
             </div>
         {% endif %}
@@ -51,40 +76,37 @@
 
 <div class="container">
     <div class="row mb-5">
-        <div class="col-lg-4 col-md-6 mb-4">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body text-center">
+        <div class="col-lg-4 col-md-6 mb-3">
+            <div class="card h-100 shadow-sm feature-card">
+                <div class="card-body text-center p-3">
                     <i class="fas fa-building feature-icon"></i>
-                    <h4 class="card-title">Управление недвижимостью</h4>
-                    <p class="card-text">
-                        Профессиональное управление многоквартирными домами
-                        и коммерческой недвижимостью.
+                    <h5 class="card-title mb-2">Управление</h5>
+                    <p class="card-text small mb-0 text-muted">
+                        Многоквартирными и коммерческими объектами
                     </p>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-4 col-md-6 mb-4">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body text-center">
+        <div class="col-lg-4 col-md-6 mb-3">
+            <div class="card h-100 shadow-sm feature-card">
+                <div class="card-body text-center p-3">
                     <i class="fas fa-tools feature-icon"></i>
-                    <h4 class="card-title">Техническое обслуживание</h4>
-                    <p class="card-text">
-                        Регулярное техническое обслуживание и ремонт
-                        инженерных систем зданий.
+                    <h5 class="card-title mb-2">Обслуживание</h5>
+                    <p class="card-text small mb-0 text-muted">
+                        Ремонт и техническое обслуживание систем
                     </p>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-4 col-md-6 mb-4">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body text-center">
-                    <i class="fas fa-users feature-icon"></i>
-                    <h4 class="card-title">Работа с жильцами</h4>
-                    <p class="card-text">
-                        Оперативная обработка заявок и качественный сервис
-                        для всех жителей обслуживаемых домов.
+        <div class="col-lg-4 col-md-6 mb-3">
+            <div class="card h-100 shadow-sm feature-card">
+                <div class="card-body text-center p-3">
+                    <i class="fas fa-headset feature-icon"></i>
+                    <h5 class="card-title mb-2">Поддержка</h5>
+                    <p class="card-text small mb-0 text-muted">
+                        Оперативная обработка обращений жителей
                     </p>
                 </div>
             </div>
@@ -92,70 +114,67 @@
     </div>
 
     <div class="row">
-        <div class="col-lg-6 mb-4">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0"><i class="fas fa-info-circle"></i> О компании</h4>
+        <div class="col-lg-6 mb-3">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white py-2">
+                    <h6 class="mb-0"><i class="fas fa-info-circle"></i> О компании</h6>
                 </div>
-                <div class="card-body">
-                    <p>
-                        ООО "Аспект" - это надежная управляющая компания с многолетним опытом
-                        работы на рынке недвижимости в городе Сочи. Мы специализируемся на
-                        комплексном управлении жилыми и коммерческими объектами.
+                <div class="card-body p-3">
+                    <p class="small mb-3">
+                        ООО "Аспект" — управляющая компания в Сочи с многолетним опытом работы
                     </p>
-                    <p>
-                        Наша миссия - создание комфортных и безопасных условий для жизни
-                        и работы жителей, а также сохранение и увеличение стоимости
-                        обслуживаемой недвижимости.
-                    </p>
-                    <p>
-                        Компания работает в строгом соответствии с законодательством
-                        РФ и применяет современные методы управления.
-                    </p>
+                    <ul class="info-list small mb-0">
+                        <li>Комплексное управление объектами</li>
+                        <li>Соблюдение законодательства РФ</li>
+                        <li>Современные методы управления</li>
+                        <li>Комфорт и безопасность для жителей</li>
+                    </ul>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-6 mb-4" id="contacts">
-            <div class="contact-info">
-                <h4 class="mb-4"><i class="fas fa-phone"></i> Контакты</h4>
+        <div class="col-lg-6 mb-3" id="contacts">
+            <div class="contact-info h-100">
+                <h6 class="mb-3"><i class="fas fa-phone text-primary"></i> Контакты</h6>
 
-                <div class="mb-3">
-                    <i class="fas fa-map-marker-alt text-primary"></i>
-                    <strong>Адрес:</strong><br>
-                    г. Сочи, ул. Навагинская, 12а
-                </div>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <div class="d-flex align-items-center mb-2">
+                            <i class="fas fa-map-marker-alt text-primary me-2"></i>
+                            <span class="small"><strong>Адрес:</strong> г. Сочи, ул. Навагинская, 12а</span>
+                        </div>
+                    </div>
 
-                <div class="mb-3">
-                    <i class="fas fa-phone text-primary"></i>
-                    <strong>Телефон:</strong><br>
-                    +7 (862) 265-78-90
-                </div>
+                    <div class="col-sm-6">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-phone text-primary me-2"></i>
+                            <span class="small">+7 (862) 265-78-90</span>
+                        </div>
+                    </div>
 
-                <div class="mb-3">
-                    <i class="fas fa-phone text-primary"></i>
-                    <strong>Горячая линия (круглосуточно):</strong><br>
-                    +7 (800) 555-35-35
-                </div>
+                    <div class="col-sm-6">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-phone-volume text-danger me-2"></i>
+                            <div class="small">
+                                <span class="text-danger">●</span> 24/7
+                                <span class="text-muted ms-1">+7 (800) 555-35-35</span>
+                            </div>
+                        </div>
+                    </div>
 
-                <div class="mb-3">
-                    <i class="fas fa-envelope text-primary"></i>
-                    <strong>Email:</strong><br>
-                    info@aspekt-sochi.ru
-                </div>
+                    <div class="col-sm-6">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-envelope text-primary me-2"></i>
+                            <span class="small text-muted">info@aspekt-sochi.ru</span>
+                        </div>
+                    </div>
 
-                <div class="mb-3">
-                    <i class="fas fa-clock text-primary"></i>
-                    <strong>Режим работы:</strong><br>
-                    Пн-Пт: 9:00 - 18:00<br>
-                    Сб: 10:00 - 16:00<br>
-                    Вс: выходной
-                </div>
-
-                <div class="mt-4">
-                    <button class="btn btn-primary" onclick="window.location.href='/admin/login/'">
-                        <i class="fas fa-user-circle"></i> Войти в личный кабинет
-                    </button>
+                    <div class="col-sm-6">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-clock text-primary me-2"></i>
+                            <span class="small text-muted">Пн-Сб: 9-18 / 10-16</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

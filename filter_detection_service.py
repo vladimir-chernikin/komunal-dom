@@ -12,11 +12,14 @@ FilterDetectionService - микросервис определения филь�
 - object_description: описание объекта
 
 ИСПРАВЛЕНО: Использует AIAgentService для всех вызовов LLM
+ИСПРАВЛЕНО (2025-12-25): Загружает категории и объекты из БД вместо хардкода
 """
 
 import logging
 import json
 from typing import Dict, List, Optional
+from django.db import connection
+from asgiref.sync import sync_to_async
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +37,66 @@ class FilterDetectionService:
         self.ai_agent = ai_agent_service
         self.is_available = ai_agent_service is not None
 
+        # ИСПРАВЛЕНО (2025-12-25): Загружаем категории и объекты из БД
+        self.categories_list = []
+        self.objects_examples = []
+        self._load_reference_data_from_db()
+
         logger.info(f"FilterDetectionService инициализирован (доступен: {self.is_available})")
+
+    def _load_reference_data_from_db(self):
+        """Загружает справочные данные из БД для промпта"""
+        try:
+            # ИСПРАВЛЕНО (2025-12-25): Используем allow_thread_sharing для async контекста
+            def load_sync():
+                # Устанавливаем allow_thread_sharing для работы в async контексте
+                connection.allow_thread_sharing = True
+                with connection.cursor() as cursor:
+                    # Загружаем уникальные категории
+                    cursor.execute("""
+                        SELECT DISTINCT category
+                        FROM services_catalog
+                        WHERE category IS NOT NULL AND category != ''
+                        ORDER BY category
+                    """)
+                    categories = [row[0] for row in cursor.fetchall()]
+
+                    # Загружаем примеры объектов (scenario_name)
+                    cursor.execute("""
+                        SELECT scenario_name, category, incident_type
+                        FROM services_catalog
+                        WHERE is_active = TRUE
+                        ORDER BY service_id
+                        LIMIT 30
+                    """)
+                    objects = [
+                        {
+                            'name': row[0],
+                            'category': row[1],
+                            'incident': row[2]
+                        }
+                        for row in cursor.fetchall()
+                    ]
+
+                    return categories, objects
+
+            self.categories_list, self.objects_examples = load_sync()
+
+            logger.info(
+                f"FilterDetectionService: загружено {len(self.categories_list)} категорий, "
+                f"{len(self.objects_examples)} примеров объектов"
+            )
+
+        except Exception as e:
+            logger.error(f"Ошибка загрузки справочных данных: {e}")
+            self.categories_list = []
+            self.objects_examples = []
 
     def _create_filter_detection_prompt(self, message_text: str, dialog_history: List[Dict]) -> str:
         """
         Создание промпта для определения фильтров
+
+        ИСПРАВЛЕНО (2025-12-25): Использует категории и объекты из БД вместо хардкода
 
         Returns:
             str: Промпт для YandexGPT
@@ -50,6 +108,21 @@ class FilterDetectionService:
                 role = "Пользователь" if msg.get('role') == 'user' else "Бот"
                 history_text += f"{role}: {msg.get('text', '')}\n"
 
+        # ИСПРАВЛЕНО (2025-12-25): Формируем список категорий из БД
+        categories_str = ", ".join([f'"{cat}"' for cat in self.categories_list])
+
+        # ИСПРАВЛЕНО (2025-12-25): Формируем примеры объектов из БД
+        objects_examples_text = ""
+        if self.objects_examples:
+            # Группируем по категориям для примера
+            from collections import defaultdict
+            by_category = defaultdict(list)
+            for obj in self.objects_examples[:15]:  # Первые 15 примеров
+                by_category[obj['category']].append(obj['name'])
+
+            for cat, names in sorted(by_category.items())[:5]:  # До 5 категорий
+                objects_examples_text += f"- {cat}: {', '.join(names[:3])}\n"
+
         prompt = f"""Ты - опытный диспетчер управляющей компании. Проанализируй обращение и определи фильтры для поиска услуги.
 
 История диалога:
@@ -57,38 +130,43 @@ class FilterDetectionService:
 
 Текущее сообщение: "{message_text}"
 
-ВАЖНО: Если в истории есть предыдущие сообщения пользователя, ОБЪЕДИ их с текущим для понимания контекста!
+ВАЖНО: Если в истории есть предыдущие сообщения пользователя, ОБЪЕДИНИ их с текущим для понимания контекста!
 Например, если пользователь сказал "у меня течет", а потом "в ванной" - рассматривай как "у меня течет в ванной".
+
+ИСПРАВЛЕНО (2025-12-25): Учитывай опечатки и транскрипционные ошибки! "ванных" вместо "ванной", "батарея" вместо "батарея" - это нормально.
+
+ДОСТУПНЫЕ КАТЕГОРИИ УСЛУГ:
+{categories_str}
+
+ПРИМЕРЫ ОБЪЕКТОВ ПО КАТЕГОРИЯМ:
+{objects_examples_text}
 
 Определи и верни JSON в формате:
 {{
     "incident_type": "Инцидент" или "Запрос",
     "location_type": "Индивидуальное" или "Общедомовое",
-    "category": "Водоснабжение" или "Канализация" или "Отопление" или "Электричество" или "Конструктив" или "Лифты" или "Санитария" или "Озеленение" или "Ремонт МАФ и покрытий",
+    "category": одна из доступных категорий выше,
     "object_description": "МАКСИМУМ 3 СЛОВА - объект+действие+место (пример: 'течь труба ванная', 'слабый напор кран')",
     "confidence": 0.0-1.0,
-    "reason": "обоснование выбора"
+    "reason": "обоснование выбора с учетом примеров объектов"
 }}
-
-Правила выбора категории:
-- "Водоснабжение" - если речь о воде, трубах, кранах, смесителях, напоре, протечках воды
-- "Канализация" - если речь о засорах, трубах канализации, мусоропроводе
-- "Отопление" - если речь о батареях, отоплении, тепле
-- "Электричество" - если речь о свете, электричестве, розетках
-- "Санитария" - ТОЛЬКО если речь об уборке, мусоре, дезинсекции
-- "Конструктив" - если речь о стенах, потолке, крыше, полу
-- "Лифты" - если речь о лифте
-- "Озеленение" - если речь о деревьях, траве
-- "Ремонт МАФ и покрытий" - если речь о дорожках, площадках
 
 Правила:
 - incident_type: "Инцидент" - ЧТО-ТО СЛОМАЛОСЬ/ТЕЧЕТ/НЕ РАБОТАЕТ/ЗАСОРИЛО/ПРОРВАЛО (любая проблема, авария, поломка)
 - incident_type: "Запрос" - ТОЛЬКО если пользователь ХОЧЕТ ИНФОРМАЦИЮ или спрашивает "как сделать", "почему", "когда"
-- location_type: "Индивидуальное" - если в квартире/ванной/кухне/балконе, "Общедомовое" - если подъезд/лифт/подвал/крыша/двор
-- object_description: ТОЛЬКО 2-3 КЛЮЧЕВЫХ СЛОВА - что случилось+где (пример: 'прорыв трубы', 'течь ванная', 'засор кухня', 'слабый напор'). НЕ пиши 'не указано' или длинные фразы!
+- location_type: "Индивидуальное" - если ЯВНО указано (в квартире, в ванной, на кухне)
+            "Общедомовое" - если ЯВНО указано (подъезд, крыша, подвал)
+            null - если НЕ ЯСНО где именно
+- category: УКАЗЫВАЙ ТОЛЬКО если НА 100% ЯСНО (батарея=Отопление, лифт=Лифты)
+  ИСПРАВЛЕНИЕ (2025-12-25): Если НЕ ЯСНО - НЕ УКАЗЫВАЙ category! Оставь пустым или null!
+- object_description: 2-3 ключевых слова (пример: 'течь труба', 'запах вентиляция')
 - confidence: от 0.5 до 1.0, где 1.0 = полная уверенность
 
+ИСПРАВЛЕНО (2025-12-25): КРИТИЧЕСКИ ВАЖНО - НЕ УКАЗЫВАЙ location_type и category если НЕОЧЕВИДНО!
+
 ВАЖНО: Если пользователь описывает проблему (течет, сломалось, не работает) - ВСЕГДА incident_type="Инцидент"!
+
+УЧИТЫВАЙ ОПЕЧАТКИ: "ванных" = "ванная", "потолок" = "потолка", "батарея" может быть в любой падеже!
 
 Верни только JSON, без другого текста.
 

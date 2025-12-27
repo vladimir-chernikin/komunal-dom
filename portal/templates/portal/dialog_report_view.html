@@ -1,0 +1,65 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}{{ filename }} - Отчет - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+.pre-wrap {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+.file-content {
+    max-height: calc(100vh - 300px);
+    overflow-y: auto;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h3 mb-1">
+                        <i class="fas fa-file-alt"></i>
+                        {{ filename }}
+                    </h1>
+                    <small class="text-muted">
+                        <i class="fas fa-hdd"></i> {{ file_size }}
+                        <span class="mx-2">|</span>
+                        <i class="fas fa-clock"></i>
+                        {% load tz %}
+                        {% timezone "Europe/Moscow" %}
+                            {{ file_modified|date:"d.m.Y H:i:s" }}
+                        {% endtimezone %}
+                    </small>
+                </div>
+                <div>
+                    <a href="{% url 'portal:dialog_trace' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Назад к списку
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-code"></i>
+                        Содержимое файла
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="file-content">
+                        <pre class="pre-wrap m-0 p-4" style="background-color: #f8f9fa;"><code>{{ content }}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

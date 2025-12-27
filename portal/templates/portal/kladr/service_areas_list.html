@@ -4,18 +4,77 @@
 
 {% block extra_css %}
 <style>
-.table-responsive {
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+/* Унифицированные кнопки */
+.btn-unified {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    color: #1a1f2b;
+    border-radius: 10px;
+    font-weight: 600;
+}
+.btn-unified:hover {
+    background: #f3f4f6;
 }
 
+/* Градиентные бейджи с белым текстом */
+.badge {
+    font-size: 0.75rem;
+    padding: 0.35em 0.6em;
+    border-radius: 6px;
+    border: 1px solid rgba(0,0,0,0.15);
+    color: white !important;
+    font-weight: 500;
+}
+
+.badge.bg-secondary { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); }
+.badge.bg-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.badge.bg-warning { background: linear-gradient(135deg, #84cc16 0%, #65a30d 100%); }
+.badge.bg-danger { background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%); }
+.badge.bg-primary { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+.badge.bg-info { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
+
+/* Таблица */
+.table-responsive {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.table th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.85rem;
+    padding: 0.75rem;
+}
+
+.table td {
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    vertical-align: middle;
+}
+
+/* Колонки фиксированной ширины */
+.table col.col-id { width: 60px; }
+.table col.col-name { width: 250px; }
+.table col.col-desc { width: auto; }
+.table col.col-buildings { width: 100px; }
+.table col.col-date { width: 120px; }
+.table col.col-actions { width: 140px; }
+
+/* Форма поиска */
 .search-container {
     background: white;
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 1.5rem;
     margin-bottom: 1rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
 .area-description {
@@ -23,6 +82,33 @@
     color: #6c757d;
     max-height: 50px;
     overflow: hidden;
+}
+
+/* Карточки */
+.card {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-radius: 12px;
+}
+
+.card-header {
+    border-radius: 12px 12px 0 0 !important;
+    border-bottom: 1px solid #e6e9ef;
+}
+
+/* Градиентные заголовки */
+.card-header.bg-warning {
+    background: linear-gradient(135deg, #84cc16 0%, #65a30d 100%) !important;
+}
+.card-header.bg-info {
+    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
+}
+
+/* Кнопки */
+.btn-sm {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.85rem;
+    border-radius: 8px;
 }
 </style>
 {% endblock %}
@@ -37,10 +123,10 @@
                     Зоны обслуживания
                 </h1>
                 <div>
-                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-secondary">
+                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-unified">
                         <i class="fas fa-arrow-left"></i> Назад
                     </a>
-                    <a href="/admin/kladr/servicearea/add/" class="btn btn-primary">
+                    <a href="/admin/kladr/servicearea/add/" class="btn btn-unified" style="background: #0d6efd; color: white; border: none;">
                         <i class="fas fa-plus"></i> Добавить зону
                     </a>
                 </div>
@@ -59,7 +145,7 @@
             <div class="col-md-4">
                 <label class="form-label">&nbsp;</label>
                 <div class="d-grid">
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-unified" style="background: #0d6efd; color: white; border: none;">
                         <i class="fas fa-search"></i> Найти
                     </button>
                 </div>
@@ -90,6 +176,14 @@
             {% if page_obj %}
                 <div class="table-responsive">
                     <table class="table table-hover mb-0">
+                        <colgroup>
+                            <col class="col-id">
+                            <col class="col-name">
+                            <col class="col-desc">
+                            <col class="col-buildings">
+                            <col class="col-date">
+                            <col class="col-actions">
+                        </colgroup>
                         <thead class="table-light">
                             <tr>
                                 <th>ID</th>
@@ -117,7 +211,7 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <span class="badge bg-info fs-6">{{ area.building_count }}</span>
+                                    <span class="badge bg-info">{{ area.building_count }}</span>
                                 </td>
                                 <td>
                                     <small>{{ area.created_at|date:"d.m.Y" }}</small>
@@ -219,34 +313,19 @@
                 </div>
                 <div class="card-body">
                     <div class="row text-center">
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <h4 class="text-info">{{ total_count }}</h4>
                             <p class="mb-0">Всего зон</p>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <h4 class="text-success">
-                                {% for area in page_obj %}
-                                    {{ area.building_count }}
-                                    {% if not forloop.last %}+{% endif %}
-                                {% endfor %}
-                                {% if page_obj.paginator.count == 0 %}0{% endif %}
-                            </h4>
-                            <p class="mb-0">Зданий в зонах</p>
-                        </div>
-                        <div class="col-md-4">
-                            <h4 class="text-warning">
-                                {% for area in page_obj %}
-                                    {% if forloop.first %}{{ area.building_count }}{% endif %}
-                                {% endfor %}
-                                {% if page_obj.paginator.count == 0 %}0{% else %}
-                                    {% if page_obj %}
-                                        {{ page_obj.0.building_count }}
-                                    {% else %}
-                                        0
-                                    {% endif %}
+                                {% if page_obj %}
+                                    {% for area in page_obj %}{{ area.building_count }}{% if not forloop.last %}+{% endif %}{% endfor %}
+                                {% else %}
+                                    0
                                 {% endif %}
                             </h4>
-                            <p class="mb-0">В среднем на зону</p>
+                            <p class="mb-0">Зданий в зоне обслуживания</p>
                         </div>
                     </div>
                 </div>

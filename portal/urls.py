@@ -2,11 +2,14 @@ from django.urls import path
 from . import views
 from . import admin_views
 from . import kladr_views
+from django.conf import settings
+from django.conf.urls.static import static
 
 app_name = 'portal'
 
 urlpatterns = [
     path('', views.main_page, name='main_page'),
+    path('test-logo/', views.test_logo_variants, name='test_logo'),
     path('subscribers/', views.subscriber_page, name='subscriber_page'),
     path('dashboard/', views.dashboard, name='dashboard'),
     path('admin-uk/', admin_views.admin_page, name='admin_page'),
@@ -23,6 +26,14 @@ urlpatterns = [
     path('admin-uk/kladr/service-areas/', kladr_views.service_areas_list, name='kladr_service_areas'),
     path('admin-uk/kladr/service-areas/<int:area_id>/', kladr_views.service_area_detail, name='kladr_service_area_detail'),
     path('admin-uk/kladr/import-logs/', kladr_views.import_logs_list, name='kladr_import_logs'),
+
+    # Трассировка диалогов
+    path('admin-uk/dialog-trace/', views.dialog_trace_page, name='dialog_trace'),
+    path('admin-uk/dialog-trace/<str:filename>/', views.dialog_report_view_page, name='dialog_report_view'),
+    path('api/dialog-trace/', views.dialog_trace_api, name='api_dialog_trace'),
+    path('api/dialog-sessions/', views.api_dialog_sessions, name='api_dialog_sessions'),
+    path('api/dialog-reports/', views.api_dialog_reports, name='api_dialog_reports'),
+    path('api/dialog-reports/<str:filename>/', views.api_dialog_report_view, name='api_dialog_report_view'),
 
     # API
     path('api/kladr/search/', kladr_views.api_search_kladr, name='api_search_kladr'),
