@@ -1635,8 +1635,9 @@ class MainAgent:
         elif len(unique_candidates) <= 10:
             # ИСПРАВЛЕНО (2025-12-27): Используем AI для анализа кандидатов
             # вместо CommunicativeScriptsService
+            # ИСПРАВЛЕНО (2025-12-27): Передаем established_filters для сужения кандидатов
             return await self._ask_ai_clarification_with_candidates(
-                message_text, unique_candidates, dialog_history
+                message_text, unique_candidates, dialog_history, established_filters
             )
 
         # Много кандидатов (>10) - нужно задать уточняющий вопрос
@@ -1716,12 +1717,26 @@ class MainAgent:
                 return "Опишите подробнее что случилось."
         return "Опишите подробнее что случилось."
 
-    async def _ask_ai_clarification_with_candidates(self, message_text: str, candidates: List[Dict], dialog_history: List[Dict]) -> Dict:
+    async def _ask_ai_clarification_with_candidates(
+        self,
+        message_text: str,
+        candidates: List[Dict],
+        dialog_history: List[Dict],
+        established_filters: Dict = None
+    ) -> Dict:
         """Спрашивает у AI как уточнить - использует AI для анализа кандидатов
 
         ИСПРАВЛЕНО (2025-12-27): Использует AI для генерации вопроса на основе кандидатов
         ИСПРАВЛЕНО (2025-12-27): Закомментированы кэшированные запросы
+        ИСПРАВЛЕНО (2025-12-27): Применяет established_filters для сужения кандидатов
         """
+        # ИСПРАВЛЕНО (2025-12-27): Применяем фильтры к кандидатам
+        if established_filters:
+            before_count = len(candidates)
+            candidates = self._apply_filters_to_candidates(candidates, established_filters)
+            after_count = len(candidates)
+            logger.info(f"_ask_ai_clarification: применение фильтров: {before_count} -> {after_count} кандидатов")
+
         # ИСПРАВЛЕНО (2025-12-27): Закомментированы кэшированные запросы - используем только AI
         # if self.cache_service:  # DISABLED
         #     cached = self.cache_service.get_cached_response(message_text)
@@ -1987,4 +2002,82 @@ class MainAgent:
             )
 
         return unique_candidates
+
+    def _apply_filters_to_candidates(self, candidates: List[Dict], established_filters: Dict) -> List[Dict]:
+        """
+        Применяет установленные фильтры к кандидатам для сужения списка
+
+        ИСПРАВЛЕНО (2025-12-27): Использует established_filters с высокой уверенностью
+        для фильтрации кандидатов по location_type, incident_type, category
+
+        Args:
+            candidates: Список кандидатов с атрибутами
+            established_filters: Установленные фильтры {filter_name: {'value': ..., 'confidence': ...}}
+
+        Returns:
+            List[Dict]: Отфильтрованный список кандидатов
+        """
+        # Порог применения фильтра - только фильтры с уверенностью >= 0.8
+        FILTER_CONFIDENCE_THRESHOLD = 0.8
+
+        # Применяем фильтры по очереди
+        filtered_candidates = candidates
+
+        for filter_name, filter_data in established_filters.items():
+            confidence = filter_data.get('confidence', 0.0)
+            value = filter_data.get('value')
+
+            # Применяем только фильтры с высокой уверенностью
+            if confidence < FILTER_CONFIDENCE_THRESHOLD:
+                logger.info(f"Фильтр {filter_name}: confidence={confidence:.2f} < {FILTER_CONFIDENCE_THRESHOLD}, пропускаем")
+                continue
+
+            logger.info(f"✅ Применяем фильтр: {filter_name}={value} (confidence={confidence:.2f})")
+
+            # Фильтрация по location
+            if filter_name == 'location' and value:
+                # Маппинг: зал/комната -> Индивидуальное
+                if value in ['Индивидуальное', 'Квартира', 'индивидуальное']:
+                    # Оставляем только Individual
+                    before_count = len(filtered_candidates)
+                    filtered_candidates = [
+                        c for c in filtered_candidates
+                        if c.get('location_type', '').lower() in ['индивидуальное', 'квартира']
+                    ]
+                    after_count = len(filtered_candidates)
+                    logger.info(f"  Фильтр location: {before_count} -> {after_count} (оставили Individual)")
+
+            # Фильтрация по incident
+            elif filter_name == 'incident' and value:
+                if value in ['Инцидент', 'инцидент']:
+                    before_count = len(filtered_candidates)
+                    filtered_candidates = [
+                        c for c in filtered_candidates
+                        if c.get('incident_type', '').lower() in ['инцидент']
+                    ]
+                    after_count = len(filtered_candidates)
+                    logger.info(f"  Фильтр incident: {before_count} -> {after_count} (оставили Инцидент)")
+
+            # Фильтрация по category
+            elif filter_name == 'category' and value:
+                before_count = len(filtered_candidates)
+                filtered_candidates = [
+                    c for c in filtered_candidates
+                    if value.lower() in c.get('category', '').lower()
+                ]
+                after_count = len(filtered_candidates)
+                logger.info(f"  Фильтр category: {before_count} -> {after_count} (оставили {value})")
+
+            # Фильтрация по object_description (поиск по названию услуги)
+            elif filter_name == 'object_description' and value:
+                before_count = len(filtered_candidates)
+                # Ищем совпадение в названии услуги
+                filtered_candidates = [
+                    c for c in filtered_candidates
+                    if value.lower() in c.get('service_name', '').lower()
+                ]
+                after_count = len(filtered_candidates)
+                logger.info(f"  Фильтр object: {before_count} -> {after_count} (оставили содержащие '{value}')")
+
+        return filtered_candidates
 
