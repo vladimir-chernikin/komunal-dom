@@ -1566,21 +1566,25 @@ class MainAgent:
                 # Низкий confidence - уточняем через AI
                 return await self._ask_ai_clarification(message_text, unique_candidates, dialog_history)
 
-        # Если несколько кандидатов (2-5) - спрашиваем у AI что делать
-        elif len(unique_candidates) <= 5:
-            return await self._ask_ai_clarification(message_text, unique_candidates, dialog_history)
+        # Если несколько кандидатов (2-10) - используем AI для уточнения
+        elif len(unique_candidates) <= 10:
+            # ИСПРАВЛЕНО (2025-12-27): Используем AI для анализа кандидатов
+            # вместо CommunicativeScriptsService
+            return await self._ask_ai_clarification_with_candidates(
+                message_text, unique_candidates, dialog_history
+            )
 
-        # Много кандидатов (>5) - нужно задать уточняющий вопрос
+        # Много кандидатов (>10) - нужно задать уточняющий вопрос
         else:
             question = await self._ask_ai_what_happened(
                 message_text, dialog_history,
-                established_filters=established_filters,  # ИСПРАВЛЕНО: передаем фильтры
-                txtPrb=txtPrb  # ИСПРАВЛЕНО: передаем txtPrb
+                established_filters=established_filters,
+                txtPrb=txtPrb
             )
             return {
                 'status': 'AMBIGUOUS',
                 'message': question,
-                'candidates': unique_candidates[:10],  # Первые 10 кандидатов
+                'candidates': unique_candidates[:10],
                 'metadata': {}
             }
     
@@ -1646,6 +1650,87 @@ class MainAgent:
             else:
                 return "Опишите подробнее что случилось."
         return "Опишите подробнее что случилось."
+
+    async def _ask_ai_clarification_with_candidates(self, message_text: str, candidates: List[Dict], dialog_history: List[Dict]) -> Dict:
+        """Спрашивает у AI как уточнить - использует AI для анализа кандидатов
+
+        ИСПРАВЛЕНО (2025-12-27): Использует AI для генерации вопроса на основе кандидатов
+        """
+        candidates_list = "\n".join([
+            f"{i+1}. ID:{c['service_id']} | {c['service_name']}"
+            for i, c in enumerate(candidates[:5])
+        ])
+
+        # Собираем последние вопросы бота
+        recent_bot_questions = []
+        if dialog_history:
+            for msg in dialog_history:
+                if msg.get('role') == 'bot' and '?' in msg.get('text', ''):
+                    question = msg.get('text', '')
+                    if '?' in question:
+                        question = question.split('?')[0] + '?'
+                        recent_bot_questions.append(question)
+
+        # Формируем информацию о предыдущих вопросах
+        questions_info = ""
+        if recent_bot_questions:
+            questions_info = f"\nУЖЕ ЗАДАННЫЕ ВОПРОСЫ (НЕ повторяй их!):\n"
+            for q in recent_bot_questions[-3:]:
+                questions_info += f"  - {q}\n"
+
+        prompt = f"""Ты - опытный диспетчер управляющей компании.
+
+Пользователь: {message_text}
+{questions_info}
+Возможные услуги:
+{candidates_list}
+
+Задай ОДИН уточняющий вопрос чтобы выбрать правильную услугу.
+
+КРИТИЧЕСКИ ВАЖНО - ПРАВИЛА ВОПРОСОВ:
+✅ ОБЯЗАТЕЛЬНО: Задавай ТОЛЬКО ОТКРЫТЫЕ вопросы БЕЗ вариантов!
+  ✅ ПРАВИЛЬНО: "Где именно течет?"
+  ✅ ПРАВИЛЬНО: "Что именно сломалось?"
+  ✅ ПРАВИЛЬНО: "Опишите подробнее что случилось"
+
+❌ СТРОГО ЗАПРЕЩЕНО:
+  ❌ Закрытые вопросы с "или": "в квартире или в местах общего пользования?"
+  ❌ Перечисления через запятую: "труба, кран, батарея?"
+  ❌ Перечисления в скобках: "что течет? (труба/кран/батарея)"
+  ❌ Вопросы с "---": "Где именно --- в системе... или в квартире?"
+
+❌ ЗАПРЕЩЕНО повторять вопросы:
+  ❌ Если УЖЕ спрашивали "Где именно?" - НЕ спрашивай "Где именно?" снова!
+
+Верни только вопрос без дополнительных слов.
+
+Вопрос:"""
+
+        if not self.ai_agent:
+            return {
+                'status': 'AMBIGUOUS',
+                'message': "Опишите подробнее что именно произошло.",
+                'candidates': candidates,
+                'needs_clarification': True
+            }
+
+        try:
+            response, _ = await self.ai_agent._call_yandex_gpt(prompt)
+
+            return {
+                'status': 'AMBIGUOUS',
+                'message': response.strip(),
+                'candidates': candidates,
+                'needs_clarification': True
+            }
+        except Exception as e:
+            logger.error(f"Ошибка AI генерации уточнения: {e}")
+            return {
+                'status': 'AMBIGUOUS',
+                'message': "Опишите подробнее что именно произошло.",
+                'candidates': candidates,
+                'needs_clarification': True
+            }
 
     async def _ask_ai_clarification(self, message_text: str, candidates: List[Dict], dialog_history: List[Dict]) -> Dict:
         """Спрашивает как уточнить - использует CommunicativeScriptsService
