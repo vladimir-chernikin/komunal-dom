@@ -283,11 +283,31 @@ METADATA:
                 lines.append(f"│ Status: {status}")
                 lines.append(f"│ Message: {message}")
 
+                # ДОБАВЛЕНО: Результаты микросервисов из microservices_results
+                # microservices_results может быть как в service_result._metadata так и прямо в service_result
+                microservices_results = service_result.get('microservices_results') or service_result.get('_metadata', {}).get('microservices_results', {})
+
+                if microservices_results:
+                    lines.append("")
+                    lines.append("├─ МИКРОСЕРВИСЫ (результаты поиска):")
+                    lines.append("│")
+
+                    # Выводим каждый микросервис
+                    for ms_name, ms_result in microservices_results.items():
+                        if isinstance(ms_result, dict) and ms_result.get('candidates'):
+                            lines.append(f"│ {ms_name.upper()}:")
+                            for cand in ms_result['candidates']:
+                                service_id = cand.get('service_id', '?')
+                                service_name = cand.get('service_name', 'Unknown')
+                                confidence = cand.get('confidence', 0.0)
+                                lines.append(f"│   - ID:{service_id} | {service_name} | {confidence*100:.1f}%")
+                            lines.append("│")
+
                 # Candidates с разрезом по микросервисам
                 candidates = service_result.get('candidates', [])
-                if candidates:
+                if candidates and not microservices_results:
                     lines.append("")
-                    lines.append("├─ CANDIDATES (по микросервисам):")
+                    lines.append("├─ CANDIDATES (по источникам):")
                     lines.append("│")
 
                     # Группируем по source

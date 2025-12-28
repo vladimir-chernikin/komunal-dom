@@ -345,7 +345,9 @@ class MainAgent:
         result_metadata = {
             'txtPrb': txtPrb,
             'accumulated_fields': accumulated_fields,
-            'established_filters': established_filters
+            'established_filters': established_filters,
+            # ДОБАВЛЕНО: Будем добавлять результаты микросервисов позже
+            'microservices_results': {}  # {tag_search: {...}, vector_search: {...}, etc}
         }
 
         try:
@@ -416,6 +418,9 @@ class MainAgent:
 
                 source_name = result.get('method', f'service_{i}')
                 ai_search_results[source_name] = result
+
+            # ДОБАВЛЕНО: Сохраняем результаты микросервисов в metadata для отчета
+            result_metadata['microservices_results'] = ai_search_results
 
             # Вызываем AI Orchestrator
             logger.info(f"Запускаем AI Orchestrator (микросервисов: {len(ai_search_results)})")
