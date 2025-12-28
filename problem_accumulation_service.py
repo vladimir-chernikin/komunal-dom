@@ -172,6 +172,7 @@ class ProblemAccumulationService:
 - НЕ повторяй уже известную информацию
 - Извлекай МАКСИМУМ конкретики: локация, источник, категория, серьезность
 - txtPrb должно быть КРАТКИМ и ПОНЯТНЫМ (1-2 предложения)
+- ⛔ КРИТИЧЕСКИ ВАЖНО: Если is_meaningful=false, ТОЧНО скопируй current_problem в updated_problem БЕЗ ИЗМЕНЕНИЙ!
 
 Верни ТОЛЬКО JSON (без markdown):
 
@@ -291,6 +292,28 @@ message_text: "Привет!"
         "object": null
     }}
 }}
+
+ПРИМЕР 6 (НЕЗНАЧИМЫЕ СООБЩЕНИЯ - сохранение контекста):
+current_problem: "у пользователя течет из трубы у батареи в зале"
+bot_question: "Какой характер у течи?"
+message_text: "а зачем тебе это?"
+Ответ:
+{{
+    "is_meaningful": false,
+    "new_info": "",
+    "updated_problem": "у пользователя течет из трубы у батареи в зале",
+    "fields": {{
+        "problem": "течет",
+        "location": "зал",
+        "source": "труба у батареи",
+        "category": null,
+        "severity": null,
+        "intensity": null,
+        "object": "труба"
+    }}
+}}
+
+ВАЖНО ПРИМЕЧАНИЕ: В примере 6 updated_problem ТОЧНО совпадает с current_problem!
 
 JSON:"""
 
