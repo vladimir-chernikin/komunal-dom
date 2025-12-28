@@ -2337,7 +2337,8 @@ class MainAgent:
             final_priority = min(weighted_priority + source_bonus + confidence_bonus, 1.0)
 
             # Формируем итогового кандидата
-            unique_candidates.append({
+            # ИСПРАВЛЕНО (2025-12-28): Копируем location_type, incident_type, category из all_data[0]
+            final_candidate = {
                 'service_id': sid,
                 'service_name': c.get('service_name'),
                 'confidence': avg_confidence,  # Средняя уверенность
@@ -2350,7 +2351,19 @@ class MainAgent:
                     'confidence_bonus': confidence_bonus,
                     'source_count': source_count
                 }
-            })
+            }
+
+            # Копируем атрибуты из all_data[0] если они есть
+            if c['all_data'] and len(c['all_data']) > 0:
+                first_data = c['all_data'][0]
+                if 'location_type' in first_data:
+                    final_candidate['location_type'] = first_data['location_type']
+                if 'incident_type' in first_data:
+                    final_candidate['incident_type'] = first_data['incident_type']
+                if 'category' in first_data:
+                    final_candidate['category'] = first_data['category']
+
+            unique_candidates.append(final_candidate)
 
         # Сортируем по priority (убывание)
         unique_candidates.sort(key=lambda x: x.get('priority', 0.0), reverse=True)
