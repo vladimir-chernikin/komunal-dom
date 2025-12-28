@@ -2541,12 +2541,18 @@ class MainAgent:
             for q in recent_bot_questions[-3:]:
                 context += f"  - {q}\n"
 
+        # ИСПРАВЛЕНО (2025-12-28): Извлекаем txtPrb из dialog_history
+        extracted_txtPrb = ""
+        if self.problem_accumulator and dialog_history:
+            extracted_txtPrb = self.problem_accumulator.get_txtPrb_from_metadata(dialog_history)
+
         # Генерируем вопрос через универсальный метод
         ai_question = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=candidates,
             established_filters=established_filters,
+            txtPrb=extracted_txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
             question_type='clarification'
         )
 
@@ -2571,10 +2577,17 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопроса
         # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
         context = f"Пользователь написал: {message_text}"
+
+        # ИСПРАВЛЕНО (2025-12-28): Извлекаем txtPrb из dialog_history
+        extracted_txtPrb = ""
+        if self.problem_accumulator and dialog_history:
+            extracted_txtPrb = self.problem_accumulator.get_txtPrb_from_metadata(dialog_history)
+
         ai_question = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=candidates,
+            txtPrb=extracted_txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
             question_type='clarification'
         )
 
