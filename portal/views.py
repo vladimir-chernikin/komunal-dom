@@ -315,8 +315,9 @@ def api_dialog_full_trace(request):
         # Создаем сервис и генерируем отчет
         service = TraceReportService()
 
-        # Генерируем отчет (используем async_to_sync)
-        report_path = async_to_sync(service.generate_trace_report)(session_id)
+        # Генерируем отчет (правильный вызов async метода через async_to_sync)
+        generate_report = async_to_sync(service.generate_trace_report)
+        report_path = generate_report(session_id)
 
         if not report_path:
             return JsonResponse({'error': 'Не удалось создать отчет - нет сообщений для сессии'}, status=404)
