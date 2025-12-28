@@ -47,11 +47,22 @@ class FilterDetectionService:
     def _load_reference_data_from_db(self):
         """Загружает справочные данные из БД для промпта"""
         try:
-            # ИСПРАВЛЕНО (2025-12-25): Используем allow_thread_sharing для async контекста
-            def load_sync():
-                # Устанавливаем allow_thread_sharing для работы в async контексте
-                connection.allow_thread_sharing = True
-                with connection.cursor() as cursor:
+            # ИСПРАВЛЕНО (2025-12-28): Прямой SQL запрос без Django ORM
+            # Это безопаснее для инициализации в async контексте
+            import psycopg2
+            from django.conf import settings
+
+            db_settings = settings.DATABASES['default']
+            conn = psycopg2.connect(
+                host=db_settings['HOST'],
+                database=db_settings['NAME'],
+                user=db_settings['USER'],
+                password=db_settings['PASSWORD'],
+                port=db_settings.get('PORT', 5432)
+            )
+
+            try:
+                with conn.cursor() as cursor:
                     # Загружаем уникальные категории
                     cursor.execute("""
                         SELECT DISTINCT category
@@ -59,7 +70,7 @@ class FilterDetectionService:
                         WHERE category IS NOT NULL AND category != ''
                         ORDER BY category
                     """)
-                    categories = [row[0] for row in cursor.fetchall()]
+                    self.categories_list = [row[0] for row in cursor.fetchall()]
 
                     # Загружаем примеры объектов (scenario_name)
                     cursor.execute("""
@@ -69,7 +80,7 @@ class FilterDetectionService:
                         ORDER BY service_id
                         LIMIT 30
                     """)
-                    objects = [
+                    self.objects_examples = [
                         {
                             'name': row[0],
                             'category': row[1],
@@ -77,10 +88,8 @@ class FilterDetectionService:
                         }
                         for row in cursor.fetchall()
                     ]
-
-                    return categories, objects
-
-            self.categories_list, self.objects_examples = load_sync()
+            finally:
+                conn.close()
 
             logger.info(
                 f"FilterDetectionService: загружено {len(self.categories_list)} категорий, "
@@ -276,12 +285,16 @@ JSON:"""
                 f"confidence={confidence}"
             )
 
+            # ДОБАВЛЕНО: Сохраняем промт и ответ для трассировки
             return {
                 'status': 'success',
                 'filters': filters,
                 'confidence': confidence,
                 'reason': reason,
-                'usage_info': usage_info
+                'usage_info': usage_info,
+                'prompt': prompt,  # ДОБАВЛЕНО: промт для трассировки
+                'llm_response': response,  # ДОБАВЛЕНО: ответ LLM для трассировки
+                'parsed_response': parsed  # ДОБАВЛЕНО: распаршенный ответ
             }
 
         except Exception as e:

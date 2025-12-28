@@ -347,15 +347,127 @@ METADATA:
                 est_filters = service_result.get('_metadata', {}).get('established_filters', {})
                 if est_filters:
                     lines.append("")
-                    lines.append("└─ ESTABLISHED FILTERS:")
-                    lines.append("  (установленные фильтры для сокращения списка кандидатов)")
-                    lines.append("  ")
+                    lines.append("├─ ESTABLISHED FILTERS:")
+                    lines.append("│ (установленные фильтры для сокращения списка кандидатов)")
+                    lines.append("│")
                     for key, value in est_filters.items():
                         if isinstance(value, dict) and 'value' in value:
                             conf = value.get('confidence', 0.0)
-                            lines.append(f"  - {key}: {value['value']} (confidence: {conf*100:.0f}%)")
+                            lines.append(f"│   - {key}: {value['value']} (confidence: {conf*100:.0f}%)")
                         elif value:
-                            lines.append(f"  - {key}: {value}")
+                            lines.append(f"│   - {key}: {value}")
+                    lines.append("│")
+
+                # ДОБАВЛЕНО: FilterDetectionService промты и результаты
+                filter_detection = service_result.get('_metadata', {}).get('filter_detection', {})
+                if filter_detection:
+                    lines.append("")
+                    lines.append("├─ FILTER DETECTION SERVICE (LLM):")
+                    lines.append("│")
+
+                    # Status
+                    status = filter_detection.get('status', 'unknown')
+                    lines.append(f"│ Status: {status}")
+
+                    # Filters
+                    filters = filter_detection.get('filters', {})
+                    if filters:
+                        lines.append("│")
+                        lines.append("│ Определенные фильтры:")
+                        for key, value in filters.items():
+                            if value:
+                                lines.append(f"│   - {key}: {value}")
+
+                    # Confidence
+                    confidence = filter_detection.get('confidence', 0.0)
+                    if confidence:
+                        lines.append(f"│")
+                        lines.append(f"│ Confidence: {confidence*100:.0f}%")
+
+                    # Prompt
+                    prompt = filter_detection.get('prompt', '')
+                    if prompt:
+                        lines.append("│")
+                        lines.append("│ Prompt FilterDetectionService:")
+                        lines.append("│ ─" + "─" * 76)
+                        # Обрезаем слишком длинный промт для читаемости
+                        prompt_lines = prompt.split('\n')
+                        for line in prompt_lines[:30]:  # Первые 30 строк
+                            lines.append(f"│ {line}")
+                        if len(prompt_lines) > 30:
+                            lines.append(f"│ ... ({len(prompt_lines) - 30} строк пропущено)")
+                        lines.append("│ ─" + "─" * 76)
+
+                    # LLM Response
+                    llm_response = filter_detection.get('llm_response', '')
+                    if llm_response:
+                        lines.append("│")
+                        lines.append("│ Response FilterDetectionService:")
+                        lines.append(f"│ {llm_response}")
+
+                    # Parsed Response
+                    parsed_response = filter_detection.get('parsed_response', {})
+                    if parsed_response:
+                        lines.append("│")
+                        lines.append("│ Parsed response:")
+                        for key, value in parsed_response.items():
+                            if value:
+                                lines.append(f"│   {key}: {value}")
+
+                    lines.append("│")
+
+                # ДОБАВЛЕНО: AI Orchestrator результаты
+                ai_orchestrator = service_result.get('_metadata', {}).get('ai_orchestrator', {})
+                if ai_orchestrator:
+                    lines.append("")
+                    lines.append("├─ AI ORCHESTRATOR:")
+                    lines.append("│")
+
+                    # Status
+                    status = ai_orchestrator.get('status', 'unknown')
+                    lines.append(f"│ Status: {status}")
+
+                    # Service ID и Name
+                    service_id = ai_orchestrator.get('service_id')
+                    service_name = ai_orchestrator.get('service_name')
+                    if service_id:
+                        lines.append(f"│")
+                        lines.append(f"│ Service ID: {service_id}")
+                    if service_name:
+                        lines.append(f"│ Service Name: {service_name}")
+
+                    # Confidence
+                    confidence = ai_orchestrator.get('confidence', 0.0)
+                    if confidence:
+                        lines.append(f"│")
+                        lines.append(f"│ Confidence: {confidence*100:.0f}%")
+
+                    # Candidates count
+                    candidates_count = ai_orchestrator.get('candidates_count', 0)
+                    if candidates_count:
+                        lines.append(f"│")
+                        lines.append(f"│ Candidates count: {candidates_count}")
+
+                    # Message
+                    message = ai_orchestrator.get('message', '')
+                    if message:
+                        lines.append(f"│")
+                        lines.append(f"│ Message: {message}")
+
+                    # Reasoning
+                    reasoning = ai_orchestrator.get('reasoning', '')
+                    if reasoning:
+                        lines.append(f"│")
+                        lines.append("│ Reasoning:")
+                        lines.append("│ ─" + "─" * 76)
+                        reasoning_lines = reasoning.split('\n')
+                        for line in reasoning_lines[:20]:  # Первые 20 строк
+                            lines.append(f"│ {line}")
+                        if len(reasoning_lines) > 20:
+                            lines.append(f"│ ... ({len(reasoning_lines) - 20} строк пропущено)")
+                        lines.append("│ ─" + "─" * 76)
+
+                    lines.append("│")
 
             lines.append("└─────────────────────────")
             lines.append("")

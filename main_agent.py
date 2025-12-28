@@ -435,6 +435,17 @@ class MainAgent:
                 established_filters=established_filters  # Установленные фильтры
             )
 
+            # ДОБАВЛЕНО: Сохраняем AI Orchestrator результат в metadata для отчета
+            result_metadata['ai_orchestrator'] = {
+                'status': orch_result.get('status', 'unknown'),
+                'service_id': orch_result.get('service_id'),
+                'service_name': orch_result.get('service_name'),
+                'confidence': orch_result.get('confidence'),
+                'message': orch_result.get('message'),
+                'reasoning': orch_result.get('reasoning', ''),
+                'candidates_count': len(orch_result.get('candidates', []))
+            }
+
             # AI Orchestrator вернул решение
             if orch_result.get('status') == 'SUCCESS':
                 # Услуга определена AI Orchestrator'ом
@@ -519,6 +530,16 @@ class MainAgent:
                     if filter_result.get('status') == 'success':
                         filters = filter_result.get('filters', {})
                         logger.info(f"FilterDetectionService вернул фильтры: {filters}")
+
+                        # ДОБАВЛЕНО: Сохраняем FilterDetectionService результат с промтами в metadata
+                        result_metadata['filter_detection'] = {
+                            'status': 'success',
+                            'filters': filters,
+                            'confidence': filter_result.get('confidence', 0.0),
+                            'prompt': filter_result.get('prompt', ''),
+                            'llm_response': filter_result.get('llm_response', ''),
+                            'parsed_response': filter_result.get('parsed_response', {})
+                        }
 
                         # ИСПРАВЛЕНО: Если 0 кандидатов - ищем ВСЕ услуги по фильтрам от LLM
                         if len(candidates_data) == 0:
