@@ -182,7 +182,10 @@ class MessageHandlerService:
                     if not self.message_cleaner or not self.message_cleaner.is_greeting_only(m.get('text', ''))
                 ]
 
-                is_followup = len(non_greeting_messages) > 1
+                # ИСПРАВЛЕНО (2025-12-28): Изменена логика is_followup
+                # Старая: > 1 (только на 3+ сообщении)
+                # Новая: >= 1 (уже на 2-м сообщении, первом после приветствия)
+                is_followup = len(non_greeting_messages) >= 1
 
                 if is_followup:
                     logger.info(f"MessageHandler: is_followup=True (контекстных сообщений: {len(non_greeting_messages)})")

@@ -1033,9 +1033,17 @@ class MainAgent:
                 'original_message': original_message,
                 'dialog_history': dialog_history or []
             }
+            # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI
+            message = await self._generate_ai_question(
+                context=context.get('original_message', ''),
+                dialog_history=context.get('dialog_history', []),
+                candidates=None,
+                established_filters=None,
+                question_type='clarification'
+            )
             return {
                 'status': 'AMBIGUOUS',
-                'message': self._generate_clarification_questions(context),
+                'message': message,
                 'single_candidate': None,
                 'filtered_candidates': []
             }
@@ -1333,7 +1341,14 @@ class MainAgent:
                 'original_message': original_message,
                 'dialog_history': dialog_history or []
             }
-            clarification_message = self._generate_clarification_questions(context)
+            # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI
+            clarification_message = await self._generate_ai_question(
+                context=context.get('original_message', ''),
+                dialog_history=context.get('dialog_history', []),
+                candidates=None,
+                established_filters=None,
+                question_type='clarification'
+            )
             return {
                 'status': 'AMBIGUOUS',
                 'candidates': [],
@@ -1794,6 +1809,73 @@ class MainAgent:
         logger.info(f"AI сгенерировал вопрос (turn={dialog_turn}, followup={is_followup}): {question}")
         return question
 
+    def _fix_double_questions(self, question: str) -> str:
+        """
+        Post-processing проверка и исправление двойных вопросов
+
+        ИСПРАВЛЕНО (2025-12-28): Обнаруживает и исправляет двойные вопросы
+        которые AI игнорирует промпт
+
+        Args:
+            question: Сгенерированный AI вопрос
+
+        Returns:
+            str: Исправленный вопрос
+        """
+        if not question:
+            return question
+
+        question_lower = question.lower()
+
+        # Паттерн 1: "что ... и где ..." (двойной вопрос что + где)
+        if 'что' in question_lower and 'где' in question_lower:
+            # Проверяем есть ли союз "и" или запятая
+            if (' и ' in question) or (',' in question):
+                # Двойной вопрос detected! Берем только первую часть
+                logger.warning(f"⚠️ Обнаружен двойной вопрос (что+где): {question}")
+
+                # Разбиваем по " и " или ","
+                if ' и ' in question:
+                    parts = question.split(' и ', 1)
+                elif ',' in question:
+                    parts = question.split(',', 1)
+                else:
+                    parts = [question]
+
+                # Оставляем только первую часть, добавляем "?" если нужно
+                fixed = parts[0].strip()
+                if not fixed.endswith('?'):
+                    fixed += '?'
+
+                logger.info(f"✅ Исправлено на: {fixed}")
+                return fixed
+
+        # Паттерн 2: "что ... и какие ..." (двойной вопрос что + какие)
+        if 'что' in question_lower and ('какие' in question_lower or 'какой' in question_lower):
+            if ' и ' in question:
+                logger.warning(f"⚠️ Обнаружен двойной вопрос (что+какие): {question}")
+                parts = question.split(' и ', 1)
+                fixed = parts[0].strip()
+                if not fixed.endswith('?'):
+                    fixed += '?'
+                logger.info(f"✅ Исправлено на: {fixed}")
+                return fixed
+
+        # Паттерн 3: "где ... и ..." (двойной вопрос где + что-то еще)
+        if 'где' in question_lower and ' и ' in question:
+            # Проверяем есть ли вторая часть после "и"
+            after_and = question.split(' и ', 1)[1]
+            if any(word in after_and.lower() for word in ['что', 'какие', 'какой', 'последств']):
+                logger.warning(f"⚠️ Обнаружен двойной вопрос (где+...): {question}")
+                parts = question.split(' и ', 1)
+                fixed = parts[0].strip()
+                if not fixed.endswith('?'):
+                    fixed += '?'
+                logger.info(f"✅ Исправлено на: {fixed}")
+                return fixed
+
+        return question
+
     async def _generate_ai_question(
         self,
         context: str,
@@ -1845,6 +1927,9 @@ class MainAgent:
                     question = question[1:-1]
                 if question.startswith("'") and question.endswith("'"):
                     question = question[1:-1]
+
+                # ИСПРАВЛЕНО (2025-12-28): Post-processing проверка на двойные вопросы
+                question = self._fix_double_questions(question)
 
                 logger.info(f"AI сгенерировал вопрос ({question_type}): {question}")
                 return question
@@ -1898,7 +1983,30 @@ class MainAgent:
                 candidates_table += f"   Тип: {incident_type} | Вид: {location_type} | Категория: {category} | Объект: {object_type}\n"
 
         # Формируем промт
+        # ИСПРАВЛЕНО (2025-12-28): Усилен запрет на двойные вопросы
         prompt = f"""Ты - диспетчер УК "Аспект". Твоя ГЛАВНАЯ задача - определить нужную услугу из каталога.
+
+══════════════════════════════════════════════════════════════════════════════
+⛔ КРИТИЧЕСКИ ВАЖНЫЕ ЗАПРЕТЫ - НАРУШЕНИЕ НЕДОПУСТИМО ⛔
+══════════════════════════════════════════════════════════════════════════════
+
+ЗАПРЕЩЕНО:
+1. ДВОЙНЫЕ ВОПРОСЫ - вопросы с союзами "и", "," запрашивающие 2+ вещи одновременно
+   ❌ "Опишите что течет и где это произошло?"
+   ❌ "Уточните что и где именно?"
+   ❌ "Где это произошло и какие последствия?"
+
+2. ЗАКРЫТЫЕ ВОПРОСЫ с перечислениями
+   ❌ "Это труба или батарея?"
+   ❌ "Выберите: 1-труба 2-батарея"
+
+3. ПЕРЕЧИСЛЕНИЕ вариантов ответа
+   ❌ "Из чего: трубы, батареи, крана или соседей?"
+
+РАЗРЕШЕНО:
+✅ Один атомарный вопрос за раз
+✅ Открытые вопросы без вариантов
+✅ Уточнение ОДНОГО неизвестного параметра
 
 ══════════════════════════════════════════════════════════════════════════════
 КАК РАБОТАЕТ СИСТЕМА ФИЛЬТРОВ
