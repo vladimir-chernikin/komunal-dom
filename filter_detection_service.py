@@ -259,8 +259,12 @@ JSON:"""
 
             logger.info(f"FilterDetectionService: отправляем промпт через AIAgentService (длина: {len(prompt)} символов)")
 
-            # ИСПРАВЛЕНО: Используем AIAgentService._call_yandex_gpt вместо прямого вызова API
-            response, usage_info = await self.ai_agent._call_yandex_gpt(prompt)
+            # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
+            response, usage_info = await self.ai_agent.call_llm(
+                prompt=prompt,
+                provider='yandexgpt',  # Можно менять на 'gigachat'
+                model='lite'            # Или 'pro', 'GigaChat', 'GigaChat-2', etc.
+            )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем ответ
             logger.info(f"🤖 FilterDetection ОТВЕТ LLM:")
@@ -412,7 +416,12 @@ JSON:"""
 
             logger.info(f"FilterDetectionService: отправляем промпт ранжирования (длина: {len(prompt)} символов)")
 
-            response, usage_info = await self.ai_agent._call_yandex_gpt(prompt)
+            # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
+            response, usage_info = await self.ai_agent.call_llm(
+                prompt=prompt,
+                provider='yandexgpt',
+                model='lite'
+            )
 
             if not response:
                 logger.warning("FilterDetectionService: не получили ответ при ранжировании")

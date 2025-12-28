@@ -2,13 +2,27 @@
 # -*- coding: utf-8 -*-
 
 """
-AIAgentService - микросервис поиска с помощью ИИ (YandexGPT)
+AIAgentService - ЕДИНЫЙ микросервис для всех LLM запросов
+
+Поддерживаемые провайдеры:
+- YandexGPT (Lite, Pro)
+- GigaChat (GigaChat, GigaChat-2, GigaChat-Plus, GigaChat-2.1)
+
+Правила использования (КРИТИЧЕСКИ ВАЖНО):
+- ВСЕ LLM запросы ДОЛЖНЫ проходить через AIAgentService
+- ЗАПРЕЩЕНО прямые HTTP запросы к API из других сервисов
+- Единая точка входа для подсчета стоимости и логирования
+
+Дата создания: 2025-12-25
+Последнее обновление: 2025-12-28
 """
 
 import logging
 import json
 import re
-from typing import List, Dict, Any
+import uuid
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple
 from decouple import config
 from django.db import connection
 from asgiref.sync import sync_to_async
@@ -17,41 +31,94 @@ logger = logging.getLogger(__name__)
 
 
 class AIAgentService:
-    """Микросервис поиска услуг с помощью YandexGPT"""
+    """
+    Единый микросервис для всех LLM запросов (YandexGPT + GigaChat)
+
+    Использование:
+        service = AIAgentService()
+        response, usage = await service.call_llm(
+            prompt="...",
+            provider="yandexgpt",  # yandexgpt | gigachat
+            model="lite"           # lite/pro | GigaChat/GigaChat-2/GigaChat-Plus/GigaChat-2.1
+        )
+    """
 
     # Цены YandexGPT (руб за 1000 токенов)
-    # Lite: 0.20 ₽, Pro: 3.00 ₽ (в 15 раз дороже)
-    PRICE_INPUT_PER_1K_LITE = 0.20
-    PRICE_OUTPUT_PER_1K_LITE = 0.20
-    PRICE_INPUT_PER_1K_PRO = 3.00
-    PRICE_OUTPUT_PER_1K_PRO = 3.00
+    YANDEX_PRICES = {
+        'lite': {'input': 0.20, 'output': 0.20},
+        'pro': {'input': 3.00, 'output': 3.00}
+    }
 
-    def __init__(self):
-        self.api_key = config('YANDEX_API_KEY')
-        self.folder_id = config('YANDEX_FOLDER_ID')
+    # Цены GigaChat (руб за 1000 токенов)
+    GIGACHAT_PRICES = {
+        'GigaChat': 0.50,
+        'GigaChat-2': 1.50,
+        'GigaChat-Plus': 3.00,
+        'GigaChat-2.1': 1.80
+    }
 
-        # ИСПРАВЛЕНО (2025-12-28): Добавлена поддержка выбора модели
-        self.default_model = config('YANDEXGPT_MODEL', default='lite')  # lite | pro
+    def __init__(self, provider: str = 'yandexgpt', default_model: Optional[str] = None):
+        """
+        Инициализация сервиса
 
-        self.is_available = bool(self.api_key and self.folder_id)
+        Args:
+            provider: Провайдер по умолчанию (yandexgpt | gigachat)
+            default_model: Модель по умолчанию (если None, используется из конфига)
+        """
+        # Параметры YandexGPT
+        self.yandexgpt_api_key = config('YANDEX_API_KEY', default=None)
+        self.yandexgpt_folder_id = config('YANDEX_FOLDER_ID', default=None)
+        self.yandexgpt_default_model = config('YANDEXGPT_MODEL', default='lite')
+
+        # Параметры GigaChat
+        self.gigachat_client_id = config('GIGACHAT_CLIENT_ID', default='019b65dd-feb9-756f-a83e-330d88d76fa0')
+        self.gigachat_auth_key = config('GIGACHAT_AUTH_KEY', default='MDE5YjY1ZGQtZmViOS03NTZmLWE4M2UtMzMwZDg4ZDc2ZmEwOjYyODNjZGRiLTBiNGYtNDZhMS04NDVlLWZjOTYyYWE2ZWFiYg==')
+        self.gigachat_scope = config('GIGACHAT_SCOPE', default='GIGACHAT_API_PERS')
+        self.gigachat_default_model = config('GIGACHAT_MODEL', default='GigaChat')
+
+        # Текущий провайдер и модель
+        self.provider = provider
+        self.default_model = default_model or self._get_default_model()
+
+        # Проверка доступности
+        self.yandexgpt_available = bool(self.yandexgpt_api_key and self.yandexgpt_folder_id)
+        self.gigachat_available = bool(self.gigachat_client_id and self.gigachat_auth_key)
+
+        # Кеширование услуг
         self.service_cache = None
         self.service_list = None
 
-        # Статистика использования
-        self.total_tokens_used = 0
-        self.total_cost = 0.0
-        self.requests_count = 0
+        # Статистика использования (в памяти)
+        self.stats = {
+            'total_requests': 0,
+            'total_tokens': 0,
+            'total_cost': 0.0,
+            'yandexgpt': {'requests': 0, 'tokens': 0, 'cost': 0.0},
+            'gigachat': {'requests': 0, 'tokens': 0, 'cost': 0.0}
+        }
 
-        # Статистика по моделям
-        self.lite_requests = 0
-        self.pro_requests = 0
-        self.lite_cost = 0.0
-        self.pro_cost = 0.0
+        # OAuth токен GigaChat
+        self._gigachat_token = None
+        self._gigachat_token_expires = None
 
-        logger.info(f"AIAgentService инициализирован (доступен: {self.is_available}, модель по умолчанию: {self.default_model})")
+        logger.info(
+            f"AIAgentService инициализирован: "
+            f"provider={provider}, model={self.default_model}, "
+            f"yandexgpt={self.yandexgpt_available}, gigachat={self.gigachat_available}"
+        )
+
+    def _get_default_model(self) -> str:
+        """Получить модель по умолчанию для текущего провайдера"""
+        if self.provider == 'gigachat':
+            return self.gigachat_default_model
+        else:
+            return self.yandexgpt_default_model
 
     async def _load_services(self) -> List[Dict]:
         """Асинхронная загрузка списка услуг для промпта"""
+        if self.service_cache:
+            return self.service_cache
+
         try:
             def load_sync():
                 with connection.cursor() as cursor:
@@ -75,13 +142,428 @@ class AIAgentService:
                 return services[:50]  # Ограничиваем для промпта
 
             self.service_cache = await sync_to_async(load_sync)()
-            self.service_list = self.service_cache  # Используем тот же список
+            self.service_list = self.service_cache
             logger.info(f"AIAgentService: загружено {len(self.service_list)} услуг для ИИ анализа")
 
         except Exception as e:
             logger.error(f"Ошибка загрузки услуг: {e}")
             self.service_cache = []
             self.service_list = []
+
+        return self.service_cache
+
+    async def call_llm(
+        self,
+        prompt: str,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 1000
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        ЕДИНЫЙ МЕТОД ДЛЯ ВСЕХ LLM ЗАПРОСОВ
+
+        Args:
+            prompt: Промпт для LLM
+            provider: Провайдер (yandexgpt | gigachat), если None - используется из __init__
+            model: Модель, если None - используется default_model
+            temperature: Температура (0.0 - 1.0)
+            max_tokens: Максимальное количество токенов
+
+        Returns:
+            (response_text, usage_info)
+
+        Raises:
+            ValueError: Неверный провайдер или модель
+            Exception: Ошибка API
+
+        Пример:
+            response, usage = await service.call_llm(
+                "Привет! Как дела?",
+                provider="gigachat",
+                model="GigaChat"
+            )
+            print(usage['cost_rub'])  # 0.05
+        """
+        # Определяем провайдер и модель
+        provider = provider or self.provider
+        model = model or self.default_model
+
+        # Вызываем соответствующий провайдер
+        if provider == 'yandexgpt':
+            return await self._call_yandexgpt(prompt, model, temperature, max_tokens)
+        elif provider == 'gigachat':
+            return await self._call_gigachat(prompt, model, temperature, max_tokens)
+        else:
+            raise ValueError(f"Неверный провайдер: {provider}. Доступно: yandexgpt, gigachat")
+
+    async def _call_yandexgpt(
+        self,
+        prompt: str,
+        model: str = 'lite',
+        temperature: float = 0.7,
+        max_tokens: int = 1000
+    ) -> Tuple[str, Dict[str, Any]]:
+        """Вызов YandexGPT API"""
+
+        if not self.yandexgpt_available:
+            raise Exception("YandexGPT недоступен (не настроен API key или folder ID)")
+
+        # Проверяем валидность модели
+        if model not in ['lite', 'pro']:
+            logger.warning(f"Неверная модель YandexGPT '{model}', используем 'lite'")
+            model = 'lite'
+
+        # Определяем modelUri и цены
+        if model == 'pro':
+            model_uri = f"gpt://{self.yandexgpt_folder_id}/yandexgpt/latest"
+            price_input = self.YANDEX_PRICES['pro']['input']
+            price_output = self.YANDEX_PRICES['pro']['output']
+        else:  # lite
+            model_uri = f"gpt://{self.yandexgpt_folder_id}/yandexgpt-lite/latest"
+            price_input = self.YANDEX_PRICES['lite']['input']
+            price_output = self.YANDEX_PRICES['lite']['output']
+
+        try:
+            import aiohttp
+            import asyncio
+
+            url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+
+            headers = {
+                "Authorization": f"Bearer {self.yandexgpt_api_key}",
+                "x-folder-id": self.yandexgpt_folder_id,
+                "Content-Type": "application/json"
+            }
+
+            data = {
+                "modelUri": model_uri,
+                "completionOptions": {
+                    "stream": False,
+                    "temperature": temperature,
+                    "maxTokens": max_tokens
+                },
+                "messages": [
+                    {
+                        "role": "user",
+                        "text": prompt
+                    }
+                ]
+            }
+
+            # Логирование промпта
+            logger.debug(f"AIAgentService: YandexGPT PROMPT:\n{prompt}")
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    headers=headers,
+                    json=data,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    logger.info(f"AIAgentService: YandexGPT API response: {response.status} (model: {model})")
+
+                    if response.status == 200:
+                        result = await response.json()
+                        logger.debug(f"AIAgentService: YandexGPT RESPONSE JSON: {result}")
+
+                        # Извлекаем ответ
+                        alternatives = result.get('result', {}).get('alternatives', [])
+                        if not alternatives:
+                            raise Exception("Пустой ответ от YandexGPT")
+
+                        response_text = alternatives[0]['message']['text']
+
+                        # Извлекаем информацию о токенах
+                        usage = result.get('result', {}).get('usage', {})
+                        input_tokens = int(usage.get('inputTextTokens', 0) or 0)
+                        output_tokens = int(usage.get('completionTokens', 0) or 0)
+                        total_tokens = int(usage.get('totalTokens', input_tokens + output_tokens) or 0)
+
+                        # Рассчитываем стоимость
+                        input_cost = (input_tokens / 1000) * price_input
+                        output_cost = (output_tokens / 1000) * price_output
+                        total_cost = input_cost + output_cost
+
+                        # Формируем usage_info
+                        usage_info = {
+                            'provider': 'yandexgpt',
+                            'model': model,
+                            'prompt_tokens': input_tokens,
+                            'completion_tokens': output_tokens,
+                            'total_tokens': total_tokens,
+                            'cost_rub': round(total_cost, 4),
+                            'input_cost': round(input_cost, 4),
+                            'output_cost': round(output_cost, 4)
+                        }
+
+                        # Логирование ответа
+                        logger.debug(f"AIAgentService: YandexGPT RESPONSE:\n{response_text}")
+                        logger.info(
+                            f"AIAgentService: YandexGPT завершен. "
+                            f"Токенов: {total_tokens} (in: {input_tokens}, out: {output_tokens}), "
+                            f"стоимость: {total_cost:.4f} руб."
+                        )
+
+                        # Обновляем статистику
+                        self._update_statistics('yandexgpt', total_tokens, total_cost)
+
+                        # Сохраняем в БД
+                        await self._save_statistics_to_db(
+                            provider='yandexgpt',
+                            model=model,
+                            prompt=prompt,
+                            response=response_text,
+                            usage_info=usage_info
+                        )
+
+                        return response_text, usage_info
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"YandexGPT API error {response.status}: {error_text}")
+
+        except Exception as e:
+            logger.error(f"Ошибка при вызове YandexGPT: {e}")
+            raise
+
+    async def _call_gigachat(
+        self,
+        prompt: str,
+        model: str = 'GigaChat',
+        temperature: float = 0.7,
+        max_tokens: int = 1000
+    ) -> Tuple[str, Dict[str, Any]]:
+        """Вызов GigaChat API"""
+
+        if not self.gigachat_available:
+            raise Exception("GigaChat недоступен (не настроен Client ID или Auth Key)")
+
+        # Проверяем валидность модели
+        if model not in self.GIGACHAT_PRICES:
+            logger.warning(f"Неверная модель GigaChat '{model}', используем 'GigaChat'")
+            model = 'GigaChat'
+
+        try:
+            import httpx
+
+            # Получаем OAuth токен
+            access_token = await self._get_gigachat_token()
+
+            # Формируем запрос
+            url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
+
+            payload = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+
+            # Логирование промпта
+            logger.debug(f"AIAgentService: GigaChat PROMPT:\n{prompt}")
+
+            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                logger.info(f"AIAgentService: GigaChat API response: {response.status} (model: {model})")
+
+                if response.status_code == 200:
+                    result = response.json()
+                    logger.debug(f"AIAgentService: GigaChat RESPONSE JSON: {result}")
+
+                    # Извлекаем ответ
+                    response_text = result["choices"][0]["message"]["content"]
+
+                    # Извлекаем информацию о токенах
+                    usage = result.get("usage", {})
+                    prompt_tokens = usage.get("prompt_tokens", 0)
+                    completion_tokens = usage.get("completion_tokens", 0)
+                    total_tokens = usage.get("total_tokens", 0)
+
+                    # Рассчитываем стоимость
+                    cost_per_1k = self.GIGACHAT_PRICES[model]
+                    total_cost = (total_tokens / 1000) * cost_per_1k
+
+                    # Формируем usage_info
+                    usage_info = {
+                        'provider': 'gigachat',
+                        'model': model,
+                        'prompt_tokens': prompt_tokens,
+                        'completion_tokens': completion_tokens,
+                        'total_tokens': total_tokens,
+                        'cost_rub': round(total_cost, 4),
+                        'cost_per_1k_tokens': cost_per_1k
+                    }
+
+                    # Логирование ответа
+                    logger.debug(f"AIAgentService: GigaChat RESPONSE:\n{response_text}")
+                    logger.info(
+                        f"AIAgentService: GigaChat завершен. "
+                        f"Токенов: {total_tokens} (in: {prompt_tokens}, out: {completion_tokens}), "
+                        f"стоимость: {total_cost:.4f} руб."
+                    )
+
+                    # Обновляем статистику
+                    self._update_statistics('gigachat', total_tokens, total_cost)
+
+                    # Сохраняем в БД
+                    await self._save_statistics_to_db(
+                        provider='gigachat',
+                        model=model,
+                        prompt=prompt,
+                        response=response_text,
+                        usage_info=usage_info
+                    )
+
+                    return response_text, usage_info
+                else:
+                    raise Exception(f"GigaChat API error {response.status_code}: {response.text}")
+
+        except Exception as e:
+            logger.error(f"Ошибка при вызове GigaChat: {e}")
+            raise
+
+    async def _get_gigachat_token(self) -> str:
+        """Получить OAuth токен GigaChat с кешированием"""
+        import httpx
+        from datetime import datetime, timedelta, timezone
+
+        # Проверяем, есть ли валидный токен
+        if self._gigachat_token and self._gigachat_token_expires:
+            if datetime.now(timezone.utc) < self._gigachat_token_expires:
+                logger.debug("Используем кешированный токен GigaChat")
+                return self._gigachat_token
+
+        # Генерируем уникальный RqUID
+        rq_uid = str(uuid.uuid4())
+
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "RqUID": rq_uid,
+            "Authorization": f"Basic {self.gigachat_auth_key}"
+        }
+
+        data = {
+            "scope": self.gigachat_scope
+        }
+
+        try:
+            logger.info(f"Запрос OAuth токена GigaChat (RqUID: {rq_uid})")
+
+            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                response = await client.post(
+                    "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+                    headers=headers,
+                    data=data
+                )
+                response.raise_for_status()
+                token_data = response.json()
+
+                self._gigachat_token = token_data["access_token"]
+
+                # GigaChat возвращает expires_at в миллисекундах (Unix timestamp)
+                expires_at_ms = token_data.get("expires_at", 0)
+                if expires_at_ms > 0:
+                    self._gigachat_token_expires = datetime.fromtimestamp(
+                        expires_at_ms / 1000,
+                        tz=timezone.utc
+                    ) - timedelta(minutes=1)
+                else:
+                    self._gigachat_token_expires = datetime.now(timezone.utc) + timedelta(minutes=29)
+
+                logger.info(
+                    f"OAuth токен GigaChat получен. "
+                    f"Истекает: {self._gigachat_token_expires.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+                )
+
+                return self._gigachat_token
+
+        except Exception as e:
+            logger.error(f"Ошибка при получении токена GigaChat: {e}")
+            raise
+
+    def _update_statistics(self, provider: str, tokens: int, cost: float):
+        """Обновить статистику в памяти"""
+        self.stats['total_requests'] += 1
+        self.stats['total_tokens'] += tokens
+        self.stats['total_cost'] += cost
+        self.stats[provider]['requests'] += 1
+        self.stats[provider]['tokens'] += tokens
+        self.stats[provider]['cost'] += cost
+
+    async def _save_statistics_to_db(
+        self,
+        provider: str,
+        model: str,
+        prompt: str,
+        response: str,
+        usage_info: Dict[str, Any]
+    ):
+        """Сохранить статистику запроса в БД"""
+        try:
+            def save_sync():
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO llm_request_log (
+                            request_id,
+                            provider,
+                            model,
+                            prompt_text,
+                            response_text,
+                            prompt_tokens,
+                            completion_tokens,
+                            total_tokens,
+                            cost_rub,
+                            created_at
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                        )
+                    """, [
+                        str(uuid.uuid4()),
+                        provider,
+                        model,
+                        prompt[:5000],  # Ограничиваем длину
+                        response[:5000],
+                        usage_info['prompt_tokens'],
+                        usage_info['completion_tokens'],
+                        usage_info['total_tokens'],
+                        usage_info['cost_rub']
+                    ])
+
+            await sync_to_async(save_sync)()
+            logger.debug(f"AIAgentService: Статистика сохранена в БД (provider={provider}, model={model})")
+
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении статистики в БД: {e}")
+            # Не прерываем работу если статистика не сохранилась
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Получить статистику использования"""
+        return {
+            'total_requests': self.stats['total_requests'],
+            'total_tokens': self.stats['total_tokens'],
+            'total_cost_rub': round(self.stats['total_cost'], 2),
+            'yandexgpt': {
+                'requests': self.stats['yandexgpt']['requests'],
+                'tokens': self.stats['yandexgpt']['tokens'],
+                'cost_rub': round(self.stats['yandexgpt']['cost'], 2)
+            },
+            'gigachat': {
+                'requests': self.stats['gigachat']['requests'],
+                'tokens': self.stats['gigachat']['tokens'],
+                'cost_rub': round(self.stats['gigachat']['cost'], 2)
+            }
+        }
 
     def _create_service_detection_prompt(self, message_text: str) -> str:
         """
@@ -101,266 +583,64 @@ class AIAgentService:
             for i, s in enumerate(self.service_cache)
         ])
 
-        prompt = f"""
-Ты - опытный диспетчер управляющей компании. Твоя задача - понять проблему человека и определить нужную услугу.
+        prompt = f"""Ты - диспетчер управляющей компании (УК). Твоя задача - определить, какую услугу запрашивает абонент.
 
-Доступные услуги:
+ДОСТУПНЫЕ УСЛУГИ:
 {services_text}
 
-Обращение человека: "{message_text}"
+СООБЩЕНИЕ АБОНЕНТА:
+"{message_text}"
 
-Проанализируй и верни JSON в формате:
-{{"service_id": <ID_услуги>, "confidence": <уверенность_от_0_до_1>, "reason": "<обоснование>", "clarification": "<уточняющий_вопрос_если_нужен>"}}
+ПРАВИЛА:
+- Проанализируй сообщение и сопоставь с доступными услугами
+- Если однозначно определяешь услугу - верни её ID и название
+- Если НЕ однозначно - задай ОДИН открытый уточняющий вопрос
+- Вопрос должен быть кратким, конкретным и естественным
+- НЕ используй эмодзи
+- Используй простую разговорную речь
 
-Правила:
-- service_id - точный ID из списка выше, или null если не уверен
-- confidence - от 0.0 до 1.0, где 1.0 = полная уверенность
-- reason - краткое объяснение выбора
-- clarification - открытый уточняющий вопрос если confidence < 0.75, иначе пустая строка
-- Если человек уже ответил на уточняющий вопрос, используй этот контекст
-- При неуверенности задавай вопросы по сути: "Где именно течет?", а не "в квартире или на общедомовом имуществе?"
-
-Верни только JSON, без другого текста.
-
-JSON:"""
-
+ОТВЕТ В ФОРМАТЕ JSON:
+{{
+  "status": "SUCCESS" или "AMBIGUOUS",
+  "service_id": 123,
+  "service_name": "Название услуги",
+  "question": "Уточняющий вопрос (если status=AMBIGUOUS)",
+  "confidence": 0.95
+}}
+"""
         return prompt
 
-    async def _call_yandex_gpt(self, prompt: str, model: str = None) -> str:
+    async def detect_service(self, message: str) -> Dict[str, Any]:
         """
-        Вызов YandexGPT API с логированием токенов и стоимости
-
-        ИСПРАВЛЕНО (2025-12-28): Добавлен параметр model для выбора Lite/Pro
+        Определить услугу по сообщению
 
         Args:
-            prompt: Промт для отправки
-            model: Модель для использования ('lite' | 'pro' | None = default)
+            message: Сообщение пользователя
 
         Returns:
-            tuple(str, dict): (response_text, usage_info) или (None, None)
-        """
-        # ИСПРАВЛЕНО (2025-12-28): Выбор модели
-        if model is None:
-            model = self.default_model
-
-        # Проверяем валидность модели
-        if model not in ['lite', 'pro']:
-            logger.warning(f"Неверная модель '{model}', используем 'lite'")
-            model = 'lite'
-
-        # Определяем modelUri и цены
-        if model == 'pro':
-            model_uri = f"gpt://{self.folder_id}/yandexgpt/latest"
-            price_input = self.PRICE_INPUT_PER_1K_PRO
-            price_output = self.PRICE_OUTPUT_PER_1K_PRO
-        else:  # lite (default)
-            model_uri = f"gpt://{self.folder_id}/yandexgpt-lite/latest"
-            price_input = self.PRICE_INPUT_PER_1K_LITE
-            price_output = self.PRICE_OUTPUT_PER_1K_LITE
-
-        try:
-            import aiohttp
-            import asyncio
-
-            url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "x-folder-id": self.folder_id,
-                "Content-Type": "application/json"
+            {
+                'status': 'SUCCESS' | 'AMBIGUOUS',
+                'service_id': 123,
+                'service_name': '...',
+                'question': '...',
+                'confidence': 0.95,
+                'usage': {...}
             }
-
-            data = {
-                "modelUri": model_uri,  # ИСПРАВЛЕНО: используем динамический modelUri
-                "completionOptions": {
-                    "stream": False,
-                    "temperature": 0.3,
-                    "maxTokens": 500  # ИСПРАВЛЕНО: Увеличено для получения полных ответов
-                },
-                "messages": [
-                    {
-                        "role": "user",
-                        "text": prompt
-                    }
-                ]
-            }
-
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=data, timeout=aiohttp.ClientTimeout(total=30)) as response:
-                    logger.info(f"AIAgent: API response status: {response.status} (model: {model})")
-
-                    if response.status == 200:
-                        result = await response.json()
-                        logger.debug(f"AIAgent: API response JSON: {result}")
-
-                        # Извлекаем информацию о токенах
-                        usage = result.get('result', {}).get('usage', {})
-                        # ИСПРАВЛЕНО: YandexGPT API возвращает токены как СТРОКИ, конвертируем в int
-                        input_tokens = int(usage.get('inputTextTokens', 0) or 0)
-                        output_tokens = int(usage.get('completionTokens', 0) or 0)
-                        total_tokens = int(usage.get('totalTokens', input_tokens + output_tokens) or 0)
-
-                        # ИСПРАВЛЕНО (2025-12-28): Рассчитываем стоимость с учетом модели
-                        input_cost = (input_tokens / 1000) * price_input
-                        output_cost = (output_tokens / 1000) * price_output
-                        total_cost = input_cost + output_cost
-
-                        # Обновляем статистику
-                        self.total_tokens_used += total_tokens
-                        self.total_cost += total_cost
-                        self.requests_count += 1
-
-                        # ИСПРАВЛЕНО (2025-12-28): Статистика по моделям
-                        if model == 'pro':
-                            self.pro_requests += 1
-                            self.pro_cost += total_cost
-                        else:
-                            self.lite_requests += 1
-                            self.lite_cost += total_cost
-
-                        # Логируем с информацией о стоимости
-                        logger.info(
-                            f"AIAgent: API вызов завершен (model={model}). "
-                            f"Токены: {input_tokens} вх + {output_tokens} вых = {total_tokens} всего. "
-                            f"Стоимость: {input_cost:.4f} + {output_cost:.4f} = {total_cost:.4f} руб. "
-                            f"Всего потрачено: {self.total_cost:.4f} руб ({self.total_tokens_used} токенов, {self.requests_count} запросов)"
-                        )
-
-                        response_text = result['result']['alternatives'][0]['message']['text']
-                        usage_info = {
-                            'input_tokens': input_tokens,
-                            'output_tokens': output_tokens,
-                            'total_tokens': total_tokens,
-                            'input_cost': input_cost,
-                            'output_cost': output_cost,
-                            'total_cost': total_cost,
-                            'model': model  # ИСПРАВЛЕНО: добавляем модель в usage_info
-                        }
-
-                        return response_text, usage_info
-                    else:
-                        error_text = await response.text()
-                        logger.error(f"YandexGPT API error: {response.status} - {error_text}")
-                        return None, None
-
-        except Exception as e:
-            logger.error(f"Ошибка вызова YandexGPT: {e}")
-            return None, None
-
-    def _parse_ai_response(self, response_text: str) -> Dict:
-        """Парсинг ответа от ИИ"""
-        try:
-            if not response_text:
-                return {}
-
-            # Ищем JSON в ответе
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if json_match:
-                json_str = json_match.group()
-                return json.loads(json_str)
-            else:
-                # Если JSON не найден, пробуем весь ответ
-                return json.loads(response_text)
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Ошибка парсинга JSON: {e}, ответ: {response_text}")
-            return {}
-        except Exception as e:
-            logger.error(f"Ошибка обработки ответа ИИ: {e}")
-            return {}
-
-    async def search(self, message_text: str) -> Dict:
         """
-        Поиск услуг с помощью ИИ
+        await self._load_services()
+        prompt = self._create_service_detection_prompt(message)
 
-        Args:
-            message_text: Текст сообщения пользователя
+        response, usage = await self.call_llm(prompt)
 
-        Returns:
-            Dict: Результат поиска в формате JSON {[КодУслуги], [Релевантность]}
-                  + usage_info с информацией о токенах и стоимости
-        """
         try:
-            logger.info(f"AIAgent: ИИ-анализ текста '{message_text[:50]}...'")
-
-            if not self.is_available:
-                logger.warning("AIAgent: недоступен (нет API ключа)")
-                return {'candidates': [], 'status': 'unavailable'}
-
-            # Загружаем услуги если еще не загружены
-            if self.service_cache is None:
-                await self._load_services()
-
-            if not self.service_cache:
-                logger.warning("AIAgent: нет загруженных услуг")
-                return {'candidates': [], 'status': 'no_services'}
-
-            # Создаем промпт
-            prompt = self._create_service_detection_prompt(message_text)
-            logger.info(f"AIAgent: отправляем промпт в YandexGPT (длина: {len(prompt)} символов)")
-            logger.debug(f"AIAgent: промпт: {prompt[:500]}...")  # Первые 500 символов
-
-            # Вызываем ИИ (уже в async контексте)
-            response, usage_info = await self._call_yandex_gpt(prompt)
-
-            if not response:
-                logger.warning("AIAgent: не получили ответ от ИИ")
-                return {'candidates': [], 'status': 'no_response', 'usage_info': None}
-
-            # Парсим ответ
-            parsed = self._parse_ai_response(response)
-
-            if not parsed:
-                logger.warning(f"AIAgent: не удалось распарсить ответ: {response}")
-                return {'candidates': [], 'status': 'parse_error', 'usage_info': usage_info}
-
-            service_id = parsed.get('service_id')
-            confidence = parsed.get('confidence', 0.0)
-
-            # Проверяем порог уверенности
-            if confidence >= 0.75 and service_id:
-                # Ищем информацию об услуге
-                service_info = next((s for s in self.service_list if s['id'] == service_id), None)
-
-                if service_info:
-                    candidate = {
-                        'service_id': service_id,
-                        'service_name': service_info['name'],
-                        'confidence': round(confidence, 3),
-                        'source': 'ai_agent',
-                        'reason': parsed.get('reason', '')
-                    }
-
-                    logger.info(f"AIAgent: найдена услуга {service_id} с уверенностью {confidence:.3f}")
-
-                    return {
-                        'status': 'success',
-                        'candidates': [candidate],
-                        'ai_response': response,
-                        'parsed_result': parsed,
-                        'usage_info': usage_info,
-                        'method': 'ai_search'
-                    }
-
-            # Если не достигли порога или не нашли услугу
-            logger.info(f"AIAgent: не найдено подходящих услуг (confidence: {confidence})")
+            result = json.loads(response)
+            result['usage'] = usage
+            return result
+        except json.JSONDecodeError:
+            logger.error(f"Ошибка парсинга JSON от LLM: {response}")
             return {
-                'status': 'low_confidence',
-                'candidates': [],
-                'ai_response': response,
-                'parsed_result': parsed,
-                'usage_info': usage_info
+                'status': 'ERROR',
+                'error': 'Invalid JSON response',
+                'raw_response': response,
+                'usage': usage
             }
-
-        except Exception as e:
-            logger.error(f"Ошибка в AIAgentService: {e}")
-            return {
-                'status': 'error',
-                'error': str(e),
-                'candidates': []
-            }
-
-    def get_service_details(self, service_id: int) -> Dict:
-        """Получить детали услуги по ID"""
-        service = next((s for s in self.service_list if s['id'] == service_id), None)
-        return service or {}

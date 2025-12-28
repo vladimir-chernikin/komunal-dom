@@ -2087,9 +2087,14 @@ class MainAgent:
                 # - Для вопросов к пользователю: Pro (качество критично!)
                 # - Для остальных задач: используется default (обычно Lite)
                 question_types_requiring_pro = ['clarification', 'what_happened', 'location', 'details']
-                model = 'pro' if question_type in question_types_requiring_pro else None  # None = default
+                model = 'pro' if question_type in question_types_requiring_pro else 'lite'
 
-                response, usage = await self.ai_agent._call_yandex_gpt(prompt, model=model)
+                # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
+                response, usage = await self.ai_agent.call_llm(
+                    prompt=prompt,
+                    provider='yandexgpt',  # Можно менять на 'gigachat'
+                    model=model
+                )
                 question = response.strip()
 
                 # ИСПРАВЛЕНО (2025-12-28): Логируем ответ LLM
