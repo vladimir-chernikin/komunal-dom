@@ -233,6 +233,11 @@ JSON:"""
                     'reason': str
                 }
         """
+        # ИСПРАВЛЕНО (2025-12-28): Отладочные логи
+        logger.info("🔍 FilterDetectionService ВХОДЯЩИЕ ПАРАМЕТРЫ:")
+        logger.info(f"  📝 message_text: '{message_text[:80]}'")
+        logger.info(f"  📋 dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
+
         try:
             logger.info(f"FilterDetectionService: Анализ фильтров для '{message_text[:50]}...' (история: {len(dialog_history or [])} сообщений)")
 
@@ -245,10 +250,22 @@ JSON:"""
 
             # Создаем промпт
             prompt = self._create_filter_detection_prompt(message_text, dialog_history or [])
+
+            # ИСПРАВЛЕНО (2025-12-28): Логируем промт
+            logger.info(f"🤖 FilterDetection PROMPT:")
+            logger.info(f"{'=' * 80}")
+            logger.info(f"{prompt[:500]}...")
+            logger.info(f"{'=' * 80} (длина: {len(prompt)} символов)")
+
             logger.info(f"FilterDetectionService: отправляем промпт через AIAgentService (длина: {len(prompt)} символов)")
 
             # ИСПРАВЛЕНО: Используем AIAgentService._call_yandex_gpt вместо прямого вызова API
             response, usage_info = await self.ai_agent._call_yandex_gpt(prompt)
+
+            # ИСПРАВЛЕНО (2025-12-28): Логируем ответ
+            logger.info(f"🤖 FilterDetection ОТВЕТ LLM:")
+            logger.info(f"  📝 Raw response: '{response[:300]}'")
+            logger.info(f"  💰 Usage: {usage_info}")
 
             if not response:
                 logger.warning("FilterDetectionService: не получили ответ от LLM через AIAgentService")

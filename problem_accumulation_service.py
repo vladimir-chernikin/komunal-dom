@@ -66,17 +66,42 @@ class ProblemAccumulationService:
                 }
             }
         """
+        # ИСПРАВЛЕНО (2025-12-28): Отладочные логи входящих параметров
+        logger.info("🔍 ProblemAccumulationService ВХОДЯЩИЕ ПАРАМЕТРЫ:")
+        logger.info(f"  📝 message_text: '{message_text[:80]}'")
+        logger.info(f"  📝 current_problem: '{current_problem[:80] if current_problem else '(пусто)'}'")
+        logger.info(f"  ❓ bot_question: '{bot_question[:80] if bot_question else '(нет)'}'")
+        logger.info(f"  📋 dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
+
         # Формируем промпт для LLM
         prompt = self._create_accumulation_prompt(
             message_text, current_problem, bot_question, dialog_history
         )
 
+        # ИСПРАВЛЕНО (2025-12-28): Логируем промт
+        logger.info(f"🤖 ProblemAccumulation PROMPT:")
+        logger.info(f"{'=' * 80}")
+        logger.info(f"{prompt[:500]}...")
+        logger.info(f"{'=' * 80} (длина: {len(prompt)} символов)")
+
         try:
             # Вызываем LLM
             response_text, usage = await self.ai_agent._call_yandex_gpt(prompt)
 
+            # ИСПРАВЛЕНО (2025-12-28): Логируем ответ
+            logger.info(f"🤖 ProblemAccumulation ОТВЕТ LLM:")
+            logger.info(f"  📝 Raw response: '{response_text[:200]}'")
+            logger.info(f"  💰 Usage: {usage}")
+
             # Пытаемся распарсить JSON
             result = self._parse_llm_response(response_text, current_problem)
+
+            # ИСПРАВЛЕНО (2025-12-28): Детальный лог результата
+            logger.info(f"✅ ProblemAccumulation РЕЗУЛЬТАТ:")
+            logger.info(f"  🔍 is_meaningful: {result['is_meaningful']}")
+            logger.info(f"  📝 new_info: '{result['new_info']}'")
+            logger.info(f"  📝 updated_problem: '{result['updated_problem']}'")
+            logger.info(f"  🔧 fields: {json.dumps(result['fields'], ensure_ascii=False)}")
 
             logger.info(
                 f"ProblemAccumulation: '{message_text[:50]}...' → "

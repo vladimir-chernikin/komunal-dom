@@ -180,7 +180,27 @@ class MainAgent:
             else:
                 logger.info(f"Главный Агент начал обработку: '{message_text[:50]}...'")
         else:
-            logger.info(f"Главный Агент начал обработку: '{message_text[:50]}...'")
+            logger.info(f"Главный Агент начал обработку: '{message_text[:50]}'")
+
+        # ИСПРАВЛЕНО (2025-12-28): Добавлены мощные отладочные логи для проверки контекста
+        logger.info("=" * 80)
+        logger.info("🔍 ДИАГНОСТИКА КОНТЕКСТА (process_service_detection)")
+        logger.info("=" * 80)
+        logger.info(f"📥 message_text: '{message_text}'")
+        logger.info(f"📥 original_message: '{original_message}'")
+        logger.info(f"📥 is_followup: {is_followup}")
+        logger.info(f"📥 dialog_history длина: {len(dialog_history) if dialog_history else 0}")
+
+        if dialog_history and len(dialog_history) > 0:
+            logger.info("📋 DIALOG HISTORY (последние 5 сообщений):")
+            for i, msg in enumerate(dialog_history[-5:], 1):
+                role = msg.get('role', 'unknown')
+                text = msg.get('text', '')[:60]
+                logger.info(f"  {i}. [{role}] {text}...")
+        else:
+            logger.info("⚠️  DIALOG HISTORY ПУСТОЙ ИЛИ ОТСУТСТВУЕТ")
+
+        logger.info("=" * 80)
 
         # Формируем поисковый текст
         # ИСПРАВЛЕНО: Для followup сообщений объединяем с предыдущим пользовательским сообщением
@@ -240,6 +260,12 @@ class MainAgent:
         accumulated_fields = {}
         established_filters = {}
 
+        # ИСПРАВЛЕНО (2025-12-28): Отладочные логи до накопления
+        logger.info("🔍 TXTPrb И ФИЛЬТРЫ ДО накопления:")
+        logger.info(f"  📝 txtPrb: '{txtPrb[:80] if txtPrb else '(пусто)'}'")
+        logger.info(f"  🔧 accumulated_fields: {accumulated_fields}")
+        logger.info(f"  🔧 established_filters: {established_filters}")
+
         if self.problem_accumulator and is_followup:
             try:
                 # Извлекаем txtPrb из истории диалога
@@ -278,6 +304,12 @@ class MainAgent:
                     txtPrb, accumulated_fields
                 )
                 logger.info(f"Установленные фильтры: {established_filters}")
+
+                # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ПОСЛЕ накопления
+                logger.info("🔍 TXTPrb И ФИЛЬТРЫ ПОСЛЕ накопления:")
+                logger.info(f"  📝 txtPrb: '{txtPrb[:120] if txtPrb else '(пусто)'}'")
+                logger.info(f"  🔧 accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
+                logger.info(f"  🔧 established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
 
                 # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
                 # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
@@ -1017,7 +1049,7 @@ class MainAgent:
 
         return filters
 
-    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> Dict:
+    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -1027,18 +1059,35 @@ class MainAgent:
         ИСПРАВЛЕНО: Добавлен анализ истории диалога для исключения уже отвеченных вопросов
         ИСПРАВЛЕНО: Возвращает Dict с status вместо строки
         ИСПРАВЛЕНО (2025-12-25): Возвращает filtered_candidates для итеративного уточнения
+        ИСПРАВЛЕНО (2025-12-28): Добавлены параметры txtPrb и established_filters для передачи в LLM
+        ИСПРАВЛЕНО (2025-12-28): Извлечение txtPrb и established_filters из dialog_history если не переданы
         """
+        # ИСПРАВЛЕНО (2025-12-28): Если txtPrb и established_filters не переданы - извлекаем из истории
+        if not txtPrb and dialog_history and self.problem_accumulator:
+            try:
+                txtPrb = self.problem_accumulator.get_txtPrb_from_metadata(dialog_history)
+                logger.info(f"_generate_smart_clarification: извлечен txtPrb из истории: '{txtPrb[:60] if txtPrb else '(пусто)'}...'")
+            except Exception as e:
+                logger.warning(f"_generate_smart_clarification: ошибка извлечения txtPrb: {e}")
+
+        # ИСПРАВЛЕНО (2025-12-28): Добавляем отладочные логи
+        logger.info("🔍 _generate_smart_clarification ДИАГНОСТИКА:")
+        logger.info(f"  📝 txtPrb: '{txtPrb[:80] if txtPrb else '(не передан)'}'")
+        logger.info(f"  🔧 established_filters: {established_filters if established_filters else '(не переданы)'}")
+        logger.info(f"  📋 dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
+
         if not candidates_with_attrs:
             context = {
                 'original_message': original_message,
                 'dialog_history': dialog_history or []
             }
-            # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI
+            # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI + ПЕРЕДАЕМ txtPrb и established_filters
             message = await self._generate_ai_question(
                 context=context.get('original_message', ''),
                 dialog_history=context.get('dialog_history', []),
                 candidates=None,
-                established_filters=None,
+                established_filters=established_filters,  # ИСПРАВЛЕНО
+                txtPrb=txtPrb,  # ИСПРАВЛЕНО
                 question_type='clarification'
             )
             return {
@@ -1224,10 +1273,13 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопросов
         # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
         context = f"Пользователь написал: {original_message}"
+        # ИСПРАВЛЕНО (2025-12-28): ПЕРЕДАЕМ txtPrb и established_filters
         ai_question = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=filtered_candidates,
+            established_filters=established_filters,  # ИСПРАВЛЕНО
+            txtPrb=txtPrb,  # ИСПРАВЛЕНО
             question_type='clarification'
         )
 
@@ -1876,6 +1928,103 @@ class MainAgent:
 
         return question
 
+    def _validate_question_not_redundant(self, question: str, txtPrb: str = None, established_filters: Dict = None) -> str:
+        """
+        ИСПРАВЛЕНО (2025-12-28): Проверяет, что вопрос НЕ спрашивает то, что уже известно
+
+        Args:
+            question: Сгенерированный вопрос
+            txtPrb: Накопленное описание проблемы
+            established_filters: Установленные фильтры
+
+        Returns:
+            str: Исправленный вопрос или оригинал если всё OK
+        """
+        if not question:
+            return question
+
+        question_lower = question.lower()
+
+        # Проверяем冗антность (redundancy) только если есть known_info
+        if not txtPrb and not established_filters:
+            return question
+
+        redundant_detected = False
+        warning_msg = []
+
+        # ПРОВЕРКА 1: Если в txtPrb есть локация, а вопрос "где?"
+        if txtPrb and any(loc in txtPrb.lower() for loc in ['зал', 'ванная', 'кухн', 'спальн', 'коридор', 'подъезд']):
+            if any(word in question_lower for word in ['где', 'какое место', 'в какой комнат']):
+                redundant_detected = True
+                warning_msg.append(f"локация уже в txtPrb: '{txtPrb}'")
+
+        # ПРОВЕРКА 2: Если established_filters содержит location с высоким confidence
+        if established_filters:
+            location_filter = established_filters.get('location')
+            if location_filter and isinstance(location_filter, dict):
+                location_value = location_filter.get('value')
+                location_confidence = location_filter.get('confidence', 0)
+
+                # Если confidence > 0.8 и вопрос спрашивает "где?" - redundant
+                if location_confidence > 0.8 and location_value:
+                    if any(word in question_lower for word in ['где', 'место', 'локаци']):
+                        redundant_detected = True
+                        warning_msg.append(f"location={location_value} (confidence={location_confidence})")
+
+            # ПРОВЕРКА 3: Если есть category с высоким confidence
+            category_filter = established_filters.get('category')
+            if category_filter and isinstance(category_filter, dict):
+                category_value = category_filter.get('value')
+                category_confidence = category_filter.get('confidence', 0)
+
+                # Если вопрос спрашивает про категорию, которая уже известна
+                if category_confidence > 0.8 and category_value:
+                    if any(word in question_lower for word in ['какая услуга', 'какой категор', 'это отопление или водоснабжение']):
+                        redundant_detected = True
+                        warning_msg.append(f"category={category_value} (confidence={category_confidence})")
+
+            # ПРОВЕРКА 4: Если есть object (source) с высоким confidence
+            object_filter = established_filters.get('object')
+            if object_filter and isinstance(object_filter, dict):
+                object_value = object_filter.get('value')
+                object_confidence = object_filter.get('confidence', 0)
+
+                # Если вопрос спрашивает "что именно?" а объект известен
+                if object_confidence > 0.8 and object_value:
+                    if any(word in question_lower for word in ['что именно', 'что сломал', 'какой объект']):
+                        redundant_detected = True
+                        warning_msg.append(f"object={object_value} (confidence={object_confidence})")
+
+        # Логируем warning если обнаружена冗антность
+        if redundant_detected:
+            logger.warning(f"⚠️ ОБНАРУЖЕН REDUNDANT ВОПРОС: {question}")
+            for msg in warning_msg:
+                logger.warning(f"  ⚠️  {msg}")
+            logger.warning(f"  📝 txtPrb: '{txtPrb[:80] if txtPrb else '(нет)'}'")
+            logger.warning(f"  🔧 established_filters: {established_filters}")
+
+            # ИСПРАВЛЕНО: Генерируем fallback вопрос вместо冗антного
+            # Вопросы по приоритету:
+            # 1. Если нет category - спросить категорию
+            # 2. Если нет severity - спросить серьезность
+            # 3. Иначе - уточнить детали
+            if established_filters:
+                if not established_filters.get('category'):
+                    fallback = "Уточните, пожалуйста, к какой категории относится проблема?"
+                    logger.info(f"✅ Заменено на: {fallback}")
+                    return fallback
+                elif not established_filters.get('severity'):
+                    fallback = "Насколько это срочно? Есть ли угроза имуществу?"
+                    logger.info(f"✅ Заменено на: {fallback}")
+                    return fallback
+
+            # Если вообще нет фильтров - уточнить детали
+            fallback = "Уточните, пожалуйста, детали проблемы."
+            logger.info(f"✅ Заменено на fallback: {fallback}")
+            return fallback
+
+        return question
+
     async def _generate_ai_question(
         self,
         context: str,
@@ -1906,6 +2055,15 @@ class MainAgent:
         Returns:
             str: Сгенерированный AI вопрос
         """
+        # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
+        logger.info("🔍 _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
+        logger.info(f"  📝 context: '{context[:100]}'")
+        logger.info(f"  🔧 question_type: {question_type}")
+        logger.info(f"  📋 dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
+        logger.info(f"  📝 txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
+        logger.info(f"  🔧 established_filters: {established_filters if established_filters else '(не переданы)'}")
+        logger.info(f"  👥 candidates: {len(candidates) if candidates else 0} кандидатов")
+
         try:
             # Формируем промт для AI
             prompt = self._build_question_prompt(
@@ -1917,10 +2075,21 @@ class MainAgent:
                 question_type=question_type
             )
 
+            # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
+            logger.info(f"🤖 PROMPT ДЛЯ LLM ({question_type}):")
+            logger.info(f"{'=' * 80}")
+            logger.info(f"{prompt[:500]}...")
+            logger.info(f"{'=' * 80} (полная длина: {len(prompt)} символов)")
+
             # Вызываем AI через AIAgentService
             if self.ai_agent:
                 response, usage = await self.ai_agent._call_yandex_gpt(prompt)
                 question = response.strip()
+
+                # ИСПРАВЛЕНО (2025-12-28): Логируем ответ LLM
+                logger.info(f"🤖 ОТВЕТ LLM ({question_type}):")
+                logger.info(f"  📝 Текст: '{question}'")
+                logger.info(f"  💰 Usage: {usage}")
 
                 # Удаляем лишние кавычки если есть
                 if question.startswith('"') and question.endswith('"'):
@@ -1931,7 +2100,14 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2025-12-28): Post-processing проверка на двойные вопросы
                 question = self._fix_double_questions(question)
 
-                logger.info(f"AI сгенерировал вопрос ({question_type}): {question}")
+                # ИСПРАВЛЕНО (2025-12-28): Проверка на冗антные вопросы (спрашивают то, что уже известно)
+                question = self._validate_question_not_redundant(
+                    question=question,
+                    txtPrb=txtPrb,
+                    established_filters=established_filters
+                )
+
+                logger.info(f"✅ AI сгенерировал вопрос ({question_type}): {question}")
                 return question
             else:
                 logger.warning("AIAgentService недоступен, используем fallback")

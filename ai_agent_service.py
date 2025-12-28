@@ -20,12 +20,19 @@ class AIAgentService:
     """Микросервис поиска услуг с помощью YandexGPT"""
 
     # Цены YandexGPT (руб за 1000 токенов)
-    PRICE_INPUT_PER_1K = 0.20
-    PRICE_OUTPUT_PER_1K = 0.20
+    # Lite: 0.20 ₽, Pro: 3.00 ₽ (в 15 раз дороже)
+    PRICE_INPUT_PER_1K_LITE = 0.20
+    PRICE_OUTPUT_PER_1K_LITE = 0.20
+    PRICE_INPUT_PER_1K_PRO = 3.00
+    PRICE_OUTPUT_PER_1K_PRO = 3.00
 
     def __init__(self):
         self.api_key = config('YANDEX_API_KEY')
         self.folder_id = config('YANDEX_FOLDER_ID')
+
+        # ИСПРАВЛЕНО (2025-12-28): Добавлена поддержка выбора модели
+        self.default_model = config('YANDEXGPT_MODEL', default='lite')  # lite | pro
+
         self.is_available = bool(self.api_key and self.folder_id)
         self.service_cache = None
         self.service_list = None
@@ -35,7 +42,13 @@ class AIAgentService:
         self.total_cost = 0.0
         self.requests_count = 0
 
-        logger.info(f"AIAgentService инициализирован (доступен: {self.is_available})")
+        # Статистика по моделям
+        self.lite_requests = 0
+        self.pro_requests = 0
+        self.lite_cost = 0.0
+        self.pro_cost = 0.0
+
+        logger.info(f"AIAgentService инициализирован (доступен: {self.is_available}, модель по умолчанию: {self.default_model})")
 
     async def _load_services(self) -> List[Dict]:
         """Асинхронная загрузка списка услуг для промпта"""
@@ -113,13 +126,38 @@ JSON:"""
 
         return prompt
 
-    async def _call_yandex_gpt(self, prompt: str) -> str:
+    async def _call_yandex_gpt(self, prompt: str, model: str = None) -> str:
         """
         Вызов YandexGPT API с логированием токенов и стоимости
+
+        ИСПРАВЛЕНО (2025-12-28): Добавлен параметр model для выбора Lite/Pro
+
+        Args:
+            prompt: Промт для отправки
+            model: Модель для использования ('lite' | 'pro' | None = default)
 
         Returns:
             tuple(str, dict): (response_text, usage_info) или (None, None)
         """
+        # ИСПРАВЛЕНО (2025-12-28): Выбор модели
+        if model is None:
+            model = self.default_model
+
+        # Проверяем валидность модели
+        if model not in ['lite', 'pro']:
+            logger.warning(f"Неверная модель '{model}', используем 'lite'")
+            model = 'lite'
+
+        # Определяем modelUri и цены
+        if model == 'pro':
+            model_uri = f"gpt://{self.folder_id}/yandexgpt/latest"
+            price_input = self.PRICE_INPUT_PER_1K_PRO
+            price_output = self.PRICE_OUTPUT_PER_1K_PRO
+        else:  # lite (default)
+            model_uri = f"gpt://{self.folder_id}/yandexgpt-lite/latest"
+            price_input = self.PRICE_INPUT_PER_1K_LITE
+            price_output = self.PRICE_OUTPUT_PER_1K_LITE
+
         try:
             import aiohttp
             import asyncio
@@ -133,7 +171,7 @@ JSON:"""
             }
 
             data = {
-                "modelUri": f"gpt://{self.folder_id}/yandexgpt-lite/latest",
+                "modelUri": model_uri,  # ИСПРАВЛЕНО: используем динамический modelUri
                 "completionOptions": {
                     "stream": False,
                     "temperature": 0.3,
@@ -149,7 +187,7 @@ JSON:"""
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, headers=headers, json=data, timeout=aiohttp.ClientTimeout(total=30)) as response:
-                    logger.info(f"AIAgent: API response status: {response.status}")
+                    logger.info(f"AIAgent: API response status: {response.status} (model: {model})")
 
                     if response.status == 200:
                         result = await response.json()
@@ -162,9 +200,9 @@ JSON:"""
                         output_tokens = int(usage.get('completionTokens', 0) or 0)
                         total_tokens = int(usage.get('totalTokens', input_tokens + output_tokens) or 0)
 
-                        # Рассчитываем стоимость
-                        input_cost = (input_tokens / 1000) * self.PRICE_INPUT_PER_1K
-                        output_cost = (output_tokens / 1000) * self.PRICE_OUTPUT_PER_1K
+                        # ИСПРАВЛЕНО (2025-12-28): Рассчитываем стоимость с учетом модели
+                        input_cost = (input_tokens / 1000) * price_input
+                        output_cost = (output_tokens / 1000) * price_output
                         total_cost = input_cost + output_cost
 
                         # Обновляем статистику
@@ -172,9 +210,17 @@ JSON:"""
                         self.total_cost += total_cost
                         self.requests_count += 1
 
+                        # ИСПРАВЛЕНО (2025-12-28): Статистика по моделям
+                        if model == 'pro':
+                            self.pro_requests += 1
+                            self.pro_cost += total_cost
+                        else:
+                            self.lite_requests += 1
+                            self.lite_cost += total_cost
+
                         # Логируем с информацией о стоимости
                         logger.info(
-                            f"AIAgent: API вызов завершен. "
+                            f"AIAgent: API вызов завершен (model={model}). "
                             f"Токены: {input_tokens} вх + {output_tokens} вых = {total_tokens} всего. "
                             f"Стоимость: {input_cost:.4f} + {output_cost:.4f} = {total_cost:.4f} руб. "
                             f"Всего потрачено: {self.total_cost:.4f} руб ({self.total_tokens_used} токенов, {self.requests_count} запросов)"
@@ -187,7 +233,8 @@ JSON:"""
                             'total_tokens': total_tokens,
                             'input_cost': input_cost,
                             'output_cost': output_cost,
-                            'total_cost': total_cost
+                            'total_cost': total_cost,
+                            'model': model  # ИСПРАВЛЕНО: добавляем модель в usage_info
                         }
 
                         return response_text, usage_info
