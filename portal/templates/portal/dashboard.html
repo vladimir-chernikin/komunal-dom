@@ -193,13 +193,9 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <h1 class="h4 mb-1">
-                        <i class="fas fa-home text-primary"></i>
-                        Личный кабинет
-                    </h1>
-                    <p class="text-muted mb-0 small">
-                        Добро пожаловать, {{ user.first_name|default:user.username }}
-                    </p>
+                    <h5 class="mb-1">
+                        Добро пожаловать в личный кабинет (тестовый)
+                    </h5>
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     <span class="badge
@@ -226,7 +222,7 @@
                     <i class="fas fa-robot fa-2x mb-2 text-dark"></i>
                     <h5 class="mb-2"><i class="fas fa-sparkles"></i> AI Диспетчер</h5>
                     <p class="mb-3 small">
-                        Опишите вашу проблему, и искусственный интеллект поможет определить нужную услугу
+                        Опишите суть вашего обращения, и искусственный интеллект поможет определить нужную услугу
                     </p>
                     <a href="{% url 'message_handler:chat_interface' %}" class="btn btn-light">
                         <i class="fas fa-comments"></i>
@@ -263,7 +259,7 @@
                         <div class="card quick-action-card">
                             <div class="card-body py-2">
                                 <a href="{% url 'file_manager:all_files' %}" class="text-decoration-none text-dark">
-                                    <i class="fas fa-folder-open text-primary"></i>
+                                    <i class="fas fa-folder-open text-warning"></i>
                                     <h6 class="mb-0 small">Файлы</h6>
                                     <small class="text-muted" style="font-size: 0.65rem;">Все файлы системы</small>
                                 </a>
@@ -288,7 +284,7 @@
                         <div class="card quick-action-card">
                             <div class="card-body py-2">
                                 <a href="{% url 'portal:dba_page' %}" class="text-decoration-none text-dark">
-                                    <i class="fas fa-database text-warning"></i>
+                                    <i class="fas fa-database"></i>
                                     <h6 class="mb-0 small">Панель DBA</h6>
                                     <small class="text-muted" style="font-size: 0.65rem;">Менеджер данных</small>
                                 </a>
@@ -486,7 +482,7 @@
                     </a>
                     {% elif user_role == 'dba' %}
                     <a href="{% url 'portal:dba_page' %}" class="list-group-item list-group-item-action">
-                        <i class="fas fa-database text-secondary"></i>
+                        <i class="fas fa-database"></i>
                         Панель DBA
                     </a>
                     {% endif %}

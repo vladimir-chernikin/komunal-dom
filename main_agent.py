@@ -1463,25 +1463,28 @@ class MainAgent:
 
             if any(word in all_answers for word in ['теч', 'льет', 'капает', 'мокр']):
                 if 'труб' in all_answers:
-                    return "Уточните, пожалуйста: где именно течет из трубы? В ванной, на кухне, в другой комнате?"
+                    # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос без перечисления комнат
+                    return "Уточните, пожалуйста: где именно течет?"
                 elif any(word in all_answers for word in ['батарей', 'отопл', 'радиатор']):
-                    return "Понял, проблема с отоплением. В какой именно комнате течет батарея?"
+                    return "Где именно течет?"
                 else:
-                    return "Уточните, откуда именно течет? Из трубы, батареи, крана, или от соседей?"
-
+                    # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос без перечисления
+                    return "Уточните, откуда именно течет?"
             elif any(word in all_answers for word in ['сломал', 'не работ', 'испортил']):
-                return "Какое оборудование сломалось? Опишите подробнее."
+                return "Опишите подробнее, что именно сломалось."
 
             # Если ответ очень короткий (1-2 слова) - просим больше деталей
+            # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос вместо двойного
             if len(last_user_answers) > 0 and len(last_user_answers[-1].split()) <= 2:
-                return "Пожалуйста, опишите подробнее: где именно это произошло и что именно сломалось?"
+                return "Опишите подробнее, что именно произошло."
 
         # Проверяем количество повторов одного и того же
         if len(recent_bot_questions) >= 2:
             # Если последние 2+ вопроса от бота одинаковы
             if len(set(q.lower() for q in recent_bot_questions[:2])) <= 1:
                 logger.warning("Detected repeated bot questions, changing strategy")
-                return "Пожалуйста, опишите проблему другими словами. Где именно это произошло и что случилось?"
+                # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос вместо двойного
+                return "Пожалуйста, опишите проблему другими словами. Что именно произошло?"
 
         # Default fallback
         if is_followup:
@@ -2388,14 +2391,23 @@ class MainAgent:
             if filter_name == 'location' and value:
                 # Маппинг: зал/комната -> Индивидуальное
                 if value in ['Индивидуальное', 'Квартира', 'индивидуальное']:
-                    # Оставляем только Individual
+                    # ИСПРАВЛЕНО (2025-12-28): Добавлено детальное логирование
                     before_count = len(filtered_candidates)
+
+                    # Логируем каждого кандидата ДО фильтрации
+                    logger.info(f"  📋 ДО ФИЛЬТРАЦИИ location='{value}':")
+                    for i, c in enumerate(filtered_candidates, 1):
+                        loc = c.get('location_type', 'NULL')
+                        loc_lower = loc.lower() if loc else 'null'
+                        match = loc_lower in ['индивидуальное', 'квартира']
+                        logger.info(f"    {i}. ID={c.get('service_id')} | '{loc}' -> '{loc_lower}' | match={match}")
+
                     filtered_candidates = [
                         c for c in filtered_candidates
                         if c.get('location_type', '').lower() in ['индивидуальное', 'квартира']
                     ]
                     after_count = len(filtered_candidates)
-                    logger.info(f"  Фильтр location: {before_count} -> {after_count} (оставили Individual)")
+                    logger.info(f"  ✅ Фильтр location: {before_count} -> {after_count} (оставили Individual)")
 
             # Фильтрация по incident
             elif filter_name == 'incident' and value:

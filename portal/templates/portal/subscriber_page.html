@@ -350,7 +350,12 @@
                                         <i class="fas fa-user"></i>
                                     </div>
                                     <p class="text-muted mb-1" style="font-size: 14px;">{{ user.username }}</p>
-                                    <span class="badge bg-primary" style="font-size: 13px; padding: 3px 6px;">
+                                    <span class="badge
+                                        {% if user.userprofile.is_django_admin %}bg-danger
+                                        {% elif user.userprofile.is_dba %}bg-warning text-dark
+                                        {% elif user.userprofile.is_uk_admin %}bg-success
+                                        {% else %}bg-info{% endif %}"
+                                        style="font-size: 13px; padding: 3px 6px;">
                                         {{ user_profile.get_role_display }}
                                     </span>
                                 </div>
@@ -376,7 +381,11 @@
                                         <tr>
                                             <td class="text-muted"><strong>Роль:</strong></td>
                                             <td>
-                                                <span class="badge bg-primary">
+                                                <span class="badge
+                                                    {% if user.userprofile.is_django_admin %}bg-danger
+                                                    {% elif user.userprofile.is_dba %}bg-warning text-dark
+                                                    {% elif user.userprofile.is_uk_admin %}bg-success
+                                                    {% else %}bg-info{% endif %}">
                                                     {{ user_profile.get_role_display }}
                                                 </span>
                                             </td>
