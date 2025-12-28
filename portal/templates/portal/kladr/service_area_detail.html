@@ -3,9 +3,6 @@
 {% block title %}{{ area.name }} - Зона обслуживания{% endblock %}
 
 {% block extra_css %}
-<!-- Leaflet CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
 <style>
 #map {
     width: 100%;
@@ -90,7 +87,7 @@
             <div class="card">
                 <div class="card-header bg-primary text-white py-2">
                     <small class="fw-bold">
-                        <i class="fas fa-map-marked-alt"></i>
+                        <i class="fas fa-map-marked-alt text-success"></i>
                         Карта зоны обслуживания
                     </small>
                 </div>
@@ -196,37 +193,41 @@
     {% endif %}
 </div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Яндекс Карты API -->
+<script src="https://api-maps.yandex.ru/2.1/?apikey=ВАШ_API_КЛЮЧ&lang=ru_RU" type="text/javascript"></script>
 <script>
-// Инициализация карты (центр на Сочи)
-var map = L.map('map').setView([43.6028, 39.7342], 12);
+ymaps.ready(function() {
+    // Инициализация карты (центр на Сочи)
+    var myMap = new ymaps.Map('map', {
+        center: [43.6028, 39.7342], // Сочи
+        zoom: 12,
+        controls: ['zoomControl', 'typeSelector', 'fullscreenControl']
+    });
 
-// Добавляем слой OpenStreetMap
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19
-}).addTo(map);
+    // Данные зданий (для примера - пустые координаты)
+    // Когда будет миграция с lat/lon, нужно передать реальные координаты
+    var buildingsData = [
+        // Пример: { coords: [43.605, 39.735], address: 'ул. Ленина, д. 1' }
+    ];
 
-// Данные зданий (для примера - пустые координаты)
-// Когда будет миграция с lat/lon, нужно передать реальные координаты
-var buildingsData = [
-    // Пример: { coords: [43.605, 39.735], address: 'ул. Ленина, д. 1' }
-];
+    // Добавление маркеров зданий на карту
+    buildingsData.forEach(function(building) {
+        var placemark = new ymaps.Placemark(building.coords, {
+            balloonContent: building.address,
+            hintContent: building.address
+        }, {
+            preset: 'islands#blueDotIcon'
+        });
+        myMap.geoObjects.add(placemark);
+    });
 
-// Добавление маркеров зданий на карту
-var markers = [];
-buildingsData.forEach(function(building) {
-    var marker = L.marker(building.coords)
-        .addTo(map)
-        .bindPopup(building.address);
-    markers.push(marker);
+    // Если есть здания с координатами - центрируем карту по ним
+    if (buildingsData.length > 0) {
+        myMap.setBounds(myMap.geoObjects.getBounds(), {
+            checkZoomRange: true,
+            zoomMargin: 50
+        });
+    }
 });
-
-// Если есть здания с координатами - центрируем карту по ним
-if (markers.length > 0) {
-    var group = L.featureGroup(markers);
-    map.fitBounds(group.getBounds(), { padding: [50, 50] });
-}
 </script>
 {% endblock %}

@@ -316,6 +316,7 @@ METADATA:
                 if acc_fields:
                     lines.append("")
                     lines.append("├─ ACCUMULATED FIELDS:")
+                    lines.append("│ (накопленная информация из диалога - location, source, problem, etc)")
                     lines.append("│")
                     for key, value in acc_fields.items():
                         if value:
@@ -327,6 +328,7 @@ METADATA:
                 if est_filters:
                     lines.append("")
                     lines.append("└─ ESTABLISHED FILTERS:")
+                    lines.append("  (установленные фильтры для сокращения списка кандидатов)")
                     lines.append("  ")
                     for key, value in est_filters.items():
                         if isinstance(value, dict) and 'value' in value:

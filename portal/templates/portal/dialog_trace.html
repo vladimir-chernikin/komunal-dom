@@ -53,7 +53,7 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h1 class="h4 mb-0">
-                    <i class="fas fa-binoculars"></i>
+                    <i class="fas fa-binoculars text-dark"></i>
                     Трассировка диалогов
                 </h1>
                 <div>
@@ -93,7 +93,7 @@
             <ul class="nav nav-tabs mb-2" id="traceTabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="trace-tab" data-bs-toggle="tab" data-bs-target="#tracePanel" type="button" role="tab">
-                        <i class="fas fa-comments"></i> Трассировка
+                        <i class="fas fa-comments text-dark"></i> Трассировка
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
@@ -191,7 +191,7 @@ async function loadSessions() {
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); generateFullTrace('${session.session_id}')" title="Сгенерировать полный отчет">
-                                <i class="fas fa-binoculars"></i> Т
+                                <i class="fas fa-binoculars text-dark"></i> Т
                             </button>
                             <div class="text-end">
                                 <small class="text-muted">
@@ -249,7 +249,7 @@ async function loadTrace(sessionId) {
             const isInbound = msg.direction === 'inbound';
             const bgClass = isInbound ? 'bg-light' : 'bg-white';
             const borderClass = isInbound ? 'message-inbound' : 'message-outbound';
-            const icon = isInbound ? '<i class="fas fa-user text-success"></i>' : '<i class="fas fa-robot text-primary"></i>';
+            const icon = isInbound ? '<i class="fas fa-user text-success"></i>' : '<i class="fas fa-robot text-dark"></i>';
             const directionLabel = isInbound ? 'Пользователь' : 'Бот';
             const time = new Date(msg.created_at).toLocaleString('ru-RU');
 
