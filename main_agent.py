@@ -2199,112 +2199,33 @@ class MainAgent:
                         question = question.split('?')[0] + '?'
                         recent_bot_questions.append(question)
 
-        # Формируем контекст
-        context_info = ""
+        # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод _generate_ai_question
+        # вместо старого хардкод промпта
+        context = f"Пользователь написал: {message_text}"
+
+        # Добавляем информацию об уже заданных вопросах в context
         if recent_bot_questions:
-            context_info = f"\nУЖЕ ЗАДАННЫЕ ВОПРОСЫ (НЕ ПОВТОРЯЙ!):\n"
+            context += f"\n\nУЖЕ ЗАДАННЫЕ ВОПРОСЫ (НЕ ПОВТОРЯТЬ!):\n"
             for q in recent_bot_questions[-3:]:
-                context_info += f"  - {q}\n"
+                context += f"  - {q}\n"
 
-        # СУПЕР-ЖЁСТКИЙ ПРОМПТ с конкретными примерами (2025-12-27)
-        prompt = f"""Пользователь написал: "{message_text}"
-{context_info}
-Возможные услуги:
-{chr(10).join(f"{i+1}. {c['service_name']}" for i, c in enumerate(candidates[:5]))}
+        # Генерируем вопрос через универсальный метод
+        ai_question = await self._generate_ai_question(
+            context=context,
+            dialog_history=dialog_history,
+            candidates=candidates,
+            established_filters=established_filters,
+            question_type='clarification'
+        )
 
-ЗАДАЙ ОДИН ОТКРЫТЫЙ ВОПРОС без вариантов ответа.
+        logger.info(f"AI сгенерировал вопрос для {len(candidates)} кандидатов: {ai_question}")
 
-══════════════════════════════════════════════════════════════════════════════
-🚫 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕННЫЕ ПРИМЕРЫ (НЕПРАВИЛЬНО):
-🚫 "Где именно — в квартире или за её пределами?"
-🚫 "Что конкретно течёт: труба, кран, батарея?"
-🚫 "Требуется ли ремонт водопроводных или канализационных труб?"
-🚫 "Это отопление или водоснабжение?"
-🚫 "Где именно произошла протечка — в системе отопления общедомовой, в квартире или это общедомовой прорыв труб?"
-
-═════════════════════════════════════════════════════════════════════════════
-✅ ПРАВИЛЬНЫЕ ПРИМЕРЫ (ОТКРЫТЫЕ ВОПРОСЫ):
-✅ "Где именно течет?"
-✅ "Что именно сломалось?"
-✅ "Опишите подробнее что случилось."
-✅ "Уточните где именно это произошло."
-
-═════════════════════════════════════════════════════════════════════════════
-КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
-1. ❌ НЕ использовать слово "или" (в любом регистре)
-2. ❌ НЕ перечислять варианты через запятую
-3. ❌ НЕ использовать скобки с вариантами
-4. ❌ НЕ использовать тире с вариантами
-5. ❌ НЕ предлагать выбор из списка
-6. ✅ Вопрос должен начинаться с: Где/Что/Какой/Опишите/Уточните
-7. ✅ Только ОДИН вопрос
-8. ❌ НЕ повторять уже заданные вопросы выше
-
-Верни ТОЛЬКО текст вопроса БЕЗ слов "Вопрос:", "Ответ:" и других пояснений:"""
-
-        if not self.ai_agent:
-            return {
-                'status': 'AMBIGUOUS',
-                'message': "Опишите подробнее что именно произошло.",
-                'candidates': candidates,
-                'needs_clarification': True
-            }
-
-        try:
-            response, _ = await self.ai_agent._call_yandex_gpt(prompt)
-            ai_question = response.strip()
-            logger.info(f"AI сгенерировал вопрос для {len(candidates)} кандидатов: {ai_question}")
-
-            # ИСПРАВЛЕНО (2025-12-27): Post-processing проверка на запрещённые паттерны
-            question_lower = ai_question.lower()
-
-            # Запрещённые паттерны
-            has_ili = ' или ' in question_lower or question_lower.endswith(' или')
-            has_comma_enumeration = ',' in ai_question and '?' in ai_question
-            has_parens = '(' in ai_question and ')' in ai_question
-            has_dash_variants = ' — ' in ai_question or ' - ' in ai_question
-
-            # Проверка на перечисление (несколько слов с большой буквы через запятую)
-            has_multiple_options = False
-            if has_comma_enumeration:
-                parts = ai_question.split('?')[0].split(',')
-                if len(parts) >= 2:
-                    # Проверяем есть ли несколько слов с большой буквы (перечисление вариантов)
-                    capitalized_parts = [p.strip() for p in parts if p.strip() and p.strip()[0].isupper()]
-                    has_multiple_options = len(capitalized_parts) >= 2
-
-            if has_ili or has_multiple_options or has_parens or has_dash_variants:
-                logger.warning(
-                    f"⚠️ AI сгенерировал запрещённый паттерн! "
-                    f"или={has_ili}, перечисление={has_multiple_options}, "
-                    f"скобки={has_parens}, тире={has_dash_variants}"
-                )
-                logger.warning(f"❌ Запрещённый вопрос: {ai_question}")
-
-                # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации fallback вопроса
-                context = f"Пользователь написал: {message_text}"
-                ai_question = await self._generate_ai_question(
-                    context=context,
-                    dialog_history=dialog_history,
-                    candidates=candidates,
-                    question_type='clarification'
-                )
-                logger.info(f"✅ Заменяем на AI вопрос: {ai_question}")
-
-            return {
-                'status': 'AMBIGUOUS',
-                'message': ai_question,
-                'candidates': candidates,
-                'needs_clarification': True
-            }
-        except Exception as e:
-            logger.error(f"Ошибка AI генерации уточнения: {e}")
-            return {
-                'status': 'AMBIGUOUS',
-                'message': "Опишите подробнее что именно произошло.",
-                'candidates': candidates,
-                'needs_clarification': True
-            }
+        return {
+            'status': 'AMBIGUOUS',
+            'message': ai_question,
+            'candidates': candidates,
+            'needs_clarification': True
+        }
 
     async def _ask_ai_clarification(self, message_text: str, candidates: List[Dict], dialog_history: List[Dict]) -> Dict:
         """Спрашивает как уточнить - использует CommunicativeScriptsService
