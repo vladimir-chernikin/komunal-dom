@@ -79,37 +79,49 @@ class TraceReportService:
         return str(output_path)
 
     async def _load_messages_from_db(self, session_id: str) -> List[Dict]:
-        """Загружает сообщения из базы данных."""
+        """Загружает сообщения из базы данных напрямую через psycopg2."""
         try:
-            from django.db import connection
+            from django.conf import settings
+            import psycopg2
             from asgiref.sync import sync_to_async
 
             def load_sync():
-                # Используем connection.cursor() без явного connect/close
-                # Django сам управляет соединениями
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT
-                            id,
-                            text,
-                            direction,
-                            channel,
-                            session_id,
-                            created_at,
-                            metadata
-                        FROM message_handler_messagelog
-                        WHERE session_id LIKE %s
-                        ORDER BY created_at ASC
-                    """, [f"{session_id}%"])
+                # Подключаемся напрямую к БД, минуя Django connection wrapper
+                # Это избегает проблем с thread_sharing в async контексте
+                conn = psycopg2.connect(
+                    host=settings.DATABASES['default']['HOST'],
+                    port=settings.DATABASES['default']['PORT'],
+                    database=settings.DATABASES['default']['NAME'],
+                    user=settings.DATABASES['default']['USER'],
+                    password=settings.DATABASES['default']['PASSWORD']
+                )
 
-                    columns = [col[0] for col in cursor.description]
-                    messages = []
-                    for row in cursor.fetchall():
-                        messages.append(dict(zip(columns, row)))
+                try:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT
+                                id,
+                                text,
+                                direction,
+                                channel,
+                                session_id,
+                                created_at,
+                                metadata
+                            FROM message_handler_messagelog
+                            WHERE session_id LIKE %s
+                            ORDER BY created_at ASC
+                        """, [f"{session_id}%"])
 
-                    return messages
+                        columns = [col[0] for col in cursor.description]
+                        messages = []
+                        for row in cursor.fetchall():
+                            messages.append(dict(zip(columns, row)))
 
-            messages = await sync_to_async(load_sync, thread_sensitive=True)()
+                        return messages
+                finally:
+                    conn.close()
+
+            messages = await sync_to_async(load_sync)()
             logger.info(f"Загружено {len(messages)} сообщений для сессии {session_id}")
             return messages
 
