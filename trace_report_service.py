@@ -297,13 +297,14 @@ ID: {msg_id}
             # ai_orchestrator (если есть)
             ai_orchestrator = service_metadata.get('ai_orchestrator', {})
             if ai_orchestrator and isinstance(ai_orchestrator, dict):
+                confidence = ai_orchestrator.get('confidence', 0.0) or 0.0
                 details += f"""
 {'─' * 80}
 🔍 AI ORCHESTRATOR
 {'─' * 80}
    Status: {ai_orchestrator.get('status', 'unknown')}
    Service: {ai_orchestrator.get('service_name', 'N/A')}
-   Confidence: {ai_orchestrator.get('confidence', 0.0)*100:.1f}%
+   Confidence: {confidence*100:.1f}%
    Message: {ai_orchestrator.get('message', 'N/A')[:100]}
 """
 
@@ -648,7 +649,10 @@ METADATA:
             return f"[?] Статус обработки: {status}"
 
     def _generate_statistics(self, messages: List[Dict]) -> str:
-        """Генерирует статистику диалога."""
+        """Генерирует статистику диалога.
+
+        ИСПРАВЛЕНО (2025-12-28): Добавлен блок мониторинга расходов LLM
+        """
         inbound_count = sum(1 for m in messages if m.get('direction') == 'inbound')
         outbound_count = sum(1 for m in messages if m.get('direction') == 'outbound')
 
@@ -676,6 +680,9 @@ METADATA:
                     final_txtPrb = txtPrb
                     break
 
+        # ИСПРАВЛЕНО (2025-12-28): Мониторинг расходов LLM
+        llm_cost_tracking = self._extract_llm_costs(messages)
+
         stats = f"""
 Всего сообщений: {len(messages)}
   - Входящих (пользователь): {inbound_count}
@@ -686,7 +693,110 @@ METADATA:
 
 Канал связи: {messages[0].get('channel', 'unknown') if messages else 'unknown'}
 """
+
+        # ИСПРАВЛЕНО (2025-12-28): Добавляем блок расходов если есть данные
+        if llm_cost_tracking:
+            stats += f"""
+{'=' * 80}
+💰 МОНИТОРИНГ РАСХОДОВ LLM
+{'=' * 80}
+{llm_cost_tracking}
+{'=' * 80}
+"""
+
         return stats
+
+    def _extract_llm_costs(self, messages: List[Dict]) -> str:
+        """
+        Извлекает информацию о расходах LLM из metadata сообщений.
+
+        ИСПРАВЛЕНО (2025-12-28): Добавлено для мониторинга расходов
+        """
+        total_cost = 0.0
+        total_tokens = 0
+        lite_requests = 0
+        pro_requests = 0
+        lite_cost = 0.0
+        pro_cost = 0.0
+        model_usage = {}
+
+        for msg in messages:
+            metadata = msg.get('metadata', {})
+
+            # Парсим metadata если это строка
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except:
+                    continue
+
+            if not isinstance(metadata, dict):
+                continue
+
+            # Ищем информацию о расходах в service_result._metadata
+            service_result = metadata.get('service_result', {})
+            if isinstance(service_result, dict):
+                service_metadata = service_result.get('_metadata', {})
+                if isinstance(service_metadata, dict):
+                    # Проверяем разные возможные поля с расходами
+                    # 1. Прямое поле cost
+                    cost = service_metadata.get('cost') or service_metadata.get('total_cost')
+                    if cost:
+                        total_cost += float(cost)
+
+                    # 2. Токены
+                    tokens = service_metadata.get('tokens') or service_metadata.get('total_tokens')
+                    if tokens:
+                        total_tokens += int(tokens)
+
+                    # 3. Информация о модели
+                    model = service_metadata.get('model') or service_metadata.get('llm_model')
+                    if model:
+                        if model not in model_usage:
+                            model_usage[model] = {'requests': 0, 'tokens': 0, 'cost': 0.0}
+                        model_usage[model]['requests'] += 1
+
+                        if tokens:
+                            model_usage[model]['tokens'] += int(tokens)
+                        if cost:
+                            model_usage[model]['cost'] += float(cost)
+
+                        # Считаем по типам моделей
+                        if 'pro' in model.lower():
+                            pro_requests += 1
+                            pro_cost += float(cost) if cost else 0.0
+                        else:
+                            lite_requests += 1
+                            lite_cost += float(cost) if cost else 0.0
+
+        # Формируем отчет
+        if total_cost == 0 and total_tokens == 0:
+            return ""  # Нет данных о расходах
+
+        report = []
+        report.append(f"Общая стоимость: {total_cost:.2f} руб")
+        report.append(f"Всего токенов: {total_tokens}")
+        report.append("")
+
+        if lite_requests > 0 or pro_requests > 0:
+            report.append("Распределение по моделям:")
+            if lite_requests > 0:
+                report.append(f"  - YandexGPT Lite: {lite_requests} запросов, {lite_cost:.2f} руб")
+            if pro_requests > 0:
+                report.append(f"  - YandexGPT Pro: {pro_requests} запросов, {pro_cost:.2f} руб")
+            report.append("")
+
+        if model_usage:
+            report.append("Детализация по моделям:")
+            for model, stats in sorted(model_usage.items()):
+                report.append(f"  {model}:")
+                report.append(f"    - Запросов: {stats['requests']}")
+                if stats['tokens'] > 0:
+                    report.append(f"    - Токенов: {stats['tokens']}")
+                if stats['cost'] > 0:
+                    report.append(f"    - Стоимость: {stats['cost']:.2f} руб")
+
+        return "\n".join(report)
 
 
 # Удобная функция для быстрого вызова
