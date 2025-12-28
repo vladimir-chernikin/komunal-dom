@@ -119,13 +119,15 @@ class MainAgent:
             logger.warning("ProblemAccumulationService не найден, накопление проблемы недоступно")
 
         # ИСПРАВЛЕНО (2025-12-26): CommunicativeScriptsService для управления фразами бота
-        try:
-            from communicative_scripts_service import CommunicativeScriptsService
-            self.communicative_scripts = CommunicativeScriptsService()
-            logger.info("CommunicativeScriptsService инициализирован")
-        except ImportError:
-            logger.warning("CommunicativeScriptsService не найден, fallback скрипты недоступны")
-            self.communicative_scripts = None
+        # ИСПРАВЛЕНО (2025-12-28): ОТКЛЮЧЕН - все вопросы теперь через AI (_generate_ai_question)
+        # try:
+        #     from communicative_scripts_service import CommunicativeScriptsService
+        #     self.communicative_scripts = CommunicativeScriptsService()
+        #     logger.info("CommunicativeScriptsService инициализирован")
+        # except ImportError:
+        #     logger.warning("CommunicativeScriptsService не найден, fallback скрипты недоступны")
+        self.communicative_scripts = None
+        logger.info("CommunicativeScriptsService ОТКЛЮЧЕН (используем AI-генерацию вопросов)")
 
     def _add_address_to_result(self, result: Dict, address_components: Dict) -> Dict:
         """
@@ -1185,54 +1187,19 @@ class MainAgent:
 
         # ИСПРАВЛЕНО (2025-12-26): Используем CommunicativeScriptsService вместо хардкода
         # Если CommunicativeScriptsService доступен - пробуем получить скрипт
-        if self.communicative_scripts:
-            # Формируем контекст для поиска скрипта
-            dialog_turn = len(dialog_history) if dialog_history else 1
+        # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопросов
+        # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
+        context = f"Пользователь написал: {original_message}"
+        ai_question = await self._generate_ai_question(
+            context=context,
+            dialog_history=dialog_history,
+            candidates=filtered_candidates,
+            question_type='clarification'
+        )
 
-            # Пробуем получить clarification скрипт
-            try:
-                clarification_script = await self.communicative_scripts.get_clarification_script(
-                    candidates=filtered_candidates,
-                    channel='telegram'  # TODO: получать из контекста
-                )
-
-                if clarification_script:
-                    logger.info(f"Используем clarification скрипт: {clarification_script[:50]}...")
-                    return {
-                        'status': 'AMBIGUOUS',
-                        'message': clarification_script,
-                        'single_candidate': None,
-                        'filtered_candidates': filtered_candidates
-                    }
-            except Exception as e:
-                logger.warning(f"Ошибка получения clarification скрипта: {e}")
-
-        # ИСПРАВЛЕНО (2025-12-26): Используем CommunicativeScriptsService для fallback сообщения
-        # вместо хардкода вопросов
-        if self.communicative_scripts:
-            try:
-                dialog_turn = len(dialog_history) if dialog_history else 1
-                fallback_message = await self.communicative_scripts.get_fallback_message(
-                    channel='telegram',  # TODO: получать из контекста
-                    candidate_count=len(filtered_candidates),
-                    is_followup=is_followup,
-                    dialog_turn=dialog_turn
-                )
-
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': fallback_message,
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
-                }
-            except Exception as e:
-                logger.error(f"Ошибка получения fallback сообщения: {e}")
-
-        # КРИТИЧЕСКИЙ fallback если CommunicativeScriptsService недоступен
-        # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
         return {
             'status': 'AMBIGUOUS',
-            'message': "Опишите подробнее, что именно произошло.",
+            'message': ai_question,
             'single_candidate': None,
             'filtered_candidates': filtered_candidates
         }
@@ -1423,6 +1390,76 @@ class MainAgent:
 
         # Fallback - если не смогли определить контекст
         # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
+        return "Опишите подробнее, что именно произошло."
+
+    def _generate_smart_fallback(self, original_message: str, dialog_history: list = None, is_followup: bool = False) -> str:
+        """
+        Генерирует умный fallback вопрос, избегая повторов
+
+        ИСПРАВЛЕНО (2025-12-28):
+        - Проверяет историю диалога на повторяющиеся вопросы бота
+        - Анализирует последние ответы пользователя
+        - Генерирует разные вопросы в зависимости от контекста
+
+        Args:
+            original_message: Оригинальное сообщение пользователя
+            dialog_history: История диалога
+            is_followup: Это продолжение диалога
+
+        Returns:
+            str: Умный fallback вопрос
+        """
+        if not dialog_history:
+            # Нет истории - базовый вопрос
+            return "Опишите подробнее, что именно произошло."
+
+        # Проверяем последние вопросы бота
+        recent_bot_questions = []
+        for msg in reversed(dialog_history[-6:]):  # Последние 3 цикла
+            if msg.get('role') == 'bot':
+                bot_text = msg.get('text', '')
+                recent_bot_questions.append(bot_text)
+
+        # Если последний вопрос был "Опишите подробнее что именно произошло"
+        # и пользователь ответил коротко ("течет", "течет у меня", "течет труба")
+        # то нужно задать более конкретный вопрос
+
+        last_bot_question = recent_bot_questions[0] if recent_bot_questions else ""
+        last_user_answers = [msg.get('text', '') for msg in reversed(dialog_history[-4:]) if msg.get('role') == 'user']
+
+        # Проверяем на повторяющийся паттерн
+        if "опишите подробнее" in last_bot_question.lower():
+            # Бот уже задавал общий вопрос, нужно конкретизировать
+            logger.info(f"Detected repeated fallback question, last answers: {last_user_answers}")
+
+            # Анализируем ответы пользователя на ключевые слова
+            all_answers = ' '.join(last_user_answers).lower()
+
+            if any(word in all_answers for word in ['теч', 'льет', 'капает', 'мокр']):
+                if 'труб' in all_answers:
+                    return "Уточните, пожалуйста: где именно течет из трубы? В ванной, на кухне, в другой комнате?"
+                elif any(word in all_answers for word in ['батарей', 'отопл', 'радиатор']):
+                    return "Понял, проблема с отоплением. В какой именно комнате течет батарея?"
+                else:
+                    return "Уточните, откуда именно течет? Из трубы, батареи, крана, или от соседей?"
+
+            elif any(word in all_answers for word in ['сломал', 'не работ', 'испортил']):
+                return "Какое оборудование сломалось? Опишите подробнее."
+
+            # Если ответ очень короткий (1-2 слова) - просим больше деталей
+            if len(last_user_answers) > 0 and len(last_user_answers[-1].split()) <= 2:
+                return "Пожалуйста, опишите подробнее: где именно это произошло и что именно сломалось?"
+
+        # Проверяем количество повторов одного и того же
+        if len(recent_bot_questions) >= 2:
+            # Если последние 2+ вопроса от бота одинаковы
+            if len(set(q.lower() for q in recent_bot_questions[:2])) <= 1:
+                logger.warning("Detected repeated bot questions, changing strategy")
+                return "Пожалуйста, опишите проблему другими словами. Где именно это произошло и что случилось?"
+
+        # Default fallback
+        if is_followup:
+            return "Уточните детали проблемы."
         return "Опишите подробнее, что именно произошло."
 
     def _create_error_result(self, error_message: str) -> Dict:
@@ -1698,30 +1735,321 @@ class MainAgent:
         if recent_bot_questions:
             logger.info(f"recent_bot_questions: {recent_bot_questions}")
 
-        # ИСПОЛЬЗУЕМ CommunicativeScriptsService вместо AI
-        if self.communicative_scripts:
-            try:
-                fallback_message = await self.communicative_scripts.get_fallback_message(
-                    channel='telegram',  # TODO: получать из контекста
-                    candidate_count=0,
-                    is_followup=is_followup,
-                    dialog_turn=dialog_turn
-                )
+        # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопроса
+        # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
+        context = f"Пользователь написал: {message_text}"
+        question = await self._generate_ai_question(
+            context=context,
+            dialog_history=dialog_history,
+            established_filters=established_filters,
+            txtPrb=txtPrb,
+            question_type='what_happened'
+        )
 
-                logger.info(f"CommunicativeScripts вернул вопрос (turn={dialog_turn}, followup={is_followup}): {fallback_message}")
-                return fallback_message
+        logger.info(f"AI сгенерировал вопрос (turn={dialog_turn}, followup={is_followup}): {question}")
+        return question
 
-            except Exception as e:
-                logger.error(f"Ошибка CommunicativeScriptsService: {e}")
+    async def _generate_ai_question(
+        self,
+        context: str,
+        dialog_history: List[Dict] = None,
+        candidates: List[Dict] = None,
+        established_filters: Dict = None,
+        txtPrb: str = None,
+        question_type: str = "clarification"
+    ) -> str:
+        """
+        Универсальный метод для генерации вопросов через AI
 
-        # Fallback без CommunicativeScriptsService - простые ОТКРЫТЫЕ вопросы
-        if recent_bot_questions:
-            # Если спрашивали "Где именно?" - спрашиваем "Что именно?"
-            if any('Где именно' in q or 'Откуда' in q for q in recent_bot_questions):
-                return "Что именно случилось?"
+        ИСПРАВЛЕНО (2025-12-28): Все вопросы генерируются через YandexGPT
+        ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
+
+        Args:
+            context: Контекст ситуации (описание проблемы)
+            dialog_history: История диалога
+            candidates: Кандидаты услуг (для уточнения)
+            established_filters: Установленные фильтры
+            txtPrb: Накопленное описание проблемы
+            question_type: Тип вопроса
+                - 'clarification' - уточняющий вопрос
+                - 'what_happened' - что случилось
+                - 'location' - где произошло
+                - 'details' - детали проблемы
+
+        Returns:
+            str: Сгенерированный AI вопрос
+        """
+        try:
+            # Формируем промт для AI
+            prompt = self._build_question_prompt(
+                context=context,
+                dialog_history=dialog_history,
+                candidates=candidates,
+                established_filters=established_filters,
+                txtPrb=txtPrb,
+                question_type=question_type
+            )
+
+            # Вызываем AI через AIAgentService
+            if self.ai_agent:
+                response, usage = await self.ai_agent._call_yandex_gpt(prompt)
+                question = response.strip()
+
+                # Удаляем лишние кавычки если есть
+                if question.startswith('"') and question.endswith('"'):
+                    question = question[1:-1]
+                if question.startswith("'") and question.endswith("'"):
+                    question = question[1:-1]
+
+                logger.info(f"AI сгенерировал вопрос ({question_type}): {question}")
+                return question
             else:
-                return "Опишите подробнее что случилось."
-        return "Опишите подробнее что случилось."
+                logger.warning("AIAgentService недоступен, используем fallback")
+                return self._fallback_question(question_type, context)
+
+        except Exception as e:
+            logger.error(f"Ошибка генерации AI вопроса: {e}")
+            return self._fallback_question(question_type, context)
+
+    def _build_question_prompt(
+        self,
+        context: str,
+        dialog_history: List[Dict] = None,
+        candidates: List[Dict] = None,
+        established_filters: Dict = None,
+        txtPrb: str = None,
+        question_type: str = "clarification"
+    ) -> str:
+        """Строит промт для генерации вопроса
+
+        ИСПРАВЛЕНО (2025-12-28):
+        - Добавлен жесткий запрет на двойные вопросы ("что" И "где" в одном вопросе)
+        - Улучшен анализ уже известной информации
+        - Добавлены примеры неправильных вопросов
+        """
+
+        # Анализируем что уже известно из истории
+        known_info = self._extract_known_info(dialog_history, txtPrb)
+
+        # Собираем контекст из истории
+        recent_dialog = ""
+        if dialog_history:
+            last_msgs = dialog_history[-4:]  # Последние 2 цикла
+            for msg in last_msgs:
+                role = "Пользователь" if msg.get('role') == 'user' else "Бот"
+                recent_dialog += f"{role}: {msg.get('text', '')}\n"
+
+        # Формируем промт
+        prompt = f"""Ты - вежливый диспетчер УК "Аспект". Твоя задача - задать ОДИН уточняющий вопрос.
+
+ТЕКУЩАЯ СИТУАЦИЯ:
+{context}
+"""
+
+        if known_info:
+            prompt += f"\nУЖЕ ИЗВЕСТНО (НЕ СПРАШИВАЙ ПОВТОРНО!):\n{known_info}\n"
+
+        if txtPrb:
+            prompt += f"\nОПИСАНИЕ ПРОБЛЕМЫ:\n{txtPrb}\n"
+
+        if recent_dialog:
+            prompt += f"\nПОСЛЕДНИЕ СООБЩЕНИЯ:\n{recent_dialog}\n"
+
+        if established_filters:
+            prompt += f"\nУСТАНОВЛЕННЫЕ ФИЛЬТРЫ:\n{established_filters}\n"
+
+        if candidates and len(candidates) <= 5:
+            prompt += f"\nВОЗМОЖНЫЕ ВАРИАНТЫ УСЛУГ:\n"
+            for c in candidates[:5]:
+                name = c.get('service_name', c.get('scenario_name', 'Unknown'))
+                prompt += f"- {name}\n"
+
+        # Инструкция по типу вопроса
+        if question_type == 'clarification':
+            prompt += """
+
+══════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+══════════════════════════════════════════════════════════════════════════════
+
+1. ❌ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Двойные вопросы
+   ❌ "Опишите, что течёт и где это произошло?"
+   ❌ "Что именно сломалось и где это произошло?"
+   ❌ "Уточните, где и когда это случилось?"
+
+2. ❌ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Использовать союзы "и", "а", "или"
+   ❌ "Что и где?"
+   ❌ "Где или когда?"
+
+3. ❌ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Спрашивать то, что УЖЕ ИЗВЕСТНО
+   ❌ Если известно "течет" → НЕ спрашивать "Что течет?"
+   ❌ Если известно "в зале" → НЕ спрашивать "Где?"
+
+4. ✅ ПРАВИЛЬНО: Один конкретный вопрос
+   ✅ "Где именно это произошло?"
+   ✅ "Что именно сломалось?"
+   ✅ "Уточните детали проблемы."
+
+5. ✅ ПРАВИЛЬНО: Учитывать что уже известно
+   Если известно "течет труба в зале":
+   ✅ "Какая именно труба? (стоячная, канализационная, отопительная)"
+   ❌ "Где течет?" (уже известно!)
+
+══════════════════════════════════════════════════════════════════════════════
+
+ЗАДАЧА: Задай ОДИН уточняющий вопрос
+
+Ограничения:
+- Только ОДИН вопрос
+- Открытый вопрос (не да/нет)
+- Без союза "и" между вопросами
+- Без перечисления вариантов
+- Вежливый тон
+- Максимально коротко (1 предложение)
+
+Примеры ХОРОШИХ вопросов (один вопрос):
+- "Где именно это произошло?"
+- "Что именно сломалось?"
+- "Уточните детали проблемы."
+
+Примеры ПЛОХИХ вопросов (двойные вопросы):
+- "Опишите, что течёт и где это произошло?"  ❌❌ ДВОЙНОЙ ВОПРОС!
+- "Что именно сломалось и где это произошло?"  ❌❌ ДВОЙНОЙ ВОПРОС!
+- "Уточните, где и когда это случилось?"  ❌❌ ДВОЙНОЙ ВОПРОС!
+
+Примеры ПЛОХИХ вопросов (повтор того, что известно):
+- Если известно "течет труба":
+  ❌ "Что именно течет?"  ❌ УЖЕ ИЗВЕСТНО!
+  ✅ "Уточните, какая именно труба?"  ✅ Правильно
+
+Вопрос:"""
+
+        elif question_type == 'what_happened':
+            prompt += """
+
+══════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+══════════════════════════════════════════════════════════════════════════════
+
+1. ❌ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Двойные вопросы
+2. ❌ НЕ использовать союз "и"
+
+ЗАДАЧА: Задай ОДИН вопрос чтобы понять что именно случилось.
+
+Ограничения:
+- Только ОДИН вопрос
+- Открытый вопрос
+- Вежливый тон
+- Коротко (1 предложение)
+
+Вопрос:"""
+
+        elif question_type == 'location':
+            prompt += """
+
+══════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+══════════════════════════════════════════════════════════════════════════════
+
+1. ❌ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Двойные вопросы
+2. ❌ НЕ спрашивать "где" если локация уже известна
+
+ЗАДАЧА: Задай ОДИН вопрос о месте проблемы.
+
+Ограничения:
+- Только ОДИН вопрос
+- Открытый вопрос
+- Вежливый тон
+
+Вопрос:"""
+
+        else:  # details
+            prompt += """
+
+══════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+══════════════════════════════════════════════════════════════════════════════
+
+1. ❌ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Двойные вопросы
+2. ❌ НЕ спрашивать то, что УЖЕ известно
+3. ❌ НЕ использовать союз "и"
+
+ЗАДАЧА: Задай ОДИН уточняющий вопрос для детализации проблемы.
+
+Ограничения:
+- Только ОДИН вопрос
+- Открытый вопрос
+- Вежливый тон
+- Учитывай что уже известно (не спрашивай повторно)
+- Без союза "и"
+
+Вопрос:"""
+
+        return prompt
+
+    def _extract_known_info(self, dialog_history: List[Dict] = None, txtPrb: str = None) -> str:
+        """
+        Извлекает уже известную информацию из диалога
+
+        ИСПРАВЛЕНО (2025-12-28): Использует ProblemAccumulationService вместо хардкода
+        ИСПРАВЛЕНО (2025-12-28): УБРАН хардкод keywords!
+
+        Returns:
+            str: Список известной информации
+        """
+        if not dialog_history and not txtPrb:
+            return ""
+
+        known = []
+
+        # Используем ProblemAccumulationService для анализа
+        if self.problem_accumulator and dialog_history:
+            # Собираем все сообщения пользователя
+            user_texts = [m.get('text', '') for m in dialog_history if m.get('role') == 'user']
+
+            if user_texts:
+                # Вызываем ProblemAccumulationService для анализа
+                try:
+                    # ProblemAccumulationService уже извлекает все поля через AI
+                    accumulated = self.problem_accumulator.accumulate_problem(
+                        message_text=' '.join(user_texts),
+                        existing_fields={},
+                        dialog_history=dialog_history
+                    )
+
+                    if accumulated:
+                        # Формируем описание из накопленных полей
+                        parts = []
+                        if accumulated.get('problem'):
+                            parts.append(f"Проблема: {accumulated['problem']}")
+                        if accumulated.get('location'):
+                            parts.append(f"Локация: {accumulated['location']}")
+                        if accumulated.get('source'):
+                            parts.append(f"Объект: {accumulated['source']}")
+                        if accumulated.get('category'):
+                            parts.append(f"Категория: {accumulated['category']}")
+
+                        if parts:
+                            known.append(' | '.join(parts))
+
+                except Exception as e:
+                    logger.warning(f"Ошибка ProblemAccumulationService в _extract_known_info: {e}")
+
+        # Fallback: используем txtPrb если есть
+        if not known and txtPrb and txtPrb != "(нет значимой информации)":
+            known.append(f"Описание: {txtPrb}")
+
+        return '\n'.join(known) if known else ""
+
+    def _fallback_question(self, question_type: str, context: str) -> str:
+        """Fallback вопросы если AI недоступен"""
+        fallbacks = {
+            'clarification': "Уточните, пожалуйста, детали проблемы.",
+            'what_happened': "Опишите подробнее, что именно произошло.",
+            'location': "Где именно это произошло?",
+            'details': "Пожалуйста, уточните детали."
+        }
+        return fallbacks.get(question_type, "Уточните детали проблемы.")
 
     async def _ask_ai_clarification_with_candidates(
         self,
@@ -1851,23 +2179,15 @@ class MainAgent:
                 )
                 logger.warning(f"❌ Запрещённый вопрос: {ai_question}")
 
-                # Используем CommunicativeScriptsService как fallback
-                if self.communicative_scripts:
-                    try:
-                        dialog_turn = len(dialog_history) if dialog_history else 1
-                        fallback_message = await self.communicative_scripts.get_fallback_message(
-                            channel='telegram',
-                            candidate_count=len(candidates),
-                            is_followup=dialog_turn > 1,
-                            dialog_turn=dialog_turn
-                        )
-                        logger.info(f"✅ Заменяем на fallback: {fallback_message}")
-                        ai_question = fallback_message
-                    except Exception as e:
-                        logger.error(f"Ошибка получения fallback: {e}")
-                        ai_question = "Опишите подробнее что именно произошло."
-                else:
-                    ai_question = "Опишите подробнее что именно произошло."
+                # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации fallback вопроса
+                context = f"Пользователь написал: {message_text}"
+                ai_question = await self._generate_ai_question(
+                    context=context,
+                    dialog_history=dialog_history,
+                    candidates=candidates,
+                    question_type='clarification'
+                )
+                logger.info(f"✅ Заменяем на AI вопрос: {ai_question}")
 
             return {
                 'status': 'AMBIGUOUS',
@@ -1893,29 +2213,19 @@ class MainAgent:
         dialog_turn = len(dialog_history) if dialog_history else 1
         is_followup = dialog_turn > 1
 
-        # ИСПОЛЬЗУЕМ CommunicativeScriptsService вместо AI
-        if self.communicative_scripts:
-            try:
-                fallback_message = await self.communicative_scripts.get_fallback_message(
-                    channel='telegram',
-                    candidate_count=len(candidates),
-                    is_followup=is_followup,
-                    dialog_turn=dialog_turn
-                )
+        # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопроса
+        # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
+        context = f"Пользователь написал: {message_text}"
+        ai_question = await self._generate_ai_question(
+            context=context,
+            dialog_history=dialog_history,
+            candidates=candidates,
+            question_type='clarification'
+        )
 
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': fallback_message,
-                    'candidates': candidates,
-                    'needs_clarification': True
-                }
-            except Exception as e:
-                logger.error(f"Ошибка CommunicativeScriptsService в _ask_ai_clarification: {e}")
-
-        # Fallback без CommunicativeScriptsService - ОТКРЫТЫЕ вопросы
         return {
             'status': 'AMBIGUOUS',
-            'message': "Опишите подробнее что именно произошло.",
+            'message': ai_question,
             'candidates': candidates,
             'needs_clarification': True
         }

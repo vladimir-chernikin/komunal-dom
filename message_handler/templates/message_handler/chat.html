@@ -200,19 +200,19 @@
 {% endblock %}
 
 {% block content %}
-<div class="chat-container">
+<div class="chat-container" role="region" aria-label="Чат с AI диспетчером">
     <div class="chat-header">
         <h1>Диспетчер управляющей компании</h1>
         <p>Опишите вашу проблему, и я помогу определить нужную услугу</p>
     </div>
 
-    <div class="chat-messages" id="chatMessages">
+    <div class="chat-messages" id="chatMessages" role="log" aria-live="polite" aria-atomic="false">
         <div class="chat-status">
             Начните диалог. Например: "У меня течет в ванной" или "Сломался лифт"
         </div>
     </div>
 
-    <div class="typing-indicator" id="typingIndicator">
+    <div class="typing-indicator" id="typingIndicator" role="status" aria-live="polite" aria-hidden="true">
         <div class="typing-dots">
             <span></span>
             <span></span>
@@ -221,7 +221,7 @@
     </div>
 
     <div class="chat-input-container">
-        <form class="chat-input-form" id="chatForm">
+        <form class="chat-input-form" id="chatForm" role="form" aria-label="Форма отправки сообщения">
             <input
                 type="text"
                 class="chat-input"
@@ -229,8 +229,9 @@
                 placeholder="Опишите вашу проблему..."
                 autocomplete="off"
                 required
+                aria-label="Введите ваше сообщение"
             >
-            <button type="submit" class="send-button" id="sendButton">
+            <button type="submit" class="send-button" id="sendButton" aria-label="Отправить сообщение">
                 Отправить
             </button>
         </form>

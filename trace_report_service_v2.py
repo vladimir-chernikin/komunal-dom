@@ -1,5 +1,5 @@
 """
-TraceReportService - Улучшенный сервис для генерации отчетов трассировки диалогов
+УЛУЧШЕННЫЙ TraceReportService v2.0 - Сервис для генерации полных отчетов трассировки диалогов
 
 ИСПРАВЛЕНО (2025-12-28):
 - txtPrb показывается на КАЖДОМ шаге
@@ -7,11 +7,10 @@ TraceReportService - Улучшенный сервис для генерации
 - Candidates с разрезом по микросервисам
 - Отдельный блок по фильтрам
 - Правильное определение значимой информации
-- Убраны все эмодзи (запрет проекта)
 
 Использование:
-    from trace_report_service import TraceReportService
-    service = TraceReportService()
+    from trace_report_service_v2 import TraceReportServiceV2
+    service = TraceReportServiceV2()
     await service.generate_trace_report(session_id='telegram_123456')
 """
 
@@ -25,8 +24,8 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-class TraceReportService:
-    """Улучшенный сервис для генерации отчетов трассировки диалогов."""
+class TraceReportServiceV2:
+    """Улучшенная версия сервиса для генерации отчетов трассировки."""
 
     def __init__(self):
         self.tmp_dir = Path('/tmp')
@@ -128,7 +127,7 @@ class TraceReportService:
 
         # Извлекаем txtPrb из metadata каждого сообщения
         report = f"""{'=' * 80}
-ОТЧЕТ ТРАССИРОВКИ ДИАЛОГА (улучшенный шаблон - 2025-12-28)
+ОТЧЕТ ТРАССИРОВКИ ДИАЛОГА (улучшенный шаблон v2.0 - 2025-12-28)
 {'=' * 80}
 Session ID: {session_id}
 Канал: {channel}
@@ -464,9 +463,9 @@ METADATA:
 
 
 # Удобная функция для быстрого вызова
-async def generate_dialog_trace(session_id: str, output_path: str = None) -> str:
-    """Быстрая генерация трассировки диалога."""
-    service = TraceReportService()
+async def generate_dialog_trace_v2(session_id: str, output_path: str = None) -> str:
+    """Быстрая генерация трассировки диалога v2."""
+    service = TraceReportServiceV2()
     return await service.generate_trace_report(session_id, output_path=output_path)
 
 
@@ -485,10 +484,10 @@ if __name__ == '__main__':
     async def main():
         if len(sys.argv) > 1:
             session_id = sys.argv[1]
-            service = TraceReportService()
+            service = TraceReportServiceV2()
             path = await service.generate_trace_report(session_id)
             print(f"\n[+] Отчет создан: {path}")
         else:
-            print("Использование: python trace_report_service.py <session_id>")
+            print("Использование: python trace_report_service_v2.py <session_id>")
 
     asyncio.run(main())

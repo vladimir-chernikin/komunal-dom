@@ -68,7 +68,7 @@ class MessageHandlerService:
             user_id: ID пользователя в канале
             channel: Канал связи (telegram, whatsapp, web, test_bot, transcriber)
             message_id: ID сообщения в канале
-            session_id: ID сессии диалога (если None, создается новый)
+            session_id: ID сессии диалога (если None, создается/продлевается автоматически)
             metadata: Дополнительные метаданные от канала
             django_user_id: ID пользователя Django (если есть)
 
@@ -87,7 +87,7 @@ class MessageHandlerService:
             if not message_id:
                 message_id = f"{channel}_{uuid.uuid4().hex[:16]}"
 
-            # Механизм "Приветствие = новая сессия"
+            # ИСПРАВЛЕНО (2025-12-28): Умное управление сессиями
             if not session_id:
                 # Проверяем: если это приветствие - создаем НОВУЮ сессию
                 is_greeting = False
@@ -98,8 +98,8 @@ class MessageHandlerService:
                     session_id = f"{channel}_{user_id}_{timestamp}"
                     logger.info(f"Приветствие detected → создана новая сессия: {session_id}")
                 else:
-                    # Используем постоянный session_id для продолжения диалога
-                    session_id = f"{channel}_{user_id}"
+                    # ИСПРАВЛЕНО: Ищем активную сессию (не старше 1 часа)
+                    session_id = await self._find_or_create_active_session(user_id, channel)
 
             logger.info(
                 f"MessageHandler: Входящее сообщение из {channel} | "
@@ -247,6 +247,68 @@ class MessageHandlerService:
                 'error': str(e),
                 'session_id': session_id if session_id else f"{channel}_{user_id}"
             }
+
+    async def _find_or_create_active_session(self, user_id: str, channel: str) -> str:
+        """
+        Ищет активную сессию пользователя (не старше 1 часа) или создает новую
+
+        ИСПРАВЛЕНО (2025-12-28):
+        - Проверяет последнюю сессию пользователя
+        - Если последняя сессия не старше 1 часа - продолжает её
+        - Иначе создает новую сессию
+
+        Args:
+            user_id: ID пользователя в канале
+            channel: Канал связи
+
+        Returns:
+            str: ID сессии (существующей или новой)
+        """
+        try:
+            from message_handler.models import MessageLog
+            from django.utils import timezone
+            from datetime import timedelta
+
+            def find_session_sync():
+                # Ищем последнюю сессию пользователя
+                last_msg = MessageLog.objects.filter(
+                    user_id=user_id,
+                    channel=channel
+                ).order_by('-created_at').first()
+
+                if not last_msg:
+                    # Нет сообщений - создаем новую сессию
+                    return None
+
+                # Проверяем возраст последнего сообщения
+                now = timezone.now()
+                session_age = now - last_msg.created_at
+
+                # Если прошло меньше 1 часа - продолжаем эту сессию
+                if session_age < timedelta(hours=1):
+                    logger.info(f"Активная сессия найдена: {last_msg.session_id} (возраст: {session_age.seconds // 60} мин)")
+                    return last_msg.session_id
+
+                # Сессия устарела - создаем новую
+                logger.info(f"Последняя сессия устарела ({session_age.seconds // 60} мин), создаем новую")
+                return None
+
+            existing_session_id = await sync_to_async(find_session_sync)()
+
+            if existing_session_id:
+                return existing_session_id
+
+            # Создаем новую сессию
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            new_session_id = f"{channel}_{user_id}_{timestamp}"
+            logger.info(f"Создана новая сессия: {new_session_id}")
+            return new_session_id
+
+        except Exception as e:
+            logger.error(f"Ошибка поиска активной сессии: {e}")
+            # Fallback: создаем новую сессию
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            return f"{channel}_{user_id}_{timestamp}"
 
     async def _log_message(
         self,

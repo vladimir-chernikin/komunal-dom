@@ -4,56 +4,26 @@
 
 {% block extra_css %}
 <style>
-.quick-action-card {
-    border: 1px solid #dee2e6;
-    position: relative;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-.quick-action-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-.quick-action-card .card-body {
-    min-height: 60px;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-}
-.quick-action-card .card-body i {
-    font-size: 1.3rem;
-    margin-bottom: 0.25rem;
-}
-.quick-action-card .card-body h6 {
-    font-size: 12px;
-    margin: 0;
-    color: #212529;
-}
-.quick-action-card .card-body small {
-    font-size: 10px;
-}
 .card {
     border: 1px solid #dee2e6;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 .card-header {
-    padding: 6px 10px;
-    font-size: 13px;
+    padding: 8px 12px;
+    font-size: 16px;
 }
 .card-body {
-    padding: 10px;
+    padding: 12px;
 }
 .card-footer {
-    padding: 6px 10px;
+    padding: 8px 12px;
 }
 .card-body h4 {
     font-size: 1.5rem;
     margin-bottom: 0.25rem;
 }
 .card-body h6 {
-    font-size: 13px;
+    font-size: 15px;
 }
 </style>
 {% endblock %}
@@ -86,7 +56,7 @@
                 <div class="card-body" style="padding: 8px 10px;">
                     <div class="d-flex align-items-center">
                         <i class="fas fa-info-circle text-warning me-2" style="font-size: 1.2rem;"></i>
-                        <div style="font-size: 12px;">
+                        <div style="font-size: 16px;">
                             Управление AI промптами, файлами, КЛАДР и другими данными системы
                         </div>
                     </div>
@@ -96,35 +66,35 @@
     </div>
 
     <!-- Статистика по системным данным -->
-    <div class="row mb-2">
-        <div class="col-md-3 mb-2">
+    <div class="row mb-3">
+        <div class="col-md-3 mb-3">
             <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h6 class="mb-0" style="font-size: 12px;">
-                        <i class="fas fa-robot"></i> AI Промпты
+                <div class="card-header bg-light border-bottom">
+                    <h6 class="mb-0" style="font-size: 16px;">
+                        <i class="fas fa-robot text-primary"></i> AI Промпты
                     </h6>
                 </div>
-                <div class="card-body text-center" style="padding: 8px;">
-                    <h4 class="text-success mb-0" style="font-size: 1.3rem;">{{ prompt_stats.total }}</h4>
+                <div class="card-body text-center" style="padding: 12px;">
+                    <h4 class="text-dark mb-0" style="font-size: 1.5rem;">{{ prompt_stats.total }}</h4>
                     <small class="text-muted">Всего / Активных: {{ prompt_stats.active }}</small>
                 </div>
-                <div class="card-footer" style="padding: 4px 6px;">
-                    <a href="{% url 'portal:prompt_management' %}" class="btn btn-outline-success btn-sm w-100" style="font-size: 11px; padding: 4px 8px;">
+                <div class="card-footer bg-white" style="padding: 8px;">
+                    <a href="{% url 'portal:prompt_management' %}" class="btn btn-outline-primary btn-sm w-100" style="font-size: 15px; padding: 8px 16px;">
                         <i class="fas fa-cog"></i> Управление
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-3 mb-2">
+        <div class="col-md-3 mb-3">
             <div class="card">
-                <div class="card-header bg-info text-white">
-                    <h6 class="mb-0" style="font-size: 12px;">
-                        <i class="fas fa-folder"></i> Файлы
+                <div class="card-header bg-light border-bottom">
+                    <h6 class="mb-0" style="font-size: 16px;">
+                        <i class="fas fa-folder text-primary"></i> Файлы
                     </h6>
                 </div>
-                <div class="card-body text-center" style="padding: 8px;">
-                    <h4 class="text-info mb-0" style="font-size: 1.3rem;">{{ file_stats.total }}</h4>
+                <div class="card-body text-center" style="padding: 12px;">
+                    <h4 class="text-dark mb-0" style="font-size: 1.5rem;">{{ file_stats.total }}</h4>
                     <small class="text-muted">
                         {% if file_stats.total > 0 %}
                             {% if file_stats.total_size > 1048576 %}
@@ -137,46 +107,46 @@
                         {% endif %}
                     </small>
                 </div>
-                <div class="card-footer" style="padding: 4px 6px;">
-                    <a href="{% url 'file_manager:all_files' %}" class="btn btn-outline-info btn-sm w-100" style="font-size: 11px; padding: 4px 8px;">
+                <div class="card-footer bg-white" style="padding: 8px;">
+                    <a href="{% url 'file_manager:all_files' %}" class="btn btn-outline-primary btn-sm w-100" style="font-size: 15px; padding: 8px 16px;">
                         <i class="fas fa-folder-open"></i> Все файлы
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-3 mb-2">
+        <div class="col-md-3 mb-3">
             <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h6 class="mb-0" style="font-size: 12px;">
-                        <i class="fas fa-map"></i> КЛАДР
+                <div class="card-header bg-light border-bottom">
+                    <h6 class="mb-0" style="font-size: 16px;">
+                        <i class="fas fa-map text-primary"></i> КЛАДР
                     </h6>
                 </div>
-                <div class="card-body text-center" style="padding: 8px;">
-                    <h4 class="text-primary mb-0" style="font-size: 1.3rem;">{{ kladr_stats.address_objects|default:"-" }}</h4>
+                <div class="card-body text-center" style="padding: 12px;">
+                    <h4 class="text-dark mb-0" style="font-size: 1.5rem;">{{ kladr_stats.address_objects|default:"-" }}</h4>
                     <small class="text-muted">{{ kladr_stats.buildings|default:"-" }} зданий / {{ kladr_stats.service_areas|default:"-" }} зон</small>
                 </div>
-                <div class="card-footer" style="padding: 4px 6px;">
-                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-primary btn-sm w-100" style="font-size: 11px; padding: 4px 8px;">
+                <div class="card-footer bg-white" style="padding: 8px;">
+                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-primary btn-sm w-100" style="font-size: 15px; padding: 8px 16px;">
                         <i class="fas fa-map-marked-alt"></i> Управление
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-3 mb-2">
+        <div class="col-md-3 mb-3">
             <div class="card">
-                <div class="card-header bg-secondary text-white">
-                    <h6 class="mb-0" style="font-size: 12px;">
-                        <i class="fas fa-comments"></i> Диалоги
+                <div class="card-header bg-light border-bottom">
+                    <h6 class="mb-0" style="font-size: 16px;">
+                        <i class="fas fa-comments text-primary"></i> Диалоги
                     </h6>
                 </div>
-                <div class="card-body text-center" style="padding: 8px;">
-                    <i class="fas fa-search-plus text-secondary" style="font-size: 1.3rem;"></i>
-                    <p class="mb-0" style="font-size: 11px;">Трассировка</p>
+                <div class="card-body text-center" style="padding: 12px;">
+                    <i class="fas fa-search-plus text-primary" style="font-size: 1.5rem;"></i>
+                    <p class="mb-0" style="font-size: 15px;">Трассировка</p>
                 </div>
-                <div class="card-footer" style="padding: 4px 6px;">
-                    <a href="{% url 'portal:dialog_trace' %}" class="btn btn-outline-secondary btn-sm w-100" style="font-size: 11px; padding: 4px 8px;">
+                <div class="card-footer bg-white" style="padding: 8px;">
+                    <a href="{% url 'portal:dialog_trace' %}" class="btn btn-outline-primary btn-sm w-100" style="font-size: 15px; padding: 8px 16px;">
                         <i class="fas fa-binoculars"></i> Трассировка
                     </a>
                 </div>
@@ -184,86 +154,22 @@
         </div>
     </div>
 
-    <!-- Быстрые действия -->
-    <div class="row mb-2">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header bg-dark text-white" style="padding: 6px 10px; font-size: 13px;">
-                    <h6 class="mb-0" style="font-size: 13px;">
-                        <i class="fas fa-bolt"></i> Быстрые действия
-                    </h6>
-                </div>
-                <div class="card-body" style="padding: 8px;">
-                    <div class="row">
-                        <div class="col-md-3 mb-2">
-                            <a href="{% url 'portal:prompt_management' %}" class="text-decoration-none">
-                                <div class="card quick-action-card">
-                                    <div class="card-body">
-                                        <i class="fas fa-robot text-primary"></i>
-                                        <h6>AI Промпты</h6>
-                                        <small class="text-muted">Настройка бота</small>
-                                    </div>
-                                </div>
-                            </a>
-                        </div>
-
-                        <div class="col-md-3 mb-2">
-                            <a href="{% url 'file_manager:all_files' %}" class="text-decoration-none">
-                                <div class="card quick-action-card">
-                                    <div class="card-body">
-                                        <i class="fas fa-folder text-info"></i>
-                                        <h6>Файлы</h6>
-                                        <small class="text-muted">Все файлы</small>
-                                    </div>
-                                </div>
-                            </a>
-                        </div>
-
-                        <div class="col-md-3 mb-2">
-                            <a href="{% url 'portal:kladr_management' %}" class="text-decoration-none">
-                                <div class="card quick-action-card">
-                                    <div class="card-body">
-                                        <i class="fas fa-map text-warning"></i>
-                                        <h6>КЛАДР</h6>
-                                        <small class="text-muted">Адресная база</small>
-                                    </div>
-                                </div>
-                            </a>
-                        </div>
-
-                        <div class="col-md-3 mb-2">
-                            <a href="{% url 'portal:dialog_trace' %}" class="text-decoration-none">
-                                <div class="card quick-action-card">
-                                    <div class="card-body">
-                                        <i class="fas fa-comments text-secondary"></i>
-                                        <h6>Трассировка</h6>
-                                        <small class="text-muted">Анализ</small>
-                                    </div>
-                                </div>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Подробная статистика -->
-    <div class="row">
-        <div class="col-md-6 mb-2">
+    <div class="row mb-3">
+        <div class="col-md-6 mb-3">
             <div class="card">
-                <div class="card-header bg-success text-white" style="padding: 6px 10px;">
-                    <h6 class="mb-0" style="font-size: 12px;">
-                        <i class="fas fa-robot"></i> Детально по AI промптам
+                <div class="card-header bg-light border-bottom">
+                    <h6 class="mb-0" style="font-size: 16px;">
+                        <i class="fas fa-robot text-primary"></i> Детально по AI промптам
                     </h6>
                 </div>
-                <div class="card-body" style="padding: 8px;">
-                    <small style="font-size: 11px;">
+                <div class="card-body" style="padding: 12px;">
+                    <small style="font-size: 15px;">
                         {% if prompt_stats.by_type %}
                             {% for type_name, type_count in prompt_stats.by_type.items %}
-                            <div class="d-flex justify-content-between align-items-center mb-1">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span>{{ type_name }}:</span>
-                                <span class="badge bg-primary" style="font-size: 10px;">{{ type_count }}</span>
+                                <span class="badge bg-primary" style="font-size: 14px;">{{ type_count }}</span>
                             </div>
                             {% endfor %}
                         {% else %}
@@ -274,26 +180,26 @@
             </div>
         </div>
 
-        <div class="col-md-6 mb-2">
+        <div class="col-md-6 mb-3">
             <div class="card">
-                <div class="card-header bg-primary text-white" style="padding: 6px 10px;">
-                    <h6 class="mb-0" style="font-size: 12px;">
-                        <i class="fas fa-map"></i> Детально по КЛАДР
+                <div class="card-header bg-light border-bottom">
+                    <h6 class="mb-0" style="font-size: 16px;">
+                        <i class="fas fa-map text-primary"></i> Детально по КЛАДР
                     </h6>
                 </div>
-                <div class="card-body" style="padding: 8px;">
+                <div class="card-body" style="padding: 12px;">
                     <div class="row text-center">
                         <div class="col-4">
-                            <h4 class="text-primary mb-0" style="font-size: 1.2rem;">{{ kladr_stats.address_objects|default:"-" }}</h4>
-                            <small class="text-muted" style="font-size: 9px;">Объектов</small>
+                            <h4 class="text-dark mb-0" style="font-size: 1.3rem;">{{ kladr_stats.address_objects|default:"-" }}</h4>
+                            <small class="text-muted" style="font-size: 14px;">Объектов</small>
                         </div>
                         <div class="col-4">
-                            <h4 class="text-success mb-0" style="font-size: 1.2rem;">{{ kladr_stats.buildings|default:"-" }}</h4>
-                            <small class="text-muted" style="font-size: 9px;">Зданий</small>
+                            <h4 class="text-dark mb-0" style="font-size: 1.3rem;">{{ kladr_stats.buildings|default:"-" }}</h4>
+                            <small class="text-muted" style="font-size: 14px;">Зданий</small>
                         </div>
                         <div class="col-4">
-                            <h4 class="text-warning mb-0" style="font-size: 1.2rem;">{{ kladr_stats.service_areas|default:"-" }}</h4>
-                            <small class="text-muted" style="font-size: 9px;">Зон</small>
+                            <h4 class="text-dark mb-0" style="font-size: 1.3rem;">{{ kladr_stats.service_areas|default:"-" }}</h4>
+                            <small class="text-muted" style="font-size: 14px;">Зон</small>
                         </div>
                     </div>
                 </div>
@@ -302,24 +208,24 @@
     </div>
 
     <!-- Системная информация -->
-    <div class="row">
+    <div class="row mb-3">
         <div class="col-12">
             <div class="card">
-                <div class="card-header bg-dark text-white" style="padding: 6px 10px;">
-                    <h6 class="mb-0" style="font-size: 12px;">
-                        <i class="fas fa-info-circle"></i> Системная информация
+                <div class="card-header bg-light border-bottom">
+                    <h6 class="mb-0" style="font-size: 16px;">
+                        <i class="fas fa-info-circle text-primary"></i> Системная информация
                     </h6>
                 </div>
-                <div class="card-body" style="padding: 8px;">
+                <div class="card-body" style="padding: 12px;">
                     <div class="row">
                         <div class="col-md-6">
-                            <small style="font-size: 11px;">
-                                <strong>Telegram бот:</strong> <span class="badge bg-success" style="font-size: 9px;">Активен</span> Проверка адресов<br>
-                                <strong>AI:</strong> <span class="badge bg-warning" style="font-size: 9px;">YandexGPT</span>
+                            <small style="font-size: 15px;">
+                                <strong>Telegram бот:</strong> <span class="badge bg-success" style="font-size: 13px;">Активен</span> Проверка адресов<br>
+                                <strong>AI:</strong> <span class="badge bg-primary" style="font-size: 13px;">YandexGPT</span>
                             </small>
                         </div>
                         <div class="col-md-6">
-                            <small style="font-size: 11px;">
+                            <small style="font-size: 15px;">
                                 <strong>БД:</strong> PostgreSQL 16 | <strong>Объектов:</strong> {{ kladr_stats.address_objects|default:"-" }} | <strong>Зданий:</strong> {{ kladr_stats.buildings|default:"-" }}
                             </small>
                         </div>

@@ -63,9 +63,9 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom" role="navigation" aria-label="Главная навигация сайта">
         <div class="container">
-            <a class="navbar-brand text-primary" href="{% url 'portal:main_page' %}">
+            <a class="navbar-brand text-primary" href="{% url 'portal:main_page' %}" aria-label="УК Аспект - главная страница">
                 <svg class="svg-house" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
                     <!-- Крыша -->
                     <polygon points="32,2 2,18 62,18" fill="#2C5282" stroke="#1A365D" stroke-width="1.5"/>
@@ -147,41 +147,42 @@
                 УК "Аспект"
             </a>
 
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-expanded="false" aria-label="Переключить меню навигации">
                 <span class="navbar-toggler-icon"></span>
             </button>
 
-            <div class="collapse navbar-collapse" id="navbarNav">
+            <div class="collapse navbar-collapse" id="navbarNav" aria-label="Основное меню">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'portal:main_page' %}">
+                        <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{% url 'portal:main_page' %}">
                             <i class="fas fa-home"></i> Главная
                         </a>
                     </li>
                     {% if user.is_authenticated %}
                         <li class="nav-item">
-                            <a class="nav-link" href="{% url 'portal:dashboard' %}">
+                            <a class="nav-link {% if request.path == '/dashboard/' %}active{% endif %}" href="{% url 'portal:dashboard' %}">
                                 <i class="fas fa-user"></i> Личный кабинет
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{% url 'portal:subscriber_page' %}">
+                            <a class="nav-link {% if request.path == '/subscribers/' %}active{% endif %}" href="{% url 'portal:subscriber_page' %}">
                                 <i class="fas fa-users"></i> Абонентам
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{% url 'file_manager:file_list' %}">
+                            <a class="nav-link {% if '/files/' in request.path %}active{% endif %}" href="{% url 'file_manager:file_list' %}">
                                 <i class="fas fa-folder"></i> Файлы
                             </a>
                         </li>
                         {% if user.userprofile.has_admin_access %}
                             <li class="nav-item">
                                 {% if user.userprofile.is_django_admin %}
-                                    <a class="nav-link" href="{% url 'portal:admin_page' %}">
+                                    <a class="nav-link {% if request.path == '/admin-uk/' %}active{% endif %}" href="{% url 'portal:admin_page' %}">
                                         <i class="fas fa-cogs"></i> Django Админ
                                     </a>
                                 {% elif user.userprofile.is_dba %}
-                                    <a class="nav-link" href="{% url 'portal:dba_page' %}">
+                                    <a class="nav-link {% if request.path == '/dba/' %}active{% endif %}" href="{% url 'portal:dba_page' %}">
                                         <i class="fas fa-database"></i> DBA
                                     </a>
                                 {% endif %}
@@ -193,22 +194,23 @@
                 <ul class="navbar-nav">
                     {% if user.is_authenticated %}
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
+                               data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Меню пользователя">
                                 <i class="fas fa-user"></i> {{ user.username }}
                             </a>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="{% url 'portal:dashboard' %}">Личный кабинет</a></li>
+                            <ul class="dropdown-menu" aria-labelledby="navbarDropdown" role="menu">
+                                <li role="none"><a class="dropdown-item" href="{% url 'portal:dashboard' %}" role="menuitem">Личный кабинет</a></li>
                                 {% if user.userprofile.is_django_admin %}
-                                <li><a class="dropdown-item" href="{% url 'portal:admin_page' %}">Панель администратора</a></li>
-                                <li><a class="dropdown-item" href="/admin/">Админ-панель Django</a></li>
+                                <li role="none"><a class="dropdown-item" href="{% url 'portal:admin_page' %}" role="menuitem">Панель администратора</a></li>
+                                <li role="none"><a class="dropdown-item" href="/admin/" role="menuitem">Админ-панель Django</a></li>
                                 {% elif user.userprofile.is_dba %}
-                                <li><a class="dropdown-item" href="{% url 'portal:dba_page' %}">Панель DBA</a></li>
+                                <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Панель DBA</a></li>
                                 {% endif %}
-                                <li><hr class="dropdown-divider"></li>
-                                <li>
+                                <li role="none"><hr class="dropdown-divider"></li>
+                                <li role="none">
                                     <form method="post" action="/logout/" class="d-inline">
                                         {% csrf_token %}
-                                        <button type="submit" class="dropdown-item text-danger logout-btn">
+                                        <button type="submit" class="dropdown-item text-danger logout-btn" aria-label="Выйти из системы">
                                             <i class="fas fa-sign-out-alt"></i> Выход
                                         </button>
                                     </form>

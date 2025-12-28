@@ -298,16 +298,16 @@ class EnhancedAspectBot:
             )
             return
 
-        # Генерируем session_id
-        session_id = f"telegram_{user.id}"
-
+        # ИСПРАВЛЕНО (2025-12-28): НЕ передаем фиксированный session_id
+        # Позволяем MessageHandlerService создать новую сессию для приветствия
+        # или продолжить существующую сессию
         try:
             # Обрабатываем сообщение через MessageHandlerService
             result = await self.message_handler.handle_incoming_message(
                 text=text,
                 user_id=str(user.id),
                 channel='telegram',
-                session_id=session_id,
+                session_id=None,  # ИСПРАВЛЕНО: None = автоматическое управление сессиями
                 metadata={
                     'username': user.username,
                     'first_name': user.first_name,
