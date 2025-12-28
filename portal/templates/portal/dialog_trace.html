@@ -182,17 +182,22 @@ async function loadSessions() {
             html += `
                 <div class="list-group-item session-item" onclick="loadTrace('${session.session_id}')" style="cursor: pointer;">
                     <div class="d-flex justify-content-between align-items-center">
-                        <div>
+                        <div class="flex-grow-1" onclick="event.stopPropagation(); loadTrace('${session.session_id}')">
                             <strong>${icon} ${session.session_id}</strong>
                             <br>
                             <small class="text-muted">
                                 <i class="fas fa-envelope"></i> ${session.message_count} сообщений
                             </small>
                         </div>
-                        <div class="text-end">
-                            <small class="text-muted">
-                                <i class="fas fa-clock"></i> ${time}
-                            </small>
+                        <div class="d-flex align-items-center gap-2">
+                            <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); generateFullTrace('${session.session_id}')" title="Сгенерировать полный отчет">
+                                <i class="fas fa-binoculars"></i> Трассировка
+                            </button>
+                            <div class="text-end">
+                                <small class="text-muted">
+                                    <i class="fas fa-clock"></i> ${time}
+                                </small>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -335,6 +340,60 @@ async function loadReportFiles() {
     } catch (error) {
         console.error('Error:', error);
         container.innerHTML = '<div class="alert alert-danger">Ошибка загрузки файлов</div>';
+    }
+}
+
+// Генерация полного отчета по трассировке
+async function generateFullTrace(sessionId) {
+    // Переключиться на вкладку трассировки
+    document.getElementById('trace-tab').click();
+
+    const container = document.getElementById('messagesContainer');
+    selectedSession = sessionId;
+
+    // Показать загрузку
+    container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Генерация полного отчета...</p></div>';
+
+    try {
+        const response = await fetch(`/api/dialog-full-trace/?session_id=${encodeURIComponent(sessionId)}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            return;
+        }
+
+        if (data.report_url) {
+            // Отчет создан, показываем ссылку на файл
+            container.innerHTML = `
+                <div class="alert alert-success">
+                    <h5><i class="fas fa-check-circle"></i> Отчет создан</h5>
+                    <p>Полный отчет по трассировке сгенерирован.</p>
+                    <p><a href="/admin-uk/dialog-trace/${encodeURIComponent(data.report_filename)}/" class="btn btn-primary" target="_blank">
+                        <i class="fas fa-file-alt"></i> Открыть отчет: ${data.report_filename}
+                    </a></p>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <small class="fw-bold">Предпросмотр:</small>
+                    </div>
+                    <div class="card-body">
+                        <pre class="pre-wrap" style="max-height: 500px; overflow-y: auto; font-size: 12px;">${data.report_preview || 'Предпросмотр недоступен'}</pre>
+                    </div>
+                </div>
+            `;
+        } else {
+            container.innerHTML = '<div class="alert alert-warning">Не удалось создать отчет</div>';
+        }
+
+    } catch (error) {
+        console.error('Error:', error);
+        container.innerHTML = '<div class="alert alert-danger">Ошибка генерации отчета</div>';
     }
 }
 

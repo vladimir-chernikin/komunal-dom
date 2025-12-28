@@ -284,6 +284,84 @@ def api_dialog_report_view(request, filename):
 
 
 @login_required
+def api_dialog_full_trace(request):
+    """API для генерации полного отчета по трассировке диалога
+
+    ИСПОЛЬЗУЕТ TraceReportService для генерации отчета по шаблону CLAUDE.md
+    """
+    from django.http import JsonResponse
+    import asyncio
+    import os
+    from datetime import datetime
+
+    try:
+        profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=request.user, role='resident')
+
+    # Проверка прав доступа
+    if not profile.has_admin_access():
+        return JsonResponse({'error': 'Доступ запрещен'}, status=403)
+
+    # Получаем параметры
+    session_id = request.GET.get('session_id')
+
+    if not session_id:
+        return JsonResponse({'error': 'Не указан session_id'}, status=400)
+
+    try:
+        # Импортируем TraceReportService
+        from trace_report_service import TraceReportService
+
+        # Создаем сервис и генерируем отчет
+        service = TraceReportService()
+
+        # Генерируем отчет
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            report_path = loop.run_until_complete(
+                service.generate_trace_report(session_id)
+            )
+        finally:
+            loop.close()
+
+        if not report_path:
+            return JsonResponse({'error': 'Не удалось создать отчет - нет сообщений для сессии'}, status=404)
+
+        # Читаем созданный файл для предпросмотра
+        with open(report_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Получаем только имя файла
+        report_filename = os.path.basename(report_path)
+
+        # Предпросмотр (первые 2000 символов)
+        preview_length = 2000
+        report_preview = content[:preview_length]
+        if len(content) > preview_length:
+            report_preview += '\n\n... (текст обрезан)'
+
+        return JsonResponse({
+            'success': True,
+            'report_filename': report_filename,
+            'report_url': f'/admin-uk/dialog-trace/{report_filename}/',
+            'report_preview': report_preview,
+            'report_size': len(content),
+            'session_id': session_id
+        })
+
+    except ImportError as e:
+        return JsonResponse({'error': f'Module ImportError: {str(e)}'}, status=500)
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            'error': f'Ошибка генерации отчета: {str(e)}',
+            'traceback': traceback.format_exc()
+        }, status=500)
+
+
+@login_required
 def dialog_report_view_page(request, filename):
     """Страница просмотра файла отчета"""
     import os

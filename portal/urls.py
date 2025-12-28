@@ -34,6 +34,7 @@ urlpatterns = [
     path('api/dialog-sessions/', views.api_dialog_sessions, name='api_dialog_sessions'),
     path('api/dialog-reports/', views.api_dialog_reports, name='api_dialog_reports'),
     path('api/dialog-reports/<str:filename>/', views.api_dialog_report_view, name='api_dialog_report_view'),
+    path('api/dialog-full-trace/', views.api_dialog_full_trace, name='api_dialog_full_trace'),  # ✅ ДОБАВЛЕНО
 
     # API
     path('api/kladr/search/', kladr_views.api_search_kladr, name='api_search_kladr'),
