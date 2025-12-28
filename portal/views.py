@@ -214,21 +214,28 @@ def api_dialog_reports(request):
         return JsonResponse({'error': 'Доступ запрещен'}, status=403)
 
     # Получаем список файлов отчетов
+    # ИСПРАВЛЕНО (2025-12-27): Добавлен паттерн для _tras_diag_*.md файлов
     tmp_dir = '/tmp/'
-    pattern = os.path.join(tmp_dir, '*REPORT*.md')
+    patterns = [
+        os.path.join(tmp_dir, '*REPORT*.md'),
+        os.path.join(tmp_dir, '_tras_diag_*.md')  # ✅ ДОБАВЛЕНО
+    ]
     files = []
 
-    for filepath in glob.glob(pattern):
-        try:
-            stat = os.stat(filepath)
-            filename = os.path.basename(filepath)
-            files.append({
-                'name': filename,
-                'size': stat.st_size,
-                'modified': stat.st_mtime
-            })
-        except OSError:
-            continue
+    for pattern in patterns:
+        for filepath in glob.glob(pattern):
+            try:
+                stat = os.stat(filepath)
+                filename = os.path.basename(filepath)
+                # Избегаем дубликатов
+                if not any(f['name'] == filename for f in files):
+                    files.append({
+                        'name': filename,
+                        'size': stat.st_size,
+                        'modified': stat.st_mtime
+                    })
+            except OSError:
+                continue
 
     # Сортируем по времени изменения (новые сначала)
     files.sort(key=lambda x: x['modified'], reverse=True)
