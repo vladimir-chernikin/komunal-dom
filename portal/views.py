@@ -290,9 +290,7 @@ def api_dialog_full_trace(request):
     ИСПОЛЬЗУЕТ TraceReportService для генерации отчета по шаблону CLAUDE.md
     """
     from django.http import JsonResponse
-    import asyncio
     import os
-    from datetime import datetime
 
     try:
         profile = request.user.userprofile
@@ -312,19 +310,13 @@ def api_dialog_full_trace(request):
     try:
         # Импортируем TraceReportService
         from trace_report_service import TraceReportService
+        from asgiref.sync import async_to_sync
 
         # Создаем сервис и генерируем отчет
         service = TraceReportService()
 
-        # Генерируем отчет
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            report_path = loop.run_until_complete(
-                service.generate_trace_report(session_id)
-            )
-        finally:
-            loop.close()
+        # Генерируем отчет (используем async_to_sync)
+        report_path = async_to_sync(service.generate_trace_report)(session_id)
 
         if not report_path:
             return JsonResponse({'error': 'Не удалось создать отчет - нет сообщений для сессии'}, status=404)
