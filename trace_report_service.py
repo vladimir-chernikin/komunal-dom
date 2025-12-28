@@ -81,31 +81,39 @@ class TraceReportService:
     async def _load_messages_from_db(self, session_id: str) -> List[Dict]:
         """Загружает сообщения из базы данных."""
         try:
-            from django.db import connection
+            from django.db import connections
             from asgiref.sync import sync_to_async
 
             def load_sync():
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT
-                            id,
-                            text,
-                            direction,
-                            channel,
-                            session_id,
-                            created_at,
-                            metadata
-                        FROM message_handler_messagelog
-                        WHERE session_id LIKE %s
-                        ORDER BY created_at ASC
-                    """, [f"{session_id}%"])
+                # Используем connections['default'] вместо connection
+                # И создаем новое соединение для этого потока
+                db = connections['default']
+                db.connect()  # Явно подключаемся
 
-                    columns = [col[0] for col in cursor.description]
-                    messages = []
-                    for row in cursor.fetchall():
-                        messages.append(dict(zip(columns, row)))
+                try:
+                    with db.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT
+                                id,
+                                text,
+                                direction,
+                                channel,
+                                session_id,
+                                created_at,
+                                metadata
+                            FROM message_handler_messagelog
+                            WHERE session_id LIKE %s
+                            ORDER BY created_at ASC
+                        """, [f"{session_id}%"])
 
-                    return messages
+                        columns = [col[0] for col in cursor.description]
+                        messages = []
+                        for row in cursor.fetchall():
+                            messages.append(dict(zip(columns, row)))
+
+                        return messages
+                finally:
+                    db.close()  # Закрываем соединение
 
             messages = await sync_to_async(load_sync)()
             logger.info(f"Загружено {len(messages)} сообщений для сессии {session_id}")
