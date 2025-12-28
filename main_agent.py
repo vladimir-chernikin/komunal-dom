@@ -1239,7 +1239,10 @@ class MainAgent:
             return {}
 
     def _merge_candidates(self, candidates: List[Dict]) -> List[Dict]:
-        """Дедупликация и объединение кандидатов"""
+        """Дедупликация и объединение кандидатов
+
+        ИСПРАВЛЕНО (2025-12-28): Копируем location_type, incident_type, category из all_data[0]
+        """
         service_map = {}
 
         for candidate in candidates:
@@ -1257,7 +1260,20 @@ class MainAgent:
                     existing['source'] = f"{existing.get('source', '')}+{candidate.get('source', '')}"
                     existing['confidence'] = min(existing_confidence + 0.1, 1.0)
             else:
-                service_map[service_id] = candidate.copy()
+                # ИСПРАВЛЕНО (2025-12-28): Копируем candidate И атрибуты из all_data[0]
+                merged_candidate = candidate.copy()
+
+                # Копируем атрибуты из all_data[0] если они есть
+                if 'all_data' in candidate and len(candidate['all_data']) > 0:
+                    first_data = candidate['all_data'][0]
+                    if 'location_type' in first_data:
+                        merged_candidate['location_type'] = first_data['location_type']
+                    if 'incident_type' in first_data:
+                        merged_candidate['incident_type'] = first_data['incident_type']
+                    if 'category' in first_data:
+                        merged_candidate['category'] = first_data['category']
+
+                service_map[service_id] = merged_candidate
 
         merged = list(service_map.values())
 
