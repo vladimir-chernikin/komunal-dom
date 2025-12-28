@@ -1229,9 +1229,10 @@ class MainAgent:
                 logger.error(f"Ошибка получения fallback сообщения: {e}")
 
         # КРИТИЧЕСКИЙ fallback если CommunicativeScriptsService недоступен
+        # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
         return {
             'status': 'AMBIGUOUS',
-            'message': "Пожалуйста, уточните где именно это произошло и опишите подробнее, что случилось.",
+            'message': "Опишите подробнее, что именно произошло.",
             'single_candidate': None,
             'filtered_candidates': filtered_candidates
         }
@@ -1418,10 +1419,11 @@ class MainAgent:
                 return "Что именно сломалось или не работает?"
 
             if any(word in original_lower for word in ['запах', 'воня', 'дух']):
-                return "Откуда запах? (из вентиляции, от труб, мусоропровод, канализация)"
+                return "Опишите подробнее: откуда запах?"
 
         # Fallback - если не смогли определить контекст
-        return "Опишите, пожалуйста: что именно случилось и где это произошло."
+        # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
+        return "Опишите подробнее, что именно произошло."
 
     def _create_error_result(self, error_message: str) -> Dict:
         return {
@@ -1463,7 +1465,8 @@ class MainAgent:
                     'status': 'AMBIGUOUS',
                     'candidates': [],
                     'candidate_names': [],
-                    'message': 'Понимаю, у вас поломка оборудования. Что именно сломалось и где это произошло? Опишите подробнее.',
+                    # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
+                    'message': 'Понимаю, у вас поломка оборудования. Опишите подробнее, что именно сломалось.',
                     'needs_clarification': True,
                     'clarification_type': 'equipment'
                 }
@@ -1562,6 +1565,9 @@ class MainAgent:
         ИСПРАВЛЕНО (2025-12-25): Полноценный оркестратор с умными решениями
         Использует UNION вместо INTERSECTION для объединения результатов
         """
+        # ИСПРАВЛЕНО (2025-12-27): Логирование для отладки фильтрации
+        logger.info(f"⚙️ _orchestrate_microservices: established_filters={established_filters}")
+
         tag_results = search_results.get('tag_search', {}).get('candidates', [])
         semantic_results = search_results.get('semantic_search', {}).get('candidates', [])
         vector_results = search_results.get('vector_search', {}).get('candidates', [])
@@ -1733,9 +1739,18 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-27): Применяем фильтры к кандидатам
         if established_filters:
             before_count = len(candidates)
+            logger.info(f"⚙️ _ask_ai_clarification: candidates до фильтров: {before_count}")
+            logger.info(f"⚙️ _ask_ai_clarification: established_filters={established_filters}")
+
             candidates = self._apply_filters_to_candidates(candidates, established_filters)
             after_count = len(candidates)
-            logger.info(f"_ask_ai_clarification: применение фильтров: {before_count} -> {after_count} кандидатов")
+            logger.info(f"✅ _ask_ai_clarification: после фильтров: {after_count} кандидатов")
+
+            # Показываем оставшихся кандидатов
+            for i, c in enumerate(candidates[:5], 1):
+                logger.info(f"  {i}. {c.get('service_name', 'Unknown')} (loc={c.get('location_type', '?')[:10]} conf={c.get('confidence', 0):.2f})")
+        else:
+            logger.info(f"⚙️ _ask_ai_clarification: established_filters=None, пропускаем фильтрацию")
 
         # ИСПРАВЛЕНО (2025-12-27): Закомментированы кэшированные запросы - используем только AI
         # if self.cache_service:  # DISABLED
@@ -2020,6 +2035,8 @@ class MainAgent:
         # Порог применения фильтра - только фильтры с уверенностью >= 0.8
         FILTER_CONFIDENCE_THRESHOLD = 0.8
 
+        logger.info(f"🔍 _apply_filters_to_candidates: начало, кандидатов={len(candidates)}, фильтров={len(established_filters)}")
+
         # Применяем фильтры по очереди
         filtered_candidates = candidates
 
@@ -2029,10 +2046,10 @@ class MainAgent:
 
             # Применяем только фильтры с высокой уверенностью
             if confidence < FILTER_CONFIDENCE_THRESHOLD:
-                logger.info(f"Фильтр {filter_name}: confidence={confidence:.2f} < {FILTER_CONFIDENCE_THRESHOLD}, пропускаем")
+                logger.info(f"⚠️ Фильтр {filter_name}: confidence={confidence:.2f} < {FILTER_CONFIDENCE_THRESHOLD}, ПРОПУСКАЕМ")
                 continue
 
-            logger.info(f"✅ Применяем фильтр: {filter_name}={value} (confidence={confidence:.2f})")
+            logger.info(f"✅ ПРИМЕНЯЕМ ФИЛЬТР: {filter_name}={value} (confidence={confidence:.2f} >= {FILTER_CONFIDENCE_THRESHOLD})")
 
             # Фильтрация по location
             if filter_name == 'location' and value:

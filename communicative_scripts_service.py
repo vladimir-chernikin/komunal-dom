@@ -168,10 +168,11 @@ class CommunicativeScriptsService:
 
         if not message:
             # Fallback на hardcoded сообщения
+            # ИСПРАВЛЕНО (2025-12-27): Открытые вопросы вместо двойных
             if candidate_count == 0 and not is_followup:
-                message = "Пожалуйста, уточните где именно это произошло и опишите подробнее, что случилось."
+                message = "Опишите подробнее, что именно произошло."
             elif candidate_count == 0 and is_followup:
-                message = "Уточните, пожалуйста: что именно сломалось, течет или не работает?"
+                message = "Уточните, пожалуйста: что именно сломалось или не работает?"
             else:
                 message = "Пожалуйста, опишите проблему другими словами."
 
@@ -313,7 +314,8 @@ def _init_default_scripts():
             'script_name': 'fallback_no_candidates',
             'script_type': 'fallback',
             'channel': 'telegram',
-            'text': 'Пожалуйста, уточните где именно это произошло и опишите подробнее, что случилось.',
+            # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
+            'text': 'Опишите подробнее, что именно произошло.',
             'conditions': {'candidate_count': 0, 'is_followup': False},
             'priority': 1.0,
             'min_dialog_turn': 1,
@@ -325,6 +327,7 @@ def _init_default_scripts():
             'script_name': 'fallback_followup_clarify',
             'script_type': 'fallback',
             'channel': 'telegram',
+            # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос (но с "или" - это допустимо для уточнения типа проблемы)
             'text': 'Уточните, пожалуйста: что именно сломалось, течет или не работает?',
             'conditions': {'candidate_count': 0, 'is_followup': True},
             'priority': 1.0,
