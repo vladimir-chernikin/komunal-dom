@@ -2083,11 +2083,17 @@ class MainAgent:
 
             # Вызываем AI через AIAgentService
             if self.ai_agent:
-                response, usage = await self.ai_agent._call_yandex_gpt(prompt)
+                # ИСПРАВЛЕНО (2025-12-28): ГИБРИДНАЯ МОДЕЛЬ
+                # - Для вопросов к пользователю: Pro (качество критично!)
+                # - Для остальных задач: используется default (обычно Lite)
+                question_types_requiring_pro = ['clarification', 'what_happened', 'location', 'details']
+                model = 'pro' if question_type in question_types_requiring_pro else None  # None = default
+
+                response, usage = await self.ai_agent._call_yandex_gpt(prompt, model=model)
                 question = response.strip()
 
                 # ИСПРАВЛЕНО (2025-12-28): Логируем ответ LLM
-                logger.info(f"🤖 ОТВЕТ LLM ({question_type}):")
+                logger.info(f"🤖 ОТВЕТ LLM ({question_type}, model={usage.get('model', 'unknown')}):")
                 logger.info(f"  📝 Текст: '{question}'")
                 logger.info(f"  💰 Usage: {usage}")
 

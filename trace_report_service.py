@@ -216,7 +216,98 @@ ID: {msg_id}
             except:
                 metadata = {}
 
-        # ВСЕГДА добавляем текущий txtPrb
+        # ИСПРАВЛЕНО (2025-12-28): Добавлен блок 🔍 ДИАГНОСТИКА
+        # Извлекаем диагностику из service_result._metadata
+        service_result = metadata.get('service_result', {})
+        service_metadata = service_result.get('_metadata', {}) if isinstance(service_result, dict) else {}
+
+        if service_metadata:
+            details += f"""
+{'─' * 80}
+🔍 ДИАГНОСТИКА (process_service_detection)
+{'─' * 80}
+"""
+            # txtPrb
+            txtPrb = service_metadata.get('txtPrb', '')
+            if txtPrb:
+                details += f"""
+📝 txtPrb:
+   {txtPrb}
+"""
+
+            # accumulated_fields
+            accumulated_fields = service_metadata.get('accumulated_fields', {})
+            if accumulated_fields:
+                details += f"""
+🔧 accumulated_fields:
+   {json.dumps(accumulated_fields, ensure_ascii=False, indent=2)}
+"""
+
+            # established_filters
+            established_filters = service_metadata.get('established_filters', {})
+            if established_filters:
+                details += f"""
+🔧 established_filters:
+   {json.dumps(established_filters, ensure_ascii=False, indent=2)}
+"""
+
+            # microservices_results
+            microservices_results = service_metadata.get('microservices_results', {})
+            if microservices_results:
+                details += f"""
+👥 МИКРОСЕРВИСЫ (результаты поиска):
+   Найдено результатов: {len(microservices_results)}
+"""
+                for ms_name, ms_result in microservices_results.items():
+                    if isinstance(ms_result, dict) and ms_result.get('candidates'):
+                        details += f"   - {ms_name}: {len(ms_result['candidates'])} кандидатов\n"
+
+            # filter_detection (если есть)
+            filter_detection = service_metadata.get('filter_detection', {})
+            if filter_detection and isinstance(filter_detection, dict):
+                details += f"""
+{'─' * 80}
+🔍 ФИЛЬТРЫ (FilterDetectionService)
+{'─' * 80}
+"""
+                # Prompt
+                prompt = filter_detection.get('prompt', '')
+                if prompt:
+                    details += f"""
+🤖 ЗАПРОС К LLM:
+{prompt[:500]}{'...' if len(prompt) > 500 else ''}
+"""
+
+                # Filters
+                filters = filter_detection.get('filters', {})
+                if filters:
+                    details += f"""
+🔧 ФИЛЬТРЫ:
+   {json.dumps(filters, ensure_ascii=False, indent=3)}
+"""
+
+                # LLM Response
+                llm_response = filter_detection.get('llm_response', '')
+                if llm_response:
+                    details += f"""
+🤖 ОТВЕТ LLM:
+{llm_response[:300]}{'...' if len(llm_response) > 300 else ''}
+"""
+
+            # ai_orchestrator (если есть)
+            ai_orchestrator = service_metadata.get('ai_orchestrator', {})
+            if ai_orchestrator and isinstance(ai_orchestrator, dict):
+                details += f"""
+{'─' * 80}
+🔍 AI ORCHESTRATOR
+{'─' * 80}
+   Status: {ai_orchestrator.get('status', 'unknown')}
+   Service: {ai_orchestrator.get('service_name', 'N/A')}
+   Confidence: {ai_orchestrator.get('confidence', 0.0)*100:.1f}%
+   Message: {ai_orchestrator.get('message', 'N/A')[:100]}
+"""
+
+        # ВСЕГДА добавляем текущий txtPrb (если еще не добавлен в 🔍 ДИАГНОСТИКА)
         if isinstance(metadata, dict):
             txtPrb = metadata.get('txtPrb', '')
             if not txtPrb:
@@ -226,8 +317,9 @@ ID: {msg_id}
                     service_metadata = service_result.get('_metadata', {})
                     txtPrb = service_metadata.get('txtPrb', '')
 
-            if txtPrb:
+            if txtPrb and '📝 txtPrb:' not in details:  # Проверяем что еще не добавили в 🔍 блоке
                 details += f"""
+{'─' * 80}
 ИЗВЕСТНАЯ ИНФОРМАЦИЯ (txtPrb):
 {txtPrb}
 """
