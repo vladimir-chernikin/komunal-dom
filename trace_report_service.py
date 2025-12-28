@@ -230,7 +230,35 @@ METADATA:
 {self._format_metadata(metadata)}
 """
 
+        # Добавляем заключение о результате шага
+        details += f"""
+{'-' * 80}
+ЗАКЛЮЧЕНИЕ ШАГА #{num}:
+"""
+        if direction == 'inbound':
+            # Входящее сообщение от пользователя
+            if txtPrb:
+                details += f"✅ Пользователь предоставил информацию. Текущее понимание: {txtPrb}"
+            else:
+                details += "⚠️ Входящее сообщение не содержит значимой информации для определения проблемы"
+        else:
+            # Исходящее сообщение от бота
+            service_detection = metadata.get('service_detection', {})
+            status = service_detection.get('status', 'unknown')
+
+            if status == 'SUCCESS':
+                service_name = service_detection.get('service_name', 'неизвестно')
+                details += f"✅ Услуга определена: {service_name}"
+            elif status == 'AMBIGUOUS':
+                candidates_count = len(service_detection.get('candidates', []))
+                details += f"⚠️ Требуется уточнение. Найдено кандидатов: {candidates_count}"
+            elif status == 'NOT_FOUND':
+                details += "❌ Услуга не найдена. Требуется уточнение проблемы"
+            else:
+                details += f"🔍 Статус обработки: {status}"
+
         details += "\n"
+
         return details
 
     def _format_metadata(self, metadata, indent: str = "  ") -> str:

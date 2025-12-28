@@ -701,6 +701,24 @@ ID: 12345
 ИЗВЕСТНАЯ ИНФОРМАЦИЯ (txtPrb):
 (нет значимой информации)
 
+METADATA:
+service_detection: {
+  'status': 'AMBIGUOUS',
+  'candidates': [
+    {'service_id': 5, 'service_name': 'Засор канализации', 'confidence': 0.85},
+    {'service_id': 7, 'service_name': 'Устранение течи', 'confidence': 0.78}
+  ]
+}
+txtPrb: у пользователя течет в зале
+
+**Пояснение METADATA:**
+- `service_detection` - результаты работы воронки точности (TagSearch, VectorSearch, SemanticSearch, AI)
+- `candidates` - найденные услуги с уверенностью
+- `txtPrb` - накопленное описание проблемы на этом шаге
+- `filters` - установленные фильтры (location, category, incident)
+- `question_answer_pairs` - пары "Вопрос бота → Ответ пользователя"
+- Другие технические данные для отладки
+
 ...
 
 ================================================================================

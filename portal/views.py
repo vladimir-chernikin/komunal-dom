@@ -336,11 +336,8 @@ def api_dialog_full_trace(request):
         # Получаем только имя файла
         report_filename = os.path.basename(report_path)
 
-        # Предпросмотр (первые 2000 символов)
-        preview_length = 2000
-        report_preview = content[:preview_length]
-        if len(content) > preview_length:
-            report_preview += '\n\n... (текст обрезан)'
+        # Полный текст для предпросмотра (без обрезки)
+        report_preview = content
 
         return JsonResponse({
             'success': True,
