@@ -472,16 +472,35 @@ METADATA OUTBOUND:
                     lines.append("│")
 
                 # accumulated_fields
-                acc_fields = service_result.get('_metadata', {}).get('accumulated_fields', {})
-                if acc_fields:
-                    lines.append("")
-                    lines.append("├─ ACCUMULATED FIELDS:")
-                    lines.append("│ (накопленная информация из диалога - location, source, problem, etc)")
+            acc_fields = service_result.get('_metadata', {}).get('accumulated_fields', {})
+            if acc_fields:
+                lines.append("")
+                lines.append("├─ ACCUMULATED FIELDS:")
+                lines.append("│ (накопленная информация из диалога - location, source, problem, etc)")
+                lines.append("│")
+                for key, value in acc_fields.items():
+                    if value:
+                        lines.append(f"│   {key}: {value}")
+                lines.append("│")
+
+            # ИСПРАВЛЕНО (2025-12-29): Второй проход с фильтрами
+            second_pass = service_result.get('_metadata', {}).get('second_pass', {})
+            if second_pass and second_pass.get('enabled'):
+                lines.append("")
+                lines.append("├─ ВТОРОЙ ПРОХОД (фильтрация кандидатов):")
+                lines.append("│")
+                lines.append(f"│ До фильтрации: {second_pass.get('before_count', 0)} кандидатов")
+                lines.append(f"│ После фильтрации: {second_pass.get('after_count', 0)} кандидатов")
+
+                applied_filters = second_pass.get('applied_filters', {})
+                if applied_filters:
                     lines.append("│")
-                    for key, value in acc_fields.items():
+                    lines.append("│ Примененные фильтры:")
+                    for key, value in applied_filters.items():
                         if value:
-                            lines.append(f"│   {key}: {value}")
-                    lines.append("│")
+                            lines.append(f"│   - {key}: {value}")
+
+                lines.append("│")
 
                 # established_filters
                 est_filters = service_result.get('_metadata', {}).get('established_filters', {})

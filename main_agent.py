@@ -633,6 +633,7 @@ class MainAgent:
 
                         # Фильтруем кандидатов по полученным фильтрам
                         filtered = candidates_with_attrs
+                        before_count = len(filtered)
 
                         if filters.get('incident_type'):
                             filtered = [c for c in filtered
@@ -648,6 +649,16 @@ class MainAgent:
                             filtered = [c for c in filtered
                                        if filters['category'].lower() in c.get('category', '').lower()]
                             logger.info(f"Отфильтровано по category={filters['category']}: {len(filtered)} из {len(candidates_with_attrs)}")
+
+                        # ИСПРАВЛЕНО (2025-12-29): Сохраняем информацию о фильтрации (второй проход)
+                        result_metadata['second_pass'] = {
+                            'enabled': True,
+                            'before_count': before_count,
+                            'after_count': len(filtered),
+                            'applied_filters': {
+                                k: v for k, v in filters.items() if v
+                            }
+                        }
 
                         # Если после фильтрации остался 1 кандидат - SUCCESS
                         if len(filtered) == 1:
