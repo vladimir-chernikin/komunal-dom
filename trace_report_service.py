@@ -742,6 +742,7 @@ METADATA OUTBOUND:
         """Анализирует ответ бота.
 
         ИСПРАВЛЕНО (2025-12-29): Добавлен перевод статусов на русский.
+        ИСПРАВЛЕНО (2025-12-29): Добавлено описание логики уточнения для AMBIGUOUS.
         """
 
         service_result = metadata.get('service_result') or metadata.get('service_detection', {})
@@ -757,7 +758,37 @@ METADATA OUTBOUND:
             return f"[+] {status_translated}: {service_name}"
         elif status == 'AMBIGUOUS':
             candidates = service_result.get('candidates', [])
-            return f"[!] {status_translated}. Найдено кандидатов: {len(candidates)}"
+            result = f"[!] {status_translated}. Найдено кандидатов: {len(candidates)}\n"
+
+            # ИСПРАВЛЕНО (2025-12-29): Добавляем описание что уточняем
+            result += "\n📋 ЧТО БУДЕМ УТОЧНЯТЬ:\n"
+
+            # Анализируем установленные фильтры
+            established_filters = service_result.get('_metadata', {}).get('established_filters', {})
+
+            # Проверяем какие фильтры НЕ установлены
+            missing_filters = []
+            if not any(f.get('location_type') for f in [established_filters]):
+                missing_filters.append("Локация: неизвестна (Индивидуальное vs Общедомовое)")
+
+            if not any(f.get('category') for f in [established_filters]):
+                missing_filters.append("Категория: неизвестна (Водоснабжение, Отопление и т.д.)")
+
+            if not any(f.get('incident_type') for f in [established_filters]):
+                missing_filters.append("Тип: неизвестен (Инцидент vs Запрос)")
+
+            if not missing_filters:
+                missing_filters.append("Детали проблемы: недостаточно информации")
+
+            for mf in missing_filters:
+                result += f"- {mf}\n"
+
+            # Объяснение почему
+            result += "\n⚠️ ПОЧЕМУ:\n"
+            result += f"- После фильтрации осталось {len(candidates)} кандидатов\n"
+            result += "- Нужно сократить список до 1 услуги\n"
+
+            return result
         elif status == 'NOT_FOUND':
             return f"[-] {status_translated}. Требуется уточнение проблемы"
         else:
