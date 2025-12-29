@@ -57,10 +57,22 @@ class MainAgent:
         self.problem_accumulator = None  # ИСПРАВЛЕНО (2025-12-26): Сервис накопления проблемы
         self.confidence_threshold = 0.75  # Порог уверенности
 
+        # ИСПРАВЛЕНО (2025-12-29): Кэш фильтров из БД
+        self._categories_cache = None
+        self._objects_cache = None
+        self._location_types_cache = None
+        self._incident_types_cache = None
+
+        # ИСПРАВЛЕНО (2025-12-29): Настройка отладки промптов
+        from django.conf import settings
+        self.tst_prompt = getattr(settings, 'TST_PROMPT', 0)
+
         # Инициализируем микросервисы
         self._init_services()
+        self._load_filters_from_db()  # Загружаем фильтры из БД
 
         logger.info("Главный Агент инициализирован с микросервисной архитектурой")
+        logger.info(f"🐛 TST_PROMPT={self.tst_prompt} (режим отладки вопросов)")
 
     def _init_services(self):
         """Инициализация микросервисов"""
@@ -128,6 +140,43 @@ class MainAgent:
         #     logger.warning("CommunicativeScriptsService не найден, fallback скрипты недоступны")
         self.communicative_scripts = None
         logger.info("CommunicativeScriptsService ОТКЛЮЧЕН (используем AI-генерацию вопросов)")
+
+    def _load_filters_from_db(self):
+        """
+        ИСПРАВЛЕНО (2025-12-29): Загружает уникальные значения фильтров из БД
+        для использования в промтах вместо захардкоженных значений
+        """
+        try:
+            with connection.cursor() as cursor:
+                # Загружаем уникальные категории
+                cursor.execute("SELECT DISTINCT category FROM services_catalog WHERE category IS NOT NULL AND category != '' ORDER BY category")
+                self._categories_cache = [row[0] for row in cursor.fetchall()]
+
+                # Загружаем уникальные объекты
+                cursor.execute("SELECT DISTINCT object_type FROM services_catalog WHERE object_type IS NOT NULL AND object_type != '' ORDER BY object_type")
+                self._objects_cache = [row[0] for row in cursor.fetchall()]
+
+                # Загружаем типы локации
+                cursor.execute("SELECT DISTINCT location_type FROM services_catalog WHERE location_type IS NOT NULL AND location_type != '' ORDER BY location_type")
+                self._location_types_cache = [row[0] for row in cursor.fetchall()]
+
+                # Загружаем типы инцидентов
+                cursor.execute("SELECT DISTINCT incident_type FROM services_catalog WHERE incident_type IS NOT NULL AND incident_type != '' ORDER BY incident_type")
+                self._incident_types_cache = [row[0] for row in cursor.fetchall()]
+
+                logger.info(f"✅ Загружены фильтры из БД:")
+                logger.info(f"   Категории ({len(self._categories_cache)}): {', '.join(self._categories_cache[:5])}...")
+                logger.info(f"   Объекты ({len(self._objects_cache)}): {', '.join(self._objects_cache[:5])}...")
+                logger.info(f"   Локации ({len(self._location_types_cache)}): {', '.join(self._location_types_cache)}")
+                logger.info(f"   Инциденты ({len(self._incident_types_cache)}): {', '.join(self._incident_types_cache)}")
+
+        except Exception as e:
+            logger.error(f"Ошибка загрузки фильтров из БД: {e}")
+            # Fallback на захардкоженные значения
+            self._categories_cache = ['Водоснабжение', 'Отопление', 'Канализация', 'Электрика']
+            self._objects_cache = ['Труба', 'Кран', 'Батарея', 'Розетка']
+            self._location_types_cache = ['Индивидуальное', 'Общедомовое']
+            self._incident_types_cache = ['Инцидент', 'Запрос']
 
     def _add_address_to_result(self, result: Dict, address_components: Dict) -> Dict:
         """
@@ -2118,6 +2167,10 @@ class MainAgent:
                     established_filters=established_filters
                 )
 
+                # ИСПРАВЛЕНО (2025-12-29): Отладочный режим - добавляем объяснение к вопросу
+                if self.tst_prompt:
+                    question = self._add_debug_explanation(question, question_type, candidates)
+
                 logger.info(f"✅ AI сгенерировал вопрос ({question_type}): {question}")
                 return question
             else:
@@ -2258,10 +2311,11 @@ class MainAgent:
     (квартира состоит из комнат: ванная, зал, кухня, спальня и т.д.)
     (если пользователь назвал локацию "ванная"/"зал" → проверь может ли она быть в квартире)
   * Общедомовое = проблема в подъезде, на улице, местах общего пользования
+  Варианты: {', '.join(self._location_types_cache)}
 
-- Категория (Водоснабжение/Отопление/Канализация/Электрика/и т.д.)
+- Категория: {', '.join(self._categories_cache)}
 
-- Объект (Труба/Кран/Батарея/Розетка/и т.д.)
+- Объект: {', '.join(self._objects_cache)}
 
 Стратегия: задавай вопросы чтобы установить фильтры и сократить список кандидатов.
 
@@ -2472,6 +2526,50 @@ class MainAgent:
             'details': "Пожалуйста, уточните детали."
         }
         return fallbacks.get(question_type, "Уточните детали проблемы.")
+
+    def _add_debug_explanation(self, question: str, question_type: str, candidates: List[Dict] = None) -> str:
+        """
+        ИСПРАВЛЕНО (2025-12-29): Добавляет отладочное объяснение к вопросу
+
+        Если TST_PROMPT=1, добавляет в скобках пояснение зачем задается вопрос.
+        Формат: "(определяю локацию): Где произошла протечка?"
+
+        Args:
+            question: Сгенерированный вопрос
+            question_type: Тип вопроса
+            candidates: Кандидаты услуг
+
+        Returns:
+            str: Вопрос с объяснением в скобках
+        """
+        if not self.tst_prompt:
+            return question
+
+        # Определяем цель вопроса по ключевым словам
+        explanation = ""
+        question_lower = question.lower()
+
+        # Анализируем цель вопроса
+        if any(word in question_lower for word in ['где', 'место', 'локаци', 'в какой комнат']):
+            explanation = "определяю локацию"
+        elif any(word in question_lower for word in ['что', 'чем', 'предмет', 'объект', 'какой']):
+            if any(word in question_lower for word in ['сломал', 'не работ', 'произошло']):
+                explanation = "определяю проблему"
+            else:
+                explanation = "определяю объект"
+        elif any(word in question_lower for word in ['как', 'опиш', 'расскаж', 'подробн']):
+            explanation = "уточняю детали"
+        elif any(word in question_lower for word in ['категория', 'вид', 'тип']):
+            explanation = "классифицирую услугу"
+        elif candidates and len(candidates) > 5:
+            explanation = f"фильтрую {len(candidates)} кандидатов"
+        elif candidates and len(candidates) <= 3:
+            explanation = f"уточняю из {len(candidates)} вариантов"
+        else:
+            explanation = "уточняю ситуацию"
+
+        # Формируем итоговый вопрос с объяснением
+        return f"({explanation}): {question}"
 
     async def _ask_ai_clarification_with_candidates(
         self,

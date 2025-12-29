@@ -27,6 +27,9 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
+# Debug prompts - добавлять объяснение к вопросам
+TST_PROMPT = config('TST_PROMPT', default=0, cast=int)
+
 ALLOWED_HOSTS = ['komunal-dom.ru', 'www.komunal-dom.ru', 'localhost', '127.0.0.1', '*']
 
 
