@@ -173,7 +173,9 @@ Session ID: {session_id}
 
         # Детальная трассировка каждого сообщения
         for i, msg in enumerate(messages, 1):
-            report += self._format_message_details(i, msg, messages[:i])
+            # ИСПРАВЛЕНО (2025-12-29): Передаем следующее сообщение для связки inbound+outbound
+            next_msg = messages[i] if i < len(messages) else None
+            report += self._format_message_details(i, msg, messages[:i], next_msg)
 
         # Статистика
         report += f"\n{'=' * 80}\n"
@@ -186,8 +188,12 @@ Session ID: {session_id}
 
         return report
 
-    def _format_message_details(self, num: int, msg: Dict, previous_messages: List[Dict]) -> str:
-        """Форматирует детали сообщения с улучшенным форматом."""
+    def _format_message_details(self, num: int, msg: Dict, previous_messages: List[Dict], next_msg: Dict = None) -> str:
+        """Форматирует детали сообщения с улучшенным форматом.
+
+        ИСПРАВЛЕНО (2025-12-29): Добавлен параметр next_msg для связки inbound+outbound.
+        Если текущее сообщение inbound и следующее outbound - показываем ответ бота в конце inbound.
+        """
 
         direction = msg.get('direction', 'unknown')
         text = msg.get('text', '')
@@ -342,8 +348,32 @@ METADATA:
             # Анализируем входящее сообщение
             significance = self._analyze_message_significance(text, metadata, previous_messages)
             details += significance
+
+            # ИСПРАВЛЕНО (2025-12-29): Если следующее сообщение outbound - показываем ответ бота
+            if next_msg and next_msg.get('direction') == 'outbound':
+                bot_response = next_msg.get('text', '')
+                details += f"""
+
+{'─' * 80}
+💬 ОТВЕТ БОТА:
+{bot_response}
+"""
+                # Если есть metadata в outbound сообщении (редкий случай)
+                next_metadata = next_msg.get('metadata', {})
+                if isinstance(next_metadata, dict) and next_metadata:
+                    details += f"""
+{'─' * 80}
+METADATA OUTBOUND:
+{self._format_metadata_v2(next_metadata, previous_messages, indent="│ ")
+"""
         else:
             # Анализируем ответ бота
+            # ИСПРАВЛЕНО (2025-12-29): Пропускаем outbound сообщение если ответ уже показан в предыдущем inbound
+            # Добавляем маркер что это outbound без ответа (аварийный случай)
+            details += """
+[!] Это outbound сообщение (ответ бота)
+[!] Обычно ответ показывается в предыдущем inbound сообщении
+"""
             details += self._analyze_bot_response(metadata)
 
         details += "\n"
