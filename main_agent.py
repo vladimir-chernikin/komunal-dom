@@ -673,7 +673,14 @@ class MainAgent:
                         # Передаем отфильтрованных кандидатов в AMBIGUOUS
                         candidates_data = filtered
 
-            return await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history)
+            # ИСПРАВЛЕНО (2025-12-29): Получаем результат и добавляем metadata
+            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history)
+
+            # Добавляем metadata если его нет
+            if '_metadata' not in result and 'result_metadata' in locals():
+                result['_metadata'] = result_metadata
+
+            return result
 
         except Exception as e:
             # Детальное логирование критических ошибок
@@ -787,7 +794,7 @@ class MainAgent:
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
             candidate = clarification_result['single_candidate']
-            return {
+            result = {
                 'status': 'SUCCESS',
                 'service_id': candidate['service_id'],
                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
@@ -798,11 +805,15 @@ class MainAgent:
                 'needs_confirmation': False,
                 'is_followup': is_followup
             }
+            # ИСПРАВЛЕНО (2025-12-29): Добавляем _ai_metadata если есть
+            if '_ai_metadata' in clarification_result:
+                result['_ai_metadata'] = clarification_result['_ai_metadata']
+            return result
 
         # ИСПРАВЛЕНО (2025-12-25): Используем отфильтрованных кандидатов вместо всех
         filtered_candidates = clarification_result.get('filtered_candidates', candidates_with_attrs)
 
-        return {
+        result = {
             'status': 'AMBIGUOUS',
             'candidates': filtered_candidates,  # ИСПРАВЛЕНО: отфильтрованные кандидаты
             'candidate_names': [c.get('service_name', c.get('scenario_name', 'Unknown')) for c in filtered_candidates],
@@ -811,6 +822,10 @@ class MainAgent:
             'clarification_type': 'intersection_multiple',
             'is_followup': is_followup
         }
+        # ИСПРАВЛЕНО (2025-12-29): Добавляем _ai_metadata если есть
+        if '_ai_metadata' in clarification_result:
+            result['_ai_metadata'] = clarification_result['_ai_metadata']
+        return result
 
     def _should_run_ai_agent(self, service_results: List[Dict], search_text: str, candidates: List[Dict]) -> Optional[str]:
         """
@@ -885,7 +900,7 @@ class MainAgent:
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
             candidate = clarification_result['single_candidate']
-            return {
+            result = {
                 'status': 'SUCCESS',
                 'service_id': candidate['service_id'],
                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
@@ -896,11 +911,15 @@ class MainAgent:
                 'needs_confirmation': False,
                 'is_followup': is_followup
             }
+            # ИСПРАВЛЕНО (2025-12-29): Добавляем _ai_metadata если есть
+            if '_ai_metadata' in clarification_result:
+                result['_ai_metadata'] = clarification_result['_ai_metadata']
+            return result
 
         # ИСПРАВЛЕНО (2025-12-25): Используем отфильтрованных кандидатов
         filtered_candidates = clarification_result.get('filtered_candidates', candidates_with_attrs)
 
-        return {
+        result = {
             'status': 'AMBIGUOUS',
             'candidates': filtered_candidates,  # ИСПРАВЛЕНО: отфильтрованные кандидаты
             'candidate_names': [c.get('service_name', c.get('scenario_name', 'Unknown')) for c in filtered_candidates],
@@ -909,6 +928,10 @@ class MainAgent:
             'clarification_type': 'no_intersection',
             'is_followup': is_followup
         }
+        # ИСПРАВЛЕНО (2025-12-29): Добавляем _ai_metadata если есть
+        if '_ai_metadata' in clarification_result:
+            result['_ai_metadata'] = clarification_result['_ai_metadata']
+        return result
 
     async def _load_candidates_attributes(self, candidates_data: List[Dict]) -> List[Dict]:
         """
@@ -1323,7 +1346,8 @@ class MainAgent:
         # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
         context = f"Пользователь написал: {original_message}"
         # ИСПРАВЛЕНО (2025-12-28): ПЕРЕДАЕМ txtPrb и established_filters
-        ai_question = await self._generate_ai_question(
+        # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
+        ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=filtered_candidates,
@@ -1334,9 +1358,15 @@ class MainAgent:
 
         return {
             'status': 'AMBIGUOUS',
-            'message': ai_question,
+            'message': ai_result['question'],
             'single_candidate': None,
-            'filtered_candidates': filtered_candidates
+            'filtered_candidates': filtered_candidates,
+            '_ai_metadata': {  # ИСПРАВЛЕНО (2025-12-29): Сохраняем метаданные для трассировки
+                'prompt': ai_result['prompt'],
+                'response': ai_result['response'],
+                'model': ai_result['model'],
+                'usage': ai_result['usage']
+            }
         }
 
     async def _run_ai_search(self, message_text: str) -> Dict:
@@ -1898,8 +1928,9 @@ class MainAgent:
 
         # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопроса
         # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
+        # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
         context = f"Пользователь написал: {message_text}"
-        question = await self._generate_ai_question(
+        ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             established_filters=established_filters,
@@ -1907,7 +1938,13 @@ class MainAgent:
             question_type='what_happened'
         )
 
+        question = ai_result['question']
         logger.info(f"AI сгенерировал вопрос (turn={dialog_turn}, followup={is_followup}): {question}")
+
+        # ИСПРАВЛЕНО (2025-12-29): Сохраняем метаданные AI для трассировки в result_metadata
+        # result_metadata должен быть доступен в области видимости этого метода
+        # Проверяем есть ли result_metadata в замыкании или передаем как параметр
+
         return question
 
     def _fix_double_questions(self, question: str) -> str:
@@ -2082,11 +2119,12 @@ class MainAgent:
         established_filters: Dict = None,
         txtPrb: str = None,
         question_type: str = "clarification"
-    ) -> str:
+    ) -> Dict[str, str]:
         """
         Универсальный метод для генерации вопросов через AI
 
         ИСПРАВЛЕНО (2025-12-28): Все вопросы генерируются через YandexGPT
+        ИСПРАВЛЕНО (2025-12-29): Возвращает Dict с вопросом И метаданными для трассировки
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -2102,7 +2140,13 @@ class MainAgent:
                 - 'details' - детали проблемы
 
         Returns:
-            str: Сгенерированный AI вопрос
+            Dict: {
+                'question': str,  # Сгенерированный вопрос
+                'prompt': str,    # Промт отправленный в LLM
+                'response': str,  # Ответ от LLM
+                'model': str,     # Модель использованная
+                'usage': Dict     # Информация об использовании токенов
+            }
         """
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
         logger.info("🔍 _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
@@ -2172,14 +2216,36 @@ class MainAgent:
                     question = self._add_debug_explanation(question, question_type, candidates)
 
                 logger.info(f"✅ AI сгенерировал вопрос ({question_type}): {question}")
-                return question
+
+                # ИСПРАВЛЕНО (2025-12-29): Возвращаем Dict с вопросом И метаданными для трассировки
+                return {
+                    'question': question,
+                    'prompt': prompt,
+                    'response': response,
+                    'model': usage.get('model', 'unknown'),
+                    'usage': usage
+                }
             else:
                 logger.warning("AIAgentService недоступен, используем fallback")
-                return self._fallback_question(question_type, context)
+                question = self._fallback_question(question_type, context)
+                return {
+                    'question': question,
+                    'prompt': '(fallback - нет LLM вызова)',
+                    'response': '(fallback - нет LLM ответа)',
+                    'model': 'fallback',
+                    'usage': {}
+                }
 
         except Exception as e:
             logger.error(f"Ошибка генерации AI вопроса: {e}")
-            return self._fallback_question(question_type, context)
+            question = self._fallback_question(question_type, context)
+            return {
+                'question': question,
+                'prompt': f'(error: {str(e)})',
+                'response': f'(error: {str(e)})',
+                'model': 'error',
+                'usage': {}
+            }
 
     def _build_question_prompt(
         self,
@@ -2633,7 +2699,8 @@ class MainAgent:
             extracted_txtPrb = self.problem_accumulator.get_txtPrb_from_metadata(dialog_history)
 
         # Генерируем вопрос через универсальный метод
-        ai_question = await self._generate_ai_question(
+        # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
+        ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=candidates,
@@ -2642,13 +2709,23 @@ class MainAgent:
             question_type='clarification'
         )
 
+        ai_question = ai_result['question']
         logger.info(f"AI сгенерировал вопрос для {len(candidates)} кандидатов: {ai_question}")
+
+        # ИСПРАВЛЕНО (2025-12-29): Сохраняем метаданные AI в результат
+        # Это будет добавлено в _metadata вызываемого метода
 
         return {
             'status': 'AMBIGUOUS',
             'message': ai_question,
             'candidates': candidates,
-            'needs_clarification': True
+            'needs_clarification': True,
+            '_ai_metadata': {  # ИСПРАВЛЕНО (2025-12-29): Сохраняем метаданные для трассировки
+                'prompt': ai_result['prompt'],
+                'response': ai_result['response'],
+                'model': ai_result['model'],
+                'usage': ai_result['usage']
+            }
         }
 
     async def _ask_ai_clarification(self, message_text: str, candidates: List[Dict], dialog_history: List[Dict]) -> Dict:
@@ -2669,7 +2746,8 @@ class MainAgent:
         if self.problem_accumulator and dialog_history:
             extracted_txtPrb = self.problem_accumulator.get_txtPrb_from_metadata(dialog_history)
 
-        ai_question = await self._generate_ai_question(
+        # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
+        ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=candidates,
@@ -2677,11 +2755,19 @@ class MainAgent:
             question_type='clarification'
         )
 
+        ai_question = ai_result['question']
+
         return {
             'status': 'AMBIGUOUS',
             'message': ai_question,
             'candidates': candidates,
-            'needs_clarification': True
+            'needs_clarification': True,
+            '_ai_metadata': {  # ИСПРАВЛЕНО (2025-12-29): Сохраняем метаданные для трассировки
+                'prompt': ai_result['prompt'],
+                'response': ai_result['response'],
+                'model': ai_result['model'],
+                'usage': ai_result['usage']
+            }
         }
 
     def _deduplicate_and_prioritize_candidates(self, all_candidates: List[Dict]) -> List[Dict]:

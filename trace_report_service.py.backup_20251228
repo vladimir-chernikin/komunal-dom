@@ -562,51 +562,6 @@ METADATA:
 
                     lines.append("│")
 
-                # ДОБАВЛЕНО (2025-12-29): AI Agent промпты и ответы (генерация вопросов)
-                ai_metadata = service_result.get('_ai_metadata')
-                if ai_metadata:
-                    lines.append("")
-                    lines.append("├─ AI AGENT SERVICE (генерация вопросов):")
-                    lines.append("│")
-
-                    # Model
-                    model = ai_metadata.get('model', 'unknown')
-                    if model:
-                        lines.append(f"│ Model: {model}")
-
-                    # Usage
-                    usage = ai_metadata.get('usage', {})
-                    if usage:
-                        total_tokens = usage.get('total_tokens', 0)
-                        cost = usage.get('cost_rub', 0.0)
-                        if total_tokens:
-                            lines.append(f"│ Tokens: {total_tokens}")
-                        if cost:
-                            lines.append(f"│ Cost: {cost:.4f} RUB")
-
-                    # Prompt
-                    prompt = ai_metadata.get('prompt', '')
-                    if prompt:
-                        lines.append("│")
-                        lines.append("│ Prompt AIAgentService:")
-                        lines.append("│ ─" + "─" * 76)
-                        # Обрезаем слишком длинный промт для читаемости
-                        prompt_lines = prompt.split('\n')
-                        for line in prompt_lines[:40]:  # Первые 40 строк
-                            lines.append(f"│ {line}")
-                        if len(prompt_lines) > 40:
-                            lines.append(f"│ ... ({len(prompt_lines) - 40} строк пропущено)")
-                        lines.append("│ ─" + "─" * 76)
-
-                    # Response
-                    response = ai_metadata.get('response', '')
-                    if response:
-                        lines.append("│")
-                        lines.append("│ Response AIAgentService:")
-                        lines.append(f"│ {response}")
-
-                    lines.append("│")
-
             lines.append("└─────────────────────────")
             lines.append("")
 
