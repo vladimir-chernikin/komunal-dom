@@ -586,11 +586,26 @@ METADATA OUTBOUND:
                         lines.append(f"│")
                         lines.append(f"│ Confidence: {confidence*100:.0f}%")
 
-                    # Candidates count
-                    candidates_count = ai_orchestrator.get('candidates_count', 0)
-                    if candidates_count:
+                    # ИСПРАВЛЕНО (2025-12-29): Таблица кандидатов вместо счетчика
+                    # Берем кандидатов из service_result.candidates
+                    candidates = service_result.get('candidates', [])
+                    if candidates:
                         lines.append(f"│")
-                        lines.append(f"│ Candidates count: {candidates_count}")
+                        lines.append(f"│ ТАБЛИЦА КАНДИДАТОВ:")
+                        lines.append(f"│ ┌────────┬───────────────────────────────┬───────────┐")
+                        lines.append(f"│ │ ID     │ Название                      │ Вероятн.  │")
+                        lines.append(f"│ ├────────┼───────────────────────────────┼───────────┤")
+
+                        for cand in candidates[:15]:  # До 15 кандидатов
+                            cid = cand.get('service_id', '?')
+                            name = cand.get('service_name', cand.get('scenario_name', 'Unknown'))[:30]
+                            conf = cand.get('confidence', 0.0) * 100
+                            lines.append(f"│ │ {cid:<6} │ {name:<30} │ {conf:>6.1f}% │")
+
+                        if len(candidates) > 15:
+                            lines.append(f"│ │ ...    │ (... еще {len(candidates) - 15})        │           │")
+
+                        lines.append(f"│ └────────┴───────────────────────────────┴───────────┘")
 
                     # Message
                     message = ai_orchestrator.get('message', '')
