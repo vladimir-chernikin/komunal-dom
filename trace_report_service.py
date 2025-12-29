@@ -28,6 +28,19 @@ logger = logging.getLogger(__name__)
 class TraceReportService:
     """Улучшенный сервис для генерации отчетов трассировки диалогов."""
 
+    # ИСПРАВЛЕНО (2025-12-29): Перевод статусов на русский
+    STATUS_TRANSLATIONS = {
+        'SUCCESS': 'Услуга определена',
+        'AMBIGUOUS': 'Требуется уточнение',
+        'ERROR': 'Ошибка обработки',
+        'NOT_FOUND': 'Услуга не найдена',
+        'unknown': 'Неизвестно'
+    }
+
+    def _translate_status(self, status: str) -> str:
+        """Переводит статус на русский язык."""
+        return self.STATUS_TRANSLATIONS.get(status, status)
+
     def __init__(self):
         self.tmp_dir = Path('/tmp')
 
@@ -304,11 +317,13 @@ ID: {msg_id}
             ai_orchestrator = service_metadata.get('ai_orchestrator', {})
             if ai_orchestrator and isinstance(ai_orchestrator, dict):
                 confidence = ai_orchestrator.get('confidence', 0.0) or 0.0
+                status_raw = ai_orchestrator.get('status', 'unknown')
+                status_translated = self._translate_status(status_raw)
                 details += f"""
 {'─' * 80}
 🔍 AI ORCHESTRATOR
 {'─' * 80}
-   Status: {ai_orchestrator.get('status', 'unknown')}
+   Status: {status_translated} ({status_raw})
    Service: {ai_orchestrator.get('service_name', 'N/A')}
    Confidence: {confidence*100:.1f}%
    Message: {ai_orchestrator.get('message', 'N/A')[:100]}
@@ -403,7 +418,9 @@ METADATA OUTBOUND:
             if isinstance(service_result, dict):
                 status = service_result.get('status', 'unknown')
                 message = service_result.get('message', '')
-                lines.append(f"│ Status: {status}")
+                # ИСПРАВЛЕНО (2025-12-29): Перевод статуса на русский
+                status_translated = self._translate_status(status)
+                lines.append(f"│ Status: {status_translated} ({status})")
                 lines.append(f"│ Message: {message}")
 
                 # ДОБАВЛЕНО: Результаты микросервисов из microservices_results
@@ -490,7 +507,9 @@ METADATA OUTBOUND:
 
                     # Status
                     status = filter_detection.get('status', 'unknown')
-                    lines.append(f"│ Status: {status}")
+                    # ИСПРАВЛЕНО (2025-12-29): Перевод статуса на русский
+                    status_translated = self._translate_status(status)
+                    lines.append(f"│ Status: {status_translated} ({status})")
 
                     # Filters
                     filters = filter_detection.get('filters', {})
@@ -548,7 +567,9 @@ METADATA OUTBOUND:
 
                     # Status
                     status = ai_orchestrator.get('status', 'unknown')
-                    lines.append(f"│ Status: {status}")
+                    # ИСПРАВЛЕНО (2025-12-29): Перевод статуса на русский
+                    status_translated = self._translate_status(status)
+                    lines.append(f"│ Status: {status_translated} ({status})")
 
                     # Service ID и Name
                     service_id = ai_orchestrator.get('service_id')
@@ -703,7 +724,10 @@ METADATA OUTBOUND:
         return '\n'.join(analysis)
 
     def _analyze_bot_response(self, metadata: Dict) -> str:
-        """Анализирует ответ бота."""
+        """Анализирует ответ бота.
+
+        ИСПРАВЛЕНО (2025-12-29): Добавлен перевод статусов на русский.
+        """
 
         service_result = metadata.get('service_result') or metadata.get('service_detection', {})
 
@@ -711,17 +735,18 @@ METADATA OUTBOUND:
             return "[?] Статус обработки: unknown"
 
         status = service_result.get('status', 'unknown')
+        status_translated = self._translate_status(status)
 
         if status == 'SUCCESS':
             service_name = service_result.get('service_name', 'неизвестно')
-            return f"[+] Услуга определена: {service_name}"
+            return f"[+] {status_translated}: {service_name}"
         elif status == 'AMBIGUOUS':
             candidates = service_result.get('candidates', [])
-            return f"[!] Требуется уточнение. Найдено кандидатов: {len(candidates)}"
+            return f"[!] {status_translated}. Найдено кандидатов: {len(candidates)}"
         elif status == 'NOT_FOUND':
-            return "[-] Услуга не найдена. Требуется уточнение проблемы"
+            return f"[-] {status_translated}. Требуется уточнение проблемы"
         else:
-            return f"[?] Статус обработки: {status}"
+            return f"[?] {status_translated} ({status})"
 
     def _generate_statistics(self, messages: List[Dict]) -> str:
         """Генерирует статистику диалога.
