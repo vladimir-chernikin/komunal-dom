@@ -8,16 +8,22 @@
 
 ## 1. ОБЩАЯ РОЛЬ
 
-**Ты:** Senior AI Architect, специализирующийся на Prompt Engineering и диалоговых системах.
+**Ты:** Senior AI Architect и Software Architect, специализирующийся на:
+- Prompt Engineering для LLM (YandexGPT, GPT, Claude)
+- Диалоговых системах и чат-ботах
+- Python/Django разработке
+- Проектировании баз данных
+- Микросервисной архитектуре
 
 **Контекст проекта:**
 - Система: AI-диспетчер управляющей компании (УК "Аспект")
 - Каналы связи: Telegram бот, веб-чат, голосовой интерфейс (через оператора)
 - Задача: Определить услугу из каталога по описанию проблемы пользователя
-- Каталог услуг: ~30-50 услуг (Водоснабжение, Отопление, Канализация, Электрика и т.д.)
-- База: PostgreSQL (таблица `services_catalog`)
+- Каталог услуг: ~50+ услуг (Водоснабжение, Отопление, Канализация, Электрика и т.д.)
+- База: PostgreSQL 16 (таблица `services_catalog` + справочники)
+- Стек: Python 3.12, Django 6.0, asyncio
 
-**Проблема:** Бот задает лишние вопросы, раздражает пользователя, циклится ("я уже сказал"), не понимает накопленную информацию из диалога.
+**Проблема:** Бот задает лишние вопросы, раздражает пользователя, циклится ("я уже сказал"), не понимает накопленную информацию из диалога, НЕ ИСПОЛЬЗУЕТ txtPrb для фильтрации вопросов.
 
 ---
 
@@ -555,3 +561,1050 @@ KomunalkaBot: (определяет локацию): Где именно про�
 **Важно:** Ты не пишешь код - ты предлагаешь архитектуру промта. Код реализует разработчик, твоя задача - дать промт который будет работать.
 
 Дай развернутый ответ с примерами и объяснениями.
+
+---
+
+## 9. ПОЛНАЯ СТРУКТУРА БАЗЫ ДАННЫХ
+
+### 9.1. Основная таблица услуг: services_catalog
+
+```sql
+CREATE TABLE services_catalog (
+    -- Первичный ключ
+    service_id INTEGER PRIMARY KEY DEFAULT nextval('services_catalog_service_id_seq'::regclass),
+    
+    -- Основные поля
+    scenario_id VARCHAR(20) NOT NULL UNIQUE,
+    scenario_name VARCHAR(255) NOT NULL,
+    description_for_search TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    
+    -- Внешние ключи на справочники (старая система)
+    type_id SMALLINT NOT NULL REFERENCES ref_service_types(type_id),
+    kind_id SMALLINT NOT NULL REFERENCES ref_service_kinds(kind_id),
+    localization_id SMALLINT NOT NULL REFERENCES ref_localization(localization_id),
+    category_id SMALLINT NOT NULL REFERENCES ref_categories(category_id),
+    object_id SMALLINT NOT NULL REFERENCES ref_objects(object_id),
+    payment_id SMALLINT NOT NULL REFERENCES ref_payment_status(payment_id),
+    route_id SMALLINT NOT NULL REFERENCES ref_routes(route_id),
+    urgency_id SMALLINT NOT NULL REFERENCES ref_urgency(urgency_id),
+    
+    -- Денормализованные поля (НОВАЯ система - используются в промте!)
+    incident_type VARCHAR(50),       -- 'Инцидент' | 'Запрос'
+    category VARCHAR(100),           -- 'Водоснабжение' | 'Отопление' | ...
+    location_type VARCHAR(100),      -- 'Индивидуальное' | 'Общедомовое'
+    
+    -- Метаданные
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Индексы для поиска
+CREATE INDEX idx_services_catalog_active ON services_catalog(is_active);
+CREATE INDEX idx_services_catalog_active_category ON services_catalog(category_id) WHERE is_active = TRUE;
+CREATE INDEX idx_services_catalog_category_id ON services_catalog(category_id);
+CREATE INDEX idx_services_catalog_description_trgm ON services_catalog USING gin(description_for_search gin_trgm_ops);
+CREATE INDEX idx_services_catalog_scenario_name_trgm ON services_catalog USING gin(scenario_name gin_trgm_ops);
+```
+
+### 9.2. Справочники (ref_* таблицы)
+
+```sql
+-- Категории услуг
+CREATE TABLE ref_categories (
+    category_id SMALLINT PRIMARY KEY,
+    category_code VARCHAR(50) NOT NULL UNIQUE,
+    category_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    icon_name VARCHAR(100),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Данные: 13 категорий
+-- 40: Озеленение, 41: Ремонт МАФ и покрытий, 42: Санитария, 43: Электричество,
+-- 44: Конструктив, 45: Отопление, 46: Водоснабжение, 47: Газоснабжение,
+-- 48: Вентиляция, 49: Лифты, 50: Пожарная безопасность, 51: Канализация,
+-- 52: Информационные запросы
+
+-- Типы локаций
+CREATE TABLE ref_localization (
+    localization_id SMALLINT PRIMARY KEY,
+    localization_code VARCHAR(50) NOT NULL UNIQUE,
+    localization_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Типы услуг (Инцидент/Запрос)
+CREATE TABLE ref_service_types (
+    type_id SMALLINT PRIMARY KEY,
+    type_code VARCHAR(50) NOT NULL UNIQUE,
+    type_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Виды услуг
+CREATE TABLE ref_service_kinds (
+    kind_id SMALLINT PRIMARY KEY,
+    type_id SMALLINT NOT NULL REFERENCES ref_service_types(type_id),
+    kind_code VARCHAR(50) NOT NULL UNIQUE,
+    kind_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Объекты
+CREATE TABLE ref_objects (
+    object_id SMALLINT PRIMARY KEY,
+    category_id SMALLINT REFERENCES ref_categories(category_id),
+    object_code VARCHAR(50) NOT NULL UNIQUE,
+    object_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_common BOOLEAN,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### 9.3. Таблица логов диалогов
+
+```sql
+CREATE TABLE dialog_logs (
+    id INTEGER PRIMARY KEY DEFAULT nextval('dialog_logs_id_seq'::regclass),
+    dialog_id UUID,
+    user_id INTEGER NOT NULL,
+    message_type VARCHAR(50) NOT NULL,  -- 'inbound' | 'outbound'
+    message_content TEXT NOT NULL,
+    processing_stage VARCHAR(100),
+    confidence_score NUMERIC(5,4),
+    service_detected_id INTEGER REFERENCES services_catalog(service_id),
+    address_extracted JSONB,
+    processing_time_ms INTEGER,
+    llm_provider VARCHAR(100),
+    llm_model VARCHAR(100),
+    tokens_used INTEGER,
+    cost_rub NUMERIC(10,6),
+    timestamp TIMESTAMPTZ DEFAULT now(),
+    metadata JSONB
+);
+
+CREATE INDEX idx_dialog_logs_dialog_id ON dialog_logs(dialog_id);
+CREATE INDEX idx_dialog_logs_user_id ON dialog_logs(user_id);
+CREATE INDEX idx_dialog_logs_timestamp ON dialog_logs(timestamp);
+```
+
+### 9.4. Примеры данных из services_catalog
+
+```sql
+-- Топ-10 услуг
+SELECT service_id, scenario_name, incident_type, category, location_type
+FROM services_catalog
+WHERE is_active = TRUE
+ORDER BY service_id
+LIMIT 10;
+
+-- Результат:
+-- service_id | scenario_name                            | incident_type | category      | location_type  
+-- -----------+-------------------------------------------+---------------+---------------+---------------
+-- 1          | Упало дерево/ветка на провода/дом/дорога  | Инцидент      | Озеленение   | Общедомовое
+-- 2          | Уход за зелёными зонами...              | Инцидент      | Озеленение   | Общедомовое
+-- 3          | Разрушение асфальта, ямы...             | Инцидент      | Ремонт МАФ... | Общедомовое
+-- 4          | Сломанны малые архитектурные формы      | Инцидент      | Ремонт МАФ... | Общедомовое
+-- 5          | Отмостка                                | Инцидент      | Ремонт МАФ... | Общедомовое
+-- 6          | Очистка лотков и приямков водоотведения | Инцидент      | Санитария    | Общедомовое
+-- 7          | Мусорные контейнеры переполнены         | Инцидент      | Санитария    | Общедомовое
+-- 8          | Снег и наледь на территории            | Инцидент      | Санитария    | Общедомовое
+-- 9          | Дезинсекция/дератизация                | Инцидент      | Санитария    | Общедомовое
+-- 10         | Засор ливнёвой канализации              | Инцидент      | Санитария    | Общедомовое
+
+-- Распределение по фильтрам
+SELECT incident_type, category, location_type, COUNT(*) 
+FROM services_catalog 
+WHERE is_active = TRUE 
+GROUP BY incident_type, category, location_type 
+ORDER BY incident_type, category, location_type;
+
+-- Результат (20 строк):
+-- incident_type | category        | location_type  | count 
+-- --------------+-----------------+----------------+-------
+-- Запрос        | Водоснабжение   | Индивидуальное | 2
+-- Запрос        | Газоснабжение   | Индивидуальное | 1
+-- Запрос        | Информационные  | Индивидуальное | 12
+-- Запрос        | Канализация     | Индивидуальное | 1
+-- Запрос        | Отопление       | Индивидуальное | 1
+-- Запрос        | Электричество   | Индивидуальное | 3
+-- Инцидент      | Вентиляция      | Общедомовое    | 2
+-- Инцидент      | Водоснабжение   | Индивидуальное | 2
+-- Инцидент      | Водоснабжение   | Общедомовое    | 3
+-- Инцидент      | Газоснабжение   | Индивидуальное | 1
+-- Инцидент      | Канализация     | Индивидуальное | 1
+-- Инцидент      | Канализация     | Общедомовое    | 2
+-- Инцидент      | Конструктив     | Общедомовое    | 10
+-- Инцидент      | Лифты           | Общедомовое    | 1
+-- Инцидент      | Озеленение      | Общедомовое    | 2
+-- Инцидент      | Отопление       | Общедомовое    | 4
+-- Инцидент      | Пожарная безоп. | Общедомовое    | 4
+-- Инцидент      | Ремонт МАФ      | Общедомовое    | 3
+-- Инцидент      | Санитария       | Общедомовое    | 9
+-- Инцидент      | Электричество   | Общедомовое    | 4
+```
+
+---
+
+## 10. ЛИСТИНГИ ПИТОНСКОГО КОДА
+
+### 10.1. MainAgent - главный координатор
+
+**Файл:** `/var/www/komunal-dom_ru/main_agent.py` (2600+ строк)
+
+#### 10.1.1. Инициализация
+
+```python
+class MainAgent:
+    """
+    Главный Агент координирует работу микросервисов:
+    
+    ВОРОНКА ТОЧНОСТИ:
+    1. Сначала запускаем БЫСТРЫЕ микросервисы параллельно
+    2. Анализируем результаты быстрых сервисов
+    3. ЗАПУСКАЕМ AI ТОЛЬКО ПРИ НУЖДЕ
+    """
+    
+    def __init__(self):
+        self.tag_search = None
+        self.semantic_search = None
+        self.vector_search = None
+        self.ai_agent = None
+        self.filter_detection = None  # Сервис определения фильтров
+        self.problem_accumulator = None  # Сервис накопления проблемы (txtPrb)
+        self.confidence_threshold = 0.75
+        
+        # Кэш фильтров из БД (для промта)
+        self._categories_cache = None
+        self._objects_cache = None
+        self._location_types_cache = None
+        self._incident_types_cache = None
+        
+        self._init_services()
+        self._load_filters_from_db()
+```
+
+#### 10.1.2. Основной метод обработки
+
+```python
+async def process_service_detection(
+    self, 
+    message_text: str, 
+    user_context: Dict = None
+) -> Dict:
+    """
+    Основной метод определения услуги через воронку точности
+    
+    Args:
+        message_text: Текст сообщения пользователя
+        user_context: Контекст (история диалога, txtPrb, etc.)
+    
+    Returns:
+        Dict: {
+            'status': 'SUCCESS' | 'AMBIGUOUS' | 'ERROR',
+            'service_id': int | None,
+            'service_name': str | None,
+            'message': str,  # Вопрос пользователю
+            'candidates': List[Dict],
+            '_metadata': Dict  # Для отладки
+        }
+    """
+    # Извлекаем параметры
+    original_message = message_text
+    is_followup = user_context.get('is_followup', False) if user_context else False
+    dialog_history = user_context.get('dialog_history', []) if user_context else []
+    
+    # ===== ШАГ 1: ProblemAccumulationService - накопление txtPrb =====
+    txtPrb = ""
+    accumulated_fields = {}
+    established_filters = {}
+    
+    if self.problem_accumulator and is_followup:
+        accumulation_result = await self.problem_accumulator.extract_and_accumulate(
+            message_text=message_text,
+            current_problem=txtPrb,
+            bot_question=last_bot_question,
+            dialog_history=dialog_history
+        )
+        
+        txtPrb = accumulation_result['updated_problem']
+        accumulated_fields = accumulation_result['fields']
+        established_filters = self.problem_accumulator.calculate_filter_confidence(
+            txtPrb, accumulated_fields
+        )
+    
+    # ===== ШАГ 2: Параллельный запуск микросервисов =====
+    search_tasks = []
+    if self.tag_search:
+        search_tasks.append(self._run_tag_search(message_text))
+    if self.semantic_search:
+        search_tasks.append(self._run_semantic_search(message_text))
+    if self.vector_search:
+        search_tasks.append(self._run_vector_search(message_text))
+    
+    search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+    
+    # ===== ШАГ 3: AI Orchestrator - умное объединение =====
+    orch_result = await self._orchestrate_microservices(
+        message_text=search_text,
+        search_results=search_results,
+        dialog_history=dialog_history,
+        txtPrb=txtPrb,
+        established_filters=established_filters
+    )
+    
+    if orch_result.get('status') == 'SUCCESS':
+        return orch_result
+    elif orch_result.get('status') == 'AMBIGUOUS':
+        return orch_result
+    
+    # ===== ШАГ 4: FilterDetectionService - фильтрация по фильтрам =====
+    if self.filter_detection:
+        filter_result = await self.filter_detection.detect_filters(
+            original_message, dialog_history
+        )
+        
+        filters = filter_result.get('filters', {})
+        # Фильтруем кандидатов по filters
+        filtered_candidates = [...]
+        
+        if len(filtered_candidates) == 1:
+            return {'status': 'SUCCESS', ...}
+    
+    # ===== ШАГ 5: Генерация уточняющего вопроса =====
+    clarification_result = await self._generate_smart_clarification(
+        candidates_with_attrs=filtered_candidates,
+        original_message=original_message,
+        is_followup=is_followup,
+        dialog_history=dialog_history,
+        txtPrb=txtPrb,
+        established_filters=established_filters
+    )
+    
+    return clarification_result
+```
+
+#### 10.1.3. Генерация вопросов через AI
+
+```python
+async def _generate_ai_question(
+    self,
+    context: str,
+    dialog_history: List[Dict] = None,
+    candidates: List[Dict] = None,
+    established_filters: Dict = None,
+    txtPrb: str = None,
+    question_type: str = "clarification"
+) -> Dict[str, str]:
+    """
+    Универсальный метод для генерации вопросов через AI
+    
+    Returns:
+        Dict: {
+            'question': str,  # Сгенерированный вопрос
+            'prompt': str,    # Промт отправленный в LLM
+            'response': str,  # Ответ от LLM
+            'model': str,     # Модель использованная
+            'usage': Dict     # Информация об использовании токенов
+        }
+    """
+    # Формируем промт для AI
+    prompt = self._build_question_prompt(
+        context=context,
+        dialog_history=dialog_history,
+        candidates=candidates,
+        established_filters=established_filters,
+        txtPrb=txtPrb,
+        question_type=question_type
+    )
+    
+    # Вызываем AI через AIAgentService
+    if self.ai_agent:
+        # ГИБРИДНАЯ МОДЕЛЬ
+        # Для вопросов к пользователю: Pro (качество критично!)
+        # Для остальных задач: Lite
+        question_types_requiring_pro = ['clarification', 'what_happened', 'location', 'details']
+        model = 'pro' if question_type in question_types_requiring_pro else 'lite'
+        
+        response, usage = await self.ai_agent.call_llm(
+            prompt=prompt,
+            provider='yandexgpt',
+            model=model
+        )
+        question = response.strip()
+        
+        # Post-processing проверки
+        question = self._fix_double_questions(question)
+        question = self._validate_question_not_redundant(
+            question=question,
+            txtPrb=txtPrb,
+            established_filters=established_filters
+        )
+        
+        return {
+            'question': question,
+            'prompt': prompt,
+            'response': response,
+            'model': usage.get('model', 'unknown'),
+            'usage': usage
+        }
+```
+
+#### 10.1.4. Пост-валидация вопросов
+
+```python
+def _validate_question_not_redundant(
+    self, 
+    question: str, 
+    txtPrb: str = None, 
+    established_filters: Dict = None
+) -> str:
+    """
+    ПРОВЕРЯЕТ, что вопрос НЕ спрашивает то, что УЖЕ известно
+    
+    ⚠️ КРИТИЧЕСКИ ВАЖНО: Этот метод DETECTS но НЕ FIXES все проблемы!
+    Нужна LLM-валидация вопроса ДО отправки пользователю
+    """
+    if not question:
+        return question
+    
+    question_lower = question.lower()
+    
+    # ПРОВЕРКА 1: Если в txtPrb есть локация, а вопрос "где?"
+    if txtPrb and any(loc in txtPrb.lower() for loc in ['зал', 'ванная', 'кухн', 'спальн']):
+        if any(word in question_lower for word in ['где', 'какое место', 'в какой комнат']):
+            logger.warning(f"⚠️ REDUNDANT вопрос (локация известна): {question}")
+            return "Уточните, пожалуйста, детали проблемы."  # Fallback
+    
+    # ПРОВЕРКА 2: established_filters с high confidence
+    if established_filters:
+        location_filter = established_filters.get('location')
+        if location_filter and location_filter.get('confidence', 0) > 0.8:
+            if any(word in question_lower for word in ['где', 'место', 'локаци']):
+                logger.warning(f"⚠️ REDUNDANT вопрос (location фильтр): {question}")
+                return "Уточните детали."
+    
+    return question
+```
+
+**ПРОБЛЕМА:** Этот метод проверяет только KEYWORDS, не семантику!
+
+### 10.2. ProblemAccumulationService - накопление txtPrb
+
+**Файл:** `/var/www/komunal-dom_ru/problem_accumulation_service.py` (400+ строк)
+
+```python
+class ProblemAccumulationService:
+    """
+    Микросервис для итеративного накопления описания проблемы.
+    
+    Принцип работы:
+    - 'привет' → txtPrb = '' (нет значимой информации)
+    - 'у меня течет' → txtPrb = 'у пользователя течет'
+    - 'Где течет?' - 'В зале' → txtPrb = 'у пользователя течет в зале'
+    - 'Что именно течет' - 'Батарея' → txtPrb = 'у пользователя течет из батареи'
+    """
+    
+    def __init__(self, ai_agent_service):
+        self.ai_agent = ai_agent_service
+    
+    async def extract_and_accumulate(
+        self,
+        message_text: str,
+        current_problem: str,
+        bot_question: str = None,
+        dialog_history: List[Dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Извлекает информацию из сообщения и накапливает описание проблемы
+        
+        Returns:
+            {
+                'updated_problem': str,  # Обновленное txtPrb
+                'extracted_info': dict,
+                'is_meaningful': bool,   # Содержит ли полезную информацию
+                'new_info': str,
+                'fields': {
+                    'problem': str | None,
+                    'location': str | None,
+                    'source': str | None,
+                    'category': str | None,
+                    'severity': str | None,
+                    'intensity': str | None,
+                    'object': str | None
+                }
+            }
+        """
+        # Формируем промт для LLM
+        prompt = self._create_accumulation_prompt(
+            message_text, current_problem, bot_question, dialog_history
+        )
+        
+        # Вызываем LLM
+        response_text, usage = await self.ai_agent._call_yandex_gpt(prompt)
+        
+        # Парсим JSON
+        result = self._parse_llm_response(response_text, current_problem)
+        
+        return result
+```
+
+**ПРОБЛЕМА:** txtPrb накапливается корректно, но MainAgent НЕ ИСПОЛЬЗУЕТ его для фильтрации вопросов!
+
+### 10.3. FilterDetectionService - определение фильтров
+
+**Файл:** `/var/www/komunal-dom_ru/filter_detection_service.py` (500+ строк)
+
+```python
+class FilterDetectionService:
+    """
+    Микросервис определения фильтров через LLM
+    
+    Определяет:
+    - incident_type: Инцидент или Запрос
+    - location_type: Индивидуальное или Общедомовое
+    - category: категория проблемы
+    - object_description: описание объекта
+    """
+    
+    def __init__(self, ai_agent_service=None):
+        self.ai_agent = ai_agent_service
+        self.categories_list = []
+        self.objects_examples = []
+        self._load_reference_data_from_db()  # Загружает из БД!
+    
+    def _create_filter_detection_prompt(
+        self, 
+        message_text: str, 
+        dialog_history: List[Dict]
+    ) -> str:
+        """
+        Создание промпта для определения фильтров
+        
+        ИСПРАВЛЕНО: Загружает категории из БД вместо хардкода
+        """
+        # Формируем список категорий из БД
+        categories_str = ", ".join([f'"{cat}"' for cat in self.categories_list])
+        
+        prompt = f"""Ты - опытный диспетчер управляющей компании. Проанализируй обращение и определи фильтры для поиска услуги.
+        
+История диалога:
+{history_text}
+
+Текущее сообщение: "{message_text}"
+
+ДОСТУПНЫЕ КАТЕГОРИИ УСЛУГ:
+{categories_str}
+
+ПРИМЕРЫ ОБЪЕКТОВ ПО КАТЕГОРИЯМ:
+{objects_examples_text}
+
+Определи и верни JSON в формате:
+{{
+    "incident_type": "Инцидент" или "Запрос",
+    "location_type": "Индивидуальное" или "Общедомовое",
+    "category": одна из доступных категорий выше,
+    "object_description": "МАКСИМУМ 3 СЛОВА",
+    "confidence": 0.0-1.0,
+    "reason": "обоснование выбора"
+}}
+
+⚠️⚠️⚠️ КРИТИЧЕСКИ ВАЖНО:
+1. ТЕЧЕТ ВОДЫ = "Инцидент" (аварийная ситуация!)
+2. ПРОРЫВ ТРУБЫ = "Инцидент" (авария!)
+3. ЗАТОПЛЕНИЕ = "Инцидент" (угроза имуществу!)
+
+Верни только JSON, без другого текста.
+"""
+        return prompt
+```
+
+---
+
+## 11. ИЗМЕНЕНИЯ В КОДЕ (НЕ ТОЛЬКО ПРОМПТ!)
+
+### 11.1. Что нужно изменить в коде
+
+**КРИТИЧЕСКИ ВАЖНО:** Архитектор должен предложить не только УЛУЧШЕННЫЙ ПРОМПТ, но и ИЗМЕНЕНИЯ В КОДЕ!
+
+#### 11.1.1. LLM-валидация сгенерированного вопроса
+
+**ПРОБЛЕМА:** Текущий `_validate_question_not_redundant()` проверяет только keywords.
+
+**РЕШЕНИЕ:** Добавить LLM-валидацию:
+
+```python
+async def _llm_validate_question_redundancy(
+    self,
+    question: str,
+    txtPrb: str,
+    established_filters: Dict
+) -> Dict:
+    """
+    LLM-валидация: спрашивает ли вопрос то, что УЖЕ известно?
+    
+    Returns:
+        Dict: {
+            'is_redundant': bool,
+            'reason': str,
+            'suggested_fix': str | None
+        }
+    """
+    prompt = f"""Ты - валидатор вопросов для AI-диспетчера.
+
+ВОПРОС БОТА: "{question}"
+
+УЖЕ ИЗВЕСТНАЯ ИНФОРМАЦИЯ:
+txtPrb: "{txtPrb}"
+Фильтры: {established_filters}
+
+ЗАДАЧА: Определи, спрашивает ли вопрос то, что УЖЕ известно?
+
+Верни JSON:
+{{
+    "is_redundant": true или false,
+    "reason": "объяснение",
+    "suggested_fix": "лучший вопрос или null"
+}}
+
+ПРИМЕРЫ:
+- Вопрос: "Где именно?" при txtPrb="в зале" → is_redundant=true
+- Вопрос: "Что именно?" при txtPrb="течет" → is_redundant=true
+- Вопрос: "Какая локация?" при location=95% → is_redundant=true
+"""
+    
+    response, usage = await self.ai_agent.call_llm(prompt, model='lite')
+    result = json.loads(response)
+    
+    if result['is_redundant']:
+        logger.warning(f"⚠️ LLM-detected REDUNDANT: {question}")
+        return result
+    
+    return result
+```
+
+#### 11.1.2. Обработка "я уже сказал"
+
+**ПРОБЛЕМА:** Бот не реагирует на раздражение пользователя.
+
+**РЕШЕНИЕ:** Добавить детектор:
+
+```python
+def _detect_user_frustration(
+    self,
+    message_text: str,
+    dialog_history: List[Dict]
+) -> bool:
+    """
+    Детектирует раздражение пользователя
+    
+    Returns:
+        bool: True если пользователь раздражен
+    """
+    frustration_keywords = [
+        'я уже сказал', 'уже отвечал', 'повторяюсь',
+        'не понимаю', 'какой еще раз', 'зачем спрашиваешь'
+    ]
+    
+    if any(kw in message_text.lower() for kw in frustration_keywords):
+        return True
+    
+    # Проверяем: 3+ одинаковых ответа подряд
+    recent_user_responses = [
+        msg.get('text', '').strip().lower()
+        for msg in dialog_history[-6:]
+        if msg.get('role') == 'user'
+    ]
+    
+    if len(recent_user_responses) >= 3:
+        if len(set(recent_user_responses[-3:])) == 1:
+            return True
+    
+    return False
+```
+
+#### 11.1.3. Учет txtPrb при генерации вопроса
+
+**ПРОБЛЕМА:** txtPrb не используется для фильтрации.
+
+**РЕШЕНИЕ:** Добавить pre-check:
+
+```python
+async def _precheck_known_info(
+    self,
+    txtPrb: str,
+    established_filters: Dict
+) -> Dict:
+    """
+    Pre-check: что УЖЕ известно из txtPrb и фильтров
+    
+    Returns:
+        Dict: {
+            'known_location': str | None,
+            'known_object': str | None,
+            'known_problem': str | None,
+            'known_category': str | None,
+            'should_ask_location': bool,
+            'should_ask_object': bool,
+            'should_ask_problem': bool
+        }
+    """
+    # Анализируем txtPrb через LLM
+    prompt = f"""Извлеки известную информацию из описания проблемы:
+
+"{txtPrb}"
+
+Верни JSON:
+{{
+    "location": "зал" или null,
+    "object": "труба" или null,
+    "problem": "течет" или null,
+    "category": "отопление" или null
+}}
+"""
+    
+    response, usage = await self.ai_agent.call_llm(prompt, model='lite')
+    known_info = json.loads(response)
+    
+    return {
+        'known_location': known_info.get('location'),
+        'known_object': known_info.get('object'),
+        'known_problem': known_info.get('problem'),
+        'known_category': known_info.get('category'),
+        'should_ask_location': known_info.get('location') is None,
+        'should_ask_object': known_info.get('object') is None,
+        'should_ask_problem': known_info.get('problem') is None
+    }
+```
+
+### 11.2. Обновленный алгоритм MainAgent
+
+```python
+async def process_service_detection(...):
+    # ... (существующий код)
+    
+    # ===== НОВЫЙ ШАГ: Pre-check известной информации =====
+    if is_followup and txtPrb:
+        precheck = await self._precheck_known_info(txtPrb, established_filters)
+        
+        # Если ВСЕ известное - можно определить услугу!
+        if not any([
+            precheck['should_ask_location'],
+            precheck['should_ask_object'],
+            precheck['should_ask_problem']
+        ]):
+            # Все известное - ищем услугу по фильтрам
+            service = await self._find_service_by_filters(
+                location=precheck['known_location'],
+                object=precheck['known_object'],
+                problem=precheck['known_problem'],
+                category=precheck['known_category']
+            )
+            
+            if service:
+                return {
+                    'status': 'SUCCESS',
+                    'service_id': service['service_id'],
+                    'service_name': service['scenario_name'],
+                    'message': f"Понял, у вас: {service['scenario_name']}. Правильно?"
+                }
+    
+    # ... (существующий код)
+    
+    # ===== НОВЫЙ ШАГ: LLM-валидация вопроса =====
+    ai_result = await self._generate_ai_question(...)
+    question = ai_result['question']
+    
+    # LLM-валидация на冗антность
+    validation = await self._llm_validate_question_redundancy(
+        question=question,
+        txtPrb=txtPrb,
+        established_filters=established_filters
+    )
+    
+    if validation['is_redundant']:
+        # Заменяем на suggested_fix или fallback
+        question = validation['suggested_fix'] or "Уточните детали."
+    
+    return {'question': question, ...}
+```
+
+---
+
+## 12. ОТЛАДКА ПО ШАБЛОНУ
+
+### 12.1. Что такое "отладка по шаблону"?
+
+**Отладка по шаблону** - это методика диагностики проблем в диалоговой системе, при которой для каждого этапа обработки сообщения создается детальный отчет по фиксированному шаблону.
+
+**Принцип работы:**
+1. После каждого сообщения пользователя сохраняется полный отчет в `/tmp/`
+2. Отчет создается по фиксированному шаблону (см. ниже)
+3. Отчет содержит ВСЮ информацию: входные параметры, txtPrb, фильтры, кандидатов, промты LLM, ответы
+4. Архитектор может проанализировать отчет и найти проблему
+
+### 12.2. Шаблон отчета
+
+**Файл:** `/var/www/komunal-dom_ru/trace_report_service.py`
+
+**Шаблон:**
+
+```markdown
+================================================================================
+ОТЧЕТ ТРАССИРОВКИ ДИАЛОГА (улучшенный шаблон v2.0 - 2025-12-28)
+================================================================================
+Session ID: telegram_1049252307_20251228_133000
+Канал: telegram
+Всего сообщений: 6
+Период: 2025-12-28 13:30:00 - 2025-12-28 13:31:45
+
+================================================================================
+ИСТОРИЯ txtPrb (накопление описания проблемы)
+================================================================================
+
+#1: (нет значимой информации)
+#2: у пользователя течет
+#3: у пользователя течет в зале
+#4: у пользователя течет труба в зале
+#5: у пользователя течет труба в зале (значимая информация)
+#6: у пользователя течет труба в зале (значимая информация)
+
+================================================================================
+ДЕТАЛЬНАЯ ТРАССИРОВКА ПО СООБЩЕНИЯМ
+================================================================================
+
+СООБЩЕНИЕ #1
+ID: 1261
+Направление: inbound (пользователь → бот)
+Текст: "привет"
+Время: 2025-12-28 13:30:15
+
+┌─── АНАЛИЗ СООБЩЕНИЯ ───┐
+│                        │
+├─ ЗНАЧИМАЯ ИНФОРМАЦИЯ:
+❌ Нет (приветствие)
+│
+└─ ЗАКЛЮЧЕНИЕ:
+⚠️ Приветствие - не содержит информации о проблеме
+
+ОТВЕТ БОТА:
+"Здравствуйте! Опишите вашу проблему, и я попробую помочь."
+
+СООБЩЕНИЕ #2
+ID: 1262
+Направление: inbound
+Текст: "у меня течет"
+Время: 2025-12-28 13:30:25
+
+┌─── АНАЛИЗ СООБЩЕНИЯ ───┐
+│                        │
+├─ ЗНАЧИМАЯ ИНФОРМАЦИЯ:
+✅ Проблема: "течет"
+│
+└─ ЗАКЛЮЧЕНИЕ:
+✅ Сообщение содержит ЗНАЧИМУЮ информацию
+
+txtPrb после обработки: "у пользователя течет"
+
+┌─── РЕЗУЛЬТАТЫ МИКРОСЕРВИСОВ ───┐
+│                                │
+├─ TagSearchService:
+│  (нет кандидатов)
+│
+├─ VectorSearchService:
+│  ID:7 | Устранение течи | 75.00%
+│
+├─ SemanticSearchService:
+│  (нет кандидатов)
+│
+└─ AIAgentService:
+   (не вызван)
+
+─── ПЕРЕСЕЧЕНИЕ ───
+Общий кандидат: 1
+ID:7 | Устранение течи | 75.00%
+
+┌─── ФИЛЬТРЫ (FilterDetectionService) ───┐
+│                                         │
+├─ ЗАПРОС К LLM:
+"Извлеки фильтры из сообщения: 'у меня течет'"
+│
+├─ ОТВЕТ LLM:
+{
+  "incident": "Инцидент"
+}
+│
+└─ ФАКТИЧЕСКИЕ ФИЛЬТРЫ:
+incident = Инцидент (confidence: 85%)
+
+METADATA:
+service_detection:
+  status: AMBIGUOUS
+  message: "Опишите подробнее, что течёт и где это произошло?"
+  candidates:
+    - ID:7
+      service_name: "Устранение течи"
+      confidence: 75.00%
+      source: "vector_search"
+  accumulated_fields:
+    problem: "течет"
+  established_filters:
+    incident:
+      value: "Инцидент"
+      confidence: 0.85
+
+ОТВЕТ БОТА:
+"Опишите подробнее, что течёт и где это произошло?"
+
+...
+```
+
+### 12.3. Как использовать отчеты для отладки
+
+**Пример анализа:**
+
+**ШАГ 1:** Сгенерировать отчет для проблемного диалога
+
+```python
+from trace_report_service import generate_dialog_trace
+
+path = await generate_dialog_trace('telegram_1049252307')
+# Создаст: /tmp/_tras_diag_20251228_133000.md
+```
+
+**ШАГ 2:** Проанализировать отчет
+
+**Проблема:** На шаге #7 бот спрашивает "Где именно?" при txtPrb="течет из трубы отопления в зале"
+
+**Анализ отчета:**
+```
+СООБЩЕНИЕ #7
+txtPrb: "у пользователя течет из трубы отопления в зале"
+
+🔧 УСТАНОВЛЕННЫЕ ФИЛЬТРЫ:
+- location: Индивидуальное (95%)
+- category: Отопление (95%)
+- incident: Инцидент (90%)
+
+📋 СПИСОК КАНДИДАТОВ:
+- ID:33 | Течь из трубы отопления в квартире | 98% (Отопление, Индивидуальное)
+
+ОТВЕТ БОТА:
+"Течёт из трубы в вашей квартире или в общедомовой системе?"
+```
+
+**ВЫВОД:** Бот игнорирует:
+1. txtPrb содержит "зале" → Индивидуальное
+2. location фильтр = Индивидуальное (95%)
+3. Есть кандидат ID:33 с 98% confidence!
+
+**ШАГ 3:** Исправление
+
+Добавить в промт:
+```
+⚠️ КРИТИЧЕСКИ ВАЖНО: НЕ спрашивай локацию если:
+- txtPrb содержит "зал/ванная/кухня/спальня" → location=Индивидуальное
+- established_filters['location'] > 0.8 → localization известна
+```
+
+### 12.4. Команды для генерации отчетов
+
+```bash
+# По session_id
+python trace_report_service.py --session-id telegram_1049252307_20251228_133000
+
+# По telegram_user_id
+python trace_report_service.py --telegram-user-id 1049252307
+
+# Вывод в JSON
+python trace_report_service.py --session-id web_123 --output json
+
+# Просмотр последнего отчета
+cat /tmp/_tras_diag_$(ls -t /tmp/_tras_diag_*.md | head -1 | xargs basename)
+
+# Все отчеты
+ls -lh /tmp/_tras_diag_*.md
+```
+
+### 12.5. Как это помогает архитектору
+
+1. **Визуализация проблемы:** Видно где именно сломалась логика
+2. **Полный контекст:** Все входные параметры, промты, ответы в одном месте
+3. **История txtPrb:** Видно как накапливалась информация
+4. **Результаты микросервисов:** Видно что нашли TagSearch, VectorSearch, AI
+5. **Фильтры:** Видно какие фильтры установились и с какой уверенностью
+6. **Кандидаты:** Полный список с % confidence
+7. **Промты LLM:** Точные промты которые отправлялись в YandexGPT
+8. **Ответы LLM:** Что вернула модель
+
+**ПРИМЕР ИСПОЛЬЗОВАНИЯ:**
+
+Архитектор получает отчет и видит:
+```
+СООБЩЕНИЕ #7
+txtPrb: "у пользователя течет из трубы отопления в зале"
+established_filters: location=95%, category=95%
+candidates: ID:33 | Течь из трубы отопления | 98%
+
+ОТВЕТ БОТА: "Течёт из трубы в вашей квартире или в общедомовой системе?"
+```
+
+Архитектор понимает:
+- Проблема: Бот игнорирует location=95% и спрашивает локацию
+- Решение: Добавить в промт: "ЕСЛИ location confidence > 0.8, НЕ спрашивать локацию!"
+- Testing: Сгенерировать новый отчет после исправления и проверить
+
+---
+
+## 13. ВЫХОДНОЙ ФОРМАТ (ОБНОВЛЕННЫЙ)
+
+Твоя работа должна включать:
+
+### 13.1. Анализ текущего подхода
+1. **5-7 проблем в промте** (с объяснением и примерами из диалога)
+2. **3-5 проблем в коде** (что нужно изменить кроме промта)
+3. **Архитектурные проблемы** (почему текущая система не работает)
+
+### 13.2. Улучшенная архитектура
+1. **Новая структура промта** (пояснить почему лучше)
+2. **Изменения в коде** (конкретные методы, что добавить)
+3. **LLM-валидация вопроса** (код + промт)
+4. **Обработка "я уже сказал"** (детектор + стратегия)
+5. **Pre-check известной информации** (как использовать txtPrb)
+
+### 13.3. Шаблон улучшенного промта
+1. **Полный шаблон** с параметрами `[PARAMETER]`
+2. **Объяснение каждого блока**
+3. **Почему эта структура работает**
+
+### 13.4. Реальный пример
+1. **Заполненный шаблон** на шаге #8 диалога ("отопление")
+2. **Сгенерированный вопрос** (какой должен быть)
+3. **Почему этот вопрос лучше** текущего
+
+### 13.5. План внедрения
+1. **Изменения в коде** (псевдокод + файлы)
+2. **Изменения в промте** (diff: до/после)
+3. **Тестирование** (как проверить что работает)
+4. **Отладка по шаблону** (как использовать trace_report_service)
+
+### 13.6. Критерии успеха
+1. **Метрики:**
+   - % диалогов с "я уже сказал" < 5%
+   - Среднее количество сообщений до SUCCESS < 5
+   - %冗антных вопросов < 1%
+2. **Качественные:**
+   - Бот не спрашивает то, что уже в txtPrb
+   - Бот не задает двойные вопросы
+   - Бот реагирует на раздражение пользователя
+
+---
+
+**Важно:** Ты не пишешь код - ты предлагаешь архитектуру (промт + изменения в коде). Код реализует разработчик, твоя задача - дать решение которое будет работать.
+
+Дай развернутый ответ с примерами, кодом (псевдокод) и объяснениями.
