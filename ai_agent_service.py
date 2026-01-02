@@ -57,7 +57,7 @@ class AIAgentService:
         'GigaChat-2.1': 1.80
     }
 
-    def __init__(self, provider: str = 'yandexgpt', default_model: Optional[str] = None):
+    def __init__(self, provider: str = 'gigachat', default_model: Optional[str] = None):
         """
         Инициализация сервиса
 
@@ -74,7 +74,7 @@ class AIAgentService:
         self.gigachat_client_id = config('GIGACHAT_CLIENT_ID', default='019b65dd-feb9-756f-a83e-330d88d76fa0')
         self.gigachat_auth_key = config('GIGACHAT_AUTH_KEY', default='MDE5YjY1ZGQtZmViOS03NTZmLWE4M2UtMzMwZDg4ZDc2ZmEwOjYyODNjZGRiLTBiNGYtNDZhMS04NDVlLWZjOTYyYWE2ZWFiYg==')
         self.gigachat_scope = config('GIGACHAT_SCOPE', default='GIGACHAT_API_PERS')
-        self.gigachat_default_model = config('GIGACHAT_MODEL', default='GigaChat')
+        self.gigachat_default_model = config('GIGACHAT_MODEL', default='GigaChat-2')
 
         # Текущий провайдер и модель
         self.provider = provider
@@ -374,7 +374,7 @@ class AIAgentService:
 
             async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
                 response = await client.post(url, headers=headers, json=payload)
-                logger.info(f"AIAgentService: GigaChat API response: {response.status} (model: {model})")
+                logger.info(f"AIAgentService: GigaChat API response: {response.status_code} (model: {model})")
 
                 if response.status_code == 200:
                     result = response.json()
