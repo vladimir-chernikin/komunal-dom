@@ -354,79 +354,111 @@ class MainAgent:
                 )
                 logger.info(f"Установленные фильтры: {established_filters}")
 
-                # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ПОСЛЕ накопления
-                logger.info("🔍 TXTPrb И ФИЛЬТРЫ ПОСЛЕ накопления:")
-                logger.info(f"  📝 txtPrb: '{txtPrb[:120] if txtPrb else '(пусто)'}'")
-                logger.info(f"  🔧 accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
-                logger.info(f"  🔧 established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
-
-                # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
-                # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
-                if dialog_history and len(dialog_history) >= 4:
-                    # Получаем последние 2-3 ответа пользователя
-                    user_responses = []
-                    for msg in reversed(dialog_history[-6:]):
-                        # ИСПРАВЛЕНО: Используем 'role' вместо 'direction'
-                        if msg.get('role') == 'user':
-                            user_responses.append(msg.get('text', '').strip().lower())
-                            if len(user_responses) >= 3:
-                                break
-
-                    # Проверяем есть ли повторения
-                    if len(user_responses) >= 2 and user_responses[0] == user_responses[1]:
-                        repeated_answer = user_responses[0]
-                        logger.warning(f"⚠️ Обнаружен повторяющийся ответ: '{repeated_answer}' (2+ раза)")
-
-                        # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА меняем стратегию при повторяющихся ответах
-                        # Не проверяем уверенность фильтров - если пользователь повторяет, значит нужно менять вопрос!
-
-                        # Проверяем: сколько раз повторяется?
-                        repeat_count = 1
-                        for i in range(1, len(user_responses)):
-                            if user_responses[i] == repeated_answer:
-                                repeat_count += 1
-                            else:
-                                break
-
-                        logger.info(f"⚠️ Ответ повторяется {repeat_count} раз")
-
-                        # Меняем сообщение в зависимости от количества повторений
-                        if repeat_count >= 3:
-                            # 3+ повторения - просим описать проблему другими словами
-                            message = 'Пожалуйста, опишите проблему другими словами. Что именно случилось?'
-                        else:
-                            # 2 повтора - задаем более конкретный вопрос
-                            message = 'Уточните, пожалуйста: что именно произошло?'
-
-                        logger.info("⚠️ Меняем стратегию: задаем другой вопрос")
-
-                        # Возвращаем специальный результат
-                        result_metadata = {
-                            'txtPrb': txtPrb,
-                            'accumulated_fields': accumulated_fields,
-                            'established_filters': established_filters,
-                            'repeated_answer_detected': True,
-                            'repeat_count': repeat_count
-                        }
-
-                        return {
-                            'status': 'AMBIGUOUS',
-                            'candidates': [],
-                            'candidate_names': [],
-                            'message': message,
-                            'needs_clarification': True,
-                            'is_followup': is_followup,
-                            '_metadata': result_metadata
-                        }
-
             except Exception as e:
                 logger.warning(f"Ошибка ProblemAccumulationService: {e}")
+
+        # ИСПРАВЛЕНО (2026-01-03): SemanticPreCheck - извлечение абсолютных фактов ДО поиска
+        # Это позволяет оптимизировать работу микросервисов и избежать избыточных вопросов
+        semantic_check_result = {}
+        if self.filter_detection and self.ai_agent:
+            try:
+                logger.info("Запускаем SemanticPreCheck для извлечения абсолютных фактов...")
+                semantic_check_result = await self._semantic_pre_check(
+                    message_text=search_text,
+                    dialog_history=dialog_history
+                )
+
+                if semantic_check_result.get('absolute_facts'):
+                    logger.info(f"SemanticPreCheck найден {len(semantic_check_result['absolute_facts'])} фактов:")
+                    for fact in semantic_check_result['absolute_facts']:
+                        logger.info(f"  ✓ {fact}")
+
+                    # Объединяем с established_filters от ProblemAccumulationService
+                    if semantic_check_result.get('filters'):
+                        for filter_name, filter_data in semantic_check_result['filters'].items():
+                            if filter_name not in established_filters:
+                                established_filters[filter_name] = filter_data
+                                logger.info(f"  Добавлен фильтр из PreCheck: {filter_name}={filter_data['value']}")
+
+                else:
+                    logger.info("SemanticPreCheck не нашел значимых фактов")
+
+            except Exception as e:
+                logger.warning(f"Ошибка SemanticPreCheck: {e}")
+                semantic_check_result = {}
+
+        # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ПОСЛЕ накопления
+        logger.info("🔍 TXTPrb И ФИЛЬТРЫ ПОСЛЕ накопления:")
+        logger.info(f"  📝 txtPrb: '{txtPrb[:120] if txtPrb else '(пусто)'}'")
+        logger.info(f"  🔧 accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
+        logger.info(f"  🔧 established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
+
+        # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
+        # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
+        if dialog_history and len(dialog_history) >= 4:
+            # Получаем последние 2-3 ответа пользователя
+            user_responses = []
+            for msg in reversed(dialog_history[-6:]):
+                # ИСПРАВЛЕНО: Используем 'role' вместо 'direction'
+                if msg.get('role') == 'user':
+                    user_responses.append(msg.get('text', '').strip().lower())
+                    if len(user_responses) >= 3:
+                        break
+
+            # Проверяем есть ли повторения
+            if len(user_responses) >= 2 and user_responses[0] == user_responses[1]:
+                repeated_answer = user_responses[0]
+                logger.warning(f"⚠️ Обнаружен повторяющийся ответ: '{repeated_answer}' (2+ раза)")
+
+                # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА меняем стратегию при повторяющихся ответах
+                # Не проверяем уверенность фильтров - если пользователь повторяет, значит нужно менять вопрос!
+
+                # Проверяем: сколько раз повторяется?
+                repeat_count = 1
+                for i in range(1, len(user_responses)):
+                    if user_responses[i] == repeated_answer:
+                        repeat_count += 1
+                    else:
+                        break
+
+                logger.info(f"⚠️ Ответ повторяется {repeat_count} раз")
+
+                # Меняем сообщение в зависимости от количества повторений
+                if repeat_count >= 3:
+                    # 3+ повторения - просим описать проблему другими словами
+                    message = 'Пожалуйста, опишите проблему другими словами. Что именно случилось?'
+                else:
+                    # 2 повтора - задаем более конкретный вопрос
+                    message = 'Уточните, пожалуйста: что именно произошло?'
+
+                logger.info("⚠️ Меняем стратегию: задаем другой вопрос")
+
+                # Возвращаем специальный результат
+                result_metadata = {
+                    'txtPrb': txtPrb,
+                    'accumulated_fields': accumulated_fields,
+                    'established_filters': established_filters,
+                    'repeated_answer_detected': True,
+                    'repeat_count': repeat_count,
+                    'semantic_check': semantic_check_result  # ИСПРАВЛЕНО (2026-01-03)
+                }
+
+                return {
+                    'status': 'AMBIGUOUS',
+                    'candidates': [],
+                    'candidate_names': [],
+                    'message': message,
+                    'needs_clarification': True,
+                    'is_followup': is_followup,
+                    '_metadata': result_metadata
+                }
 
         # Подготавливаем metadata для результата
         result_metadata = {
             'txtPrb': txtPrb,
             'accumulated_fields': accumulated_fields,
             'established_filters': established_filters,
+            'semantic_check': semantic_check_result,  # ИСПРАВЛЕНО (2026-01-03)
             # ДОБАВЛЕНО: Будем добавлять результаты микросервисов позже
             'microservices_results': {}  # {tag_search: {...}, vector_search: {...}, etc}
         }
