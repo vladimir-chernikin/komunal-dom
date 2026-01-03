@@ -1958,76 +1958,18 @@ class MainAgent:
 
         return question
 
-    def _fix_double_questions(self, question: str) -> str:
+    async def _llm_validate_question(
+        self,
+        question: str,
+        txtPrb: str = None,
+        established_filters: Dict = None
+    ) -> str:
         """
-        Post-processing проверка и исправление двойных вопросов
+        ИСПРАВЛЕНО (2026-01-03): LLM-валидация вопроса вместо Regex
 
-        ИСПРАВЛЕНО (2025-12-28): Обнаруживает и исправляет двойные вопросы
-        которые AI игнорирует промпт
-
-        Args:
-            question: Сгенерированный AI вопрос
-
-        Returns:
-            str: Исправленный вопрос
-        """
-        if not question:
-            return question
-
-        question_lower = question.lower()
-
-        # Паттерн 1: "что ... и где ..." (двойной вопрос что + где)
-        if 'что' in question_lower and 'где' in question_lower:
-            # Проверяем есть ли союз "и" или запятая
-            if (' и ' in question) or (',' in question):
-                # Двойной вопрос detected! Берем только первую часть
-                logger.warning(f"⚠️ Обнаружен двойной вопрос (что+где): {question}")
-
-                # Разбиваем по " и " или ","
-                if ' и ' in question:
-                    parts = question.split(' и ', 1)
-                elif ',' in question:
-                    parts = question.split(',', 1)
-                else:
-                    parts = [question]
-
-                # Оставляем только первую часть, добавляем "?" если нужно
-                fixed = parts[0].strip()
-                if not fixed.endswith('?'):
-                    fixed += '?'
-
-                logger.info(f"✅ Исправлено на: {fixed}")
-                return fixed
-
-        # Паттерн 2: "что ... и какие ..." (двойной вопрос что + какие)
-        if 'что' in question_lower and ('какие' in question_lower or 'какой' in question_lower):
-            if ' и ' in question:
-                logger.warning(f"⚠️ Обнаружен двойной вопрос (что+какие): {question}")
-                parts = question.split(' и ', 1)
-                fixed = parts[0].strip()
-                if not fixed.endswith('?'):
-                    fixed += '?'
-                logger.info(f"✅ Исправлено на: {fixed}")
-                return fixed
-
-        # Паттерн 3: "где ... и ..." (двойной вопрос где + что-то еще)
-        if 'где' in question_lower and ' и ' in question:
-            # Проверяем есть ли вторая часть после "и"
-            after_and = question.split(' и ', 1)[1]
-            if any(word in after_and.lower() for word in ['что', 'какие', 'какой', 'последств']):
-                logger.warning(f"⚠️ Обнаружен двойной вопрос (где+...): {question}")
-                parts = question.split(' и ', 1)
-                fixed = parts[0].strip()
-                if not fixed.endswith('?'):
-                    fixed += '?'
-                logger.info(f"✅ Исправлено на: {fixed}")
-                return fixed
-
-        return question
-
-    def _validate_question_not_redundant(self, question: str, txtPrb: str = None, established_filters: Dict = None) -> str:
-        """
-        ИСПРАВЛЕНО (2025-12-28): Проверяет, что вопрос НЕ спрашивает то, что уже известно
+        Проверяет через YandexGPT Lite:
+        1. Не спрашивает ли бот о том, что уже известно
+        2. Не является ли вопрос двойным
 
         Args:
             question: Сгенерированный вопрос
@@ -2035,92 +1977,287 @@ class MainAgent:
             established_filters: Установленные фильтры
 
         Returns:
-            str: Исправленный вопрос или оригинал если всё OK
+            str: Валидированный вопрос
         """
-        if not question:
+        if not question or not self.ai_agent:
             return question
 
-        question_lower = question.lower()
+        # Формируем абсолютные факты для промпта
+        absolute_facts = []
+        if txtPrb:
+            absolute_facts.append(f"Описание проблемы: {txtPrb}")
 
-        # Проверяем冗антность (redundancy) только если есть known_info
-        if not txtPrb and not established_filters:
-            return question
-
-        redundant_detected = False
-        warning_msg = []
-
-        # ПРОВЕРКА 1: Если в txtPrb есть локация, а вопрос "где?"
-        if txtPrb and any(loc in txtPrb.lower() for loc in ['зал', 'ванная', 'кухн', 'спальн', 'коридор', 'подъезд']):
-            if any(word in question_lower for word in ['где', 'какое место', 'в какой комнат']):
-                redundant_detected = True
-                warning_msg.append(f"локация уже в txtPrb: '{txtPrb}'")
-
-        # ПРОВЕРКА 2: Если established_filters содержит location с высоким confidence
         if established_filters:
-            location_filter = established_filters.get('location')
-            if location_filter and isinstance(location_filter, dict):
-                location_value = location_filter.get('value')
-                location_confidence = location_filter.get('confidence', 0)
+            for filter_name, filter_data in established_filters.items():
+                if isinstance(filter_data, dict) and filter_data.get('value'):
+                    confidence = filter_data.get('confidence', 0)
+                    if confidence > 0.8:
+                        absolute_facts.append(f"{filter_name}={filter_data['value']} (уверенность: {confidence:.0%})")
 
-                # Если confidence > 0.8 и вопрос спрашивает "где?" - redundant
-                if location_confidence > 0.8 and location_value:
-                    if any(word in question_lower for word in ['где', 'место', 'локаци']):
-                        redundant_detected = True
-                        warning_msg.append(f"location={location_value} (confidence={location_confidence})")
+        # Если нет известных фактов - пропускаем валидацию
+        if not absolute_facts:
+            return question
 
-            # ПРОВЕРКА 3: Если есть category с высоким confidence
-            category_filter = established_filters.get('category')
-            if category_filter and isinstance(category_filter, dict):
-                category_value = category_filter.get('value')
-                category_confidence = category_filter.get('confidence', 0)
+        # Формируем промпт для валидации
+        facts_text = "\n".join([f"  - {fact}" for fact in absolute_facts])
 
-                # Если вопрос спрашивает про категорию, которая уже известна
-                if category_confidence > 0.8 and category_value:
-                    if any(word in question_lower for word in ['какая услуга', 'какой категор', 'это отопление или водоснабжение']):
-                        redundant_detected = True
-                        warning_msg.append(f"category={category_value} (confidence={category_confidence})")
+        prompt = f"""Ты - логический валидатор вопросов AI-диспетчера.
 
-            # ПРОВЕРКА 4: Если есть object (source) с высоким confidence
-            object_filter = established_filters.get('object')
-            if object_filter and isinstance(object_filter, dict):
-                object_value = object_filter.get('value')
-                object_confidence = object_filter.get('confidence', 0)
+Вопрос бота: "{question}"
 
-                # Если вопрос спрашивает "что именно?" а объект известен
-                if object_confidence > 0.8 and object_value:
-                    if any(word in question_lower for word in ['что именно', 'что сломал', 'какой объект']):
-                        redundant_detected = True
-                        warning_msg.append(f"object={object_value} (confidence={object_confidence})")
+ИЗВЕСТНЫЕ ФАКТЫ (запрещено спрашивать об этом):
+{facts_text}
 
-        # Логируем warning если обнаружена冗антность
-        if redundant_detected:
-            logger.warning(f"⚠️ ОБНАРУЖЕН REDUNDANT ВОПРОС: {question}")
-            for msg in warning_msg:
-                logger.warning(f"  ⚠️  {msg}")
-            logger.warning(f"  📝 txtPrb: '{txtPrb[:80] if txtPrb else '(нет)'}'")
-            logger.warning(f"  🔧 established_filters: {established_filters}")
+Проверь вопрос на два условия:
+1. Спрашивает ли бот о том, что уже есть в "Известных фактах"?
+2. Является ли вопрос двойным (содержит "и", "или" между разными вопросами)?
 
-            # ИСПРАВЛЕНО: Генерируем fallback вопрос вместо冗антного
-            # Вопросы по приоритету:
-            # 1. Если нет category - спросить категорию
-            # 2. Если нет severity - спросить серьезность
-            # 3. Иначе - уточнить детали
-            if established_filters:
-                if not established_filters.get('category'):
-                    fallback = "Уточните, пожалуйста, к какой категории относится проблема?"
-                    logger.info(f"✅ Заменено на: {fallback}")
-                    return fallback
-                elif not established_filters.get('severity'):
-                    fallback = "Насколько это срочно? Есть ли угроза имуществу?"
-                    logger.info(f"✅ Заменено на: {fallback}")
-                    return fallback
+Если все хорошо - верни {{"valid": true}}
+Если ошибка - верни {{"valid": false, "reason": "краткое объяснение", "fixed_question": "исправленный вопрос"}}
 
-            # Если вообще нет фильтров - уточнить детали
-            fallback = "Уточните, пожалуйста, детали проблемы."
-            logger.info(f"✅ Заменено на fallback: {fallback}")
-            return fallback
+Верни только JSON, без другого текста.
 
+JSON:"""
+
+        try:
+            # Вызываем YandexGPT Lite для валидации
+            response, usage = await self.ai_agent.call_llm(
+                prompt=prompt,
+                provider='yandexgpt',
+                model='lite'
+            )
+
+            # Парсим ответ
+            import json
+            if '{' in response:
+                # Извлекаем JSON
+                start = response.find('{')
+                end = response.rfind('}') + 1
+                json_str = response[start:end]
+                result = json.loads(json_str)
+
+                if result.get('valid'):
+                    logger.info(f"LLM-валидация: вопрос корректен")
+                    return question
+                else:
+                    reason = result.get('reason', 'неизвестно')
+                    fixed = result.get('fixed_question', question)
+                    logger.warning(f"LLM-валидация: обнаружена ошибка - {reason}")
+                    logger.info(f"LLM-валидация: исправленный вопрос - {fixed}")
+                    return fixed
+
+        except Exception as e:
+            logger.error(f"Ошибка LLM-валидации вопроса: {e}")
+
+        # При ошибке возвращаем оригинал
         return question
+
+    async def _semantic_pre_check(
+        self,
+        message_text: str,
+        dialog_history: List[Dict] = None
+    ) -> Dict:
+        """
+        ИСПРАВЛЕНО (2026-01-03): Семантический Pre-Check через FilterDetectionService
+
+        Извлекает "абсолютные факты" из текста через YandexGPT Lite:
+        - Проблема (течет, сломалось, засор и т.д.)
+        - Локация (зал -> Индивидуальное, подъезд -> Общедомовое)
+        - Категория (батарея -> Отопление)
+        - Объект (труба, кран, батарея)
+
+        Args:
+            message_text: Текст сообщения
+            dialog_history: История диалога
+
+        Returns:
+            Dict: {
+                'absolute_facts': List[str],  # Список фактов
+                'filters': Dict,               # Фильтры с confidence
+                'normalized_fields': Dict      # Нормализованные поля
+            }
+        """
+        if not self.filter_detection or not self.ai_agent:
+            return {
+                'absolute_facts': [],
+                'filters': {},
+                'normalized_fields': {}
+            }
+
+        try:
+            # Вызываем FilterDetectionService (уже использует YandexGPT Lite)
+            filter_result = await self.filter_detection.detect_filters(
+                message_text=message_text,
+                dialog_history=dialog_history
+            )
+
+            if filter_result.get('status') != 'success':
+                return {
+                    'absolute_facts': [],
+                    'filters': {},
+                    'normalized_fields': {}
+                }
+
+            filters = filter_result.get('filters', {})
+            confidence = filter_result.get('confidence', 0.0)
+
+            # Формируем абсолютные факты
+            absolute_facts = []
+            normalized_fields = {}
+
+            # Проблема (из object_description)
+            if filters.get('object_description'):
+                problem_desc = filters['object_description']
+                absolute_facts.append(f"Проблема: {problem_desc}")
+                normalized_fields['problem'] = problem_desc
+
+            # Локация (нормализация: зал/кухня/ванная -> Индивидуальное)
+            if filters.get('location_type'):
+                location = filters['location_type']
+                absolute_facts.append(f"Локация: {location}")
+                normalized_fields['location'] = location
+
+            # Категория
+            if filters.get('category'):
+                category = filters['category']
+                absolute_facts.append(f"Категория: {category}")
+                normalized_fields['category'] = category
+
+            # Тип инцидента
+            if filters.get('incident_type'):
+                incident = filters['incident_type']
+                absolute_facts.append(f"Тип: {incident}")
+                normalized_fields['incident'] = incident
+
+            # Логируем результаты
+            logger.info(f"SemanticPreCheck: извлечено {len(absolute_facts)} фактов")
+            for fact in absolute_facts:
+                logger.info(f"  - {fact}")
+
+            return {
+                'absolute_facts': absolute_facts,
+                'filters': {
+                    k: {'value': v, 'confidence': confidence}
+                    for k, v in filters.items() if v
+                },
+                'normalized_fields': normalized_fields,
+                'confidence': confidence,
+                'raw_response': filter_result
+            }
+
+        except Exception as e:
+            logger.error(f"Ошибка в _semantic_pre_check: {e}")
+            return {
+                'absolute_facts': [],
+                'filters': {},
+                'normalized_fields': {}
+            }
+
+    def _build_dynamic_prompt(
+        self,
+        strategy: str,
+        context: str,
+        absolute_facts: List[str] = None,
+        candidates: List[Dict] = None,
+        missing_filter: str = None,
+        txtPrb: str = None
+    ) -> str:
+        """
+        ИСПРАВЛЕНО (2026-01-03): Динамическая сборка промпта по стратегии
+
+        Стратегии:
+        - A (1 кандидат, >90%): Подтверждение
+        - B (2-10 кандидатов): Уточнение по списку
+        - C (>10 кандидатов): Фильтрация без списка
+
+        Args:
+            strategy: Тип стратегии (A, B, C)
+            context: Контекст ситуации
+            absolute_facts: Абсолютные факты (из SemanticPreCheck)
+            candidates: Список кандидатов (для стратегии B)
+            missing_filter: Недостающий фильтр (для стратегии C)
+            txtPrb: Описание проблемы
+
+        Returns:
+            str: Промпт для YandexGPT Pro
+        """
+        # Базовый блок системы
+        system_block = """Ты - AI-диспетчер управляющей компании. Твоя цель - выбрать услугу из каталога.
+Стиль: Краткий, деловой, без приветствий. Максимум 15 слов.
+"""
+
+        # Блок абсолютных фактов
+        facts_block = ""
+        if absolute_facts:
+            facts_list = "\n".join([f"- {fact}" for fact in absolute_facts])
+            facts_block = f"""
+БЛОК: АБСОЛЮТНЫЕ ФАКТЫ (ЗАПРЕТ НА ВОПРОСЫ)
+Ниже перечислены факты, которые УЖЕ установлены. ТЕБЕ ЗАПРЕЩЕНО ЗАДАВАТЬ ВОПРОСЫ ОБ ЭТОМ.
+{facts_list}
+"""
+
+        # Блок контекста
+        context_block = f"""
+БЛОК: КОНТЕКСТ
+Текущее описание проблемы: {context}
+"""
+        if txtPrb:
+            context_block += f"\nНакопленное описание: {txtPrb}"
+
+        # Блок ограничений
+        constraints_block = """
+БЛОК: ОГРАНИЧЕНИЯ
+- Не используй конструкцию "ИЛИ" (двойные вопросы)
+- Не перечисляй варианты в скобках
+- Задай только один открытый вопрос
+- Не спрашивай то, что уже есть в "Абсолютных фактах"
+"""
+
+        # Блок задачи в зависимости от стратегии
+        if strategy == 'A':
+            # 1 кандидат, уверенность >90%
+            task_block = f"""
+БЛОК: ЗАДАЧА
+Услуга определена с вероятностью >90%. Задай подтверждающий вопрос.
+Формула: "Правильно ли я понял, что [описание проблемы]?"
+
+Кандидат: {candidates[0]['service_name'] if candidates else 'Неизвестно'}
+"""
+        elif strategy == 'B':
+            # 2-10 кандидатов
+            import json
+            candidates_json = json.dumps([{
+                'id': c.get('service_id'),
+                'name': c.get('service_name', c.get('scenario_name', 'Unknown')),
+                'category': c.get('category', '-'),
+                'location': c.get('location_type', '-')
+            } for c in (candidates or [])], ensure_ascii=False)
+
+            task_block = f"""
+БЛОК: ЗАДАЧА
+Список кандидатов (мало вариантов):
+{candidates_json}
+
+Найди критическое отличие между ними (объект или место) и задай вопрос.
+Не спрашивай о фактах из блока "Абсолютные факты".
+"""
+        else:  # strategy == 'C'
+            # >10 кандидатов
+            task_block = f"""
+БЛОК: ЗАДАЧА
+Кандидатов слишком много. Мы НЕ знаем параметр: {missing_filter or 'ЛОКАЦИЯ'}.
+
+Задай вопрос, чтобы выяснить только этот параметр.
+Не упоминай услуги, не перечисляй варианты.
+"""
+
+        # Собираем промпт
+        prompt = f"{system_block}{facts_block}{context_block}{task_block}{constraints_block}"
+
+        # Добавляем инструкцию по формату ответа
+        prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"
+
+        return prompt
 
     async def _generate_ai_question(
         self,
@@ -2212,11 +2349,8 @@ class MainAgent:
                 if question.startswith("'") and question.endswith("'"):
                     question = question[1:-1]
 
-                # ИСПРАВЛЕНО (2025-12-28): Post-processing проверка на двойные вопросы
-                question = self._fix_double_questions(question)
-
-                # ИСПРАВЛЕНО (2025-12-28): Проверка на冗антные вопросы (спрашивают то, что уже известно)
-                question = self._validate_question_not_redundant(
+                # ИСПРАВЛЕНО (2026-01-03): Regex-валидаторы удалены, используем LLM-валидацию
+                question = await self._llm_validate_question(
                     question=question,
                     txtPrb=txtPrb,
                     established_filters=established_filters
