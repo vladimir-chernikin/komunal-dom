@@ -2640,25 +2640,25 @@ JSON:"""
 
         # Формируем JSON кандидатов для промта
         candidates_json = ""
-            import json
-            candidates_list = []
-            for c in candidates[:15]:  # До 15 кандидатов
-                candidate_data = {
-                    "КодУслуги": c.get('service_id', 'Unknown'),
-                    "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),
-                    "Фильтры": {
-                        "Тип": c.get('incident_type', '-'),
-                        "Вид": c.get('location_type', '-'),
-                        "Категория": c.get('category', '-'),
-                        "Объект": c.get('object_type', '-')
-                    }
+        import json
+        candidates_list = []
+        for c in candidates[:15]:  # До 15 кандидатов
+            candidate_data = {
+                "КодУслуги": c.get('service_id', 'Unknown'),
+                "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),
+                "Фильтры": {
+                    "Тип": c.get('incident_type', '-'),
+                    "Вид": c.get('location_type', '-'),
+                    "Категория": c.get('category', '-'),
+                    "Объект": c.get('object_type', '-')
                 }
-                candidates_list.append(candidate_data)
+            }
+            candidates_list.append(candidate_data)
 
-            candidates_json = f"\n📋 СПИСОК КАНДИДАТОВ (услуги которые подходят под описание):\n"
-            candidates_json += "```json\n"
-            candidates_json += json.dumps(candidates_list, ensure_ascii=False, indent=2)
-            candidates_json += "\n```\n"
+        candidates_json = f"\n📋 СПИСОК КАНДИДАТОВ (услуги которые подходят под описание):\n"
+        candidates_json += "```json\n"
+        candidates_json += json.dumps(candidates_list, ensure_ascii=False, indent=2)
+        candidates_json += "\n```\n"
 
         # Формируем промт
         # ПЕРЕРАБОТАНО (2025-12-29): Позитивная инструкция + алгоритм + JSON заявки
