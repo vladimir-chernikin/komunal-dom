@@ -1,0 +1,285 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Нормативный чат - ООО "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        background: #f5f7fa;
+    }
+
+    .regulatory-chat-container {
+        max-width: 900px;
+        margin: 2rem auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+
+    .chat-header {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        padding: 1.5rem 2rem;
+        text-align: center;
+    }
+
+    .chat-header h2 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    .chat-header p {
+        margin: 0.5rem 0 0 0;
+        opacity: 0.95;
+        font-size: 0.95rem;
+    }
+
+    .chat-messages {
+        height: 400px;
+        overflow-y: auto;
+        padding: 1.5rem;
+        background: #f8f9fa;
+    }
+
+    .message {
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .message.user {
+        align-items: flex-end;
+    }
+
+    .message.bot {
+        align-items: flex-start;
+    }
+
+    .message-bubble {
+        max-width: 70%;
+        padding: 0.75rem 1rem;
+        border-radius: 18px;
+        word-wrap: break-word;
+        line-height: 1.5;
+    }
+
+    .message.user .message-bubble {
+        background: #3b82f6;
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+
+    .message.bot .message-bubble {
+        background: #e9ecef;
+        color: #333;
+        border-bottom-left-radius: 4px;
+    }
+
+    .message-meta {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-top: 0.25rem;
+        padding: 0 0.5rem;
+    }
+
+    .token-info {
+        font-size: 0.75rem;
+        color: #10b981;
+        margin-top: 0.25rem;
+        padding: 0 0.5rem;
+        font-weight: 500;
+    }
+
+    .chat-input-container {
+        padding: 1rem 1.5rem;
+        background: white;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .chat-input-form {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .chat-input {
+        flex: 1;
+        padding: 0.75rem 1rem;
+        border: 1px solid #ced4da;
+        border-radius: 24px;
+        font-size: 1rem;
+        outline: none;
+    }
+
+    .chat-input:focus {
+        border-color: #3b82f6;
+    }
+
+    .send-button {
+        padding: 0.75rem 1.5rem;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 24px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .send-button:hover {
+        background: #2563eb;
+    }
+
+    .send-button:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+    }
+
+    .chat-status {
+        text-align: center;
+        padding: 1rem;
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+
+    .token-counter {
+        padding: 0.75rem 1rem;
+        background: #eff6ff;
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .token-counter-label {
+        color: #6c757d;
+        margin-bottom: 0.25rem;
+    }
+
+    .token-counter-value {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #3b82f6;
+    }
+
+    .token-counter-cost {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-top: 0.25rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="regulatory-chat-container">
+        <div class="chat-header">
+            <h2>Нормативный чат</h2>
+            <p>Задайте вопрос по нормативной базе</p>
+            <a href="{% url 'portal:subscriber_page' %}" class="back-link">
+                <i class="fas fa-arrow-left"></i> Вернуться в личный кабинет
+            </a>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="chat-status">
+                Задайте вопрос
+            </div>
+        </div>
+
+        <div class="chat-input-container">
+            <div class="token-counter" id="tokenCounter" class="token-counter token-counter-hidden">
+                <div class="token-counter-label">Стоимость вопроса:</div>
+                <div class="token-counter-value"><span id="tokenCount">0</span> токенов</div>
+                <div class="token-counter-cost">Примерно <span id="rublesCost">0.00</span> руб.</div>
+            </div>
+            <form class="chat-input-form" id="chatForm">
+                <input
+                    type="text"
+                    class="chat-input"
+                    id="messageInput"
+                    placeholder="Задайте вопрос..."
+                    autocomplete="off"
+                    required
+                >
+                <button type="submit" class="send-button" id="sendButton">
+                    Отправить
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const chatMessages = document.getElementById('chatMessages');
+    const chatForm = document.getElementById('chatForm');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
+    const tokenCounter = document.getElementById('tokenCounter');
+    const tokenCountEl = document.getElementById('tokenCount');
+    const rublesCostEl = document.getElementById('rublesCost');
+
+    const TOKEN_PRICE = 0.0002;
+
+    function calculateTokens(text) {
+        return Math.ceil(text.length / 4);
+    }
+
+    function updateTokenCounter() {
+        const text = messageInput.value.trim();
+        if (text.length > 0) {
+            const tokens = calculateTokens(text);
+            const rubles = (tokens * TOKEN_PRICE).toFixed(2);
+
+            tokenCountEl.textContent = tokens;
+            rublesCostEl.textContent = rubles;
+            tokenCounter.style.display = 'block';
+        } else {
+            tokenCounter.style.display = 'none';
+        }
+    }
+
+    function addMessage(text, type) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        bubble.textContent = text;
+
+        const meta = document.createElement('div');
+        meta.className = 'message-meta';
+        meta.textContent = type === 'user' ? 'Вы' : 'Бот';
+
+        messageDiv.appendChild(bubble);
+        messageDiv.appendChild(meta);
+
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    messageInput.addEventListener('input', updateTokenCounter);
+
+    chatForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const message = messageInput.value.trim();
+        if (!message) return;
+
+        addMessage(message, 'user');
+        messageInput.value = '';
+        tokenCounter.style.display = 'none';
+
+        sendButton.disabled = true;
+
+        setTimeout(function() {
+            addMessage('Функционал находится в разработке', 'bot');
+            sendButton.disabled = false;
+            messageInput.focus();
+        }, 500);
+    });
+
+    messageInput.focus();
+</script>
+{% endblock %}

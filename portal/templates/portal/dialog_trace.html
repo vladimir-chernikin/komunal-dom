@@ -4,58 +4,148 @@
 
 {% block extra_css %}
 <style>
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+    background: #f8f9fa;
+}
+
+.card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    padding: 8px 12px;
+    background: #fff;
+    color: #1a1a1a;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 0.75rem;
+}
+
 .message-card {
     transition: all 0.2s ease-in-out;
 }
+
 .message-card:hover {
-    transform: translateX(5px);
+    transform: translateX(3px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
+
 .message-inbound {
-    border-left: 4px solid #28a745;
+    border-left: 3px solid #10b981;
 }
+
 .message-outbound {
-    border-left: 4px solid #007bff;
+    border-left: 3px solid #3b82f6;
 }
+
 .pre-wrap {
     white-space: pre-wrap;
     word-wrap: break-word;
 }
+
 .session-item {
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
     padding: 0.5rem 0.75rem !important;
     border-left: 3px solid transparent;
+    border-bottom: 1px solid #f0f0f0;
 }
+
 .session-item:hover {
     background-color: #f8f9fa;
+    border-left-color: #3b82f6;
 }
+
 .session-item.active {
     background-color: #e7f3ff;
-    border-left-color: #007bff;
+    border-left-color: #3b82f6;
 }
+
 .file-link {
     cursor: pointer;
-    transition: color 0.2s;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
 }
+
 .file-link:hover {
-    color: #007bff;
+    background-color: #f8f9fa;
+    border-left-color: #3b82f6;
 }
+
 .messages-container {
     max-height: 700px;
     overflow-y: auto;
+}
+
+.sessions-list-container {
+    max-height: 750px;
+    overflow-y: auto;
+}
+
+.small-text {
+    font-size: 0.75rem;
+}
+
+.badge {
+    font-size: 0.7rem;
+    padding: 0.3em 0.5em;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.nav-tabs .nav-link {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+    color: #495057;
+    border: 1px solid transparent;
+}
+
+.nav-tabs .nav-link.active {
+    color: #3b82f6;
+    border-color: #dee2e6 #dee2e6 #3b82f6;
+    font-weight: 500;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #3b82f6;
+    border-color: #e9ecef #e9ecef #dee2e6;
+}
+
+.spinner-border {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+.report-preview {
+    max-height: 500px;
+    overflow-y: auto;
+    font-size: 12px;
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-2">
-    <div class="row">
+<div class="container mt-3">
+    <!-- Заголовок -->
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h1 class="h4 mb-0">
-                    <i class="fas fa-binoculars text-dark"></i>
-                    Трассировка диалогов
-                </h1>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="mb-0">
+                        <i class="fas fa-binoculars text-primary"></i>
+                        Трассировка диалогов
+                        <small class="text-muted">- отладка AI агента</small>
+                    </h6>
+                </div>
                 <div>
                     <a href="{% url 'portal:dba_page' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="fas fa-arrow-left"></i> Назад
@@ -66,34 +156,31 @@
     </div>
 
     <!-- Две колонки: выбор сессии и просмотр -->
-    <div class="row mb-2">
-        <!-- Левая колонка: список сессий (30% ширины) -->
+    <div class="row">
+        <!-- Левая колонка: список сессий -->
         <div class="col-lg-4 col-md-4">
             <div class="card h-100">
-                <div class="card-header bg-success text-white py-2">
-                    <small class="fw-bold mb-0">
-                        <i class="fas fa-list"></i>
-                        Сессии (хронология)
-                    </small>
+                <div class="card-header">
+                    <i class="fas fa-list text-success"></i> Сессии
                 </div>
                 <div class="card-body p-0">
-                    <div id="sessionsList" style="max-height: 800px; overflow-y: auto;">
+                    <div id="sessionsList" class="sessions-list-container">
                         <div class="text-center text-muted py-5">
                             <div class="spinner-border text-success" role="status"></div>
-                            <p class="mt-3 mb-0 small">Загрузка сессий...</p>
+                            <p class="mt-3 mb-0 small">Загрузка...</p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Правая колонка: просмотр (70% ширины) -->
+        <!-- Правая колонка: просмотр -->
         <div class="col-lg-8 col-md-8">
-            <!-- Вкладки: Трассировка, Файлы отчетов -->
+            <!-- Вкладки -->
             <ul class="nav nav-tabs mb-2" id="traceTabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="trace-tab" data-bs-toggle="tab" data-bs-target="#tracePanel" type="button" role="tab">
-                        <i class="fas fa-comments text-dark"></i> Трассировка
+                        <i class="fas fa-comments"></i> Трассировка
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
@@ -107,11 +194,8 @@
                 <!-- Панель трассировки -->
                 <div class="tab-pane fade show active" id="tracePanel" role="tabpanel">
                     <div class="card h-100">
-                        <div class="card-header bg-primary text-white py-2">
-                            <small class="fw-bold mb-0">
-                                <i class="fas fa-history"></i>
-                                История сообщений
-                            </small>
+                        <div class="card-header">
+                            <i class="fas fa-history text-primary"></i> История сообщений
                         </div>
                         <div class="card-body p-2 messages-container" id="messagesContainer">
                             <div class="text-center text-muted py-5">
@@ -125,16 +209,13 @@
                 <!-- Панель файлов -->
                 <div class="tab-pane fade" id="filesPanel" role="tabpanel">
                     <div class="card h-100">
-                        <div class="card-header bg-info text-white py-2">
-                            <small class="fw-bold mb-0">
-                                <i class="fas fa-file-alt"></i>
-                                Файлы отчетов из /tmp/
-                            </small>
+                        <div class="card-header">
+                            <i class="fas fa-file-alt text-info"></i> Файлы отчетов (/tmp/)
                         </div>
                         <div class="card-body p-2 messages-container" id="filesContainer">
                             <div class="text-center text-muted py-5">
                                 <div class="spinner-border text-info" role="status"></div>
-                                <p class="mt-3 mb-0 small">Загрузка списка файлов...</p>
+                                <p class="mt-3 mb-0 small">Загрузка...</p>
                             </div>
                         </div>
                     </div>
@@ -145,13 +226,13 @@
 </div>
 
 <script>
+let selectedSession = null;
+
 // Загрузка сессий при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     loadSessions();
     loadReportFiles();
 });
-
-let selectedSession = null;
 
 // Загрузка списка сессий
 async function loadSessions() {
@@ -162,12 +243,12 @@ async function loadSessions() {
         const data = await response.json();
 
         if (data.error) {
-            container.innerHTML = `<div class="alert alert-danger m-3">${data.error}</div>`;
+            container.innerHTML = `<div class="alert alert-danger m-2">${data.error}</div>`;
             return;
         }
 
         if (!data.sessions || data.sessions.length === 0) {
-            container.innerHTML = '<div class="alert alert-warning m-3">Сессии не найдены</div>';
+            container.innerHTML = '<div class="alert alert-warning m-2">Сессии не найдены</div>';
             return;
         }
 
@@ -180,18 +261,18 @@ async function loadSessions() {
                          '<i class="fas fa-comment"></i>';
 
             html += `
-                <div class="list-group-item session-item" onclick="loadTrace('${session.session_id}')" style="cursor: pointer;">
+                <div class="list-group-item session-item" onclick="loadTrace('${session.session_id}')">
                     <div class="d-flex justify-content-between align-items-center">
-                        <div class="flex-grow-1" onclick="event.stopPropagation(); loadTrace('${session.session_id}')">
-                            <strong>${icon} ${session.session_id}</strong>
+                        <div class="flex-grow-1">
+                            <strong>${icon} ${session.session_id.substring(0, 30)}...</strong>
                             <br>
                             <small class="text-muted">
-                                <i class="fas fa-envelope"></i> ${session.message_count} сообщений
+                                <i class="fas fa-envelope"></i> ${session.message_count} сообщ.
                             </small>
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); generateFullTrace('${session.session_id}')" title="Сгенерировать полный отчет">
-                                <i class="fas fa-binoculars text-dark"></i> Т
+                            <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); generateFullTrace('${session.session_id}')" title="Полный отчет">
+                                <i class="fas fa-file-alt"></i>
                             </button>
                             <div class="text-end">
                                 <small class="text-muted">
@@ -208,7 +289,7 @@ async function loadSessions() {
 
     } catch (error) {
         console.error('Error:', error);
-        container.innerHTML = '<div class="alert alert-danger m-3">Ошибка загрузки сессий</div>';
+        container.innerHTML = '<div class="alert alert-danger m-2">Ошибка загрузки</div>';
     }
 }
 
@@ -224,7 +305,7 @@ async function loadTrace(sessionId) {
     event.currentTarget.classList.add('active');
 
     // Показать загрузку
-    container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Загрузка сообщений...</p></div>';
+    container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Загрузка...</p></div>';
 
     try {
         const response = await fetch(`/api/dialog-trace/?session_id=${encodeURIComponent(sessionId)}`);
@@ -241,15 +322,15 @@ async function loadTrace(sessionId) {
         }
 
         // Отобразить сообщения
-        let html = '<div class="alert alert-info alert-sm mb-3">';
-        html += `<small><strong>Session:</strong> <code class="small">${sessionId.substring(0, 20)}...</code> | <strong>Сообщений:</strong> ${data.total}</small>`;
+        let html = '<div class="alert alert-info alert-sm mb-2">';
+        html += `<small><strong>Session:</strong> <code>${sessionId.substring(0, 25)}...</code> | <strong>Сообщений:</strong> ${data.total}</small>`;
         html += '</div>';
 
         data.messages.forEach((msg, index) => {
             const isInbound = msg.direction === 'inbound';
             const bgClass = isInbound ? 'bg-light' : 'bg-white';
             const borderClass = isInbound ? 'message-inbound' : 'message-outbound';
-            const icon = isInbound ? '<i class="fas fa-user text-success"></i>' : '<i class="fas fa-robot text-dark"></i>';
+            const icon = isInbound ? '<i class="fas fa-user text-success"></i>' : '<i class="fas fa-robot text-primary"></i>';
             const directionLabel = isInbound ? 'Пользователь' : 'Бот';
             const time = new Date(msg.created_at).toLocaleString('ru-RU');
 
@@ -258,14 +339,14 @@ async function loadTrace(sessionId) {
                     <div class="card-body p-2">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <small class="fw-bold">${icon} ${directionLabel}</small>
-                            <span class="badge ${isInbound ? 'bg-success' : 'bg-primary'}" style="font-size: 0.7rem;">${msg.direction}</span>
+                            <span class="badge ${isInbound ? 'bg-success' : 'bg-primary'}">${msg.direction}</span>
                         </div>
                         <div class="pre-wrap bg-white border p-2 rounded small">${msg.text}</div>
                         <div class="d-flex justify-content-between align-items-center mt-2">
-                            <small class="text-muted" style="font-size: 0.75rem;">
+                            <small class="text-muted small-text">
                                 <i class="fas fa-clock"></i> ${time}
                             </small>
-                            <small class="text-muted" style="font-size: 0.75rem;">
+                            <small class="text-muted small-text">
                                 <i class="fas fa-comment-alt"></i> ${msg.channel}
                             </small>
                         </div>
@@ -281,7 +362,7 @@ async function loadTrace(sessionId) {
 
     } catch (error) {
         console.error('Error:', error);
-        container.innerHTML = '<div class="alert alert-danger">Ошибка загрузки сообщений</div>';
+        container.innerHTML = '<div class="alert alert-danger">Ошибка загрузки</div>';
     }
 }
 
@@ -309,14 +390,13 @@ async function loadReportFiles() {
             const time = new Date(file.modified * 1000).toLocaleString('ru-RU');
             const size = file.size > 1024 ? (file.size / 1024).toFixed(1) + ' КБ' : file.size + ' Б';
 
-            // Определить иконку по типу файла
-            let icon = 'fas fa-file';
+            let icon = 'fas fa-file text-secondary';
             if (file.name.includes('FULL_ANALYSIS')) icon = 'fas fa-file-alt text-danger';
             else if (file.name.includes('DIALOG_TRACE')) icon = 'fas fa-file-code text-primary';
             else if (file.name.includes('FINAL_FIX')) icon = 'fas fa-file-signature text-warning';
 
             html += `
-                <div class="list-group-item file-link" onclick="viewReport('${file.name}')" style="cursor: pointer;">
+                <div class="list-group-item file-link" onclick="viewReport('${file.name}')">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <i class="${icon}"></i>
@@ -339,20 +419,18 @@ async function loadReportFiles() {
 
     } catch (error) {
         console.error('Error:', error);
-        container.innerHTML = '<div class="alert alert-danger">Ошибка загрузки файлов</div>';
+        container.innerHTML = '<div class="alert alert-danger">Ошибка загрузки</div>';
     }
 }
 
 // Генерация полного отчета по трассировке
 async function generateFullTrace(sessionId) {
-    // Переключиться на вкладку трассировки
     document.getElementById('trace-tab').click();
 
     const container = document.getElementById('messagesContainer');
     selectedSession = sessionId;
 
-    // Показать загрузку
-    container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Генерация полного отчета...</p></div>';
+    container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Генерация отчета...</p></div>';
 
     try {
         const response = await fetch(`/api/dialog-full-trace/?session_id=${encodeURIComponent(sessionId)}`);
@@ -369,13 +447,12 @@ async function generateFullTrace(sessionId) {
         }
 
         if (data.report_url) {
-            // Отчет создан, показываем ссылку на файл
             container.innerHTML = `
                 <div class="alert alert-success">
-                    <h5><i class="fas fa-check-circle"></i> Отчет создан</h5>
-                    <p>Полный отчет по трассировке сгенерирован.</p>
-                    <p><a href="/admin-uk/dialog-trace/${encodeURIComponent(data.report_filename)}/" class="btn btn-primary" target="_blank">
-                        <i class="fas fa-file-alt"></i> Открыть отчет: ${data.report_filename}
+                    <h6><i class="fas fa-check-circle"></i> Отчет создан</h6>
+                    <p class="mb-2">Полный отчет по трассировке сгенерирован.</p>
+                    <p class="mb-0"><a href="/admin-uk/dialog-trace/${encodeURIComponent(data.report_filename)}/" class="btn btn-primary btn-sm" target="_blank">
+                        <i class="fas fa-file-alt"></i> Открыть: ${data.report_filename.substring(0, 30)}...
                     </a></p>
                 </div>
                 <div class="card">
@@ -383,7 +460,7 @@ async function generateFullTrace(sessionId) {
                         <small class="fw-bold">Предпросмотр:</small>
                     </div>
                     <div class="card-body">
-                        <pre class="pre-wrap" style="max-height: 500px; overflow-y: auto; font-size: 12px;">${data.report_preview || 'Предпросмотр недоступен'}</pre>
+                        <pre class="pre-wrap report-preview">${data.report_preview || 'Предпросмотр недоступен'}</pre>
                     </div>
                 </div>
             `;
@@ -393,13 +470,12 @@ async function generateFullTrace(sessionId) {
 
     } catch (error) {
         console.error('Error:', error);
-        container.innerHTML = '<div class="alert alert-danger">Ошибка генерации отчета</div>';
+        container.innerHTML = '<div class="alert alert-danger">Ошибка генерации</div>';
     }
 }
 
 // Просмотр файла отчета
 function viewReport(filename) {
-    // Открываем страницу с просмотром файла
     window.location.href = `/admin-uk/dialog-trace/${encodeURIComponent(filename)}/`;
 }
 </script>

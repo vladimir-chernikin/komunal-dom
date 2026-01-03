@@ -13,9 +13,9 @@ except ImportError:
     KLADR_AVAILABLE = False
 
 
-def main_page(request):
-    """Главная страница - ООО Аспект"""
-    return render(request, 'portal/main_page.html')
+def welcome(request):
+    """Главная страница - приветствие ООО Аспект"""
+    return render(request, 'portal/welcome.html')
 
 
 def test_logo_variants(request):
@@ -43,6 +43,20 @@ def subscriber_page(request):
         'user_profile': profile,
     }
     return render(request, 'portal/subscriber_page.html', context)
+
+
+@login_required
+def regulatory_chat(request):
+    """Страница нормативного чата"""
+    try:
+        profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=request.user, role='resident')
+
+    context = {
+        'user_profile': profile,
+    }
+    return render(request, 'portal/normative_chat.html', context)
 
 
 @login_required
@@ -400,3 +414,104 @@ def dialog_report_view_page(request, filename):
         return HttpResponse(f"Ошибка чтения файла: {str(e)}", status=500)
 
 
+@login_required
+def executor_dashboard(request):
+    """Кабинет исполнителя - просмотр заявок"""
+    from django.db import connection
+
+    try:
+        profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=request.user, role='uk_user')
+
+    # Получаем параметры фильтрации
+    status_filter = request.GET.get('status', '')
+    search_query = request.GET.get('q', '')
+
+    # TODO: Определить категорию услуг исполнителя
+    # Пока показываем все заявки, позже можно добавить:
+    # - профиль исполнителя с полем category (Электричество/Сантехника/и т.д.)
+    # - фильтрацию по category
+
+    # Базовый SQL запрос для получения заявок
+    sql_base = """
+        SELECT
+            r.id,
+            r.request_uuid,
+            r.created_at,
+            r.user_name,
+            r.user_phone,
+            r.street_name,
+            r.house_number,
+            r.apartment_number,
+            r.entrance,
+            r.description,
+            r.status,
+            r.service_name,
+            s.category as service_category,
+            s.incident_type,
+            r.assigned_to
+        FROM bot_service_requests r
+        LEFT JOIN services_catalog s ON r.service_id = s.service_id
+        WHERE 1=1
+    """
+
+    params = []
+
+    # Фильтр по статусу
+    if status_filter:
+        sql_base += " AND r.status = %s"
+        params.append(status_filter)
+
+    # Поиск
+    if search_query:
+        sql_base += " AND (r.user_name ILIKE %s OR r.description ILIKE %s OR r.street_name ILIKE %s)"
+        search_pattern = f"%{search_query}%"
+        params.extend([search_pattern, search_pattern, search_pattern])
+
+    # Сортировка по дате (новые сначала)
+    sql_base += " ORDER BY r.created_at DESC"
+
+    # Выполняем запрос
+    with connection.cursor() as cursor:
+        cursor.execute(sql_base, params)
+        columns = [col[0] for col in cursor.description]
+        requests = []
+        for row in cursor.fetchall():
+            req = dict(zip(columns, row))
+            # Форматируем дату
+            if req['created_at']:
+                req['created_at_formatted'] = req['created_at'].strftime('%d.%m.%Y %H:%M')
+            # Формируем адрес
+            address_parts = []
+            if req['street_name']:
+                address_parts.append(req['street_name'])
+            if req['house_number']:
+                address_parts.append(f"д. {req['house_number']}")
+            if req['apartment_number']:
+                address_parts.append(f"кв. {req['apartment_number']}")
+            req['address_formatted'] = ', '.join(address_parts) if address_parts else '—'
+            # Детали адреса
+            req['address_details'] = []
+            if req['entrance']:
+                req['address_details'].append(f"Подъезд: {req['entrance']}")
+            req['address_details_str'] = ', '.join(req['address_details']) if req['address_details'] else ''
+            # Бейдж категории
+            if req['service_category']:
+                req['category_badge'] = f'<span class="badge bg-info">{req["service_category"]}</span>'
+            else:
+                req['category_badge'] = '—'
+            requests.append(req)
+
+    # Разделяем на "Мои заявки" (assigned_to = current_user_id) и "Доступные"
+    my_requests = [r for r in requests if r['assigned_to'] == request.user.id]
+    available_requests = [r for r in requests if r['assigned_to'] is None]
+
+    context = {
+        'user_profile': profile,
+        'my_requests': my_requests,
+        'available_requests': available_requests,
+        'status': status_filter,
+        'q': search_query,
+    }
+    return render(request, 'portal/executor_dashboard.html', context)

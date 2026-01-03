@@ -12,6 +12,10 @@
     max-height: calc(100vh - 300px);
     overflow-y: auto;
 }
+
+.report-preview-box {
+    background-color: #f8f9fa;
+}
 </style>
 {% endblock %}
 
@@ -55,7 +59,7 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="file-content">
-                        <pre class="pre-wrap m-0 p-4" style="background-color: #f8f9fa;"><code>{{ content }}</code></pre>
+                        <pre class="pre-wrap m-0 p-4 report-preview-box"><code>{{ content }}</code></pre>
                     </div>
                 </div>
             </div>

@@ -4,91 +4,70 @@
 
 {% block extra_css %}
 <style>
-/* Унифицированные кнопки */
-.btn-unified {
-    background: #ffffff;
-    border: 1px solid #d1d5db;
-    color: #1a1f2b;
-    border-radius: 10px;
-    font-weight: 600;
-}
-.btn-unified:hover {
-    background: #f3f4f6;
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* Таблица */
-.table-responsive {
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+body {
+    background: #f8f9fa;
 }
 
-.table {
-    table-layout: fixed;
-    width: 100%;
-}
-
-.table th {
-    background-color: #f8f9fa;
-    border-bottom: 2px solid #dee2e6;
-    font-weight: 600;
-    color: #495057;
-    font-size: 0.85rem;
-    padding: 0.75rem;
-}
-
-.table td {
-    padding: 0.75rem;
-    font-size: 0.875rem;
-    vertical-align: middle;
-}
-
-/* Колонки фиксированной ширины */
-.table col.col-id { width: 120px; }
-.table col.col-type { width: 140px; }
-.table col.col-name { width: auto; min-width: 200px; }
-.table col.col-desc { width: 250px; }
-.table col.col-status { width: 110px; }
-.table col.col-date { width: 140px; }
-.table col.col-actions { width: 110px; }
-
-/* Отступы между ячейками */
-.table td {
-    padding: 0.75rem 1rem;
-}
-
-/* Насыщенные бейджи с белым текстом */
-.badge {
-    font-size: 0.75rem;
-    padding: 0.35em 0.6em;
-    border-radius: 6px;
-    border: 1px solid rgba(0,0,0,0.15);
-    color: white !important;
-    font-weight: 500;
-}
-
-.badge.bg-secondary { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); }
-.badge.bg-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
-.badge.bg-warning { background: linear-gradient(135deg, #84cc16 0%, #65a30d 100%); }
-.badge.bg-danger { background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%); }
-.badge.bg-primary { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
-.badge.bg-info { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
-
-/* Карточки */
 .card {
-    border: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    border-radius: 12px;
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .card-header {
-    border-radius: 12px 12px 0 0 !important;
-    border-bottom: 1px solid #e6e9ef;
+    padding: 10px 15px;
+    background: #fff;
+    color: #1a1a1a;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 1rem;
+    font-weight: 600;
 }
 
-/* Модальные окна */
-.modal-content {
-    border-radius: 12px;
+.card-body {
+    padding: 1rem;
+}
+
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #dee2e6;
+}
+
+.table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    padding: 0.6rem 0.75rem;
+}
+
+.table td {
+    font-size: 0.875rem;
+    padding: 0.6rem 0.75rem;
+    vertical-align: middle;
+}
+
+.table-hover tbody tr:hover {
+    background: #f8f9fa;
+}
+
+.btn-group-sm > .btn,
+.btn-sm {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+.badge {
+    font-size: 0.7rem;
+    padding: 0.3em 0.5em;
+    border-radius: 4px;
+    font-weight: 500;
 }
 
 .modal-content pre {
@@ -97,169 +76,163 @@
     max-height: 300px;
     overflow-y: auto;
     background: #f8f9fa;
-    border-radius: 8px;
-    padding: 1rem;
+    border-radius: 6px;
+    padding: 0.75rem;
+    font-size: 0.875rem;
 }
 
-/* Кнопки */
-.btn-group-sm > .btn, .btn-sm {
-    padding: 0.3rem 0.6rem;
-    font-size: 0.85rem;
-    border-radius: 8px;
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.stats-card {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+}
+
+.stats-label {
+    font-size: 0.875rem;
+    color: #495057;
+    font-weight: 500;
+}
+
+.stats-count {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #3b82f6;
 }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <div class="row">
+    <!-- Заголовок -->
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3 mb-0">
-                    <i class="fas fa-robot text-dark"></i>
-                    Управление AI промптами
-                </h1>
+            <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <a href="{% url 'portal:admin_page' %}" class="btn btn-unified">
+                    <h6 class="mb-0">
+                        <i class="fas fa-robot text-primary"></i>
+                        Управление AI промптами
+                        <small class="text-muted">- системные промпты для AI агента</small>
+                    </h6>
+                </div>
+                <div>
+                    <a href="{% url 'portal:admin_page' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="fas fa-arrow-left"></i> Назад
                     </a>
-                    <a href="/admin/portal/aiprompt/add/" class="btn btn-unified" style="background: #0d6efd; color: white; border: none;">
-                        <i class="fas fa-plus"></i> Добавить промпт
+                    <a href="/admin/portal/aiprompt/add/" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> Добавить
                     </a>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0">
-                        <i class="fas fa-robot text-dark"></i>
-                        Таблица AI промптов
-                    </h5>
-                </div>
-                <div class="card-body">
-                    {% if prompts %}
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <colgroup>
-                                    <col class="col-id">
-                                    <col class="col-type">
-                                    <col class="col-name">
-                                    <col class="col-desc">
-                                    <col class="col-status">
-                                    <col class="col-date">
-                                    <col class="col-actions">
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Тип</th>
-                                        <th>Название</th>
-                                        <th>Описание</th>
-                                        <th>Статус</th>
-                                        <th>Обновлен</th>
-                                        <th>Действия</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for prompt in prompts %}
-                                    <tr>
-                                        <td><code>{{ prompt.prompt_id }}</code></td>
-                                        <td>
-                                            {% with prompt_type=prompt.prompt_type %}
-                                                {% if prompt_type == 'system' %}
-                                                    <span class="badge bg-secondary">Системный</span>
-                                                {% elif prompt_type == 'greeting' %}
-                                                    <span class="badge bg-success">Приветствие</span>
-                                                {% elif prompt_type == 'address_check' %}
-                                                    <span class="badge bg-primary">Проверка адреса</span>
-                                                {% elif prompt_type == 'address_not_found' %}
-                                                    <span class="badge bg-warning">Адрес не найден</span>
-                                                {% elif prompt_type == 'farewell' %}
-                                                    <span class="badge bg-info">Прощание</span>
-                                                {% elif prompt_type == 'error' %}
-                                                    <span class="badge bg-danger">Ошибка</span>
-                                                {% elif prompt_type == 'profanity_warning' %}
-                                                    <span class="badge bg-warning text-dark">Предупреждение</span>
-                                                {% elif prompt_type == 'default' %}
-                                                    <span class="badge bg-secondary">По умолчанию</span>
-                                                {% else %}
-                                                    <span class="badge bg-light text-dark">{{ prompt_type }}</span>
-                                                {% endif %}
-                                            {% endwith %}
-                                        </td>
-                                        <td>
-                                            <strong>{{ prompt.title }}</strong>
-                                        </td>
-                                        <td>
-                                            <small class="text-muted">{{ prompt.description|truncatewords:10|default:"Без описания" }}</small>
-                                        </td>
-                                        <td>
-                                            {% if prompt.is_active %}
-                                                <span class="badge bg-success">Активен</span>
-                                            {% else %}
-                                                <span class="badge bg-secondary">Отключен</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <small>{{ prompt.updated_at|date:"d.m.Y H:i" }}</small>
-                                        </td>
-                                        <td>
-                                            <div class="btn-group btn-group-sm">
-                                                <a href="/admin/portal/aiprompt/{{ prompt.id }}/change/"
-                                                   class="btn btn-outline-primary" title="Редактировать">
-                                                    <i class="fas fa-edit"></i>
-                                                </a>
-                                                <button type="button" class="btn btn-outline-info"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#promptModal{{ prompt.id }}"
-                                                        title="Просмотр">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <div class="text-center py-5">
-                            <i class="fas fa-robot fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">Промпты не найдены</h5>
-                            <p class="text-muted">В системе пока нет AI промптов. Создайте первый промпт для бота!</p>
-                            <a href="/admin/portal/aiprompt/add/" class="btn btn-primary">
-                                <i class="fas fa-plus"></i> Создать промпт
-                            </a>
-                        </div>
-                    {% endif %}
-                </div>
+    <!-- Таблица промптов -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <i class="fas fa-list text-primary"></i> Таблица AI промптов
+        </div>
+        <div class="card-body p-0">
+            {% if prompts %}
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Тип</th>
+                            <th>Название</th>
+                            <th>Описание</th>
+                            <th>Статус</th>
+                            <th>Обновлен</th>
+                            <th class="text-end">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for prompt in prompts %}
+                        <tr>
+                            <td><code>{{ prompt.prompt_id }}</code></td>
+                            <td>
+                                {% with prompt_type=prompt.prompt_type %}
+                                    {% if prompt_type == 'system' %}
+                                        <span class="badge bg-secondary">Системный</span>
+                                    {% elif prompt_type == 'greeting' %}
+                                        <span class="badge bg-success">Приветствие</span>
+                                    {% elif prompt_type == 'address_check' %}
+                                        <span class="badge bg-primary">Проверка адреса</span>
+                                    {% elif prompt_type == 'address_not_found' %}
+                                        <span class="badge bg-warning text-dark">Адрес не найден</span>
+                                    {% elif prompt_type == 'farewell' %}
+                                        <span class="badge bg-info">Прощание</span>
+                                    {% elif prompt_type == 'error' %}
+                                        <span class="badge bg-danger">Ошибка</span>
+                                    {% elif prompt_type == 'profanity_warning' %}
+                                        <span class="badge bg-warning text-dark">Предупреждение</span>
+                                    {% elif prompt_type == 'default' %}
+                                        <span class="badge bg-secondary">По умолчанию</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ prompt_type }}</span>
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                            <td><strong>{{ prompt.title }}</strong></td>
+                            <td><small class="text-muted">{{ prompt.description|truncatewords:8|default:"без описания" }}</small></td>
+                            <td>
+                                {% if prompt.is_active %}
+                                    <span class="badge bg-success">Активен</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Отключен</span>
+                                {% endif %}
+                            </td>
+                            <td><small>{{ prompt.updated_at|date:"d.m.Y H:i" }}</small></td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="/admin/portal/aiprompt/{{ prompt.id }}/change/"
+                                       class="btn btn-outline-primary" title="Редактировать">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-outline-secondary"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#promptModal{{ prompt.id }}"
+                                            title="Просмотр">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-robot fa-3x text-muted mb-3"></i>
+                <h6 class="text-muted">Промпты не найдены</h6>
+                <p class="text-muted mb-0">В системе пока нет AI промптов. Создайте первый промпт для бота!</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 
     <!-- Статистика по типам -->
-    <div class="row mt-4">
+    <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-chart-pie"></i>
-                        Статистика по типам промптов
-                    </h5>
+                <div class="card-header">
+                    <i class="fas fa-chart-bar text-secondary"></i> Статистика по типам промптов
                 </div>
                 <div class="card-body">
-                    <div class="row">
+                    <div class="stats-grid">
                         {% for type_name, type_code, count in prompt_types_with_stats %}
-                        <div class="col-md-3 mb-3">
+                        <div class="stats-card">
                             <div class="d-flex justify-content-between align-items-center">
-                                <span><strong>{{ type_name }}:</strong></span>
-                                <span class="badge bg-secondary">
-                                    {{ count }}
-                                </span>
+                                <span class="stats-label">{{ type_name }}</span>
+                                <span class="stats-count">{{ count }}</span>
                             </div>
                         </div>
                         {% endfor %}
@@ -277,7 +250,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="promptModalLabel{{ prompt.id }}">
-            <i class="fas fa-robot text-dark"></i> {{ prompt.title }}
+            <i class="fas fa-robot text-primary"></i> {{ prompt.title }}
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
       </div>
@@ -313,14 +286,14 @@
           {% if prompt.description %}
           <div class="mb-3">
               <strong>Описание:</strong>
-              <p class="text-muted">{{ prompt.description }}</p>
+              <p class="text-muted mb-0">{{ prompt.description }}</p>
           </div>
           {% endif %}
 
           <div class="mb-3">
               <strong>Содержание промпта:</strong>
-              <div class="border rounded p-3 bg-light">
-                  <pre class="mb-0 small">{{ prompt.content|linebreaks }}</pre>
+              <div class="border rounded bg-light mt-2">
+                  <pre class="mb-0">{{ prompt.content|linebreaks }}</pre>
               </div>
           </div>
 

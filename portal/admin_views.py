@@ -26,7 +26,7 @@ def admin_page(request):
     # Проверка прав доступа
     if not request.user.userprofile.has_admin_access():
         messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:main_page')
+        return redirect('portal:welcome')
 
     # DBA пользователей перенаправляем на их страницу
     if request.user.userprofile.is_dba():
@@ -50,7 +50,7 @@ def dba_page(request):
     # Проверка прав доступа
     if not request.user.userprofile.is_dba():
         messages.error(request, 'Доступ запрещен! Только для DBA.')
-        return redirect('portal:main_page')
+        return redirect('portal:welcome')
 
     context = {
         'file_stats': get_file_statistics(),

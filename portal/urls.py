@@ -8,10 +8,12 @@ from django.conf.urls.static import static
 app_name = 'portal'
 
 urlpatterns = [
-    path('', views.main_page, name='main_page'),
+    path('', views.welcome, name='welcome'),
     path('test-logo/', views.test_logo_variants, name='test_logo'),
     path('subscribers/', views.subscriber_page, name='subscriber_page'),
+    path('regulatory-chat/', views.regulatory_chat, name='regulatory_chat'),
     path('dashboard/', views.dashboard, name='dashboard'),
+    path('executor/', views.executor_dashboard, name='executor_dashboard'),
     path('admin-uk/', admin_views.admin_page, name='admin_page'),
     path('dba/', admin_views.dba_page, name='dba_page'),
     path('admin-uk/users/', admin_views.user_management, name='user_management'),

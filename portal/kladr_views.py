@@ -78,9 +78,16 @@ def kladr_objects_list(request):
     # Данные для фильтров
     levels = KladrObjectType.LEVEL_CHOICES
 
+    # Статистика по уровням
+    level_counts = []
+    for level_value, level_name in levels:
+        count = KladrAddressObject.objects.filter(type__level=level_value).count()
+        level_counts.append((level_value, level_name, count))
+
     context = {
         'page_obj': page_obj,
         'levels': levels,
+        'level_counts': level_counts,
         'current_level': level,
         'search': search,
         'current_active': is_active,

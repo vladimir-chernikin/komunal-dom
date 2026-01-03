@@ -4,59 +4,93 @@
 
 {% block extra_css %}
 <style>
-/* Карточки с hover эффектами */
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+    background: #f8f9fa;
+}
+
+/* Компактные карточки */
+.card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    padding: 10px 15px;
+    background: #fff;
+    color: #1a1a1a;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 1rem;
+}
+
+/* Карточки действий */
 .admin-actions-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .admin-actions-row > div {
-    flex: 1 1 calc(25% - 1rem);
-    min-width: 200px;
+    flex: 1 1 calc(25% - 0.75rem);
+    min-width: 140px;
 }
 
 .quick-action-card {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     border: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
     height: 100%;
 }
 
 .quick-action-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
 .quick-action-card .card-body {
-    min-height: 80px;
+    min-height: 70px;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     text-align: center;
-    padding: 0.75rem 0.5rem;
+    padding: 1rem 0.75rem;
 }
 
 .quick-action-card i {
     font-size: 1.5rem;
     margin-bottom: 0.5rem;
-    transition: transform 0.3s;
 }
 
-.quick-action-card:hover i {
-    transform: scale(1.1);
+.quick-action-card h6 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin: 0;
+}
+
+.quick-action-card small {
+    font-size: 0.75rem;
+    color: #666;
 }
 
 /* Статистические карточки */
 .stat-card {
     border: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    transition: all 0.3s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
 }
 
 .stat-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
 .stat-card .card-body {
@@ -69,16 +103,22 @@
     margin-bottom: 0.25rem;
 }
 
+.stat-card p {
+    font-size: 0.875rem;
+    color: #666;
+    margin: 0;
+}
+
 /* Профильная карточка */
 .profile-card {
     border: none;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
 .profile-avatar {
     width: 60px;
     height: 60px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -91,67 +131,73 @@
     color: white;
 }
 
-/* Список быстрых ссылок */
+/* Быстрые ссылки */
 .quick-links .list-group-item {
     border: none;
     border-bottom: 1px solid #f0f0f0;
-    transition: all 0.2s;
-    padding: 0.5rem 0.75rem;
+    padding: 0.6rem 0.75rem;
     font-size: 0.9rem;
+    transition: all 0.2s ease;
 }
 
 .quick-links .list-group-item:hover {
     background-color: #f8f9fa;
-    padding-left: 1.5rem;
+    padding-left: 1rem;
 }
 
 .quick-links .list-group-item i {
-    margin-right: 0.75rem;
-    width: 20px;
+    margin-right: 0.5rem;
+    width: 18px;
     text-align: center;
 }
 
 /* AI Чат карточка */
 .ai-chat-card {
     border: none;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
     color: white;
-    box-shadow: 0 8px 24px rgba(118, 75, 162, 0.3);
-    transition: all 0.3s;
+    box-shadow: 0 4px 16px rgba(37, 99, 235, 0.2);
+    transition: all 0.3s ease;
 }
 
 .ai-chat-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 32px rgba(118, 75, 162, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3);
 }
 
 .ai-chat-card .card-body {
-    padding: 1.25rem;
+    padding: 1.5rem;
 }
 
 .ai-chat-card h5 {
     font-size: 1.25rem;
+    font-weight: 600;
     margin-bottom: 0.5rem;
 }
 
 .ai-chat-card p {
     opacity: 0.9;
     margin-bottom: 1rem;
+    font-size: 0.95rem;
+}
+
+.tiny-text {
+    font-size: 0.65rem;
 }
 
 .ai-chat-card .btn-light {
     background: white;
-    color: #667eea;
+    color: #2563eb;
     border: none;
-    padding: 0.5rem 1.5rem;
+    padding: 0.6rem 1.5rem;
     font-weight: 600;
-    transition: all 0.3s;
     font-size: 0.9rem;
+    transition: all 0.2s ease;
 }
 
 .ai-chat-card .btn-light:hover {
     background: #f8f9fa;
-    transform: scale(1.05);
+    transform: scale(1.02);
 }
 
 /* Секция заголовков */
@@ -159,29 +205,36 @@
     display: flex;
     align-items: center;
     margin-bottom: 0.75rem;
-    padding-bottom: 0.25rem;
-    border-bottom: 2px solid #f0f0f0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e8e8e8;
+}
+
+.section-header h6 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin: 0;
 }
 
 .section-header i {
-    margin-right: 0.75rem;
-    opacity: 0.7;
+    margin-right: 0.5rem;
+    color: #2563eb;
 }
 
-/* Анимация появления */
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+/* Информация о системе */
+.system-info p {
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
 }
 
-.col-md-3, .col-md-4, .col-md-8 {
-    animation: fadeInUp 0.5s ease-out;
+.system-info strong {
+    color: #1a1a1a;
+}
+
+@media (max-width: 768px) {
+    .admin-actions-row > div {
+        flex: 1 1 calc(50% - 0.75rem);
+    }
 }
 </style>
 {% endblock %}
@@ -191,25 +244,7 @@
     <!-- Заголовок страницы -->
     <div class="row mb-3">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h5 class="mb-1">
-                        Добро пожаловать в личный кабинет (тестовый)
-                    </h5>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <span class="badge
-                        {% if user_role == 'django_admin' %}bg-danger{% elif user_role == 'dba' %}bg-warning text-dark{% else %}bg-success{% endif %}
-                        fs-6 px-3 py-2">
-                        {% if user_role == 'django_admin' %}
-                            <i class="fas fa-crown"></i> Администратор Django
-                        {% elif user_role == 'dba' %}
-                            <i class="fas fa-database"></i> DBA
-                        {% else %}
-                            <i class="fas fa-user"></i> Сотрудник УК
-                        {% endif %}
-                    </span>
-                </div>
+            <div class="d-flex justify-content-end align-items-center">
             </div>
         </div>
     </div>
@@ -219,7 +254,7 @@
             <!-- AI Диспетчер - главная карточка -->
             <div class="card ai-chat-card mb-3">
                 <div class="card-body text-center">
-                    <i class="fas fa-robot fa-2x mb-2 text-dark"></i>
+                    <i class="fas fa-robot fa-2x mb-2 text-white"></i>
                     <h5 class="mb-2"><i class="fas fa-sparkles"></i> AI Диспетчер</h5>
                     <p class="mb-3 small">
                         Опишите суть вашего обращения, и искусственный интеллект поможет определить нужную услугу
@@ -248,7 +283,7 @@
                                 <a href="/admin/" class="text-decoration-none text-dark">
                                     <i class="fas fa-cogs text-danger"></i>
                                     <h6 class="mb-0 small">Админ панель</h6>
-                                    <small class="text-muted" style="font-size: 0.65rem;">Django Admin</small>
+                                    <small class="text-muted" class="tiny-text">Django Admin</small>
                                 </a>
                             </div>
                         </div>
@@ -261,7 +296,7 @@
                                 <a href="{% url 'file_manager:all_files' %}" class="text-decoration-none text-dark">
                                     <i class="fas fa-folder-open text-warning"></i>
                                     <h6 class="mb-0 small">Файлы</h6>
-                                    <small class="text-muted" style="font-size: 0.65rem;">Все файлы системы</small>
+                                    <small class="text-muted" class="tiny-text">Все файлы системы</small>
                                 </a>
                             </div>
                         </div>
@@ -274,7 +309,7 @@
                                 <a href="{% url 'portal:admin_page' %}" class="text-decoration-none text-dark">
                                     <i class="fas fa-users-cog text-warning"></i>
                                     <h6 class="mb-0 small">Пользователи</h6>
-                                    <small class="text-muted" style="font-size: 0.65rem;">Управление</small>
+                                    <small class="text-muted" class="tiny-text">Управление</small>
                                 </a>
                             </div>
                         </div>
@@ -286,7 +321,7 @@
                                 <a href="{% url 'portal:dba_page' %}" class="text-decoration-none text-dark">
                                     <i class="fas fa-database"></i>
                                     <h6 class="mb-0 small">Панель DBA</h6>
-                                    <small class="text-muted" style="font-size: 0.65rem;">Менеджер данных</small>
+                                    <small class="text-muted" class="tiny-text">Управление данными</small>
                                 </a>
                             </div>
                         </div>
@@ -299,8 +334,8 @@
                             <div class="card-body py-2">
                                 <a href="{% url 'portal:kladr_management' %}" class="text-decoration-none text-dark">
                                     <i class="fas fa-map-marked-alt text-success"></i>
-                                    <h6 class="mb-0 small">КЛАДР</h6>
-                                    <small class="text-muted" style="font-size: 0.65rem;">Адресная база</small>
+                                    <h6 class="mb-0 small">КЛАДР (адреса РФ)</h6>
+                                    <small class="text-muted" class="tiny-text">Проверка адресов</small>
                                 </a>
                             </div>
                         </div>
@@ -313,8 +348,8 @@
                             <div class="card-body py-2">
                                 <a href="{% url 'portal:prompt_management' %}" class="text-decoration-none text-dark">
                                     <i class="fas fa-robot text-dark"></i>
-                                    <h6 class="mb-0 small">AI Промпты</h6>
-                                    <small class="text-muted" style="font-size: 0.65rem;">Настройка бота</small>
+                                    <h6 class="mb-0 small">AI промпты</h6>
+                                    <small class="text-muted" class="tiny-text">Настройка бота</small>
                                 </a>
                             </div>
                         </div>
@@ -350,7 +385,7 @@
                             <div class="card-body text-center py-2">
                                 <h5 class="text-warning mb-1">{{ dba_count }}</h5>
                                 <p class="text-muted mb-0 small">
-                                    <i class="fas fa-database"></i> Менеджеров
+                                    <i class="fas fa-database"></i> Менеджеров данных
                                 </p>
                             </div>
                         </div>
@@ -386,7 +421,7 @@
                             <div class="card-body text-center py-2">
                                 <h5 class="text-primary mb-1">{{ kladr_stats.address_objects|default:"-" }}</h5>
                                 <p class="text-muted mb-0 small">
-                                    <i class="fas fa-map-marker-alt"></i> Адресных объектов
+                                    <i class="fas fa-map-marker-alt"></i> Адресов КЛАДР
                                 </p>
                             </div>
                         </div>
@@ -434,7 +469,7 @@
                         {% if user_role == 'django_admin' %}
                             Администратор Django
                         {% elif user_role == 'dba' %}
-                            DBA - Менеджер данных
+                            DBA (менеджер данных)
                         {% else %}
                             Сотрудник УК
                         {% endif %}
@@ -451,22 +486,18 @@
                     </h6>
                 </div>
                 <div class="list-group list-group-flush quick-links">
-                    <a href="{% url 'message_handler:chat_interface' %}" class="list-group-item list-group-item-action">
-                        <i class="fas fa-robot text-dark"></i>
-                        AI Чат диспетчера
-                    </a>
                     <a href="{% url 'file_manager:file_list' %}" class="list-group-item list-group-item-action">
                         <i class="fas fa-folder text-warning"></i>
                         Мои файлы
                     </a>
                     <a href="/subscribers/" class="list-group-item list-group-item-action">
                         <i class="fas fa-users text-info"></i>
-                        Абоненты
+                        Кабинет абонента (временно)
                     </a>
-                    {% if user_role == 'django_admin' or user_role == 'dba' %}
-                    <a href="{% url 'portal:kladr_management' %}" class="list-group-item list-group-item-action">
-                        <i class="fas fa-map-marked-alt text-success"></i>
-                        Управление КЛАДР
+                    {% if user_role != 'resident' %}
+                    <a href="{% url 'portal:executor_dashboard' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-tools text-primary"></i>
+                        Кабинет исполнителя
                     </a>
                     {% endif %}
                     {% if user_role == 'django_admin' %}
@@ -480,22 +511,7 @@
                         <i class="fas fa-users-cog text-secondary"></i>
                         Управление пользователями
                     </a>
-                    {% elif user_role == 'dba' %}
-                    <a href="{% url 'portal:dba_page' %}" class="list-group-item list-group-item-action">
-                        <i class="fas fa-database"></i>
-                        Панель DBA
-                    </a>
                     {% endif %}
-                    {% if user_role == 'django_admin' or user_role == 'dba' %}
-                    <a href="{% url 'portal:prompt_management' %}" class="list-group-item list-group-item-action">
-                        <i class="fas fa-robot text-dark"></i>
-                        AI промпты
-                    </a>
-                    {% endif %}
-                    <a href="/logout/" class="list-group-item list-group-item-action text-danger">
-                        <i class="fas fa-sign-out-alt"></i>
-                        Выйти
-                    </a>
                 </div>
             </div>
 
@@ -530,8 +546,8 @@
                             <strong>PostgreSQL 16</strong>
                         </p>
                         <p class="small mb-0">
-                            <span class="text-muted">Адресов:</span>
-                            <strong>{{ kladr_stats.address_objects|default:"-" }}</strong>
+                            <span class="text-muted">КЛАДР:</span>
+                            <strong>{{ kladr_stats.address_objects|default:"-" }} объектов</strong>
                         </p>
                     </div>
                 </div>

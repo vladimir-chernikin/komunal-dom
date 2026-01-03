@@ -379,8 +379,7 @@ METADATA:
                     details += f"""
 {'─' * 80}
 METADATA OUTBOUND:
-{self._format_metadata_v2(next_metadata, previous_messages, indent="│ ")
-"""
+{self._format_metadata_v2(next_metadata, previous_messages, indent="│ ")}"""
         else:
             # Анализируем ответ бота
             # ИСПРАВЛЕНО (2025-12-29): Пропускаем outbound сообщение если ответ уже показан в предыдущем inbound

@@ -47,6 +47,15 @@
 .info-card-text {
     font-size: 0.9rem;
 }
+
+/* Статистические иконки и цифры */
+.stat-icon-lg {
+    font-size: 1.5rem;
+}
+
+.stat-number-lg {
+    font-size: 1.3rem;
+}
 </style>
 {% endblock %}
 
@@ -164,7 +173,7 @@
                     </h6>
                 </div>
                 <div class="card-body text-center">
-                    <i class="fas fa-search-plus text-dark" style="font-size: 1.5rem;"></i>
+                    <i class="fas fa-search-plus text-dark stat-icon-lg"></i>
                     <p class="mb-0">Трассировка</p>
                 </div>
                 <div class="card-footer bg-white">
@@ -212,15 +221,15 @@
                 <div class="card-body">
                     <div class="row text-center">
                         <div class="col-4">
-                            <h4 class="text-dark mb-0" style="font-size: 1.3rem;">{{ kladr_stats.address_objects|default:"-" }}</h4>
+                            <h4 class="text-dark mb-0 stat-number-lg">{{ kladr_stats.address_objects|default:"-" }}</h4>
                             <small class="text-muted">Объектов</small>
                         </div>
                         <div class="col-4">
-                            <h4 class="text-dark mb-0" style="font-size: 1.3rem;">{{ kladr_stats.buildings|default:"-" }}</h4>
+                            <h4 class="text-dark mb-0 stat-number-lg">{{ kladr_stats.buildings|default:"-" }}</h4>
                             <small class="text-muted">Зданий</small>
                         </div>
                         <div class="col-4">
-                            <h4 class="text-dark mb-0" style="font-size: 1.3rem;">{{ kladr_stats.service_areas|default:"-" }}</h4>
+                            <h4 class="text-dark mb-0 stat-number-lg">{{ kladr_stats.service_areas|default:"-" }}</h4>
                             <small class="text-muted">Зон</small>
                         </div>
                     </div>

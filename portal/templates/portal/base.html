@@ -9,6 +9,10 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
         body {
@@ -21,8 +25,14 @@
             flex: 1;
         }
 
-        .navbar-brand {
-            font-weight: bold;
+        .navbar-brand,
+        .nav-link {
+            font-weight: normal;
+            font-size: 1rem;
+        }
+        .navbar-brand:hover,
+        .nav-link:hover {
+            font-weight: normal;
         }
         .hero-section {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -39,15 +49,58 @@
         /* Кастомная навигация */
         .navbar-custom {
             background: white;
-            border-bottom: 1px solid #dee2e6;
+            border-bottom: 1px solid #e8e8e8;
+        }
+        .navbar-custom .navbar-nav {
+            align-items: flex-end;
         }
 
         /* Логотип домик */
         .svg-house {
             width: 32px;
             height: 32px;
-            vertical-align: middle;
+            vertical-align: bottom;
             margin-right: 8px;
+        }
+        .navbar-brand,
+        .nav-link {
+            font-weight: normal;
+            font-size: 1rem;
+            color: #212529 !important;
+            padding: 0.5rem 1rem;
+            padding-bottom: 0.3rem;
+        }
+        .navbar-brand:hover,
+        .nav-link:hover {
+            color: #2563eb !important;
+        }
+
+        .nav-link.active {
+            color: #2563eb !important;
+            font-weight: 500;
+        }
+        .nav-link i {
+            margin-right: 4px;
+        }
+
+        /* Логотип и бренд */
+        .navbar-brand-custom {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #2563eb;
+        }
+
+        /* Футер */
+        .footer-custom {
+            background: white !important;
+            border-top: 1px solid #e8e8e8;
+            padding: 2rem 0;
+        }
+
+        .footer-text {
+            color: #999;
+            font-size: 0.85rem;
+            font-weight: 400;
         }
 
         /* Кнопка выхода в меню */
@@ -63,88 +116,11 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    {% block navbar %}
     <nav class="navbar navbar-expand-lg navbar-light navbar-custom" role="navigation" aria-label="Главная навигация сайта">
         <div class="container">
-            <a class="navbar-brand text-primary" href="{% url 'portal:main_page' %}" aria-label="УК Аспект - главная страница">
-                <svg class="svg-house" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Крыша -->
-                    <polygon points="32,2 2,18 62,18" fill="#2C5282" stroke="#1A365D" stroke-width="1.5"/>
-
-                    <!-- Основание дома - 4 этажа -->
-                    <rect x="4" y="18" width="56" height="44" fill="#EDF2F7" stroke="#CBD5E0" stroke-width="1.5"/>
-
-                    <!-- 4 этаж -->
-                    <!-- Окно 1 - свет -->
-                    <rect x="8" y="21" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="13" y1="21" x2="13" y2="29" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="8" y1="25" x2="18" y2="25" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 2 - темно -->
-                    <rect x="22" y="21" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="27" y1="21" x2="27" y2="29" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="22" y1="25" x2="32" y2="25" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 3 - свет -->
-                    <rect x="36" y="21" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="41" y1="21" x2="41" y2="29" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="36" y1="25" x2="46" y2="25" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 4 - темно -->
-                    <rect x="50" y="21" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="55" y1="21" x2="55" y2="29" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="50" y1="25" x2="60" y2="25" stroke="#718096" stroke-width="0.6"/>
-
-                    <!-- 3 этаж -->
-                    <!-- Окно 1 - темно -->
-                    <rect x="8" y="31" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="13" y1="31" x2="13" y2="39" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="8" y1="35" x2="18" y2="35" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 2 - свет -->
-                    <rect x="22" y="31" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="27" y1="31" x2="27" y2="39" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="22" y1="35" x2="32" y2="35" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 3 - темно -->
-                    <rect x="36" y="31" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="41" y1="31" x2="41" y2="39" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="36" y1="35" x2="46" y2="35" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 4 - свет -->
-                    <rect x="50" y="31" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="55" y1="31" x2="55" y2="39" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="50" y1="35" x2="60" y2="35" stroke="#718096" stroke-width="0.6"/>
-
-                    <!-- 2 этаж -->
-                    <!-- Окно 1 - свет -->
-                    <rect x="8" y="41" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="13" y1="41" x2="13" y2="49" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="8" y1="45" x2="18" y2="45" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 2 - свет -->
-                    <rect x="22" y="41" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="27" y1="41" x2="27" y2="49" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="22" y1="45" x2="32" y2="45" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 3 - темно -->
-                    <rect x="36" y="41" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="41" y1="41" x2="41" y2="49" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="36" y1="45" x2="46" y2="45" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 4 - свет -->
-                    <rect x="50" y="41" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="55" y1="41" x2="55" y2="49" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="50" y1="45" x2="60" y2="45" stroke="#718096" stroke-width="0.6"/>
-
-                    <!-- 1 этаж -->
-                    <!-- Окно 1 - темно -->
-                    <rect x="8" y="51" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="13" y1="51" x2="13" y2="59" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="8" y1="55" x2="18" y2="55" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Окно 2 - темно -->
-                    <rect x="22" y="51" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="27" y1="51" x2="27" y2="59" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="22" y1="55" x2="32" y2="55" stroke="#718096" stroke-width="0.6"/>
-                    <!-- Дверь -->
-                    <rect x="36" y="51" width="10" height="10" fill="#8B4513" stroke="#654321" stroke-width="1"/>
-                    <circle cx="41" cy="56" r="1" fill="#FFD700"/>
-                    <!-- Окно 3 - свет -->
-                    <rect x="50" y="51" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                    <line x1="55" y1="51" x2="55" y2="59" stroke="#718096" stroke-width="0.6"/>
-                    <line x1="50" y1="55" x2="60" y2="55" stroke="#718096" stroke-width="0.6"/>
-                </svg>
-                УК "Аспект"
+            <a class="navbar-brand navbar-brand-custom" href="{% url 'portal:welcome' %}" aria-label="На главную страницу">
+                УК Онлайн
             </a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
@@ -154,41 +130,6 @@
 
             <div class="collapse navbar-collapse" id="navbarNav" aria-label="Основное меню">
                 <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="{% url 'portal:main_page' %}">
-                            <i class="fas fa-home"></i> Главная
-                        </a>
-                    </li>
-                    {% if user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.path == '/dashboard/' %}active{% endif %}" href="{% url 'portal:dashboard' %}">
-                                <i class="fas fa-user"></i> Личный кабинет
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.path == '/subscribers/' %}active{% endif %}" href="{% url 'portal:subscriber_page' %}">
-                                <i class="fas fa-users"></i> Абонентам
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if '/files/' in request.path %}active{% endif %}" href="{% url 'file_manager:file_list' %}">
-                                <i class="fas fa-folder"></i> Файлы
-                            </a>
-                        </li>
-                        {% if user.userprofile.has_admin_access %}
-                            <li class="nav-item">
-                                {% if user.userprofile.is_django_admin %}
-                                    <a class="nav-link {% if request.path == '/admin-uk/' %}active{% endif %}" href="{% url 'portal:admin_page' %}">
-                                        <i class="fas fa-cogs"></i> Django Админ
-                                    </a>
-                                {% elif user.userprofile.is_dba %}
-                                    <a class="nav-link {% if request.path == '/dba/' %}active{% endif %}" href="{% url 'portal:dba_page' %}">
-                                        <i class="fas fa-database"></i> DBA
-                                    </a>
-                                {% endif %}
-                            </li>
-                        {% endif %}
-                    {% endif %}
                 </ul>
 
                 <ul class="navbar-nav">
@@ -199,12 +140,12 @@
                                 <i class="fas fa-user"></i> {{ user.username }}
                             </a>
                             <ul class="dropdown-menu" aria-labelledby="navbarDropdown" role="menu">
+                                {% if user.userprofile.role != 'uk_user' %}
                                 <li role="none"><a class="dropdown-item" href="{% url 'portal:dashboard' %}" role="menuitem">Личный кабинет</a></li>
+                                {% endif %}
                                 {% if user.userprofile.is_django_admin %}
                                 <li role="none"><a class="dropdown-item" href="{% url 'portal:admin_page' %}" role="menuitem">Панель администратора</a></li>
                                 <li role="none"><a class="dropdown-item" href="/admin/" role="menuitem">Админ-панель Django</a></li>
-                                {% elif user.userprofile.is_dba %}
-                                <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Панель DBA</a></li>
                                 {% endif %}
                                 <li role="none"><hr class="dropdown-divider"></li>
                                 <li role="none">
@@ -228,18 +169,16 @@
             </div>
         </div>
     </nav>
+    {% endblock %}
 
     <main>
         {% block content %}
         {% endblock %}
     </main>
 
-    <footer class="bg-light text-center py-4 mt-5">
+    <footer class="bg-light text-center py-4 mt-5 footer-custom">
         <div class="container">
-            <p class="mb-0">© 2025 ООО "Аспект" Управляющая компания. Все права защищены.</p>
-            <p class="mb-0 text-muted">
-                <i class="fas fa-map-marker-alt"></i> г. Сочи, Краснодарский край, Россия
-            </p>
+            <p class="mb-0 footer-text">© 2025. Все права защищены.</p>
         </div>
     </footer>
 

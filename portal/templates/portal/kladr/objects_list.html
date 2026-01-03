@@ -3,44 +3,225 @@
 {% block title %}Адресные объекты КЛАДР - УК "Аспект"{% endblock %}
 
 {% block extra_css %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+    background: #f8f9fa;
+}
+
+/* Компактные карточки */
+.card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    padding: 10px 15px;
+    background: #fff;
+    color: #1a1a1a;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 1rem;
+}
+
+/* Быстрые фильтры по уровням */
+.level-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.level-filter-btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid #dee2e6;
+    background: #fff;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #495057;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.level-filter-btn:hover {
+    background: #f8f9fa;
+    border-color: #3b82f6;
+    color: #3b82f6;
+    text-decoration: none;
+}
+
+.level-filter-btn.active {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    border-color: #2563eb;
+    color: white;
+}
+
+.level-filter-btn .count {
+    background: rgba(0,0,0,0.1);
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.level-filter-btn.active .count {
+    background: rgba(255,255,255,0.2);
+    color: white;
+}
+
 .table-responsive {
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
+/* Поисковый контейнер */
 .search-container {
     background: white;
     border-radius: 8px;
-    padding: 1.5rem;
+    padding: 1rem;
     margin-bottom: 1rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    border: 1px solid #dee2e6;
 }
 
+/* Таблица */
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #dee2e6;
+}
+
+.table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+    font-size: 0.875rem;
+    vertical-align: middle;
+}
+
+.table-hover tbody tr:hover {
+    background: #f8f9fa;
+}
+
+/* Кнопки действий */
 .btn-group-sm > .btn {
-    padding: 0.25rem 0.5rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+/* Бейджи */
+.badge {
+    font-size: 0.75rem;
+    padding: 0.35em 0.6em;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+/* Пагинация */
+.pagination .page-link {
+    color: #3b82f6;
+    border-color: #dee2e6;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.pagination .page-item.active .page-link {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    border-color: #2563eb;
+}
+
+.pagination .page-link:hover {
+    background: #f8f9fa;
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+/* Кнопка Buildings (выделенная) */
+.btn-buildings {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #059669;
+    color: white;
+}
+
+.btn-buildings:hover {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    border-color: #047857;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
 }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <div class="row">
+    <!-- Заголовок -->
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3 mb-0">
-                    <i class="fas fa-map-marker-alt"></i>
-                    Адресные объекты КЛАДР
-                </h1>
+            <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-secondary">
+                    <h6 class="mb-0">
+                        <i class="fas fa-map-marker-alt text-primary"></i>
+                        Адресные объекты КЛАДР
+                        <small class="text-muted">- справочник адресов РФ</small>
+                    </h6>
+                </div>
+                <div>
+                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="fas fa-arrow-left"></i> Назад
                     </a>
-                    <a href="/admin/kladr/kladraddressobject/add/" class="btn btn-primary">
-                        <i class="fas fa-plus"></i> Добавить объект
+                    <a href="/admin/kladr/kladraddressobject/add/" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> Добавить
                     </a>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Быстрые фильтры по уровням -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="level-filters">
+                <a href="{% url 'portal:kladr_objects' %}" class="level-filter-btn {% if not current_level %}active{% endif %}">
+                    <i class="fas fa-list"></i>
+                    Все
+                    <span class="count">{{ total_count }}</span>
+                </a>
+                {% for level_value, level_name in levels %}
+                <a href="{% url 'portal:kladr_objects' %}?level={{ level_value }}" class="level-filter-btn {% if current_level == level_value %}active{% endif %}">
+                    <i class="fas fa-{% if level_value == 1 %}globe{% elif level_value == 2 %}map{% elif level_value == 3 %}city{% elif level_value == 4 %}home{% elif level_value == 5 %}road{% else %}building{% endif %}"></i>
+                    {{ level_name }}
+                    {% if level_counts %}
+                        {% for lv, ln, cnt in level_counts %}
+                            {% if lv == level_value %}
+                            <span class="count">{{ cnt }}</span>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </a>
+                {% endfor %}
             </div>
         </div>
     </div>
@@ -96,11 +277,19 @@
 
     <!-- Таблица объектов -->
     <div class="card">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">
-                <i class="fas fa-list"></i>
-                Список объектов ({{ page_obj.start_index }}-{{ page_obj.end_index }} из {{ total_count }})
-            </h5>
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="fas fa-list text-primary"></i>
+                    Список объектов
+                    <small class="text-muted">(показано {{ page_obj.start_index }}-{{ page_obj.end_index }} из {{ total_count }})</small>
+                </h6>
+                {% if search or current_level or current_active %}
+                <a href="{% url 'portal:kladr_objects' %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-times"></i> Сбросить фильтры
+                </a>
+                {% endif %}
+            </div>
         </div>
         <div class="card-body p-0">
             {% if page_obj %}
@@ -162,7 +351,7 @@
                                         </a>
                                         {% if obj.type.level == 5 %}
                                         <a href="{% url 'portal:kladr_buildings' %}?street={{ obj.id }}"
-                                           class="btn btn-outline-success" title="Здания">
+                                           class="btn btn-buildings" title="Здания">
                                             <i class="fas fa-building"></i>
                                         </a>
                                         {% endif %}
