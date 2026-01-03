@@ -2033,19 +2033,50 @@ class MainAgent:
         # Формируем промпт для валидации
         facts_text = "\n".join([f"  - {fact}" for fact in absolute_facts])
 
-        prompt = f"""Ты - логический валидатор вопросов AI-диспетчера.
+        # ИСПРАВЛЕНО (2026-01-03): Улучшенный промпт с примерами и строгими правилами
+        prompt = f"""Ты - строгий логический валидатор вопросов AI-диспетчера.
 
-Вопрос бота: "{question}"
+ВОПРОС БОТА: "{question}"
 
-ИЗВЕСТНЫЕ ФАКТЫ (запрещено спрашивать об этом):
+ИЗВЕСТНЫЕ ФАКТЫ (ЗАПРЕЩЕНО СПРАШИВАТЬ ОБ ЭТОМ):
 {facts_text}
 
-Проверь вопрос на два условия:
-1. Спрашивает ли бот о том, что уже есть в "Известных фактах"?
-2. Является ли вопрос двойным (содержит "и", "или" между разными вопросами)?
+КРИТИЧЕСКИЕ ПРАВИЛА ВАЛИДАЦИИ:
 
-Если все хорошо - верни {{"valid": true}}
-Если ошибка - верни {{"valid": false, "reason": "краткое объяснение", "fixed_question": "исправленный вопрос"}}
+1. ПРОВЕРКА НА ИЗБЫТОЧНОСТЬ:
+   Вопрос ИЗБЫТОЧЕН, если он спрашивает о том, что УЖЕ есть в "Известных фактах".
+
+   ПРИМЕРЫ ИЗБЫТОЧНЫХ ВОПРОСОВ:
+   - Если факт: "location=зал", вопрос "Где именно?" → ИЗБЫТОЧЕН
+   - Если факт: "category=Отопление", вопрос "Это отопление?" → ИЗБЫТОЧЕН
+   - Если факт: "Проблема: течет", вопрос "Что случилось?" → ИЗБЫТОЧЕН
+   - Если факт: "object=батарея", вопрос "Что именно течет?" → ИЗБЫТОЧЕН
+
+   ПРАВИЛО: Любой вопрос о локации/объекте/категории, которая УЖЕ УКАЗАНА в фактах → ИЗБЫТОЧЕН.
+
+2. ПРОВЕРКА НА ДВОЙНОЙ ВОПРОС:
+   Вопрос ДВОЙНОЙ, если содержит два разных вопроса через "и", "или", запятую.
+
+   ПРИМЕРЫ ДВОЙНЫХ ВОПРОСОВ:
+   - "Что и где именно?" → ДВОЙНОЙ (Что? + Где?)
+   - "Опишите что и где это произошло" → ДВОЙНОЙ
+   - "Какой объект и в каком месте?" → ДВОЙНОЙ
+
+3. ПРОВЕРКА НА УТОЧНЕНИЕ УЖЕ ИЗВЕСТНОГО:
+   Если в фактах указана конкретика, а вопрос просит "уточнить" это → ИЗБЫТОЧЕН.
+
+   ПРИМЕРЫ:
+   - Факт: "Проблема: течет из трубы", вопрос: "Уточните что течет?" → ИЗБЫТОЧЕН
+   - Факт: "location=Индивидуальное", вопрос: "В квартире или общедомовое?" → ИЗБЫТОЧЕН
+
+РЕШЕНИЕ:
+- Если вопрос ИЗБЫТОЧНЫЙ или ДВОЙНОЙ → {{"valid": false, "reason": "описание ошибки", "fixed_question": "лучший вопрос"}}
+- Если вопрос НОРМАЛЬНЫЙ → {{"valid": true}}
+
+При генерации fixed_question:
+- Убирай избыточную часть
+- Разбивай двойной вопрос на один основной
+- Сохраняй смысл, но задавай только ОДИН вопрос
 
 Верни только JSON, без другого текста.
 
@@ -2098,6 +2129,8 @@ JSON:"""
         - Категория (батарея -> Отопление)
         - Объект (труба, кран, батарея)
 
+        ИСПРАВЛЕНО (2026-01-03): Добавлено кеширование результатов
+
         Args:
             message_text: Текст сообщения
             dialog_history: История диалога
@@ -2115,6 +2148,19 @@ JSON:"""
                 'filters': {},
                 'normalized_fields': {}
             }
+
+        # ИСПРАВЛЕНО (2026-01-03): Кеширование результатов
+        # Используем хеш текста сообщения как ключ кеша
+        import hashlib
+        cache_key = hashlib.md5(message_text.encode()).hexdigest()
+
+        # Проверяем кеш
+        if not hasattr(self, '_semantic_pre_check_cache'):
+            self._semantic_pre_check_cache = {}
+
+        if cache_key in self._semantic_pre_check_cache:
+            logger.info(f"SemanticPreCheck: результат из кеша (key: {cache_key[:8]}...)")
+            return self._semantic_pre_check_cache[cache_key]
 
         try:
             # Вызываем FilterDetectionService (уже использует YandexGPT Lite)
@@ -2166,7 +2212,7 @@ JSON:"""
             for fact in absolute_facts:
                 logger.info(f"  - {fact}")
 
-            return {
+            result = {
                 'absolute_facts': absolute_facts,
                 'filters': {
                     k: {'value': v, 'confidence': confidence}
@@ -2177,6 +2223,17 @@ JSON:"""
                 'raw_response': filter_result
             }
 
+            # ИСПРАВЛЕНО (2026-01-03): Сохраняем в кеш
+            self._semantic_pre_check_cache[cache_key] = result
+            # Ограничиваем размер кеша (максимум 50 записей)
+            if len(self._semantic_pre_check_cache) > 50:
+                # Удаляем самую старую запись (первую)
+                oldest_key = next(iter(self._semantic_pre_check_cache))
+                del self._semantic_pre_check_cache[oldest_key]
+                logger.info(f"SemanticPreCheck: кеш очищен (удалена старая запись)")
+
+            return result
+
         except Exception as e:
             logger.error(f"Ошибка в _semantic_pre_check: {e}")
             return {
@@ -2184,6 +2241,107 @@ JSON:"""
                 'filters': {},
                 'normalized_fields': {}
             }
+
+    def _determine_strategy(
+        self,
+        candidates: List[Dict] = None,
+        established_filters: Dict = None
+    ) -> str:
+        """
+        ИСПРАВЛЕНО (2026-01-03): Определение стратегии по количеству кандидатов
+
+        Стратегии:
+        - A: 1 кандидат с уверенностью >90% → Подтверждение
+        - B: 2-10 кандидатов → Уточнение по списку
+        - C: >10 кандидатов → Фильтрация без списка
+
+        Args:
+            candidates: Список кандидатов услуг
+            established_filters: Установленные фильтры
+
+        Returns:
+            str: Стратегия ('A', 'B', или 'C')
+        """
+        if not candidates or len(candidates) == 0:
+            return 'C'  # Нет кандидатов - спрашиваем фильтры
+
+        count = len(candidates)
+
+        # Стратегия A: 1 кандидат с высокой уверенностью
+        if count == 1:
+            candidate = candidates[0]
+            confidence = candidate.get('confidence', 0)
+            if confidence >= 0.9:
+                return 'A'  # Подтверждение
+            else:
+                return 'B'  # Уточнение (даже 1 кандидат, но низкая уверенность)
+
+        # Стратегия B: 2-10 кандидатов
+        if count <= 10:
+            return 'B'
+
+        # Стратегия C: >10 кандидатов
+        return 'C'
+
+    def _determine_missing_filter(
+        self,
+        candidates: List[Dict],
+        established_filters: Dict
+    ) -> str:
+        """
+        ИСПРАВЛЕНО (2026-01-03): Определение недостающего фильтра
+
+        Анализирует какие фильтры установлены, а какие нет,
+        и возвращает название недостающего фильтра для стратегии C.
+
+        Args:
+            candidates: Список кандидатов
+            established_filters: Установленные фильтры
+
+        Returns:
+            str: Недостающий фильтр ('ЛОКАЦИЯ', 'КАТЕГОРИЯ', 'ОБЪЕКТ', или 'ТИП')
+        """
+        # Проверяем какие фильтры не установлены
+        has_location = established_filters.get('location')
+        has_category = established_filters.get('category')
+        has_object = established_filters.get('object')
+        has_incident = established_filters.get('incident')
+
+        # Анализируем кандидатов чтобы понять что varies больше всего
+        if candidates and len(candidates) > 0:
+            # Собираем уникальные значения
+            locations = set(c.get('location_type') for c in candidates if c.get('location_type'))
+            categories = set(c.get('category') for c in candidates if c.get('category'))
+            objects = set(c.get('object_type') for c in candidates if c.get('object_type'))
+            incidents = set(c.get('incident_type') for c in candidates if c.get('incident_type'))
+
+            # Находим параметр с наибольшим разнообразием
+            max_var = 0
+            missing = 'ЛОКАЦИЯ'
+
+            if not has_location and len(locations) > max_var:
+                max_var = len(locations)
+                missing = 'ЛОКАЦИЯ'
+            if not has_category and len(categories) > max_var:
+                max_var = len(categories)
+                missing = 'КАТЕГОРИЯ'
+            if not has_object and len(objects) > max_var:
+                max_var = len(objects)
+                missing = 'ОБЪЕКТ'
+            if not has_incident and len(incidents) > max_var:
+                max_var = len(incidents)
+                missing = 'ТИП'
+
+            return missing
+
+        # Если нет кандидатов, проверяем по очереди
+        if not has_location:
+            return 'ЛОКАЦИЯ'
+        if not has_category:
+            return 'КАТЕГОРИЯ'
+        if not has_object:
+            return 'ОБЪЕКТ'
+        return 'ТИП'
 
     def _build_dynamic_prompt(
         self,
@@ -2338,15 +2496,44 @@ JSON:"""
         logger.info(f"  👥 candidates: {len(candidates) if candidates else 0} кандидатов")
 
         try:
-            # Формируем промт для AI
-            prompt = self._build_question_prompt(
-                context=context,
-                dialog_history=dialog_history,
-                candidates=candidates,
-                established_filters=established_filters,
-                txtPrb=txtPrb,
-                question_type=question_type
-            )
+            # ИСПРАВЛЕНО (2026-01-03): Используем _build_dynamic_prompt вместо _build_question_prompt
+            # Определяем стратегию на основе количества кандидатов
+            strategy = self._determine_strategy(candidates, established_filters)
+
+            # Определяем недостающий фильтр для стратегии C
+            missing_filter = None
+            if strategy == 'C':
+                missing_filter = self._determine_missing_filter(candidates or [], established_filters or {})
+
+            # Формируем абсолютные факты из semantic_check если есть
+            absolute_facts = []
+            if established_filters:
+                semantic_check = established_filters.get('semantic_check', {})
+                if semantic_check.get('absolute_facts'):
+                    absolute_facts = semantic_check['absolute_facts']
+
+            # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
+            if question_type == 'clarification' and candidates is not None:
+                # Используем новый метод с динамическими промптами по стратегиям
+                prompt = self._build_dynamic_prompt(
+                    strategy=strategy,
+                    context=context,
+                    absolute_facts=absolute_facts if absolute_facts else None,
+                    candidates=candidates,
+                    missing_filter=missing_filter,
+                    txtPrb=txtPrb
+                )
+                logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
+            else:
+                # Для остальных типов используем старый метод
+                prompt = self._build_question_prompt(
+                    context=context,
+                    dialog_history=dialog_history,
+                    candidates=candidates,
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type=question_type
+                )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
             logger.info(f"🤖 PROMPT ДЛЯ LLM ({question_type}):")
