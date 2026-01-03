@@ -165,7 +165,7 @@ class MainAgent:
                 cursor.execute("SELECT DISTINCT incident_type FROM services_catalog WHERE incident_type IS NOT NULL AND incident_type != '' ORDER BY incident_type")
                 self._incident_types_cache = [row[0] for row in cursor.fetchall()]
 
-                logger.info(f"✅ Загружены фильтры из БД:")
+                logger.info(f"[OK] Загружены фильтры из БД:")
                 logger.info(f"   Категории ({len(self._categories_cache)}): {', '.join(self._categories_cache[:5])}...")
                 logger.info(f"   Объекты ({len(self._objects_cache)}): {', '.join(self._objects_cache[:5])}...")
                 logger.info(f"   Локации ({len(self._location_types_cache)}): {', '.join(self._location_types_cache)}")
@@ -234,7 +234,7 @@ class MainAgent:
 
         # ИСПРАВЛЕНО (2025-12-28): Добавлены мощные отладочные логи для проверки контекста
         logger.info("=" * 80)
-        logger.info("🔍 ДИАГНОСТИКА КОНТЕКСТА (process_service_detection)")
+        logger.info("[SEARCH] ДИАГНОСТИКА КОНТЕКСТА (process_service_detection)")
         logger.info("=" * 80)
         logger.info(f"📥 message_text: '{message_text}'")
         logger.info(f"📥 original_message: '{original_message}'")
@@ -242,13 +242,13 @@ class MainAgent:
         logger.info(f"📥 dialog_history длина: {len(dialog_history) if dialog_history else 0}")
 
         if dialog_history and len(dialog_history) > 0:
-            logger.info("📋 DIALOG HISTORY (последние 5 сообщений):")
+            logger.info("[LIST] DIALOG HISTORY (последние 5 сообщений):")
             for i, msg in enumerate(dialog_history[-5:], 1):
                 role = msg.get('role', 'unknown')
                 text = msg.get('text', '')[:60]
                 logger.info(f"  {i}. [{role}] {text}...")
         else:
-            logger.info("⚠️  DIALOG HISTORY ПУСТОЙ ИЛИ ОТСУТСТВУЕТ")
+            logger.info("[!]  DIALOG HISTORY ПУСТОЙ ИЛИ ОТСУТСТВУЕТ")
 
         logger.info("=" * 80)
 
@@ -311,10 +311,10 @@ class MainAgent:
         established_filters = {}
 
         # ИСПРАВЛЕНО (2025-12-28): Отладочные логи до накопления
-        logger.info("🔍 TXTPrb И ФИЛЬТРЫ ДО накопления:")
-        logger.info(f"  📝 txtPrb: '{txtPrb[:80] if txtPrb else '(пусто)'}'")
-        logger.info(f"  🔧 accumulated_fields: {accumulated_fields}")
-        logger.info(f"  🔧 established_filters: {established_filters}")
+        logger.info("[SEARCH] TXTPrb И ФИЛЬТРЫ ДО накопления:")
+        logger.info(f"  [NOTE] txtPrb: '{txtPrb[:80] if txtPrb else '(пусто)'}'")
+        logger.info(f"  [TOOL] accumulated_fields: {accumulated_fields}")
+        logger.info(f"  [TOOL] established_filters: {established_filters}")
 
         if self.problem_accumulator and is_followup:
             try:
@@ -389,10 +389,10 @@ class MainAgent:
                 semantic_check_result = {}
 
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ПОСЛЕ накопления
-        logger.info("🔍 TXTPrb И ФИЛЬТРЫ ПОСЛЕ накопления:")
-        logger.info(f"  📝 txtPrb: '{txtPrb[:120] if txtPrb else '(пусто)'}'")
-        logger.info(f"  🔧 accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
-        logger.info(f"  🔧 established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
+        logger.info("[SEARCH] TXTPrb И ФИЛЬТРЫ ПОСЛЕ накопления:")
+        logger.info(f"  [NOTE] txtPrb: '{txtPrb[:120] if txtPrb else '(пусто)'}'")
+        logger.info(f"  [TOOL] accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
+        logger.info(f"  [TOOL] established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
 
         # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
         # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
@@ -409,7 +409,7 @@ class MainAgent:
             # Проверяем есть ли повторения
             if len(user_responses) >= 2 and user_responses[0] == user_responses[1]:
                 repeated_answer = user_responses[0]
-                logger.warning(f"⚠️ Обнаружен повторяющийся ответ: '{repeated_answer}' (2+ раза)")
+                logger.warning(f"[!] Обнаружен повторяющийся ответ: '{repeated_answer}' (2+ раза)")
 
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА меняем стратегию при повторяющихся ответах
                 # Не проверяем уверенность фильтров - если пользователь повторяет, значит нужно менять вопрос!
@@ -422,7 +422,7 @@ class MainAgent:
                     else:
                         break
 
-                logger.info(f"⚠️ Ответ повторяется {repeat_count} раз")
+                logger.info(f"[!] Ответ повторяется {repeat_count} раз")
 
                 # Меняем сообщение в зависимости от количества повторений
                 if repeat_count >= 3:
@@ -432,7 +432,7 @@ class MainAgent:
                     # 2 повтора - задаем более конкретный вопрос
                     message = 'Уточните, пожалуйста: что именно произошло?'
 
-                logger.info("⚠️ Меняем стратегию: задаем другой вопрос")
+                logger.info("[!] Меняем стратегию: задаем другой вопрос")
 
                 # Возвращаем специальный результат
                 result_metadata = {
@@ -1187,10 +1187,10 @@ class MainAgent:
                 logger.warning(f"_generate_smart_clarification: ошибка извлечения txtPrb: {e}")
 
         # ИСПРАВЛЕНО (2025-12-28): Добавляем отладочные логи
-        logger.info("🔍 _generate_smart_clarification ДИАГНОСТИКА:")
-        logger.info(f"  📝 txtPrb: '{txtPrb[:80] if txtPrb else '(не передан)'}'")
-        logger.info(f"  🔧 established_filters: {established_filters if established_filters else '(не переданы)'}")
-        logger.info(f"  📋 dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
+        logger.info("[SEARCH] _generate_smart_clarification ДИАГНОСТИКА:")
+        logger.info(f"  [NOTE] txtPrb: '{txtPrb[:80] if txtPrb else '(не передан)'}'")
+        logger.info(f"  [TOOL] established_filters: {established_filters if established_filters else '(не переданы)'}")
+        logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
 
         if not candidates_with_attrs:
             context = {
@@ -1838,7 +1838,7 @@ class MainAgent:
         Использует UNION вместо INTERSECTION для объединения результатов
         """
         # ИСПРАВЛЕНО (2025-12-27): Логирование для отладки фильтрации
-        logger.info(f"⚙️ _orchestrate_microservices: established_filters={established_filters}")
+        logger.info(f"[GEAR] _orchestrate_microservices: established_filters={established_filters}")
 
         tag_results = search_results.get('tag_search', {}).get('candidates', [])
         semantic_results = search_results.get('semantic_search', {}).get('candidates', [])
@@ -2035,6 +2035,7 @@ class MainAgent:
         facts_text = "\n".join([f"  - {fact}" for fact in absolute_facts])
 
         # ИСПРАВЛЕНО (2026-01-03): Улучшенный промпт с примерами и строгими правилами
+        # ИСПРАВЛЕНО (2026-01-03): Проверка что текст является вопросом
         prompt = f"""Ты - строгий логический валидатор вопросов AI-диспетчера.
 
 ВОПРОС БОТА: "{question}"
@@ -2043,6 +2044,18 @@ class MainAgent:
 {facts_text}
 
 КРИТИЧЕСКИЕ ПРАВИЛА ВАЛИДАЦИИ:
+
+0. ПРОВЕРКА ЧТО ЭТО ВОПРОС:
+   Текст ДОЛЖЕН быть вопросом (заканчиваться на "?").
+
+   ПРИМЕРЫ НЕВОПРОСОВ (ОТКЛОНИТЬ):
+   - "Нет необходимости уточнять локацию." → НЕ ВОПРОС (утверждение)
+   - "Я понял проблему." → НЕ ВОПРОС
+   - "Все понятно." → НЕ ВОПРОС
+
+   ПРИМЕРЫ ВОПРОСОВ (ПРИНЯТЬ):
+   - "Где именно это произошло?" → ВОПРОС
+   - "Опишите что именно сломалось?" → ВОПРОС
 
 1. ПРОВЕРКА НА ИЗБЫТОЧНОСТЬ:
    Вопрос ИЗБЫТОЧЕН, если он спрашивает о том, что УЖЕ есть в "Известных фактах".
@@ -2071,10 +2084,12 @@ class MainAgent:
    - Факт: "location=Индивидуальное", вопрос: "В квартире или общедомовое?" → ИЗБЫТОЧЕН
 
 РЕШЕНИЕ:
+- Если текст НЕ ВОПРОС → {{"valid": false, "reason": "не является вопросом", "fixed_question": "Хороший уточняющий вопрос"}}
 - Если вопрос ИЗБЫТОЧНЫЙ или ДВОЙНОЙ → {{"valid": false, "reason": "описание ошибки", "fixed_question": "лучший вопрос"}}
 - Если вопрос НОРМАЛЬНЫЙ → {{"valid": true}}
 
 При генерации fixed_question:
+- Если исходный текст НЕ ВОПРОС - сгенерируй хороший уточняющий вопрос по контексту
 - Убирай избыточную часть
 - Разбивай двойной вопрос на один основной
 - Сохраняй смысл, но задавай только ОДИН вопрос
@@ -2486,12 +2501,12 @@ JSON:"""
             }
         """
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
-        logger.info("🔍 _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
-        logger.info(f"  📝 context: '{context[:100]}'")
-        logger.info(f"  🔧 question_type: {question_type}")
-        logger.info(f"  📋 dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
-        logger.info(f"  📝 txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
-        logger.info(f"  🔧 established_filters: {established_filters if established_filters else '(не переданы)'}")
+        logger.info("[SEARCH] _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
+        logger.info(f"  [NOTE] context: '{context[:100]}'")
+        logger.info(f"  [TOOL] question_type: {question_type}")
+        logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
+        logger.info(f"  [NOTE] txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
+        logger.info(f"  [TOOL] established_filters: {established_filters if established_filters else '(не переданы)'}")
         logger.info(f"  👥 candidates: {len(candidates) if candidates else 0} кандидатов")
 
         try:
@@ -2535,7 +2550,7 @@ JSON:"""
                 )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
-            logger.info(f"🤖 PROMPT ДЛЯ LLM ({question_type}):")
+            logger.info(f"[BOT] PROMPT ДЛЯ LLM ({question_type}):")
             logger.info(f"{'=' * 80}")
             logger.info(f"{prompt[:500]}...")
             logger.info(f"{'=' * 80} (полная длина: {len(prompt)} символов)")
@@ -2557,9 +2572,9 @@ JSON:"""
                 question = response.strip()
 
                 # ИСПРАВЛЕНО (2025-12-28): Логируем ответ LLM
-                logger.info(f"🤖 ОТВЕТ LLM ({question_type}, model={usage.get('model', 'unknown')}):")
-                logger.info(f"  📝 Текст: '{question}'")
-                logger.info(f"  💰 Usage: {usage}")
+                logger.info(f"[BOT] ОТВЕТ LLM ({question_type}, model={usage.get('model', 'unknown')}):")
+                logger.info(f"  [NOTE] Текст: '{question}'")
+                logger.info(f"  [$] Usage: {usage}")
 
                 # Удаляем лишние кавычки если есть
                 if question.startswith('"') and question.endswith('"'):
@@ -2578,7 +2593,7 @@ JSON:"""
                 if self.tst_prompt:
                     question = self._add_debug_explanation(question, question_type, candidates)
 
-                logger.info(f"✅ AI сгенерировал вопрос ({question_type}): {question}")
+                logger.info(f"[OK] AI сгенерировал вопрос ({question_type}): {question}")
 
                 # ИСПРАВЛЕНО (2025-12-29): Возвращаем Dict с вопросом И метаданными для трассировки
                 return {
@@ -2655,17 +2670,18 @@ JSON:"""
             }
             candidates_list.append(candidate_data)
 
-        candidates_json = f"\n📋 СПИСОК КАНДИДАТОВ (услуги которые подходят под описание):\n"
+        candidates_json = f"\nСПИСОК КАНДИДАТОВ (услуги которые подходят под описание):\n"
         candidates_json += "```json\n"
         candidates_json += json.dumps(candidates_list, ensure_ascii=False, indent=2)
         candidates_json += "\n```\n"
 
         # Формируем промт
         # ПЕРЕРАБОТАНО (2025-12-29): Позитивная инструкция + алгоритм + JSON заявки
+        # ИСПРАВЛЕНО (2026-01-03): Убраны все эмодзи из промта
         prompt = f"""Ты - AI-диспетчер УК "Аспект".
 
 ══════════════════════════════════════════════════════════════════════════════
-🎯 ГЛАВНАЯ ЗАДАЧА
+ГЛАВНАЯ ЗАДАЧА
 ══════════════════════════════════════════════════════════════════════════════
 
 Сформировать заявку от абонента в формате JSON:
@@ -2680,7 +2696,7 @@ JSON:"""
   - address_id: ID объекта обслуживания
 
 ══════════════════════════════════════════════════════════════════════════════
-🎯 ИНСТРУКЦИЯ ПО ГЕНЕРАЦИИ ВОПРОСА
+ИНСТРУКЦИЯ ПО ГЕНЕРАЦИИ ВОПРОСА
 ══════════════════════════════════════════════════════════════════════════════
 
 Верни уточняющий открытый вопрос, который:
@@ -2695,7 +2711,7 @@ JSON:"""
 - Открытый вопрос (без вариантов ответа)
 - Ответ должен приблизить к однозначному определению услуги
 
-❌ НЕ ПРИМЕНЯЙ:
+НЕ ПРИМЕНЯЙ:
 - Двойные вопросы ("что и где?")
 - Перечисления вариантов ("например, труба или батарея?")
 - Закрытые вопросы (да/нет) - КРОМЕ исключения ниже
@@ -2703,19 +2719,19 @@ JSON:"""
 - Внутренние термины "Инцидент/Запрос" - говори по-человечески
 - Вопросы которые НЕ приближают к решению (не позволяют установить фильтр)
 
-✅ ИСКЛЮЧЕНИЕ (закрытый вопрос РАЗРЕШЕН):
+ИСКЛЮЧЕНИЕ (закрытый вопрос РАЗРЕШЕН):
 Если один кандидат имеет вероятность 90%+ → спроси: "Правильно ли я понял, что у вас [описание проблемы]?"
 
-✅ ПРИМЕНЯЙ:
+ПРИМЕНЯЙ:
 - Открытый вопрос, уточнение одного параметра
 - Учет уже известной информации
 - Анализ истории диалога ниже
 
 ══════════════════════════════════════════════════════════════════════════════
-🔄 АЛГОРИТМ ПОИСКА УСЛУГИ
+АЛГОРИТМ ПОИСКА УСЛУГИ
 ══════════════════════════════════════════════════════════════════════════════
 
-1. Анализируй историю диалога в блоке [💬 ИСТОРИЯ ДИАЛОГА]
+1. Анализируй историю диалога в блоке [ИСТОРИЯ ДИАЛОГА]
 2. Если можешь однозначно определить услугу (вероятность 90%+):
    → Задай вопрос: "Правильно ли я понял, что у вас [описание]?"
 3. Если невозможно однозначно определить:
@@ -2724,7 +2740,7 @@ JSON:"""
 4. Повторяй пока не будет подтверждение услуги (90%+)
 
 ══════════════════════════════════════════════════════════════════════════════
-📊 КАК РАБОТАЮТ ФИЛЬТРЫ
+КАК РАБОТАЮТ ФИЛЬТРЫ
 ══════════════════════════════════════════════════════════════════════════════
 
 Фильтры сокращают список кандидатов:
@@ -2748,7 +2764,7 @@ JSON:"""
 Стратегия: задавай вопросы чтобы установить фильтры и сократить список кандидатов.
 
 ══════════════════════════════════════════════════════════════════════════════
-📋 ТЕКУЩАЯ СИТУАЦИЯ
+ТЕКУЩАЯ СИТУАЦИЯ
 ══════════════════════════════════════════════════════════════════════════════
 
 {context}
@@ -2756,25 +2772,25 @@ JSON:"""
 
         if known_info:
             prompt += f"""
-✅ УЖЕ ИЗВЕСТНО (не спрашивай повторно):
+УЖЕ ИЗВЕСТНО (не спрашивай повторно):
 {known_info}
 """
 
         if txtPrb:
             prompt += f"""
-📝 ОПИСАНИЕ ПРОБЛЕМЫ:
+ОПИСАНИЕ ПРОБЛЕМЫ:
 {txtPrb}
 """
 
         if recent_dialog:
             prompt += f"""
-💬 ИСТОРИЯ ДИАЛОГА:
+ИСТОРИЯ ДИАЛОГА:
 {recent_dialog}
 """
 
         if established_filters:
             prompt += f"""
-🔧 УСТАНОВЛЕННЫЕ ФИЛЬТРЫ (с вероятностью):
+УСТАНОВЛЕННЫЕ ФИЛЬТРЫ (с вероятностью):
 {self._format_filters_for_prompt(established_filters)}
 
 ВАЖНО: Учитывай эти фильтры при генерации вопроса!
@@ -2787,7 +2803,7 @@ JSON:"""
         if question_type == 'clarification':
             prompt += """
 ══════════════════════════════════════════════════════════════════════════════
-🎯 ЗАДАЧА
+ЗАДАЧА
 ══════════════════════════════════════════════════════════════════════════════
 
 Проанализируй список кандидатов, установленные фильтры и историю диалога.
@@ -2801,20 +2817,20 @@ JSON:"""
 
 ПРИМЕРЫ:
 
-✅ Хорошо: "Где именно это произошло?"
+ХОРОШО: "Где именно это произошло?"
    Цель: Установить фильтр Вид (Индивидуальное/Общедомовое)
 
-✅ Хорошо: "Опишите что именно сломалось"
+ХОРОШО: "Опишите что именно сломалось"
    Цель: Установить фильтр Объект (Труба/Кран/Батарея)
 
-✅ Хорошо (90%+ кандидат): "Правильно ли я понял, что у вас течет из трубы в ванной?"
+ХОРОШО (90%+ кандидат): "Правильно ли я понял, что у вас течет из трубы в ванной?"
    Цель: Подтвердить кандидата с высокой вероятностью (ИСКЛЮЧЕНИЕ: закрытый вопрос разрешен)
 
-❌ Плохо: "Что и где?" (двойной вопрос)
-❌ Плохо: "Это труба или батарея?" (закрытый вопрос без 90%+ кандидата)
-❌ Плохо: "Это труба отопления или водоснабжения?" (закрытый вопрос с "или")
-❌ Плохо: "Какой характер? Например, капает или струей?" (НЕ приближает к решению + перечисление)
-❌ Плохо: "Это инцидент или запрос?" (внутренние термины, не для пользователя)
+ПЛОХО: "Что и где?" (двойной вопрос)
+ПЛОХО: "Это труба или батарея?" (закрытый вопрос без 90%+ кандидата)
+ПЛОХО: "Это труба отопления или водоснабжения?" (закрытый вопрос с "или")
+ПЛОХО: "Какой характер? Например, капает или струей?" (НЕ приближает к решению + перечисление)
+ПЛОХО: "Это инцидент или запрос?" (внутренние термины, не для пользователя)
 
 Вопрос:"""
 
@@ -2859,9 +2875,9 @@ JSON:"""
 КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
 ══════════════════════════════════════════════════════════════════════════════
 
-1. ❌ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Двойные вопросы
-2. ❌ НЕ спрашивать то, что УЖЕ известно
-3. ❌ НЕ использовать союз "и"
+1. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Двойные вопросы
+2. НЕ спрашивать то, что УЖЕ известно
+3. НЕ использовать союз "и"
 
 ЗАДАЧА: Задай ОДИН уточняющий вопрос для детализации проблемы.
 
@@ -3015,18 +3031,18 @@ JSON:"""
         # ИСПРАВЛЕНО (2025-12-27): Применяем фильтры к кандидатам
         if established_filters:
             before_count = len(candidates)
-            logger.info(f"⚙️ _ask_ai_clarification: candidates до фильтров: {before_count}")
-            logger.info(f"⚙️ _ask_ai_clarification: established_filters={established_filters}")
+            logger.info(f"[GEAR] _ask_ai_clarification: candidates до фильтров: {before_count}")
+            logger.info(f"[GEAR] _ask_ai_clarification: established_filters={established_filters}")
 
             candidates = self._apply_filters_to_candidates(candidates, established_filters)
             after_count = len(candidates)
-            logger.info(f"✅ _ask_ai_clarification: после фильтров: {after_count} кандидатов")
+            logger.info(f"[OK] _ask_ai_clarification: после фильтров: {after_count} кандидатов")
 
             # Показываем оставшихся кандидатов
             for i, c in enumerate(candidates[:5], 1):
                 logger.info(f"  {i}. {c.get('service_name', 'Unknown')} (loc={c.get('location_type', '?')[:10]} conf={c.get('confidence', 0):.2f})")
         else:
-            logger.info(f"⚙️ _ask_ai_clarification: established_filters=None, пропускаем фильтрацию")
+            logger.info(f"[GEAR] _ask_ai_clarification: established_filters=None, пропускаем фильтрацию")
 
         # ИСПРАВЛЕНО (2025-12-27): Закомментированы кэшированные запросы - используем только AI
         # if self.cache_service:  # DISABLED
@@ -3260,7 +3276,7 @@ JSON:"""
         # Порог применения фильтра - только фильтры с уверенностью >= 0.8
         FILTER_CONFIDENCE_THRESHOLD = 0.8
 
-        logger.info(f"🔍 _apply_filters_to_candidates: начало, кандидатов={len(candidates)}, фильтров={len(established_filters)}")
+        logger.info(f"[SEARCH] _apply_filters_to_candidates: начало, кандидатов={len(candidates)}, фильтров={len(established_filters)}")
 
         # Применяем фильтры по очереди
         filtered_candidates = candidates
@@ -3271,10 +3287,10 @@ JSON:"""
 
             # Применяем только фильтры с высокой уверенностью
             if confidence < FILTER_CONFIDENCE_THRESHOLD:
-                logger.info(f"⚠️ Фильтр {filter_name}: confidence={confidence:.2f} < {FILTER_CONFIDENCE_THRESHOLD}, ПРОПУСКАЕМ")
+                logger.info(f"[!] Фильтр {filter_name}: confidence={confidence:.2f} < {FILTER_CONFIDENCE_THRESHOLD}, ПРОПУСКАЕМ")
                 continue
 
-            logger.info(f"✅ ПРИМЕНЯЕМ ФИЛЬТР: {filter_name}={value} (confidence={confidence:.2f} >= {FILTER_CONFIDENCE_THRESHOLD})")
+            logger.info(f"[OK] ПРИМЕНЯЕМ ФИЛЬТР: {filter_name}={value} (confidence={confidence:.2f} >= {FILTER_CONFIDENCE_THRESHOLD})")
 
             # Фильтрация по location
             if filter_name == 'location' and value:
@@ -3284,7 +3300,7 @@ JSON:"""
                     before_count = len(filtered_candidates)
 
                     # Логируем каждого кандидата ДО фильтрации
-                    logger.info(f"  📋 ДО ФИЛЬТРАЦИИ location='{value}':")
+                    logger.info(f"  [LIST] ДО ФИЛЬТРАЦИИ location='{value}':")
                     for i, c in enumerate(filtered_candidates, 1):
                         loc = c.get('location_type', 'NULL')
                         loc_lower = loc.lower() if loc else 'null'
@@ -3296,7 +3312,7 @@ JSON:"""
                         if c.get('location_type', '').lower() in ['индивидуальное', 'квартира']
                     ]
                     after_count = len(filtered_candidates)
-                    logger.info(f"  ✅ Фильтр location: {before_count} -> {after_count} (оставили Individual)")
+                    logger.info(f"  [OK] Фильтр location: {before_count} -> {after_count} (оставили Individual)")
 
             # Фильтрация по incident
             elif filter_name == 'incident' and value:

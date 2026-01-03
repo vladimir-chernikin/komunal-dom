@@ -223,9 +223,9 @@ JSON:"""
                 }
         """
         # ИСПРАВЛЕНО (2025-12-28): Отладочные логи
-        logger.info("🔍 FilterDetectionService ВХОДЯЩИЕ ПАРАМЕТРЫ:")
-        logger.info(f"  📝 message_text: '{message_text[:80]}'")
-        logger.info(f"  📋 dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
+        logger.info("[SEARCH] FilterDetectionService ВХОДЯЩИЕ ПАРАМЕТРЫ:")
+        logger.info(f"  [NOTE] message_text: '{message_text[:80]}'")
+        logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
 
         try:
             logger.info(f"FilterDetectionService: Анализ фильтров для '{message_text[:50]}...' (история: {len(dialog_history or [])} сообщений)")
@@ -257,7 +257,7 @@ JSON:"""
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем ответ
             logger.info(f"🤖 FilterDetection ОТВЕТ LLM:")
-            logger.info(f"  📝 Raw response: '{response[:300]}'")
+            logger.info(f"  [NOTE] Raw response: '{response[:300]}'")
             logger.info(f"  💰 Usage: {usage_info}")
 
             if not response:
