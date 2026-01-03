@@ -420,9 +420,23 @@ body {
 
     // Кнопка "Новый диалог"
     newDialogBtn.addEventListener('click', function() {
-        if (confirm('Начать новый диалог? Текущий диалог будет сохранен в истории.')) {
-            location.reload();
+        if (!confirm('Начать новый диалог? Текущий диалог будет сохранен в истории.')) {
+            return;
         }
+
+        // Создаем новый session_id с timestamp
+        const timestamp = Date.now();
+        const userId = '{{ user.id }}';
+        currentSessionId = `web_${userId}_${timestamp}`;
+
+        // Очищаем чат и показываем сообщение
+        chatMessages.innerHTML = '<div class="chat-status">Начните новый диалог. Например: "У меня течет в ванной"</div>';
+
+        // Обновляем список диалогов (чтобы появился новый)
+        loadDialogsList();
+
+        // Фокус на поле ввода
+        messageInput.focus();
     });
 
     // Обработка отправки формы
@@ -563,8 +577,46 @@ body {
     // Отобразить список диалогов
     function renderDialogsList(dialogs) {
         if (!dialogs || dialogs.length === 0) {
-            dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Заявок пока нет</p>';
+            // Проверяем, есть ли текущий диалог (возможно новый без сообщений)
+            const now = new Date();
+            const hasCurrentDialog = currentSessionId && currentSessionId !== CHAT_CONFIG.sessionId;
+
+            if (hasCurrentDialog) {
+                // Показываем только новый диалог
+                let html = '<div class="table-responsive"><table class="table table-sm mb-0">';
+                html += '<thead><tr><th>Дата</th><th>Время</th><th>Фраза</th><th>Действие</th></tr></thead><tbody>';
+                html += `
+                    <tr>
+                        <td class="text-muted">${now.toLocaleDateString('ru-RU')}</td>
+                        <td class="text-muted">${now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}</td>
+                        <td class="text-muted" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Новый диалог</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 2px 6px;" disabled>Текущий</button>
+                        </td>
+                    </tr>
+                `;
+                html += '</tbody></table></div>';
+                dialogsHistoryCard.innerHTML = html;
+            } else {
+                dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Заявок пока нет</p>';
+            }
             return;
+        }
+
+        // Проверяем, есть ли текущий session_id в списке
+        const currentExists = dialogs.some(d => d.session_id === currentSessionId);
+
+        // Если текущего диалога нет в списке, добавляем его
+        if (!currentExists && currentSessionId) {
+            const now = new Date();
+            const newDialog = {
+                session_id: currentSessionId,
+                date: now.toLocaleDateString('ru-RU'),
+                time: now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}),
+                preview: 'Новый диалог',
+                message_count: 0
+            };
+            dialogs.unshift(newDialog); // Добавляем в начало
         }
 
         let html = '<div class="table-responsive"><table class="table table-sm mb-0">';
