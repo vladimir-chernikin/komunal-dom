@@ -4,521 +4,387 @@
 
 {% block extra_css %}
 <style>
-    /* Компактные карточки */
-    .compact-card {
-        border: 1px solid #dee2e6;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
 
-    .compact-card .card-header {
-        padding: 6px 10px;
-        background: #f8f9fa;
-        color: #495057;
-        border-bottom: 1px solid #dee2e6;
-        font-size: 1rem;
-    }
+body {
+    background: #f8f9fa;
+}
 
-    .compact-card .card-body {
-        padding: 8px;
-    }
+/* Компактные карточки */
+.card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
 
-    .compact-card h5 {
-        font-size: 1rem;
-        font-weight: 600;
-        margin: 0;
-    }
+.compact-card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
 
-    /* Чат */
-    .chat-embedded {
-        max-width: 800px;
-        margin: 0 auto;
-        background: #fff;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        overflow: hidden;
-        border: 1px solid #dee2e6;
-    }
+.compact-card .card-header {
+    padding: 6px 10px;
+    background: #f8f9fa;
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    font-size: 1rem;
+}
 
-    .chat-embedded .chat-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 8px 10px;
-    }
+.compact-card .card-body {
+    padding: 8px;
+}
 
-    .chat-embedded .chat-header h3 {
-        margin: 0;
-        font-size: 0.875rem;
-        font-weight: 600;
-    }
+.compact-card h5 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+}
 
-    .chat-embedded .chat-header p {
-        margin: 1px 0 0 0;
-        opacity: 0.9;
-        font-size: 0.875rem;
-    }
+.card-header {
+    padding: 8px 12px;
+    background: #fff;
+    color: #1a1a1a;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
 
-    .chat-embedded .chat-messages {
-        height: 250px;
-        overflow-y: auto;
-        padding: 8px;
-        background: #f8f9fa;
-    }
+.card-body {
+    padding: 0.75rem;
+}
 
-    .chat-embedded .message {
-        margin-bottom: 6px;
-        display: flex;
-        flex-direction: column;
-    }
+/* Чат */
+.chat-embedded {
+    max-width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    overflow: hidden;
+    border: 1px solid #dee2e6;
+}
 
-    .chat-embedded .message.user {
-        align-items: flex-end;
-    }
+.chat-embedded .chat-header {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    padding: 6px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
 
-    .chat-embedded .message.bot {
-        align-items: flex-start;
-    }
+.chat-embedded .chat-header h3 {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
 
-    .chat-embedded .message-bubble {
-        max-width: 70%;
-        padding: 6px 10px;
-        border-radius: 12px;
-        word-wrap: break-word;
-        line-height: 1.3;
-        font-size: 1rem;
-    }
+.chat-embedded .chat-header p {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 0.75rem;
+}
 
-    .chat-embedded .message.user .message-bubble {
-        background: #007bff;
-        color: white;
-        border-bottom-right-radius: 4px;
-    }
+.new-dialog-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+}
 
-    .chat-embedded .message.bot .message-bubble {
-        background: #e9ecef;
-        color: #333;
-        border-bottom-left-radius: 4px;
-    }
+.new-dialog-btn:hover {
+    background: #218838;
+}
 
-    .chat-embedded .message-meta {
-        font-size: 0.875rem;
-        color: #6c757d;
-        margin-top: 3px;
-        padding: 0 4px;
-    }
+.chat-embedded .chat-messages {
+    height: 350px;
+    overflow-y: auto;
+    padding: 6px;
+    background: #f8f9fa;
+}
 
-    .chat-embedded .chat-input-container {
-        padding: 6px 8px;
-        background: white;
-        border-top: 1px solid #dee2e6;
-    }
+.chat-embedded .message {
+    margin-bottom: 4px;
+    display: flex;
+    flex-direction: column;
+}
 
-    .chat-embedded .chat-input-form {
-        display: flex;
-        gap: 6px;
-    }
+.chat-embedded .message.user {
+    align-items: flex-end;
+}
 
-    .chat-embedded .chat-input {
-        flex: 1;
-        padding: 4px 10px;
-        border: 1px solid #ced4da;
-        border-radius: 12px;
-        font-size: 1rem;
-        outline: none;
-        height: 28px;
-        line-height: 18px;
-    }
+.chat-embedded .message.bot {
+    align-items: flex-start;
+}
 
-    .chat-embedded .chat-input:focus {
-        border-color: #007bff;
-    }
+.chat-embedded .message-bubble {
+    max-width: 70%;
+    padding: 5px 8px;
+    border-radius: 10px;
+    word-wrap: break-word;
+    line-height: 1.3;
+    font-size: 0.875rem;
+}
 
-    .chat-embedded .send-button {
-        padding: 5px 12px;
-        background: #0d6efd;
-        color: white;
-        border: none;
-        border-radius: 14px;
-        font-size: 0.938rem;
-        font-weight: 600;
-        cursor: pointer;
-    }
+.chat-embedded .message.user .message-bubble {
+    background: #007bff;
+    color: white;
+    border-bottom-right-radius: 3px;
+}
 
-    .chat-embedded .send-button:hover {
-        background: #0b5ed7;
-    }
+.chat-embedded .message.bot .message-bubble {
+    background: #e9ecef;
+    color: #333;
+    border-bottom-left-radius: 3px;
+}
 
-    .chat-embedded .send-button:disabled {
-        background: #6c757d;
-        cursor: not-allowed;
-    }
+.chat-embedded .message-meta {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 2px;
+    padding: 0 3px;
+}
 
-    .chat-embedded .typing-indicator {
-        display: none;
-        padding: 8px 14px;
-        background: #e9ecef;
-        border-radius: 16px;
-        border-bottom-left-radius: 4px;
-        max-width: 80px;
-        margin-left: 15px;
-        margin-bottom: 12px;
-    }
+.chat-embedded .chat-input-container {
+    padding: 5px 8px;
+    background: white;
+    border-top: 1px solid #dee2e6;
+}
 
-    .chat-embedded .typing-indicator.active {
-        display: block;
-    }
+.chat-embedded .chat-input-form {
+    display: flex;
+    gap: 5px;
+}
 
-    .chat-embedded .typing-dots {
-        display: flex;
-        gap: 3px;
-    }
+.chat-embedded .chat-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    outline: none;
+    height: 26px;
+    line-height: 16px;
+}
 
-    .chat-embedded .typing-dots span {
-        width: 6px;
-        height: 6px;
-        background: #6c757d;
-        border-radius: 50%;
-        animation: typing 1.4s infinite;
-    }
+.chat-embedded .chat-input:focus {
+    border-color: #007bff;
+}
 
-    .chat-embedded .typing-dots span:nth-child(2) {
-        animation-delay: 0.2s;
-    }
+.chat-embedded .send-button {
+    padding: 4px 10px;
+    background: #0d6efd;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+}
 
-    .chat-embedded .typing-dots span:nth-child(3) {
-        animation-delay: 0.4s;
-    }
+.chat-embedded .send-button:hover {
+    background: #0b5ed7;
+}
 
-    @keyframes typing {
-        0%, 60%, 100% {
-            transform: translateY(0);
-        }
-        30% {
-            transform: translateY(-8px);
-        }
-    }
+.chat-embedded .send-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
 
-    .chat-embedded .service-detected {
-        background: #d4edda;
-        border: 1px solid #c3e6cb;
-        color: #155724;
-        padding: 6px 10px;
-        border-radius: 6px;
-        margin-top: 6px;
-        font-size: 1rem;
-    }
+.chat-embedded .typing-indicator {
+    display: none;
+    padding: 5px 10px;
+    background: #e9ecef;
+    border-radius: 12px;
+    border-bottom-left-radius: 3px;
+    max-width: 70px;
+    margin-left: 10px;
+    margin-bottom: 8px;
+}
 
-    .chat-embedded .error-message {
-        background: #f8d7da;
-        border: 1px solid #f5c6cb;
-        color: #721c24;
-        padding: 10px 14px;
-        border-radius: 6px;
-        margin-bottom: 12px;
-        font-size: 0.875rem;
-    }
+.chat-embedded .typing-indicator.active {
+    display: block;
+}
 
-    .chat-embedded .chat-status {
-        text-align: center;
-        padding: 8px;
-        font-size: 1rem;
-        color: #6c757d;
-    }
+.chat-embedded .typing-dots {
+    display: flex;
+    gap: 2px;
+}
 
-    /* Профильный аватар */
-    .profile-avatar-gradient {
-        width: 35px;
-        height: 35px;
-        background: #e9ecef;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 0.4rem;
-    }
+.chat-embedded .typing-dots span {
+    width: 5px;
+    height: 5px;
+    background: #6c757d;
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+}
 
-    .profile-avatar-gradient i {
-        font-size: 1rem;
-        color: #6c757d;
-    }
+.chat-embedded .typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
 
-    .profile-avatar-gradient-sm {
-        width: 30px;
-        height: 30px;
-    }
+.chat-embedded .typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
 
-    .profile-avatar-gradient-sm i {
-        font-size: 0.85rem;
+@keyframes typing {
+    0%, 60%, 100% {
+        transform: translateY(0);
     }
+    30% {
+        transform: translateY(-6px);
+    }
+}
 
-    /* Страница */
-    .page-header-card {
-        border: 1px solid #dee2e6;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
+.chat-embedded .service-detected {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 4px 8px;
+    border-radius: 5px;
+    margin-top: 4px;
+    font-size: 0.875rem;
+}
 
-    .page-header-card .card-header {
-        background: #f8f9fa;
-        color: #495057;
-        border-bottom: 1px solid #dee2e6;
-        padding: 6px 10px;
-    }
+.chat-embedded .error-message {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 6px 10px;
+    border-radius: 5px;
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+}
 
-    .page-header-card .card-header h2 {
-        font-size: 0.938rem;
-        margin: 0;
-    }
+.chat-embedded .chat-status {
+    text-align: center;
+    padding: 6px;
+    font-size: 0.875rem;
+    color: #6c757d;
+}
 
-    /* Стилизация list-group */
-    .compact-card .list-group-item {
-        border: none;
-        border-bottom: 1px solid #f0f0f0;
-        padding: 6px 10px;
-        font-size: 0.938rem;
-    }
+/* Таблица */
+.table-sm td {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.875rem;
+}
 
-    .compact-card .list-group-item:last-child {
-        border-bottom: none;
-    }
+.table-sm td:first-child {
+    width: 40%;
+    color: #6c757d;
+    font-weight: 500;
+}
 
-    .compact-card .list-group-item i {
-        margin-right: 6px;
-        width: 14px;
-        text-align: center;
-    }
+/* Badge */
+.badge {
+    font-size: 0.7rem;
+    padding: 0.3em 0.5em;
+    border-radius: 4px;
+    font-weight: 500;
+}
 
-    /* Стилизация таблицы */
-    .compact-card .table-sm td {
-        padding: 4px 6px;
-        font-size: 0.938rem;
-    }
-
-    .compact-card .table-sm td:first-child {
-        width: 45%;
-    }
-
-    /* Alert */
-    .alert-custom {
-        border: none;
-        border-left: 3px solid #ffc107;
-        box-shadow: 0 1px 4px rgba(255, 193, 7, 0.15);
-        padding: 6px 10px;
-        font-size: 0.938rem;
-    }
-
-    /* Дополнительные классы */
-    .container-subscriber {
-        max-width: 1200px;
-    }
-
-    .card-body-compact {
-        padding: 8px;
-    }
-
-    .mb-1 {
-        margin-bottom: 0.25rem;
-    }
-
-    .text-small {
-        font-size: 0.875rem;
-    }
-
-    .card-icon-wrapper {
-        margin-bottom: 0.25rem;
-    }
-
-    .badge-compact {
-        font-size: 0.813rem;
-        padding: 3px 6px;
-    }
-
-    .mt-compact {
-        margin-top: 4px;
-    }
-
-    .card-body-compact-sm {
-        padding: 6px;
-    }
-
-    .h6-compact {
-        font-size: 0.938rem;
-    }
+.content-container {
+    max-width: 900px;
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-2 container-subscriber">
-    <div class="row">
+<div class="container mt-3 content-container">
+    <!-- Заголовок -->
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="card page-header-card">
-                <div class="card-header">
-                    <h2 class="mb-0">Личный кабинет абонента</h2>
+            <h6 class="mb-0">
+                <i class="fas fa-user text-primary"></i>
+                Здравствуйте, {{ user.username }}!
+                <small class="text-muted">- личный кабинет</small>
+            </h6>
+        </div>
+    </div>
+
+    <!-- Чат -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="chat-embedded">
+                <div class="chat-header">
+                    <div>
+                        <h3>Подать заявку</h3>
+                        <p>Опишите проблему</p>
+                    </div>
+                    <button class="new-dialog-btn" id="newDialogBtn">Новый диалог</button>
                 </div>
-                <div class="card-body card-body-compact">
-                    <div class="row">
-                        <!-- Левая колонка: Чат -->
-                        <div class="col-lg-7">
-                            <div class="chat-embedded">
-                                <div class="chat-header">
-                                    <h3>Диспетчер управляющей компании</h3>
-                                    <p>Опишите вашу проблему, и я помогу определить нужную услугу</p>
-                                </div>
 
-                                <div class="chat-messages" id="chatMessages">
-                                    <div class="chat-status">
-                                        Начните диалог. Например: "У меня течет в ванной" или "Сломался лифт"
-                                    </div>
-                                </div>
-
-                                <div class="typing-indicator" id="typingIndicator">
-                                    <div class="typing-dots">
-                                        <span></span>
-                                        <span></span>
-                                        <span></span>
-                                    </div>
-                                </div>
-
-                                <div class="chat-input-container">
-                                    <form class="chat-input-form" id="chatForm">
-                                        <input
-                                            type="text"
-                                            class="chat-input"
-                                            id="messageInput"
-                                            placeholder="Опишите вашу проблему..."
-                                            autocomplete="off"
-                                            required
-                                        >
-                                        <button type="submit" class="send-button" id="sendButton">
-                                            Отправить
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Правая колонка: Профиль и данные -->
-                        <div class="col-lg-5">
-                            <div class="card compact-card">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-user"></i> Ваш профиль
-                                    </h5>
-                                </div>
-                                <div class="card-body text-center">
-                                    <div class="profile-avatar-gradient">
-                                        <i class="fas fa-user"></i>
-                                    </div>
-                                    <p class="text-muted mb-1 text-small">{{ user.username }}</p>
-                                    <span class="badge badge-compact
-                                        {% if user.userprofile.is_django_admin %}bg-danger
-                                        {% elif user.userprofile.is_dba %}bg-warning text-dark
-                                        {% elif user.userprofile.is_uk_admin %}bg-success
-                                        {% else %}bg-info{% endif %}">
-                                        {{ user_profile.get_role_display }}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <!-- Ваши данные - перемещено под профиль -->
-                            <div class="card compact-card mt-compact">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-id-card"></i> Ваши данные
-                                    </h5>
-                                </div>
-                                <div class="card-body">
-                                    <table class="table table-sm table-borderless">
-                                        <tr>
-                                            <td class="text-muted"><strong>Логин:</strong></td>
-                                            <td>{{ user.username }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-muted"><strong>Email:</strong></td>
-                                            <td>{{ user.email|default:"-" }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td class="text-muted"><strong>Роль:</strong></td>
-                                            <td>
-                                                <span class="badge
-                                                    {% if user.userprofile.is_django_admin %}bg-danger
-                                                    {% elif user.userprofile.is_dba %}bg-warning text-dark
-                                                    {% elif user.userprofile.is_uk_admin %}bg-success
-                                                    {% else %}bg-info{% endif %}">
-                                                    {{ user_profile.get_role_display }}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                        {% if user_profile.phone %}
-                                        <tr>
-                                            <td class="text-muted"><strong>Телефон:</strong></td>
-                                            <td>{{ user_profile.phone }}</td>
-                                        </tr>
-                                        {% endif %}
-                                        {% if user_profile.address %}
-                                        <tr>
-                                            <td class="text-muted"><strong>Адрес:</strong></td>
-                                            <td>{{ user_profile.address }}</td>
-                                        </tr>
-                                        {% endif %}
-                                        <tr>
-                                            <td class="text-muted"><strong>Регистрация:</strong></td>
-                                            <td>{{ user.date_joined|date:"d.m.Y" }}</td>
-                                        </tr>
-                                    </table>
-                                </div>
-                            </div>
-
-                            <div class="card compact-card mt-compact">
-                                <div class="card-header">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-link"></i> Быстрые ссылки
-                                    </h5>
-                                </div>
-                                <div class="card-body p-0">
-                                    <div class="list-group list-group-flush">
-                                        <a href="{% url 'file_manager:file_list' %}" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-folder text-warning"></i> Мои файлы
-                                        </a>
-                                        <a href="/admin/" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-cog"></i> Панель управления
-                                        </a>
-                                        {% if user.userprofile.is_uk_admin %}
-                                        <a href="{% url 'portal:admin_page' %}" class="list-group-item list-group-item-action">
-                                            <i class="fas fa-users"></i> Админка УК
-                                        </a>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-status">
+                        Начните диалог. Например: "У меня течет в ванной"
                     </div>
+                </div>
 
-                    <div class="alert alert-warning mt-1 alert-custom" role="alert">
-                        <i class="fas fa-tools"></i>
-                        <strong>В разработке:</strong> скоро появятся возможности для создания заявок
+                <div class="typing-indicator" id="typingIndicator">
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
                     </div>
+                </div>
 
-                    <div class="row mt-1">
-                        <div class="col-md-6">
-                            <div class="card compact-card">
-                                <div class="card-body text-center card-body-compact-sm">
-                                    <div class="profile-avatar-gradient profile-avatar-gradient-sm mb-1">
-                                        <i class="fas fa-phone"></i>
-                                    </div>
-                                    <h6 class="mb-0 h6-compact">Телефон: +7 (862) 265-78-90</h6>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card compact-card">
-                                <div class="card-body text-center card-body-compact-sm">
-                                    <div class="profile-avatar-gradient profile-avatar-gradient-sm mb-1">
-                                        <i class="fas fa-envelope"></i>
-                                    </div>
-                                    <h6 class="mb-0 h6-compact">info@aspekt-sochi.ru</h6>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <div class="chat-input-container">
+                    <form class="chat-input-form" id="chatForm">
+                        <input
+                            type="text"
+                            class="chat-input"
+                            id="messageInput"
+                            placeholder="Опишите вашу проблему..."
+                            autocomplete="off"
+                            required
+                        >
+                        <button type="submit" class="send-button" id="sendButton">
+                            Отправить
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Информация -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-address-card text-success"></i> Контактные данные
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td>Адрес</td>
+                            <td class="text-muted">—</td>
+                        </tr>
+                        <tr>
+                            <td>Телефон</td>
+                            <td class="text-muted">—</td>
+                        </tr>
+                        <tr>
+                            <td>Email</td>
+                            <td class="text-muted">{{ user.email|default:"—" }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-history text-info"></i> История заявок
+                </div>
+                <div class="card-body" id="dialogsHistoryCard">
+                    <p class="text-muted text-small mb-0">Загрузка...</p>
                 </div>
             </div>
         </div>
@@ -526,28 +392,37 @@
 </div>
 
 <script>
-    // Конфигурация чата
     const CHAT_CONFIG = {
         sessionId: 'web_{{ user.id }}_{% if request.session.session_key %}{{ request.session.session_key }}{% else %}{{ user.id }}{% endif %}',
         apiSendUrl: '{% url "message_handler:send_message" %}',
         apiHistoryUrl: '{% url "message_handler:get_chat_history" %}',
+        apiDialogsListUrl: '{% url "message_handler:get_dialogs_list" %}',
         csrfToken: '{{ csrf_token }}'
     };
 
-    // Состояние чата
     let isChatProcessing = false;
+    let currentSessionId = CHAT_CONFIG.sessionId;
 
-    // DOM элементы
     const chatMessages = document.getElementById('chatMessages');
     const chatForm = document.getElementById('chatForm');
     const messageInput = document.getElementById('messageInput');
     const sendButton = document.getElementById('sendButton');
     const typingIndicator = document.getElementById('typingIndicator');
+    const newDialogBtn = document.getElementById('newDialogBtn');
+    const dialogsHistoryCard = document.getElementById('dialogsHistoryCard');
 
-    // Инициализация - загрузка истории при загрузке страницы
+    // Инициализация
     document.addEventListener('DOMContentLoaded', function() {
         loadChatHistory();
+        loadDialogsList();
         messageInput.focus();
+    });
+
+    // Кнопка "Новый диалог"
+    newDialogBtn.addEventListener('click', function() {
+        if (confirm('Начать новый диалог? Текущий диалог будет сохранен в истории.')) {
+            location.reload();
+        }
     });
 
     // Обработка отправки формы
@@ -557,13 +432,8 @@
         const message = messageInput.value.trim();
         if (!message || isChatProcessing) return;
 
-        // Добавляем сообщение пользователя в UI
         addChatMessage(message, 'user');
-
-        // Очищаем поле ввода
         messageInput.value = '';
-
-        // Отправляем сообщение на сервер
         await sendChatMessage(message);
     });
 
@@ -583,11 +453,10 @@
         messageDiv.appendChild(bubble);
         messageDiv.appendChild(meta);
 
-        // Если услуга определена, добавляем индикатор
         if (serviceDetected) {
             const serviceDiv = document.createElement('div');
             serviceDiv.className = 'service-detected';
-            serviceDiv.textContent = `Услуга определена: ID ${serviceDetected}`;
+            serviceDiv.textContent = `Услуга ID ${serviceDetected}`;
             messageDiv.appendChild(serviceDiv);
         }
 
@@ -595,18 +464,15 @@
         scrollChatToBottom();
     }
 
-    // Показать индикатор печати
     function showTypingIndicator() {
         typingIndicator.classList.add('active');
         scrollChatToBottom();
     }
 
-    // Скрыть индикатор печати
     function hideTypingIndicator() {
         typingIndicator.classList.remove('active');
     }
 
-    // Показать ошибку
     function showChatError(message) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
@@ -614,13 +480,11 @@
         chatMessages.appendChild(errorDiv);
         scrollChatToBottom();
 
-        // Автоматически скрываем через 5 секунд
         setTimeout(() => {
             errorDiv.remove();
         }, 5000);
     }
 
-    // Отправить сообщение на сервер
     async function sendChatMessage(message) {
         isChatProcessing = true;
         sendButton.disabled = true;
@@ -635,7 +499,7 @@
                 },
                 body: JSON.stringify({
                     message: message,
-                    session_id: CHAT_CONFIG.sessionId
+                    session_id: currentSessionId
                 })
             });
 
@@ -646,13 +510,13 @@
             if (data.status === 'success') {
                 addChatMessage(data.response, 'bot', data.service_detected);
             } else {
-                showChatError(data.error || 'Произошла ошибка при отправке сообщения');
+                showChatError(data.error || 'Ошибка при отправке');
             }
 
         } catch (error) {
             hideTypingIndicator();
             console.error('Ошибка:', error);
-            showChatError('Ошибка соединения с сервером. Попробуйте позже.');
+            showChatError('Ошибка соединения');
         } finally {
             isChatProcessing = false;
             sendButton.disabled = false;
@@ -660,17 +524,13 @@
         }
     }
 
-    // Загрузить историю чата
     async function loadChatHistory() {
         try {
-            const response = await fetch(`${CHAT_CONFIG.apiHistoryUrl}?session_id=${CHAT_CONFIG.sessionId}&limit=50`);
+            const response = await fetch(`${CHAT_CONFIG.apiHistoryUrl}?session_id=${currentSessionId}&limit=50`);
             const data = await response.json();
 
             if (data.status === 'success' && data.messages.length > 0) {
-                // Очищаем сообщение-статус
                 chatMessages.innerHTML = '';
-
-                // Отображаем историю
                 data.messages.forEach(msg => {
                     const type = msg.direction === 'inbound' ? 'user' : 'bot';
                     addChatMessage(msg.text, type);
@@ -682,7 +542,92 @@
         }
     }
 
-    // Прокрутить вниз
+    // Загрузить список всех диалогов
+    async function loadDialogsList() {
+        try {
+            const response = await fetch(CHAT_CONFIG.apiDialogsListUrl);
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                renderDialogsList(data.dialogs);
+            } else {
+                dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Ошибка загрузки истории</p>';
+            }
+
+        } catch (error) {
+            console.error('Ошибка загрузки списка диалогов:', error);
+            dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Ошибка загрузки истории</p>';
+        }
+    }
+
+    // Отобразить список диалогов
+    function renderDialogsList(dialogs) {
+        if (!dialogs || dialogs.length === 0) {
+            dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Заявок пока нет</p>';
+            return;
+        }
+
+        let html = '<div class="table-responsive"><table class="table table-sm mb-0">';
+        html += '<thead><tr><th>Дата</th><th>Время</th><th>Фраза</th><th>Действие</th></tr></thead><tbody>';
+
+        dialogs.forEach(dialog => {
+            const isCurrent = dialog.session_id === currentSessionId;
+            const btnText = isCurrent ? 'Текущий' : 'Открыть';
+            const btnDisabled = isCurrent ? 'disabled' : '';
+            const preview = dialog.preview || '—';
+
+            html += `
+                <tr>
+                    <td class="text-muted">${dialog.date}</td>
+                    <td class="text-muted">${dialog.time}</td>
+                    <td class="text-muted" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${preview}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 2px 6px;" onclick="loadOldDialog('${dialog.session_id}')" ${btnDisabled}>${btnText}</button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table></div>';
+        dialogsHistoryCard.innerHTML = html;
+    }
+
+    // Загрузить старый диалог
+    async function loadOldDialog(sessionId) {
+        if (!sessionId || sessionId === currentSessionId) {
+            return;
+        }
+
+        if (!confirm('Загрузить старый диалог?')) {
+            return;
+        }
+
+        currentSessionId = sessionId;
+        chatMessages.innerHTML = '<div class="chat-status">Загрузка диалога...</div>';
+
+        try {
+            const response = await fetch(`${CHAT_CONFIG.apiHistoryUrl}?session_id=${sessionId}&limit=50`);
+            const data = await response.json();
+
+            if (data.status === 'success' && data.messages.length > 0) {
+                chatMessages.innerHTML = '';
+                data.messages.forEach(msg => {
+                    const type = msg.direction === 'inbound' ? 'user' : 'bot';
+                    addChatMessage(msg.text, type);
+                });
+
+                // Обновляем список диалогов
+                loadDialogsList();
+            } else {
+                chatMessages.innerHTML = '<div class="chat-status">Не удалось загрузить диалог</div>';
+            }
+
+        } catch (error) {
+            console.error('Ошибка загрузки диалога:', error);
+            chatMessages.innerHTML = '<div class="chat-status">Ошибка загрузки диалога</div>';
+        }
+    }
+
     function scrollChatToBottom() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }

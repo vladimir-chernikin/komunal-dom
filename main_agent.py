@@ -9,6 +9,7 @@
 import logging
 import asyncio
 import traceback
+import json
 from typing import Dict, List, Any, Tuple, Optional
 from dataclasses import dataclass
 from django.db import connection
@@ -2090,7 +2091,6 @@ JSON:"""
                 model='lite'
             )
 
-            # Парсим ответ
             import json
             if '{' in response:
                 # Извлекаем JSON
@@ -2414,7 +2414,6 @@ JSON:"""
 Кандидат: {candidates[0]['service_name'] if candidates else 'Неизвестно'}
 """
         elif strategy == 'B':
-            # 2-10 кандидатов
             import json
             candidates_json = json.dumps([{
                 'id': c.get('service_id'),
@@ -2641,7 +2640,6 @@ JSON:"""
 
         # Формируем JSON кандидатов для промта
         candidates_json = ""
-        if candidates and len(candidates) > 0:
             import json
             candidates_list = []
             for c in candidates[:15]:  # До 15 кандидатов

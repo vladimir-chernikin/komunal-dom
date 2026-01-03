@@ -10,6 +10,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Count
 import json
 import logging
 
@@ -163,6 +164,71 @@ def get_chat_history(request):
 
     except Exception as e:
         logger.error(f"Ошибка получения истории: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@require_http_methods(["GET"])
+@login_required
+def get_dialogs_list(request):
+    """
+    API endpoint для получения списка всех диалогов пользователя
+
+    Args:
+        request: Django GET request
+
+    Returns:
+        JsonResponse: Список диалогов с датой, временем и третьим сообщением
+    """
+    try:
+        from message_handler.models import MessageLog
+        from django.db.models import Min, Max
+
+        # Получаем все уникальные сессии пользователя
+        sessions = MessageLog.objects.filter(
+            channel='web',
+            django_user=request.user
+        ).values('session_id').annotate(
+            first_message_time=Min('created_at'),
+            last_message_time=Max('created_at'),
+            message_count=Count('message_id')
+        ).order_by('-last_message_time')
+
+        dialogs_list = []
+
+        for session in sessions:
+            session_id = session['session_id']
+
+            # Получаем третье сообщение (или первое, если сообщений меньше)
+            messages = MessageLog.objects.filter(
+                channel='web',
+                django_user=request.user,
+                session_id=session_id
+            ).order_by('created_at')
+
+            third_message_text = ""
+            if messages.count() >= 3:
+                third_message_text = messages[2].text[:100]  # Первые 100 символов
+            elif messages.count() > 0:
+                third_message_text = messages[0].text[:100]
+
+            dialogs_list.append({
+                'session_id': session_id,
+                'date': session['first_message_time'].strftime('%Y-%m-%d'),
+                'time': session['first_message_time'].strftime('%H:%M'),
+                'preview': third_message_text,
+                'message_count': session['message_count']
+            })
+
+        return JsonResponse({
+            'status': 'success',
+            'dialogs': dialogs_list
+        })
+
+    except Exception as e:
+        logger.error(f"Ошибка получения списка диалогов: {e}", exc_info=True)
         return JsonResponse({
             'status': 'error',
             'error': str(e)

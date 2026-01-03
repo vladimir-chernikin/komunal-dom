@@ -17,4 +17,5 @@ urlpatterns = [
     # API endpoints
     path('api/send/', views.send_message, name='send_message'),
     path('api/history/', views.get_chat_history, name='get_chat_history'),
+    path('api/dialogs-list/', views.get_dialogs_list, name='get_dialogs_list'),
 ]
