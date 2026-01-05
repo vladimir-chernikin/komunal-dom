@@ -2464,12 +2464,33 @@ JSON:"""
         # Блок задачи в зависимости от стратегии
         if strategy == 'A':
             # 1 кандидат, уверенность >90%
-            task_block = f"""
+            candidate_name = candidates[0]['service_name'] if candidates else 'Неизвестно'
+
+            # ИСПРАВЛЕНО (2026-01-05): Проверяем есть ли уже похожий подтверждающий вопрос
+            has_confirm_question = False
+            if asked_questions:
+                for q in asked_questions:
+                    if 'правильно ли я понял' in q.lower() or 'подтверд' in q.lower():
+                        has_confirm_question = True
+                        break
+
+            if has_confirm_question:
+                # Уже спрашивали подтверждение - задаем короткий вопрос
+                task_block = f"""
+БЛОК: ЗАДАЧА
+Услуга определена с вероятностью >90%: {candidate_name}.
+Вы УЖЕ задавали подтверждающий вопрос выше.
+НЕ ПОВТОРЯЙ "Правильно ли я понял?"!
+Задай вопрос для подтверждения: "Подтверждаете?" или "Верно?"
+"""
+            else:
+                # Первый раз - задаем полный подтверждающий вопрос
+                task_block = f"""
 БЛОК: ЗАДАЧА
 Услуга определена с вероятностью >90%. Задай подтверждающий вопрос.
 Формула: "Правильно ли я понял, что [описание проблемы]?"
 
-Кандидат: {candidates[0]['service_name'] if candidates else 'Неизвестно'}
+Кандидат: {candidate_name}
 """
         elif strategy == 'B':
             import json
