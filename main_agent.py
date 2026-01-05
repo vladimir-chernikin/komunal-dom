@@ -1297,14 +1297,31 @@ class MainAgent:
             # Получаем confidence из LLM ранжирования если было
             llm_confidence = ranking_result.get('confidence', 0.0) if 'ranking_result' in locals() else 0.0
 
-            # Если confidence < 0.9 - спрашиваем подтверждение
-            needs_confirmation = llm_confidence < 0.9
+            # ИСПРАВЛЕНО (2026-01-05): Проверяем - был ли уже подтверждающий вопрос
+            already_asked_confirmation = False
+            if dialog_history:
+                for msg in dialog_history:
+                    is_bot = msg.get('direction') == 'outbound' or msg.get('role') == 'bot'
+                    if is_bot:
+                        text = msg.get('message_text', '') or msg.get('text', '')
+                        if 'правильно ли я понял' in text.lower() or 'подтверд' in text.lower():
+                            already_asked_confirmation = True
+                            logger.info(f"[!] УЖЕ был подтверждающий вопрос: '{text[:60]}...'")
+                            break
+
+            # Если confidence < 0.9 И еще НЕ спрашивали подтверждение - спрашиваем
+            # Если УЖЕ спрашивали - НЕ повторяем, сразу создаем заявку
+            needs_confirmation = llm_confidence < 0.9 and not already_asked_confirmation
 
             # Формируем сообщение
             if needs_confirmation:
                 message = f"Правильно ли я понял, что у вас: {candidate['service_name']}?"
             else:
-                message = f"Понял, у вас: {candidate['service_name']}"
+                # Если уже спрашивали подтверждение - сообщаем что создаем заявку
+                if already_asked_confirmation:
+                    message = f"Создаю заявку: {candidate['service_name']}"
+                else:
+                    message = f"Понял, у вас: {candidate['service_name']}"
 
             return {
                 'status': 'SUCCESS',
@@ -2468,13 +2485,17 @@ JSON:"""
 
             # ИСПРАВЛЕНО (2026-01-05): Проверяем есть ли уже похожий подтверждающий вопрос
             has_confirm_question = False
+            logger.info(f"[DEBUG] Стратегия A: asked_questions={len(asked_questions) if asked_questions else 0}")
             if asked_questions:
-                for q in asked_questions:
+                for i, q in enumerate(asked_questions):
+                    logger.info(f"[DEBUG] Проверка вопроса #{i+1}: '{q[:60]}...'")
                     if 'правильно ли я понял' in q.lower() or 'подтверд' in q.lower():
                         has_confirm_question = True
+                        logger.info(f"[DEBUG] НАЙДЕН подтверждающий вопрос!")
                         break
 
             if has_confirm_question:
+                logger.info(f"[DEBUG] Используем альтернативный вопрос (уже спрашивали подтверждение)")
                 # Уже спрашивали подтверждение - задаем короткий вопрос
                 task_block = f"""
 БЛОК: ЗАДАЧА
@@ -2485,6 +2506,7 @@ JSON:"""
 """
             else:
                 # Первый раз - задаем полный подтверждающий вопрос
+                logger.info(f"[DEBUG] Первый подтверждающий вопрос")
                 task_block = f"""
 БЛОК: ЗАДАЧА
 Услуга определена с вероятностью >90%. Задай подтверждающий вопрос.
