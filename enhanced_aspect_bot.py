@@ -59,6 +59,7 @@ class ServiceBotState:
         self.last_address = None
         self.warnings_count = 0
         self.last_question_time = None
+        self.session_id = None  # ИСПРАВЛЕНО (2026-01-05): Текущая сессия для логирования outbound
 
         # Поля для обслуживания заявок
         self.current_service_id = None
@@ -110,6 +111,49 @@ class EnhancedAspectBot:
             if word in text_lower:
                 return True
         return False
+
+    async def _reply_and_log(
+        self,
+        update: Update,
+        text: str,
+        session_id: str = None,
+        metadata: Dict = None
+    ):
+        """
+        Отправляет ответ пользователю И логирует outbound сообщение
+
+        ИСПРАВЛЕНО (2026-01-05):
+        - Логирует все Bot -> User сообщения в dialog_logs
+        - Это нужно для трассировки и accumulation txtPrb
+
+        Args:
+            update: Telegram Update объект
+            text: Текст ответа
+            session_id: ID сессии (берется из state если не передан)
+            metadata: Метаданные для логирования (txtPrb, filters, etc)
+        """
+        user = update.effective_user
+        state = self.get_conversation_state(user.id)
+
+        # Получаем session_id из state если не передан
+        if not session_id:
+            session_id = state.session_id
+
+        # Отправляем ответ пользователю
+        await update.message.reply_text(text)
+
+        # Логируем outbound сообщение
+        if self.message_handler and session_id:
+            try:
+                await self.message_handler.log_outbound_message(
+                    text=text,
+                    user_id=str(user.id),
+                    channel='telegram',
+                    session_id=session_id,
+                    metadata=metadata or {}
+                )
+            except Exception as e:
+                logger.error(f"Ошибка логирования outbound сообщения: {e}")
 
     async def ask_yandexgpt(self, prompt, max_tokens=300):
         """Запрос к YandexGPT API с системным промптом из БД"""
@@ -288,13 +332,16 @@ class EnhancedAspectBot:
                 # ИСПРАВЛЕНО (2025-12-25): Используем AI агента для умного вопроса
                 clarification = await self._ask_ai_clarification(text, state)
 
-                await update.message.reply_text(clarification)
+                # ИСПРАВЛЕНО (2026-01-05): Логируем outbound
+                await self._reply_and_log(update, clarification, state.session_id)
                 return
 
         if not self.message_handler:
-            await update.message.reply_text(
+            await self._reply_and_log(
+                update,
                 "К сожалению, система определения услуг временно недоступна.\n"
-                "Пожалуйста, позвоните напрямую в УК."
+                "Пожалуйста, позвоните напрямую в УК.",
+                state.session_id
             )
             return
 
@@ -315,6 +362,12 @@ class EnhancedAspectBot:
                 }
             )
 
+            # ИСПРАВЛЕНО (2026-01-05): Сохраняем session_id для логирования outbound
+            session_id = result.get('session_id')
+            if session_id:
+                state.session_id = session_id
+                logger.info(f"✅ Session ID сохранен в state: {session_id}")
+
             # Анализируем результат
             if result.get('status') == 'success':
                 response = result.get('response', '')
@@ -322,7 +375,7 @@ class EnhancedAspectBot:
                 # Проверяем, была ли это только проверка приветствия
                 if result.get('is_greeting'):
                     # Просто отвечаем на приветствие, ничего не делаем
-                    await update.message.reply_text(response)
+                    await self._reply_and_log(update, response, session_id)
                     return
 
                 # Если услуга определена успешно (SUCCESS)
@@ -346,29 +399,36 @@ class EnhancedAspectBot:
                     # Используем ИЗНАЧАЛЬНОЕ сообщение от MainAgent (без изменений!)
                     confirm_text = result['raw_result'].get('message', f"Правильно ли я понял, что у вас: {service_name}?")
 
-                    await update.message.reply_text(confirm_text)
+                    # ИСПРАВЛЕНО (2026-01-05): Логируем с metadata из result
+                    metadata = result.get('raw_result', {}).get('_metadata', {})
+                    await self._reply_and_log(update, confirm_text, session_id, metadata)
                     return
 
                 # Если нужна детализация (AMBIGUOUS)
                 elif result.get('raw_result', {}).get('status') == 'AMBIGUOUS':
-                    # Отправляем уточняющий вопрос
-                    await update.message.reply_text(response)
+                    # Отправляем уточняющий вопрос с metadata
+                    metadata = result.get('raw_result', {}).get('_metadata', {})
+                    await self._reply_and_log(update, response, session_id, metadata)
                     return
 
                 # Обычный ответ
-                await update.message.reply_text(response)
+                await self._reply_and_log(update, response, session_id)
 
             else:
                 # Ошибка обработки
-                await update.message.reply_text(
-                    f"Произошла ошибка: {result.get('error', 'Неизвестная ошибка')}"
+                await self._reply_and_log(
+                    update,
+                    f"Произошла ошибка: {result.get('error', 'Неизвестная ошибка')}",
+                    state.session_id
                 )
 
         except Exception as e:
             logger.error(f"Ошибка при обработке заявки: {e}")
-            await update.message.reply_text(
+            await self._reply_and_log(
+                update,
                 "Произошла ошибка при обработке запроса.\n"
-                "Пожалуйста, попробуйте еще раз или позвоните в УК."
+                "Пожалуйста, попробуйте еще раз или позвоните в УК.",
+                state.session_id
             )
 
     async def handle_address_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):

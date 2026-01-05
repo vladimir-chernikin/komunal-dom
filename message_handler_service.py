@@ -761,3 +761,49 @@ class MessageHandlerService:
         except Exception as e:
             logger.error(f"MessageHandler: Ошибка получения сообщений сессии: {e}")
             return []
+
+    async def log_outbound_message(
+        self,
+        text: str,
+        user_id: str,
+        channel: str,
+        session_id: str,
+        metadata: Dict = None
+    ) -> Dict:
+        """
+        Публичный метод для логирования исходящих сообщений (Bot -> User)
+
+        Используется ботами (Telegram, WhatsApp) для логирования ответов пользователям.
+
+        Args:
+            text: Текст исходящего сообщения
+            user_id: ID пользователя в канале
+            channel: Канал связи (telegram, whatsapp, web, etc)
+            session_id: ID сессии диалога
+            metadata: Дополнительные метаданные (txtPrb, filters, etc)
+
+        Returns:
+            Dict: Результат логирования
+        """
+        try:
+            # Генерируем message_id для outbound
+            import uuid
+            message_id = str(uuid.uuid4())
+
+            # Логируем через внутренний метод
+            result = await self._log_message(
+                text=text,
+                user_id=user_id,
+                channel=channel,
+                message_id=message_id,
+                session_id=session_id,
+                direction='outbound',
+                metadata=metadata or {}
+            )
+
+            logger.info(f"✅ Outbound сообщение записано: session_id={session_id}, text='{text[:50]}...'")
+            return {'status': 'success', 'message_log_id': result.get('id')}
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка логирования outbound сообщения: {e}")
+            return {'status': 'error', 'error': str(e)}
