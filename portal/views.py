@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_exempt  # ИСПРАВЛЕНО (2026-01-06): Для API endpoints
 from django.contrib.auth.models import User
 from django.http import Http404
 from django.conf import settings
@@ -180,6 +181,7 @@ def dialog_trace_api(request):
 
 
 @login_required
+@csrf_exempt  # ИСПРАВЛЕНО (2026-01-06): Отключаем CSRF для API (используем сессионную авторизацию)
 def api_dialog_sessions(request):
     """API для получения списка сессий (v3.0 - dialog_logs)"""
     from django.http import JsonResponse
@@ -221,6 +223,7 @@ def api_dialog_sessions(request):
 
 
 @login_required
+@csrf_exempt  # ИСПРАВЛЕНО (2026-01-06): Отключаем CSRF для API
 def api_dialog_reports(request):
     """API для получения списка файлов отчетов из /tmp/"""
     from django.http import JsonResponse
@@ -270,6 +273,7 @@ def api_dialog_reports(request):
 
 
 @login_required
+@csrf_exempt  # ИСПРАВЛЕНО (2026-01-06): Отключаем CSRF для API
 def api_dialog_report_view(request, filename):
     """API для получения содержимого файла отчета"""
     from django.http import JsonResponse
@@ -307,6 +311,7 @@ def api_dialog_report_view(request, filename):
 
 
 @login_required
+@csrf_exempt  # ИСПРАВЛЕНО (2026-01-06): Отключаем CSRF для API
 def api_dialog_full_trace(request):
     """API для генерации полного отчета по трассировке диалога
 
