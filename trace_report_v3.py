@@ -225,6 +225,16 @@ class TraceReportServiceV3:
             lines.append("(не вызывался)")
         lines.append("")
 
+        # Пункт 6.1: Итого по всем сервисам (воронка точности - UNION)
+        lines.append("**6.1 Итого по всем сервисам (Воронка точности):**")
+        union_results = self._extract_union_results(metadata)
+        if union_results:
+            for result in union_results:
+                lines.append(f"{result}")
+        else:
+            lines.append("(нет данных)")
+        lines.append("")
+
         # Пункт 7: Установленные фильтры
         lines.append("**7. Таблица установленных фильтров:**")
         established_filters = metadata.get('established_filters', {})
@@ -285,6 +295,82 @@ class TraceReportServiceV3:
             name = cand.get('service_name', 'N/A')
             confidence = cand.get('confidence', 0) * 100
             results.append(f"ID:{service_id} | {name} | {confidence:.1f}%")
+
+        return results
+
+    def _extract_union_results(self, metadata: Dict) -> List[str]:
+        """
+        Извлекает UNION результаты (воронка точности).
+
+        Показывает кандидатов после объединения всех микросервисов
+        с приоритетами и sources.
+        """
+        service_detection = metadata.get('service_detection', {})
+
+        # Пытаемся найти union_candidates или orchestrator_results
+        union_candidates = service_detection.get('union_candidates')
+        if not union_candidates:
+            # Проверяем orchestrator_results
+            orchestrator = service_detection.get('orchestrator_results', {})
+            union_candidates = orchestrator.get('candidates')
+
+        if not union_candidates:
+            # Fallback: берем все candidates но показываем sources
+            all_candidates = service_detection.get('candidates', [])
+            if not all_candidates:
+                return []
+
+            # Группируем по service_id для UNION
+            unique_candidates = {}
+            for cand in all_candidates:
+                service_id = cand.get('service_id')
+                if service_id not in unique_candidates:
+                    unique_candidates[service_id] = {
+                        'service_id': service_id,
+                        'service_name': cand.get('service_name', 'N/A'),
+                        'confidence': cand.get('confidence', 0),
+                        'sources': set(),
+                        'priority': cand.get('priority', 0)
+                    }
+                # Добавляем source
+                sources = cand.get('sources', [])
+                unique_candidates[service_id]['sources'].update(sources)
+                # Сохраняем максимальный priority
+                unique_candidates[service_id]['priority'] = max(
+                    unique_candidates[service_id]['priority'],
+                    cand.get('priority', 0)
+                )
+
+            # Сортируем по priority
+            sorted_candidates = sorted(
+                unique_candidates.values(),
+                key=lambda x: x['priority'],
+                reverse=True
+            )
+
+            results = []
+            for cand in sorted_candidates[:7]:  # Максимум 7 кандидатов
+                service_id = cand['service_id']
+                name = cand['service_name']
+                priority = cand['priority']
+                sources_str = '+'.join(sorted(cand['sources']))
+                results.append(f"ID:{service_id} | {name} | priority={priority:.3f} | sources=[{sources_str}]")
+
+            return results
+
+        # Если есть явные union_candidates
+        results = []
+        for cand in union_candidates[:7]:  # Максимум 7 кандидатов
+            service_id = cand.get('service_id', 'N/A')
+            name = cand.get('service_name', 'N/A')
+            priority = cand.get('priority', cand.get('confidence', 0))
+            sources = cand.get('sources', [])
+            sources_str = '+'.join(sources) if sources else 'unknown'
+
+            if isinstance(priority, float) or isinstance(priority, int):
+                results.append(f"ID:{service_id} | {name} | priority={priority:.3f} | sources=[{sources_str}]")
+            else:
+                results.append(f"ID:{service_id} | {name} | sources=[{sources_str}]")
 
         return results
 
