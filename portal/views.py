@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.http import Http404
 from django.conf import settings
 from .models import UserProfile
+import json  # ИСПРАВЛЕНО (2026-01-05): Добавлен для парсинга metadata
 
 # Импорты для КЛАДР статистики
 try:
@@ -125,7 +126,7 @@ def dialog_trace_page(request):
 def dialog_trace_api(request):
     """API для получения трассировки диалога (v3.0 - новый формат)"""
     from django.http import JsonResponse
-    from asgiref.sync import sync_to_async
+    from django.db import connection
 
     try:
         profile = request.user.userprofile
@@ -142,42 +143,40 @@ def dialog_trace_api(request):
     if not session_id:
         return JsonResponse({'error': 'Не указан session_id'}, status=400)
 
-    # ИСПРАВЛЕНО (2026-01-05): Используем TraceReportServiceV3 для генерации отчета
-    try:
-        from trace_report_v3 import TraceReportServiceV3
+    # ИСПРАВЛЕНО (2026-01-05): Загружаем сообщения из dialog_logs
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT
+                id,
+                message_content,
+                direction,
+                channel,
+                session_id,
+                timestamp,
+                metadata
+            FROM dialog_logs
+            WHERE session_id LIKE %s
+            ORDER BY timestamp ASC
+        """, [f"{session_id}%"])
 
-        # Генерируем отчет в памяти (без файла)
-        trace_service = TraceReportServiceV3()
+        columns = [col[0] for col in cursor.description]
+        messages = []
+        for row in cursor.fetchall():
+            msg = dict(zip(columns, row))
+            # Парсим metadata если это строка
+            if isinstance(msg.get('metadata'), str):
+                try:
+                    msg['metadata'] = json.loads(msg['metadata'])
+                except:
+                    msg['metadata'] = {}
+            messages.append(msg)
 
-        # Запускаем асинхронную генерацию
-        loop = None
-        try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Если уже в event loop - используем sync_to_async
-                report_content = sync_to_async(trace_service.generate_trace_report)(session_id=session_id)
-            else:
-                # Если нет loop - создаем новый
-                report_content = asyncio.run(trace_service.generate_trace_report(session_id=session_id))
-        except:
-            # Fallback
-            report_content = sync_to_async(trace_service.generate_trace_report)(session_id=session_id)
-
-        return JsonResponse({
-            'success': True,
-            'session_id': session_id,
-            'report': report_content,  # Отчет по новому шаблону
-            'format': 'v3'  # Формат v3
-        })
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({
-            'error': f'Ошибка генерации отчета: {str(e)}',
-            'traceback': traceback.format_exc()
-        }, status=500)
+    return JsonResponse({
+        'success': True,
+        'session_id': session_id,
+        'messages': messages,
+        'total': len(messages)
+    })
 
 
 @login_required
