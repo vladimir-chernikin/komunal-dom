@@ -3362,15 +3362,16 @@ JSON:"""
 
             logger.info(f"[OK] ПРИМЕНЯЕМ ФИЛЬТР: {filter_name}={value} (confidence={confidence:.2f} >= {FILTER_CONFIDENCE_THRESHOLD})")
 
-            # Фильтрация по location
-            if filter_name == 'location' and value:
+            # ИСПРАВЛЕНИЕ (2026-01-05): Используем правильные ключи established_filters
+            # Фильтрация по location_type (было 'location')
+            if filter_name == 'location_type' and value:
                 # Маппинг: зал/комната -> Индивидуальное
                 if value in ['Индивидуальное', 'Квартира', 'индивидуальное']:
                     # ИСПРАВЛЕНО (2025-12-28): Добавлено детальное логирование
                     before_count = len(filtered_candidates)
 
                     # Логируем каждого кандидата ДО фильтрации
-                    logger.info(f"  [LIST] ДО ФИЛЬТРАЦИИ location='{value}':")
+                    logger.info(f"  [LIST] ДО ФИЛЬТРАЦИИ location_type='{value}':")
                     for i, c in enumerate(filtered_candidates, 1):
                         loc = c.get('location_type', 'NULL')
                         loc_lower = loc.lower() if loc else 'null'
@@ -3382,10 +3383,11 @@ JSON:"""
                         if c.get('location_type', '').lower() in ['индивидуальное', 'квартира']
                     ]
                     after_count = len(filtered_candidates)
-                    logger.info(f"  [OK] Фильтр location: {before_count} -> {after_count} (оставили Individual)")
+                    logger.info(f"  [OK] Фильтр location_type: {before_count} -> {after_count} (оставили Individual)")
 
-            # Фильтрация по incident
-            elif filter_name == 'incident' and value:
+            # ИСПРАВЛЕНИЕ (2026-01-05): Используем правильные ключи established_filters
+            # Фильтрация по incident_type (было 'incident')
+            elif filter_name == 'incident_type' and value:
                 if value in ['Инцидент', 'инцидент']:
                     before_count = len(filtered_candidates)
                     filtered_candidates = [
@@ -3393,7 +3395,7 @@ JSON:"""
                         if c.get('incident_type', '').lower() in ['инцидент']
                     ]
                     after_count = len(filtered_candidates)
-                    logger.info(f"  Фильтр incident: {before_count} -> {after_count} (оставили Инцидент)")
+                    logger.info(f"  [OK] Фильтр incident_type: {before_count} -> {after_count} (оставили Инцидент)")
 
             # ИСПРАВЛЕНИЕ (2026-01-05): ОТКЛЮЧАЕМ фильтрацию по category
             # ПРИЧИНА: FilterDetectionService часто ошибается (определил 'Канализация' для 'прорвало трубу')
