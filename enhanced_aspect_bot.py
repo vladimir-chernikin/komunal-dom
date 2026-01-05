@@ -721,13 +721,13 @@ class EnhancedAspectBot:
     async def _ask_ai_clarification(self, text: str, state: ServiceBotState) -> str:
         """
         ИСПРАВЛЕНО (2025-12-25): Спрашивает у AI агента как уточнить
+        ИСПРАВЛЕНО (2026-01-06): Убрано использование state.last_user_message
 
         УБРАНО: Хардкод с перечислениями "(кран, труба, батарея)"
         ДОБАВЛЕНО: AI генерация вопросов без перечислений
         """
-        # Собираем контекст
-        last_msg = state.last_user_message if state else ""
-        context = f"Последнее сообщение: {last_msg}\nТекущее: {text}"
+        # ИСПРАВЛЕНО (2026-01-06): Не используем state.last_user_message - нет такого атрибута
+        context = f"Текущее сообщение пользователя: {text}"
 
         prompt = f"""Ты - опытный диспетчер управляющей компании.
 
