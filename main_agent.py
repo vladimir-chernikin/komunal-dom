@@ -2305,6 +2305,37 @@ JSON:"""
             return 'ОБЪЕКТ'
         return 'ТИП'
 
+    def _extract_asked_questions(self, dialog_history: List[Dict]) -> List[str]:
+        """
+        ИСПРАВЛЕНО (2026-01-05): Извлекает вопросы которые бот уже задал
+
+        Args:
+            dialog_history: История диалога
+
+        Returns:
+            List[str]: Список уже заданных вопросов
+        """
+        if not dialog_history:
+            return []
+
+        asked = []
+        for msg in dialog_history:
+            # Извлекаем только outbound сообщения (вопросы бота)
+            if msg.get('direction') == 'outbound':
+                text = msg.get('message_text', '') or msg.get('text', '')
+                if text and text.strip():
+                    # Убираем технические фразы, оставляем только вопросы
+                    text = text.strip()
+                    # Пропускаем приветствия и системные сообщения
+                    if not any(skip in text.lower() for skip in ['добрый день', 'здравствуйте', 'понял', 'определена', 'создана']):
+                        asked.append(text)
+
+        logger.info(f"_extract_asked_questions: извлечено {len(asked)} заданных вопросов")
+        for i, q in enumerate(asked, 1):
+            logger.info(f"  Вопрос #{i}: {q}")
+
+        return asked
+
     def _build_dynamic_prompt(
         self,
         strategy: str,
@@ -2312,10 +2343,12 @@ JSON:"""
         absolute_facts: List[str] = None,
         candidates: List[Dict] = None,
         missing_filter: str = None,
-        txtPrb: str = None
+        txtPrb: str = None,
+        asked_questions: List[str] = None
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): Динамическая сборка промпта по стратегии
+        ИСПРАВЛЕНО (2026-01-05): Добавлен параметр asked_questions для исключения повторов
 
         Стратегии:
         - A (1 кандидат, >90%): Подтверждение
@@ -2329,6 +2362,7 @@ JSON:"""
             candidates: Список кандидатов (для стратегии B)
             missing_filter: Недостающий фильтр (для стратегии C)
             txtPrb: Описание проблемы
+            asked_questions: Список уже заданных вопросов (ИСПРАВЛЕНО 2026-01-05)
 
         Returns:
             str: Промпт для YandexGPT Pro
@@ -2346,6 +2380,20 @@ JSON:"""
 БЛОК: АБСОЛЮТНЫЕ ФАКТЫ (ЗАПРЕТ НА ВОПРОСЫ)
 Ниже перечислены факты, которые УЖЕ установлены. ТЕБЕ ЗАПРЕЩЕНО ЗАДАВАТЬ ВОПРОСЫ ОБ ЭТОМ.
 {facts_list}
+"""
+
+        # ИСПРАВЛЕНО (2026-01-05): Блок уже заданных вопросов
+        asked_questions_block = ""
+        if asked_questions:
+            questions_list = "\n".join([f"{i+1}. {q}" for i, q in enumerate(asked_questions)])
+            asked_questions_block = f"""
+БЛОК: УЖЕ ЗАДАННЫЕ ВОПРОСЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ПОВТОРЯТЬ!)
+НИЖЕ ПЕРЕЧИСЛЕНЫ ВОПРОСЫ КОТОРЫЕ БОТ УЖЕ ЗАДАВАЛ В ЭТОМ ДИАЛОГЕ.
+ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ЗАДАВАТЬ ТАКИЕ ЖЕ ИЛИ ПОХОЖИЕ ВОПРОСЫ!
+
+{questions_list}
+
+ПРАВИЛО: Еслиbot спросил "Где именно?", ТЫ НЕ МОЖЕШЬ спросить "В каком месте?" или "Где это произошло?"
 """
 
         # Блок контекста
@@ -2413,8 +2461,8 @@ JSON:"""
 Не упоминай услуги, не перечисляй варианты.
 """
 
-        # Собираем промпт
-        prompt = f"{system_block}{facts_block}{context_block}{task_block}{constraints_block}"
+        # ИСПРАВЛЕНО (2026-01-05): Собираем промпт с блоком уже заданных вопросов
+        prompt = f"{system_block}{facts_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
 
         # Добавляем инструкцию по формату ответа
         prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"
@@ -2484,6 +2532,12 @@ JSON:"""
                 if semantic_check.get('absolute_facts'):
                     absolute_facts = semantic_check['absolute_facts']
 
+            # ИСПРАВЛЕНО (2026-01-05): Извлекаем уже заданные вопросы из истории
+            asked_questions = []
+            if dialog_history:
+                asked_questions = self._extract_asked_questions(dialog_history)
+                logger.info(f"[!] Уже задано вопросов: {len(asked_questions)}")
+
             # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
             if question_type == 'clarification' and candidates is not None:
                 # Используем новый метод с динамическими промптами по стратегиям
@@ -2493,7 +2547,8 @@ JSON:"""
                     absolute_facts=absolute_facts if absolute_facts else None,
                     candidates=candidates,
                     missing_filter=missing_filter,
-                    txtPrb=txtPrb
+                    txtPrb=txtPrb,
+                    asked_questions=asked_questions if asked_questions else None  # ИСПРАВЛЕНО 2026-01-05
                 )
                 logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
             else:
