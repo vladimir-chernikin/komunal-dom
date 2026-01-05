@@ -145,6 +145,9 @@ body {
                         Трассировка диалогов
                         <small class="text-muted">- отладка AI агента</small>
                     </h6>
+                    <small class="text-muted">
+                        💡 Нажмите F12 для консоли браузера если видите ошибку
+                    </small>
                 </div>
                 <div>
                     <a href="{% url 'portal:dba_page' %}" class="btn btn-outline-secondary btn-sm">
@@ -239,10 +242,25 @@ async function loadSessions() {
     const container = document.getElementById('sessionsList');
 
     try {
+        console.log('[DEBUG] Загрузка сессий...');
         const response = await fetch('/api/dialog-sessions/', {
             credentials: 'same-origin'
         });
+
+        console.log('[DEBUG] Response status:', response.status);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[ERROR] Response not OK:', response.status, errorText);
+            container.innerHTML = `<div class="alert alert-danger m-2">
+                <strong>Ошибка ${response.status}:</strong> ${response.statusText}<br>
+                <small class="text-muted">${errorText.substring(0, 200)}...</small>
+            </div>`;
+            return;
+        }
+
         const data = await response.json();
+        console.log('[DEBUG] Data received:', data);
 
         if (data.error) {
             container.innerHTML = `<div class="alert alert-danger m-2">${data.error}</div>`;
@@ -290,8 +308,11 @@ async function loadSessions() {
         container.innerHTML = html;
 
     } catch (error) {
-        console.error('Error:', error);
-        container.innerHTML = '<div class="alert alert-danger m-2">Ошибка загрузки</div>';
+        console.error('[ERROR] Exception:', error);
+        container.innerHTML = `<div class="alert alert-danger m-2">
+            <strong>Ошибка:</strong> ${error.message}<br>
+            <small class="text-muted">Откройте консоль браузера (F12) для деталей</small>
+        </div>`;
     }
 }
 

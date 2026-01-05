@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test API</title>
+</head>
+<body>
+    <h1>Test dialog-trace API</h1>
+    <button onclick="testAPI()">Test API</button>
+    <div id="result"></div>
+
+    <script>
+    async function testAPI() {
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = '<p>Loading...</p>';
+
+        try {
+            console.log('Sending request to /api/dialog-sessions/');
+
+            const response = await fetch('/api/dialog-sessions/', {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+
+            console.log('Response status:', response.status);
+            console.log('Response headers:', [...response.headers.entries()]);
+
+            const text = await response.text();
+            console.log('Response text (first 500 chars):', text.substring(0, 500));
+
+            if (!response.ok) {
+                resultDiv.innerHTML = `<p style="color: red;">ERROR ${response.status}: ${response.statusText}</p>`;
+                resultDiv.innerHTML += `<pre>${text}</pre>`;
+                return;
+            }
+
+            const data = JSON.parse(text);
+            console.log('Parsed data:', data);
+
+            if (data.error) {
+                resultDiv.innerHTML = `<p style="color: red;">API Error: ${data.error}</p>`;
+                return;
+            }
+
+            resultDiv.innerHTML = `<p style="color: green;">SUCCESS!</p>`;
+            resultDiv.innerHTML += `<p>Sessions found: ${data.sessions.length}</p>`;
+            resultDiv.innerHTML += `<ul>`;
+            data.sessions.slice(0, 5).forEach(s => {
+                resultDiv.innerHTML += `<li>${s.session_id} - ${s.channel} - ${s.message_count} msg</li>`;
+            });
+            resultDiv.innerHTML += `</ul>`;
+
+        } catch (error) {
+            console.error('Exception:', error);
+            resultDiv.innerHTML = `<p style="color: red;">EXCEPTION: ${error.message}</p>`;
+        }
+    }
+    </script>
+</body>
+</html>
