@@ -275,23 +275,32 @@ async function loadSessions() {
         // Отобразить сессии
         let html = '';
         data.sessions.forEach(session => {
-            const time = new Date(session.last_message).toLocaleString('ru-RU');
+            // ИСПРАВЛЕНО (2026-01-06): Проверка на null значений
+            if (!session) {
+                console.warn('[WARN] Session is null, skipping');
+                return;
+            }
+
+            const time = session.last_message ? new Date(session.last_message).toLocaleString('ru-RU') : 'Нет данных';
             const icon = session.channel === 'telegram' ? '<i class="fab fa-telegram"></i>' :
                          session.channel === 'web' ? '<i class="fas fa-globe"></i>' :
                          '<i class="fas fa-comment"></i>';
 
+            const sessionIdShort = session.session_id ? session.session_id.substring(0, 30) : 'Нет ID';
+            const messageCount = session.message_count || 0;
+
             html += `
-                <div class="list-group-item session-item" onclick="loadTrace('${session.session_id}')">
+                <div class="list-group-item session-item" onclick="loadTrace('${session.session_id || ''}')">
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="flex-grow-1">
-                            <strong>${icon} ${session.session_id.substring(0, 30)}...</strong>
+                            <strong>${icon} ${sessionIdShort}...</strong>
                             <br>
                             <small class="text-muted">
-                                <i class="fas fa-envelope"></i> ${session.message_count} сообщ.
+                                <i class="fas fa-envelope"></i> ${messageCount} сообщ.
                             </small>
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); generateFullTrace('${session.session_id}')" title="Полный отчет">
+                            <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); generateFullTrace('${session.session_id || ''}')" title="Полный отчет">
                                 <i class="fas fa-file-alt"></i>
                             </button>
                             <div class="text-end">
@@ -414,13 +423,19 @@ async function loadReportFiles() {
         // Отобразить файлы
         let html = '<div class="list-group">';
         data.files.forEach(file => {
-            const time = new Date(file.modified * 1000).toLocaleString('ru-RU');
-            const size = file.size > 1024 ? (file.size / 1024).toFixed(1) + ' КБ' : file.size + ' Б';
+            // ИСПРАВЛЕНО (2026-01-06): Проверка на null значений
+            if (!file) {
+                console.warn('[WARN] File is null, skipping');
+                return;
+            }
+
+            const time = file.modified ? new Date(file.modified * 1000).toLocaleString('ru-RU') : 'Нет данных';
+            const size = file.size > 1024 ? (file.size / 1024).toFixed(1) + ' КБ' : (file.size || 0) + ' Б';
 
             let icon = 'fas fa-file text-secondary';
-            if (file.name.includes('FULL_ANALYSIS')) icon = 'fas fa-file-alt text-danger';
-            else if (file.name.includes('DIALOG_TRACE')) icon = 'fas fa-file-code text-primary';
-            else if (file.name.includes('FINAL_FIX')) icon = 'fas fa-file-signature text-warning';
+            if (file.name && file.name.includes('FULL_ANALYSIS')) icon = 'fas fa-file-alt text-danger';
+            else if (file.name && file.name.includes('DIALOG_TRACE')) icon = 'fas fa-file-code text-primary';
+            else if (file.name && file.name.includes('FINAL_FIX')) icon = 'fas fa-file-signature text-warning';
 
             html += `
                 <div class="list-group-item file-link" onclick="viewReport('${file.name}')">
