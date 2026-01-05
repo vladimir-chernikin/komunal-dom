@@ -2308,6 +2308,7 @@ JSON:"""
     def _extract_asked_questions(self, dialog_history: List[Dict]) -> List[str]:
         """
         ИСПРАВЛЕНО (2026-01-05): Извлекает вопросы которые бот уже задал
+        ИСПРАВЛЕНО (2026-01-05): Поддержка обеих структур истории (direction и role)
 
         Args:
             dialog_history: История диалога
@@ -2320,8 +2321,15 @@ JSON:"""
 
         asked = []
         for msg in dialog_history:
-            # Извлекаем только outbound сообщения (вопросы бота)
-            if msg.get('direction') == 'outbound':
+            # ИСПРАВЛЕНО (2026-01-05): Поддержка обеих структур
+            # Структура 1: {'direction': 'outbound', ...} (реальный бот)
+            # Структура 2: {'role': 'bot', ...} (тестовый симулятор)
+            is_bot_message = (
+                msg.get('direction') == 'outbound' or  # реальный бот
+                msg.get('role') == 'bot'  # тестовый симулятор
+            )
+
+            if is_bot_message:
                 text = msg.get('message_text', '') or msg.get('text', '')
                 if text and text.strip():
                     # Убираем технические фразы, оставляем только вопросы
