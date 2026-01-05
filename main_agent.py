@@ -818,59 +818,6 @@ class MainAgent:
             logger.error(f"Ошибка VectorSearchService: {e}")
             return {}
 
-    async def _create_ambiguous_result_from_intersection(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> Dict:
-        """
-        Создание результата при множественном пересечении
-
-        ИСПРАВЛЕНО: Сделано async для загрузки атрибутов из БД
-        """
-        candidate_names = [c['service_name'] for c in candidates_data]
-        sources_info = ", ".join([f"{c['service_name']} ({'+'.join(c['sources'])})" for c in candidates_data])
-
-        logger.info(f"Множественное пересечение: {sources_info}")
-
-        # ИСПРАВЛЕНО: Загружаем атрибуты из БД вместо пустых значений
-        candidates_with_attrs = await self._load_candidates_attributes(candidates_data)
-
-        # Генерируем умный уточняющий вопрос с учетом истории
-        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
-
-        # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
-        if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
-            candidate = clarification_result['single_candidate']
-            result = {
-                'status': 'SUCCESS',
-                'service_id': candidate['service_id'],
-                'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
-                'confidence': 1.0,
-                'source': 'filtered_search',
-                'message': clarification_result['message'],
-                'candidates': candidates_data[:1],
-                'needs_confirmation': False,
-                'is_followup': is_followup
-            }
-            # ИСПРАВЛЕНО (2025-12-29): Добавляем _ai_metadata если есть
-            if '_ai_metadata' in clarification_result:
-                result['_ai_metadata'] = clarification_result['_ai_metadata']
-            return result
-
-        # ИСПРАВЛЕНО (2025-12-25): Используем отфильтрованных кандидатов вместо всех
-        filtered_candidates = clarification_result.get('filtered_candidates', candidates_with_attrs)
-
-        result = {
-            'status': 'AMBIGUOUS',
-            'candidates': filtered_candidates,  # ИСПРАВЛЕНО: отфильтрованные кандидаты
-            'candidate_names': [c.get('service_name', c.get('scenario_name', 'Unknown')) for c in filtered_candidates],
-            'message': clarification_result['message'],
-            'needs_clarification': True,
-            'clarification_type': 'intersection_multiple',
-            'is_followup': is_followup
-        }
-        # ИСПРАВЛЕНО (2025-12-29): Добавляем _ai_metadata если есть
-        if '_ai_metadata' in clarification_result:
-            result['_ai_metadata'] = clarification_result['_ai_metadata']
-        return result
-
     def _should_run_ai_agent(self, service_results: List[Dict], search_text: str, candidates: List[Dict]) -> Optional[str]:
         """
         Анализ необходимости запуска AI агента
@@ -969,7 +916,7 @@ class MainAgent:
             'candidate_names': [c.get('service_name', c.get('scenario_name', 'Unknown')) for c in filtered_candidates],
             'message': clarification_result['message'],
             'needs_clarification': True,
-            'clarification_type': 'no_intersection',
+            'clarification_type': 'candidates',  # ИСПРАВЛЕНО (2026-01-05): было 'no_intersection'
             'is_followup': is_followup
         }
         # ИСПРАВЛЕНО (2025-12-29): Добавляем _ai_metadata если есть
@@ -1465,44 +1412,6 @@ class MainAgent:
 
         logger.info(f"Дедуплицировано кандидатов: {len(merged)}")
         return merged
-
-    async def _analyze_intersections(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False) -> Dict:
-        """
-        Анализ пересечений результатов от разных микросервисов
-
-        ИСПРАВЛЕНО: Сделано async для вызова _create_ambiguous_result
-        """
-        if len(candidates) == 1:
-            # Однозначный результат
-            candidate = candidates[0]
-            confidence = candidate.get('confidence', 0)
-
-            # Если это уточняющий вопрос и высокая уверенность - не требуем подтверждения
-            needs_confirmation = confidence < 0.85 and not is_followup
-
-            # Формируем сообщение с учетом контекста
-            if is_followup:
-                message = f'Отлично! Теперь понятно. У вас проблема: {candidate.get("service_name", "Unknown")}'
-            else:
-                message = f'Я определил, что у вас проблема: {candidate.get("service_name", "Unknown")}'
-
-            return {
-                'status': 'SUCCESS',
-                'service_id': candidate.get('service_id'),
-                'service_name': candidate.get('service_name', 'Unknown'),
-                'confidence': confidence,
-                'source': candidate.get('source', 'unknown'),
-                'message': message,
-                'candidates': candidates,
-                'needs_confirmation': needs_confirmation,
-                'is_followup': is_followup
-            }
-        elif len(candidates) >= 2:
-            # Несколько кандидатов - уточняем
-            return await self._create_ambiguous_result(candidates, original_message, is_followup)
-        else:
-            # Нет кандидатов
-            return self._create_error_result("Не удалось определить услугу")
 
     async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> Dict:
         """

@@ -7,7 +7,7 @@ class MessageLogAdmin(admin.ModelAdmin):
     """Админка для логов сообщений"""
 
     list_display = [
-        'created_at',
+        'timestamp',
         'channel',
         'direction',
         'user_id',
@@ -15,15 +15,16 @@ class MessageLogAdmin(admin.ModelAdmin):
         'session_id'
     ]
 
-    list_filter = ['channel', 'direction', 'created_at']
-    search_fields = ['text', 'user_id', 'session_id', 'message_id']
-    readonly_fields = ['created_at']
+    list_filter = ['channel', 'direction', 'message_type', 'timestamp']
+    search_fields = ['message_content', 'user_id', 'session_id', 'message_id']
+    readonly_fields = ['timestamp']
 
-    date_hierarchy = 'created_at'
+    date_hierarchy = 'timestamp'
 
     def text_preview(self, obj):
         """Предпросмотр текста (обрезанный)"""
-        return obj.text[:100] + '...' if len(obj.text) > 100 else obj.text
+        content = obj.message_content if hasattr(obj, 'message_content') else ''
+        return content[:100] + '...' if len(content) > 100 else content
     text_preview.short_description = 'Текст'
 
     def has_add_permission(self, request):

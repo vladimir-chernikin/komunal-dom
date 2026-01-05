@@ -358,9 +358,23 @@ class MessageHandlerService:
             else:
                 message_type = 'system'
 
+            # ИСПРАВЛЕНО (2026-01-05): Генерируем UUID из session_id если не передан dialog_id
+            final_dialog_id = dialog_id
+            if not final_dialog_id:
+                # Если session_id уже UUID - используем его
+                import re
+                uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                if re.match(uuid_pattern, session_id.lower()):
+                    final_dialog_id = session_id
+                else:
+                    # Иначе генерируем UUID из session_id (детерминировано)
+                    import hashlib
+                    session_hash = hashlib.md5(session_id.encode()).hexdigest()
+                    final_dialog_id = f"{session_hash[:8]}-{session_hash[8:12]}-{session_hash[12:16]}-{session_hash[16:20]}-{session_hash[20:32]}"
+
             # Логируем через DialogLoggerService
             await dialog_logger.log_message(
-                dialog_id=dialog_id or session_id,  # Используем session_id как dialog_id если не передан
+                dialog_id=final_dialog_id,  # ИСПРАВЛЕНО: гарантированно UUID
                 user_id=user_id_int,
                 message_type=message_type,
                 message_content=text,
