@@ -40,10 +40,17 @@ class DialogLoggerService:
         llm_model: Optional[str] = None,
         tokens_used: Optional[int] = None,
         cost_rub: Optional[float] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        channel: Optional[str] = None,
+        direction: Optional[str] = None,
+        message_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        django_user_id: Optional[int] = None
     ):
         """
         Логировать сообщение в dialog_logs
+
+        ИСПРАВЛЕНО (2026-01-03): Добавлены поля channel, direction, message_id, session_id, django_user_id
 
         Args:
             dialog_id: UUID диалога
@@ -60,6 +67,11 @@ class DialogLoggerService:
             tokens_used: Количество токенов (optional)
             cost_rub: Стоимость в рублях (optional)
             metadata: Дополнительные метаданные (optional)
+            channel: Канал связи (telegram, web, etc) - ИСПРАВЛЕНО 2026-01-03
+            direction: Направление (inbound, outbound, system) - ИСПРАВЛЕНО 2026-01-03
+            message_id: ID сообщения в канале - ИСПРАВЛЕНО 2026-01-03
+            session_id: ID сессии - ИСПРАВЛЕНО 2026-01-03
+            django_user_id: ID пользователя Django - ИСПРАВЛЕНО 2026-01-03
         """
         try:
             def save_sync():
@@ -80,9 +92,14 @@ class DialogLoggerService:
                             tokens_used,
                             cost_rub,
                             metadata,
-                            timestamp
+                            timestamp,
+                            channel,
+                            direction,
+                            message_id,
+                            session_id,
+                            django_user_id
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s
                         )
                     """, [
                         dialog_id,
@@ -98,7 +115,12 @@ class DialogLoggerService:
                         llm_model,
                         tokens_used,
                         cost_rub,
-                        metadata
+                        metadata,
+                        channel,
+                        direction or message_type,  # Используем message_type как fallback
+                        message_id,
+                        session_id,
+                        django_user_id
                     ])
 
             await sync_to_async(save_sync)()

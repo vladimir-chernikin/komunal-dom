@@ -322,48 +322,72 @@ class MessageHandlerService:
         session_id: str,
         direction: str,
         metadata: Dict = None,
-        django_user_id: Optional[int] = None
+        django_user_id: Optional[int] = None,
+        dialog_id: Optional[str] = None,
+        confidence_score: Optional[float] = None,
+        service_detected_id: Optional[int] = None,
+        processing_stage: Optional[str] = None,
+        processing_time_ms: Optional[int] = None,
+        llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        tokens_used: Optional[int] = None,
+        cost_rub: Optional[float] = None
     ) -> Dict:
         """
-        Логирование сообщения в БД
+        Логирование сообщения в dialog_logs
+
+        ИСПРАВЛЕНО (2026-01-03): Переписано на использование dialog_logs
+        Вместо message_handler_messagelog используем dialog_logs
 
         Returns:
             Dict: Созданная запись сообщения
         """
         try:
-            from message_handler.models import MessageLog
-            from django.contrib.auth import get_user_model
+            from dialog_logger_service import get_dialog_logger
 
-            def log_sync():
-                # Находим пользователя Django если передан ID
-                django_user = None
-                if django_user_id:
-                    User = get_user_model()
-                    try:
-                        django_user = User.objects.get(id=django_user_id)
-                    except User.DoesNotExist:
-                        pass
+            dialog_logger = get_dialog_logger()
 
-                # Создаем запись
-                log_entry = MessageLog.objects.create(
-                    channel=channel,
-                    direction=direction,
-                    message_id=message_id,
-                    user_id=user_id,
-                    session_id=session_id,
-                    text=text,
-                    metadata=metadata or {},
-                    django_user=django_user
-                )
-                return {
-                    'id': log_entry.id,
-                    'created_at': log_entry.created_at.isoformat()
+            # Конвертируем user_id в int для dialog_logs
+            user_id_int = int(user_id) if user_id.isdigit() else 0
+
+            # Определяем message_type
+            if direction == 'inbound':
+                message_type = 'inbound'
+            elif direction == 'outbound':
+                message_type = 'outbound'
+            else:
+                message_type = 'system'
+
+            # Логируем через DialogLoggerService
+            await dialog_logger.log_message(
+                dialog_id=dialog_id or session_id,  # Используем session_id как dialog_id если не передан
+                user_id=user_id_int,
+                message_type=message_type,
+                message_content=text,
+                processing_stage=processing_stage,
+                confidence_score=confidence_score,
+                service_detected_id=service_detected_id,
+                processing_time_ms=processing_time_ms,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+                tokens_used=tokens_used,
+                cost_rub=cost_rub,
+                metadata={
+                    **(metadata or {}),
+                    'channel': channel,
+                    'message_id': message_id,
+                    'session_id': session_id,
+                    'django_user_id': django_user_id
                 }
+            )
 
-            return await sync_to_async(log_sync)()
+            return {
+                'id': 0,  # dialog_logs не возвращает ID
+                'created_at': None
+            }
 
         except Exception as e:
-            logger.error(f"MessageHandler: Ошибка логирования: {e}")
+            logger.error(f"MessageHandler: Ошибка логирования в dialog_logs: {e}")
             return {}
 
     async def _get_dialog_history(self, session_id: str, limit: int = 10) -> list:
