@@ -1175,9 +1175,14 @@ class MainAgent:
             logger.info(f"Отфильтровано по location_type={known_location}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
         if known_category:
-            # Прямое совпадение категории (FilterDetectionService уже возвращает корректную категорию)
-            filtered_candidates = [c for c in filtered_candidates if known_category.lower() in c.get('category', '').lower()]
-            logger.info(f"Отфильтровано по category={known_category}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
+            # ИСПРАВЛЕНО (2026-01-05): ОТКЛЮЧЕНО! Category фильтр слишком опасен
+            # Проблема: "прорвало трубу" → category=Водоснабжение (НО труба может быть канализации/отопления!)
+            # Решение: НЕ фильтруем по category, передаем в AI для уточнения
+            logger.info(f"[!] Фильтр category={known_category} ПРОПУСКАЕМ (трубы бывают разными!)")
+            # Если очень нужно фильтровать, ТОЛЬКО при confidence >= 0.95:
+            # if known_category_confidence >= 0.95:
+            #     filtered_candidates = [c for c in filtered_candidates if known_category.lower() in c.get('category', '').lower()]
+            #     logger.info(f"Отфильтровано по category={known_category}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
         if known_incident:
             # Фильтрация по типу инцидента
