@@ -3395,15 +3395,12 @@ JSON:"""
                     after_count = len(filtered_candidates)
                     logger.info(f"  Фильтр incident: {before_count} -> {after_count} (оставили Инцидент)")
 
-            # Фильтрация по category
+            # ИСПРАВЛЕНИЕ (2026-01-05): ОТКЛЮЧАЕМ фильтрацию по category
+            # ПРИЧИНА: FilterDetectionService часто ошибается (определил 'Канализация' для 'прорвало трубу')
+            # Фильтр убивал всех кандидатов (5 → 0) из-за неправильной категории
             elif filter_name == 'category' and value:
-                before_count = len(filtered_candidates)
-                filtered_candidates = [
-                    c for c in filtered_candidates
-                    if value.lower() in c.get('category', '').lower()
-                ]
-                after_count = len(filtered_candidates)
-                logger.info(f"  Фильтр category: {before_count} -> {after_count} (оставили {value})")
+                logger.info(f"[!] Фильтр category={value}: ПРОПУСКАЕМ (FilterDetectionService часто ошибается)")
+                continue
 
             # ИСПРАВЛЕНИЕ (2026-01-05): ОТКЛЮЧАЕМ фильтрацию по object_description
             # ПРИЧИНА: object_description='труба прорвало' - это описание проблемы,
