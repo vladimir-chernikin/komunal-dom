@@ -380,6 +380,11 @@ class MainAgent:
                                 established_filters[filter_name] = filter_data
                                 logger.info(f"  Добавлен фильтр из PreCheck: {filter_name}={filter_data['value']}")
 
+                    # ИСПРАВЛЕНО (2026-01-05): КРИТИЧЕСКИ ВАЖНО! Добавляем semantic_check в established_filters
+                    # Это нужно чтобы _generate_ai_question мог использовать absolute_facts для запрета вопросов
+                    established_filters['semantic_check'] = semantic_check_result
+                    logger.info("✅ semantic_check добавлен в established_filters для absolute_facts")
+
                 else:
                     logger.info("SemanticPreCheck не нашел значимых фактов")
 
