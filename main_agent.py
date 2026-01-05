@@ -1907,7 +1907,10 @@ class MainAgent:
                 }
             else:
                 # Низкий confidence - уточняем через AI
-                return await self._ask_ai_clarification(message_text, unique_candidates, dialog_history)
+                # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
+                return await self._ask_ai_clarification(
+                    message_text, unique_candidates, dialog_history, established_filters
+                )
 
         # Если несколько кандидатов (2-10) - используем AI для уточнения
         elif len(unique_candidates) <= 10:
@@ -3164,10 +3167,17 @@ JSON:"""
             }
         }
 
-    async def _ask_ai_clarification(self, message_text: str, candidates: List[Dict], dialog_history: List[Dict]) -> Dict:
+    async def _ask_ai_clarification(
+        self,
+        message_text: str,
+        candidates: List[Dict],
+        dialog_history: List[Dict],
+        established_filters: Dict = None
+    ) -> Dict:
         """Спрашивает как уточнить - использует CommunicativeScriptsService
 
         ИСПРАВЛЕНО (2025-12-26): Вместо AI использует CommunicativeScriptsService
+        ИСПРАВЛЕНО (2026-01-05): Добавлен параметр established_filters
         """
         # Вычисляем dialog_turn и is_followup
         dialog_turn = len(dialog_history) if dialog_history else 1
@@ -3182,12 +3192,13 @@ JSON:"""
         if self.problem_accumulator and dialog_history:
             extracted_txtPrb = self.problem_accumulator.get_txtPrb_from_metadata(dialog_history)
 
-        # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
+        # ИСПРАВЛЕНО (2026-01-05): Получаем Dict с вопросом И метаданными, ПЕРЕДАЕМ established_filters
         ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=candidates,
-            txtPrb=extracted_txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
+            established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-05): передаем фильтры
+            txtPrb=extracted_txtPrb,
             question_type='clarification'
         )
 
