@@ -130,7 +130,7 @@ class MessageHandlerService:
                 # Проверяем: если сообщение только приветствие - отвечаем приветствием
                 if self.message_cleaner.is_greeting_only(text):
                     logger.info(f"Обнаружено чистое приветствие от user {user_id}")
-                    await self._log_message(
+                    greeting_log = await self._log_message(
                         text="Здравствуйте! Опишите вашу проблему, и я попробую помочь.",
                         user_id=user_id,
                         channel=channel,
@@ -139,6 +139,12 @@ class MessageHandlerService:
                         direction='outbound',
                         metadata={'auto_greeting': True}
                     )
+                    logger.info(f"[DEBUG] Приветствие залогировано: session_id={session_id}, result={greeting_log}")
+
+                    # ИСПРАВЛЕНО (2026-01-05): Проверяем что outbound записался
+                    history_check = await self._get_dialog_history(session_id, limit=10)
+                    logger.info(f"[DEBUG] История ПОСЛЕ логирования приветствия: {len(history_check)} сообщений")
+
                     return {
                         'status': 'success',
                         'response': "Здравствуйте! Опишите вашу проблему, и я попробую помочь.",
@@ -189,6 +195,12 @@ class MessageHandlerService:
 
                 if is_followup:
                     logger.info(f"MessageHandler: is_followup=True (контекстных сообщений: {len(non_greeting_messages)})")
+
+                # ИСПРАВЛЕНО (2026-01-05): Отладочный лог - проверяем dialog_history ПЕРЕД передачей в MainAgent
+                logger.info(f"[DEBUG] dialog_history ПЕРЕД передачей в MainAgent: {len(dialog_history)} сообщений")
+                if dialog_history and len(dialog_history) > 0:
+                    for i, msg in enumerate(dialog_history[-3:], 1):
+                        logger.info(f"  {i}. [{msg.get('role')}] {msg.get('text', '')[:50]}")
 
                 result = await self.main_agent.process_service_detection(
                     message_text=search_text,  # ИСПРАВЛЕНО: используем очищенный текст
@@ -390,9 +402,14 @@ class MessageHandlerService:
                     **(metadata or {}),
                     'channel': channel,
                     'message_id': message_id,
-                    'session_id': session_id,
                     'django_user_id': django_user_id
-                }
+                },
+                # ИСПРАВЛЕНО (2026-01-05): session_id, channel, direction, message_id ДОЛЖНЫ быть отдельными параметрами!
+                session_id=session_id,
+                channel=channel,
+                direction=direction,
+                message_id=message_id,
+                django_user_id=django_user_id
             )
 
             return {
@@ -408,6 +425,9 @@ class MessageHandlerService:
         """
         Получить историю диалога из БД
 
+        ИСПРАВЛЕНО (2026-01-05): Использует raw SQL вместо ORM
+        ORM кеш не обновляется после raw SQL INSERT в DialogLoggerService!
+
         Args:
             session_id: ID сессии
             limit: Максимальное количество сообщений
@@ -420,21 +440,28 @@ class MessageHandlerService:
                 ]
         """
         try:
-            from message_handler.models import MessageLog
+            from django.db import connection
 
             def get_history_sync():
-                messages = MessageLog.objects.filter(
-                    session_id=session_id
-                ).order_by('-timestamp')[:limit]
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT direction, message_content, timestamp
+                        FROM dialog_logs
+                        WHERE session_id = %s
+                        ORDER BY timestamp DESC
+                        LIMIT %s
+                    """, [session_id, limit])
 
-                return [
-                    {
-                        'role': 'user' if msg.direction == 'inbound' else 'bot',
-                        'text': msg.message_content,  # ИСПРАВЛЕНО: было msg.text
-                        'timestamp': msg.timestamp.isoformat()  # ИСПРАВЛЕНО: было msg.created_at
-                    }
-                    for msg in reversed(messages)
-                ]
+                    messages = []
+                    for row in cursor.fetchall():
+                        messages.append({
+                            'role': 'user' if row[0] == 'inbound' else 'bot',
+                            'text': row[1],
+                            'timestamp': row[2].isoformat()
+                        })
+
+                    # Разворачиваем список (сначала старые сообщения)
+                    return list(reversed(messages))
 
             return await sync_to_async(get_history_sync)()
 

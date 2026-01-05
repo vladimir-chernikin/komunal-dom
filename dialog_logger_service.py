@@ -81,57 +81,75 @@ class DialogLoggerService:
             address_extracted_json = json.dumps(address_extracted, ensure_ascii=False) if address_extracted else None
             metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata else None
 
+            from django.db import transaction
+
             def save_sync():
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        INSERT INTO dialog_logs (
-                            dialog_id,
-                            user_id,
-                            message_type,
-                            message_content,
-                            processing_stage,
-                            confidence_score,
-                            service_detected_id,
-                            address_extracted,
-                            processing_time_ms,
-                            llm_provider,
-                            llm_model,
-                            tokens_used,
-                            cost_rub,
-                            metadata,
-                            timestamp,
-                            channel,
-                            direction,
-                            message_id,
-                            session_id,
-                            django_user_id
-                        ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s
-                        )
-                    """, [
-                        dialog_id,
-                        user_id,
-                        message_type,
-                        message_content[:10000],  # Ограничиваем длину
-                        processing_stage,
-                        confidence_score,
-                        service_detected_id,
-                        address_extracted_json,  # ИСПРАВЛЕНО: JSON строка
-                        processing_time_ms,
-                        llm_provider,
-                        llm_model,
-                        tokens_used,
-                        cost_rub,
-                        metadata_json,  # ИСПРАВЛЕНО: JSON строка
-                        channel,
-                        direction or message_type,  # Используем message_type как fallback
-                        message_id,
-                        session_id,
-                        django_user_id
-                    ])
+                # ИСПРАВЛЕНО (2026-01-05): Используем transaction.atomic() для consistency
+                try:
+                    with transaction.atomic():
+                        with connection.cursor() as cursor:
+                            cursor.execute("""
+                                INSERT INTO dialog_logs (
+                                    dialog_id,
+                                    user_id,
+                                    message_type,
+                                    message_content,
+                                    processing_stage,
+                                    confidence_score,
+                                    service_detected_id,
+                                    address_extracted,
+                                    processing_time_ms,
+                                    llm_provider,
+                                    llm_model,
+                                    tokens_used,
+                                    cost_rub,
+                                    metadata,
+                                    timestamp,
+                                    channel,
+                                    direction,
+                                    message_id,
+                                    session_id,
+                                    django_user_id
+                                ) VALUES (
+                                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s, %s
+                                )
+                            """, [
+                                dialog_id,
+                                user_id,
+                                message_type,
+                                message_content[:10000],  # Ограничиваем длину
+                                processing_stage,
+                                confidence_score,
+                                service_detected_id,
+                                address_extracted_json,  # ИСПРАВЛЕНО: JSON строка
+                                processing_time_ms,
+                                llm_provider,
+                                llm_model,
+                                tokens_used,
+                                cost_rub,
+                                metadata_json,  # ИСПРАВЛЕНО: JSON строка
+                                channel,
+                                direction or message_type,  # Используем message_type как fallback
+                                message_id,
+                                session_id,
+                                django_user_id
+                            ])
+
+                    # ИСПРАВЛЕНО (2026-01-05): Отладочный лог
+                    import logging
+                    logger_debug = logging.getLogger(__name__)
+                    logger_debug.info(f"[DialogLogger] INSERT выполнен: session_id={session_id}, type={message_type}, direction={direction}")
+
+                except Exception as e:
+                    import logging
+                    logger_err = logging.getLogger(__name__)
+                    logger_err.error(f"[DialogLogger] ОКАЗАНИЕСЬ ОШИБКА при INSERT: {e}")
+                    raise
+
+                # transaction.atomic() автоматически коммитит при выходе из блока
 
             await sync_to_async(save_sync)()
-            logger.debug(f"DialogLogger: сообщение записано (dialog_id={dialog_id}, type={message_type})")
+            logger.debug(f"DialogLogger: сообщение записано и закоммичено (dialog_id={dialog_id}, type={message_type})")
 
         except Exception as e:
             logger.error(f"DialogLogger: ошибка записи сообщения: {e}")
