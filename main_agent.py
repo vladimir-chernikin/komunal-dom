@@ -579,16 +579,36 @@ class MainAgent:
 
             elif orch_result.get('status') == 'AMBIGUOUS':
                 # AI Orchestrator требует уточнения
+                # ИСПРАВЛЕНО (2026-01-05): НЕ возвращаем сразу! Передаем в _create_ambiguous_result_from_candidates
+                # для применения фильтров (known_location, known_incident, known_object)
                 logger.info(f"AI Orchestrator требует уточнения: {orch_result.get('message')}")
-                return {
-                    'status': 'AMBIGUOUS',
-                    'candidates': orch_result.get('candidates', []),
-                    'candidate_names': [c.get('service_name', 'Unknown') for c in orch_result.get('candidates', [])],
-                    'message': orch_result.get('message'),
-                    'needs_clarification': True,
-                    'is_followup': is_followup,
-                    '_metadata': result_metadata  # ИСПРАВЛЕНО (2025-12-27): Добавляем metadata
-                }
+                logger.info(f"Передаем {len(orch_result.get('candidates', []))} кандидатов в _create_ambiguous_result_from_candidates для фильтрации")
+
+                # Получаем кандидатов от AI Orchestrator
+                orch_candidates = orch_result.get('candidates', [])
+
+                # Если есть кандидаты - фильтруем их
+                if orch_candidates:
+                    result = await self._create_ambiguous_result_from_candidates(
+                        orch_candidates, original_message, is_followup, dialog_history
+                    )
+                    # Сохраняем AI Orchestrator message
+                    result['_ai_orchestrator_message'] = orch_result.get('message')
+                    # Добавляем metadata если нет
+                    if '_metadata' not in result:
+                        result['_metadata'] = result_metadata
+                    return result
+                else:
+                    # Нет кандидатов - возвращаем сообщение AI Orchestrator
+                    return {
+                        'status': 'AMBIGUOUS',
+                        'candidates': [],
+                        'candidate_names': [],
+                        'message': orch_result.get('message'),
+                        'needs_clarification': True,
+                        'is_followup': is_followup,
+                        '_metadata': result_metadata
+                    }
 
             # Если AI Orchestrator не смог - пробуем старую логику
             logger.warning("AI Orchestrator не смог определить, используем fallback")
@@ -874,8 +894,16 @@ class MainAgent:
 
         ИСПРАВЛЕНО: Сделано async для загрузки атрибутов из БД
         """
-        # Сортируем по количеству источников (чем больше, тем выше приоритет)
-        candidates_data.sort(key=lambda x: len(x['sources']), reverse=True)
+        # ИСПРАВЛЕНО (2026-01-05): Отладочный лог
+        logger.info(f"[DEBUG] _create_ambiguous_result_from_candidates ВХОД: {len(candidates_data)} кандидатов")
+
+        # ИСПРАВЛЕНО (2026-01-05): Безопасная сортировка - candidates могут не иметь 'sources'
+        try:
+            candidates_data.sort(key=lambda x: len(x.get('sources', [])), reverse=True)
+        except Exception as e:
+            logger.warning(f"Ошибка сортировки кандидатов: {e}")
+            # Если не получается сортировать по sources - сортируем по service_id
+            candidates_data.sort(key=lambda x: x.get('service_id', 0))
 
         candidate_names = [c['service_name'] for c in candidates_data[:5]]
 

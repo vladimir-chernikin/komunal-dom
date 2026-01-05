@@ -85,8 +85,12 @@ class ProblemAccumulationService:
         logger.info(f"{'=' * 80} (длина: {len(prompt)} символов)")
 
         try:
-            # Вызываем LLM
-            response_text, usage = await self.ai_agent._call_yandex_gpt(prompt)
+            # Вызываем LLM через публичный метод call_llm
+            response_text, usage = await self.ai_agent.call_llm(
+                prompt=prompt,
+                provider='yandexgpt',
+                model='lite'
+            )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем ответ
             logger.info(f"🤖 ProblemAccumulation ОТВЕТ LLM:")
@@ -95,6 +99,11 @@ class ProblemAccumulationService:
 
             # Пытаемся распарсить JSON
             result = self._parse_llm_response(response_text, current_problem)
+
+            # ИСПРАВЛЕНО (2026-01-05): КРИТИЧЕСКИ ВАЖНО - если is_meaningful=false, сохраняем current_problem!
+            if not result['is_meaningful']:
+                result['updated_problem'] = current_problem
+                logger.info(f"⚠️ is_meaningful=False → сохраняем текущий txtPrb БЕЗ ИЗМЕНЕНИЙ")
 
             # ИСПРАВЛЕНО (2025-12-28): Детальный лог результата
             logger.info(f"[OK] ProblemAccumulation РЕЗУЛЬТАТ:")
@@ -168,6 +177,8 @@ class ProblemAccumulationService:
 
 ВАЖНО:
 - Если "привет", "да", "нет", "ок", "спасибо", "пожалуйста" → is_meaningful=false
+- ⛔ КРИТИЧЕСКИ ВАЖНО: Если bot_question содержит вопрос ("Где", "Что", "Какой"), то ответ ВСЕГДА is_meaningful=true!
+  Даже если ответ короткий ("в зале", "труба", "батарея") - это ЗНАЧИМЫЙ ответ на вопрос бота!
 - Объединяй информацию с current_problem (НЕ копируй, а ДОБАВЛЯЙ)
 - НЕ повторяй уже известную информацию
 - Извлекай МАКСИМУМ конкретики: локация, источник, категория, серьезность
@@ -210,6 +221,48 @@ message_text: "у меня течет"
         "severity": null,
         "intensity": null,
         "object": null
+    }}
+}}
+
+ПРИМЕР 1.5 (ОТВЕТ НА ВОПРОС БОТА - ВСЕГДА ЗНАЧИМЫЙ!):
+current_problem: "у пользователя прорвало трубу"
+bot_question: "Где именно?"
+message_text: "в квартире"
+Ответ:
+{{
+    "is_meaningful": true,
+    "new_info": "локация: квартира",
+    "updated_problem": "у пользователя прорвало трубу в квартире",
+    "fields": {{
+        "problem": "прорвало",
+        "location": "квартира",
+        "source": "труба",
+        "category": null,
+        "severity": null,
+        "intensity": null,
+        "object": "труба"
+    }}
+}}
+
+ПРИМЕР 1.6 (КРИТИЧЕСКИ ВАЖНО - ОБЪЕДИНЯЙ, А НЕ ЗАМЕНЯЙ!):
+current_problem: "у пользователя прорыв трубы в квартире"
+bot_question: "Что именно сломалось?"
+message_text: "кран"
+❌ НЕПРАВИЛЬНЫЙ ОТВЕТ:
+{{
+    "updated_problem": "кран"  ❌❌❌ ЭТО НЕВЕРНО! Ты ЗАМЕНИЛ всю проблему!
+}}
+✅ ПРАВИЛЬНЫЙ ОТВЕТ:
+{{
+    "is_meaningful": true,
+    "new_info": "объект: кран",
+    "updated_problem": "у пользователя прорыв трубы в квартире, сломался кран",
+    "fields": {{
+        "problem": "прорыв",
+        "location": "квартира",
+        "source": "труба",
+        "category": null,
+        "object": "кран"
     }}
 }}
 

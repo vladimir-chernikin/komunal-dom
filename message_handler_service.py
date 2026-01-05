@@ -221,6 +221,15 @@ class MessageHandlerService:
             # 6. Логируем исходящее сообщение (ответ бота)
             # ИСПРАВЛЕНО (2025-12-27): Добавляем txtPrb и metadata в outbound сообщения
             if bot_response:
+                # ИСПРАВЛЕНО (2026-01-05): Отладочный лог - проверяем result и _metadata
+                logger.info(f"[DEBUG] result ключи: {list(result.keys())}")
+                logger.info(f"[DEBUG] '_metadata' в result: {'_metadata' in result}")
+                if '_metadata' in result:
+                    logger.info(f"[DEBUG] _metadata ключи: {list(result['_metadata'].keys())}")
+                    logger.info(f"[DEBUG] 'txtPrb' в _metadata: {'txtPrb' in result['_metadata']}")
+                    if 'txtPrb' in result['_metadata']:
+                        logger.info(f"[DEBUG] txtPrb значение: '{result['_metadata']['txtPrb']}'")
+
                 # Формируем metadata для outbound сообщения
                 outbound_metadata = {'service_result': result}
 
@@ -229,6 +238,9 @@ class MessageHandlerService:
                     outbound_metadata['txtPrb'] = result['_metadata']['txtPrb']
                     outbound_metadata['accumulated_fields'] = result['_metadata'].get('accumulated_fields', {})
                     outbound_metadata['established_filters'] = result['_metadata'].get('established_filters', {})
+                    logger.info(f"[DEBUG] ✅ txtPrb ДОБАВЛЕН в outbound_metadata: '{outbound_metadata['txtPrb']}'")
+                else:
+                    logger.warning(f"[WARNING] ⚠️ txtPrb НЕ ДОБАВЛЕН в outbound_metadata!")
 
                 await self._log_message(
                     text=bot_response,
@@ -444,8 +456,9 @@ class MessageHandlerService:
 
             def get_history_sync():
                 with connection.cursor() as cursor:
+                    # ИСПРАВЛЕНО (2026-01-05): Добавляем metadata в SELECT для txtPrb
                     cursor.execute("""
-                        SELECT direction, message_content, timestamp
+                        SELECT direction, message_content, timestamp, metadata
                         FROM dialog_logs
                         WHERE session_id = %s
                         ORDER BY timestamp DESC
@@ -454,10 +467,20 @@ class MessageHandlerService:
 
                     messages = []
                     for row in cursor.fetchall():
+                        # Парсим metadata если это строка
+                        metadata = row[3]
+                        if isinstance(metadata, str):
+                            try:
+                                import json
+                                metadata = json.loads(metadata)
+                            except:
+                                metadata = {}
+
                         messages.append({
                             'role': 'user' if row[0] == 'inbound' else 'bot',
                             'text': row[1],
-                            'timestamp': row[2].isoformat()
+                            'timestamp': row[2].isoformat(),
+                            'metadata': metadata if isinstance(metadata, dict) else {}
                         })
 
                     # Разворачиваем список (сначала старые сообщения)
