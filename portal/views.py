@@ -123,9 +123,9 @@ def dialog_trace_page(request):
 
 @login_required
 def dialog_trace_api(request):
-    """API для получения трассировки диалога"""
+    """API для получения трассировки диалога (v3.0 - новый формат)"""
     from django.http import JsonResponse
-    from django.db import connection
+    from asgiref.sync import sync_to_async
 
     try:
         profile = request.user.userprofile
@@ -142,38 +142,47 @@ def dialog_trace_api(request):
     if not session_id:
         return JsonResponse({'error': 'Не указан session_id'}, status=400)
 
-    # Запрос к БД (без лимита - показываем всю трассировку)
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT
-                id,
-                text,
-                direction,
-                channel,
-                session_id,
-                created_at,
-                metadata
-            FROM message_handler_messagelog
-            WHERE session_id LIKE %s
-            ORDER BY created_at ASC
-        """, [f"{session_id}%"])
+    # ИСПРАВЛЕНО (2026-01-05): Используем TraceReportServiceV3 для генерации отчета
+    try:
+        from trace_report_v3 import TraceReportServiceV3
 
-        columns = [col[0] for col in cursor.description]
-        messages = []
-        for row in cursor.fetchall():
-            messages.append(dict(zip(columns, row)))
+        # Генерируем отчет в памяти (без файла)
+        trace_service = TraceReportServiceV3()
 
-    return JsonResponse({
-        'success': True,
-        'session_id': session_id,
-        'messages': messages,
-        'total': len(messages)
-    })
+        # Запускаем асинхронную генерацию
+        loop = None
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Если уже в event loop - используем sync_to_async
+                report_content = sync_to_async(trace_service.generate_trace_report)(session_id=session_id)
+            else:
+                # Если нет loop - создаем новый
+                report_content = asyncio.run(trace_service.generate_trace_report(session_id=session_id))
+        except:
+            # Fallback
+            report_content = sync_to_async(trace_service.generate_trace_report)(session_id=session_id)
+
+        return JsonResponse({
+            'success': True,
+            'session_id': session_id,
+            'report': report_content,  # Отчет по новому шаблону
+            'format': 'v3'  # Формат v3
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': f'Ошибка генерации отчета: {str(e)}',
+            'traceback': traceback.format_exc()
+        }, status=500)
 
 
 @login_required
 def api_dialog_sessions(request):
-    """API для получения списка сессий"""
+    """API для получения списка сессий (v3.0 - dialog_logs)"""
     from django.http import JsonResponse
     from django.db import connection
 
@@ -186,6 +195,7 @@ def api_dialog_sessions(request):
     if not profile.has_admin_access():
         return JsonResponse({'error': 'Доступ запрещен'}, status=403)
 
+    # ИСПРАВЛЕНО (2026-01-05): Используем dialog_logs вместо message_handler_messagelog
     # Запрос к БД - получаем уникальные сессии с информацией о последнем сообщении
     with connection.cursor() as cursor:
         cursor.execute("""
@@ -193,8 +203,8 @@ def api_dialog_sessions(request):
                 session_id,
                 channel,
                 COUNT(*) as message_count,
-                MAX(created_at) as last_message
-            FROM message_handler_messagelog
+                MAX(timestamp) as last_message
+            FROM dialog_logs
             GROUP BY session_id, channel
             ORDER BY last_message DESC
             LIMIT 100
