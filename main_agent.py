@@ -3405,16 +3405,12 @@ JSON:"""
                 after_count = len(filtered_candidates)
                 logger.info(f"  Фильтр category: {before_count} -> {after_count} (оставили {value})")
 
-            # Фильтрация по object_description (поиск по названию услуги)
+            # ИСПРАВЛЕНИЕ (2026-01-05): ОТКЛЮЧАЕМ фильтрацию по object_description
+            # ПРИЧИНА: object_description='труба прорвало' - это описание проблемы,
+            # а НЕ подстрока для поиска в названии услуги. Неправильная логика убивала всех кандидатов.
             elif filter_name == 'object_description' and value:
-                before_count = len(filtered_candidates)
-                # Ищем совпадение в названии услуги
-                filtered_candidates = [
-                    c for c in filtered_candidates
-                    if value.lower() in c.get('service_name', '').lower()
-                ]
-                after_count = len(filtered_candidates)
-                logger.info(f"  Фильтр object: {before_count} -> {after_count} (оставили содержащие '{value}')")
+                logger.info(f"[!] Фильтр object_description={value}: ПРОПУСКАЕМ (неправильная логика)")
+                continue
 
         return filtered_candidates
 

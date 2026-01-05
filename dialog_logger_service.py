@@ -74,6 +74,13 @@ class DialogLoggerService:
             django_user_id: ID пользователя Django - ИСПРАВЛЕНО 2026-01-03
         """
         try:
+            # ИСПРАВЛЕНИЕ (2026-01-05): Конвертируем dict в JSON для PostgreSQL
+            import json
+
+            # Конвертируем dict параметры в JSON строки
+            address_extracted_json = json.dumps(address_extracted, ensure_ascii=False) if address_extracted else None
+            metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata else None
+
             def save_sync():
                 with connection.cursor() as cursor:
                     cursor.execute("""
@@ -109,13 +116,13 @@ class DialogLoggerService:
                         processing_stage,
                         confidence_score,
                         service_detected_id,
-                        address_extracted,
+                        address_extracted_json,  # ИСПРАВЛЕНО: JSON строка
                         processing_time_ms,
                         llm_provider,
                         llm_model,
                         tokens_used,
                         cost_rub,
-                        metadata,
+                        metadata_json,  # ИСПРАВЛЕНО: JSON строка
                         channel,
                         direction or message_type,  # Используем message_type как fallback
                         message_id,
