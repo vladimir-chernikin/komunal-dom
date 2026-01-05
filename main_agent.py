@@ -2320,10 +2320,11 @@ JSON:"""
             str: Недостающий фильтр ('ЛОКАЦИЯ', 'КАТЕГОРИЯ', 'ОБЪЕКТ', или 'ТИП')
         """
         # Проверяем какие фильтры не установлены
-        has_location = established_filters.get('location')
+        # ИСПРАВЛЕНО (2026-01-05): Используем правильные ключи из established_filters
+        has_location = established_filters.get('location_type')
         has_category = established_filters.get('category')
-        has_object = established_filters.get('object')
-        has_incident = established_filters.get('incident')
+        has_object = established_filters.get('object_description')
+        has_incident = established_filters.get('incident_type')
 
         # Анализируем кандидатов чтобы понять что varies больше всего
         if candidates and len(candidates) > 0:
