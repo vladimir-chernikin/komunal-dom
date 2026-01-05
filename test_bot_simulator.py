@@ -17,6 +17,7 @@ TestBotSimulator - тестовый бот-имитатор пользовате
 import asyncio
 import logging
 import random
+import uuid
 from typing import List, Dict, Optional
 from decouple import config
 import sys

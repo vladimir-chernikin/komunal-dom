@@ -277,7 +277,7 @@ class MessageHandlerService:
                 last_msg = MessageLog.objects.filter(
                     user_id=user_id,
                     channel=channel
-                ).order_by('-created_at').first()
+                ).order_by('-timestamp').first()
 
                 if not last_msg:
                     # Нет сообщений - создаем новую сессию
@@ -285,7 +285,7 @@ class MessageHandlerService:
 
                 # Проверяем возраст последнего сообщения
                 now = timezone.now()
-                session_age = now - last_msg.created_at
+                session_age = now - last_msg.timestamp
 
                 # Если прошло меньше 1 часа - продолжаем эту сессию
                 if session_age < timedelta(hours=1):
@@ -425,13 +425,13 @@ class MessageHandlerService:
             def get_history_sync():
                 messages = MessageLog.objects.filter(
                     session_id=session_id
-                ).order_by('-created_at')[:limit]
+                ).order_by('-timestamp')[:limit]
 
                 return [
                     {
                         'role': 'user' if msg.direction == 'inbound' else 'bot',
-                        'text': msg.text,
-                        'timestamp': msg.created_at.isoformat()
+                        'text': msg.message_content,  # ИСПРАВЛЕНО: было msg.text
+                        'timestamp': msg.timestamp.isoformat()  # ИСПРАВЛЕНО: было msg.created_at
                     }
                     for msg in reversed(messages)
                 ]
@@ -627,7 +627,7 @@ class MessageHandlerService:
                     direction='outbound'
                 ).exclude(
                     metadata={}
-                ).order_by('-created_at').first()
+                ).order_by('-timestamp').first()  # ИСПРАВЛЕНО: было created_at
 
                 if msg and msg.metadata:
                     return msg.metadata.get('service_result')
@@ -692,15 +692,15 @@ class MessageHandlerService:
             def get_messages_sync():
                 messages = MessageLog.objects.filter(
                     session_id=session_id
-                ).order_by('created_at')[:limit]
+                ).order_by('timestamp')[:limit]  # ИСПРАВЛЕНО: было created_at
 
                 return [
                     {
                         'id': msg.id,
                         'channel': msg.get_channel_display(),
                         'direction': msg.get_direction_display(),
-                        'text': msg.text,
-                        'timestamp': msg.created_at.isoformat(),
+                        'text': msg.message_content,  # ИСПРАВЛЕНО: было msg.text
+                        'timestamp': msg.timestamp.isoformat(),  # ИСПРАВЛЕНО: было msg.created_at
                         'metadata': msg.metadata
                     }
                     for msg in messages
