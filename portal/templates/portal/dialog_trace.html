@@ -239,7 +239,9 @@ async function loadSessions() {
     const container = document.getElementById('sessionsList');
 
     try {
-        const response = await fetch('/api/dialog-sessions/');
+        const response = await fetch('/api/dialog-sessions/', {
+            credentials: 'same-origin'
+        });
         const data = await response.json();
 
         if (data.error) {
@@ -308,7 +310,9 @@ async function loadTrace(sessionId) {
     container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Загрузка...</p></div>';
 
     try {
-        const response = await fetch(`/api/dialog-trace/?session_id=${encodeURIComponent(sessionId)}`);
+        const response = await fetch(`/api/dialog-trace/?session_id=${encodeURIComponent(sessionId)}`, {
+            credentials: 'same-origin'
+        });
         const data = await response.json();
 
         if (data.error) {
@@ -371,7 +375,9 @@ async function loadReportFiles() {
     const container = document.getElementById('filesContainer');
 
     try {
-        const response = await fetch('/api/dialog-reports/');
+        const response = await fetch('/api/dialog-reports/', {
+            credentials: 'same-origin'
+        });
         const data = await response.json();
 
         if (data.error) {
@@ -433,7 +439,9 @@ async function generateFullTrace(sessionId) {
     container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Генерация отчета...</p></div>';
 
     try {
-        const response = await fetch(`/api/dialog-full-trace/?session_id=${encodeURIComponent(sessionId)}`);
+        const response = await fetch(`/api/dialog-full-trace/?session_id=${encodeURIComponent(sessionId)}`, {
+            credentials: 'same-origin'
+        });
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
