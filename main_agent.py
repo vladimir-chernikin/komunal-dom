@@ -295,7 +295,6 @@ class MainAgent:
         if self.address_extractor:
             try:
                 # Извлекаем адресные компоненты из оригинального сообщения
-                # context_memory может быть передан через user_context для DialogMemoryManager
                 context_memory = user_context.get('context_memory') if user_context else None
                 address_components = self.address_extractor.extract_address_components(
                     original_message,
