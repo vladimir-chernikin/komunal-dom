@@ -261,7 +261,8 @@ Session ID: {session_id}
         if isinstance(tag_search, dict) and tag_search.get('candidates'):
             for cand in tag_search['candidates']:
                 service_name = cand.get('service_name', 'Unknown')
-                confidence = cand.get('confidence', 0.0) * 100
+                conf_raw = cand.get('confidence', 0.0) or 0.0
+                confidence = float(conf_raw) * 100
                 details += f" {{{service_name}, {confidence:.1f}%}}\n"
         else:
             details += " {(нет кандидатов)}\n"
@@ -272,7 +273,8 @@ Session ID: {session_id}
         if isinstance(semantic_search, dict) and semantic_search.get('candidates'):
             for cand in semantic_search['candidates']:
                 service_name = cand.get('service_name', 'Unknown')
-                confidence = cand.get('confidence', 0.0) * 100
+                conf_raw = cand.get('confidence', 0.0) or 0.0
+                confidence = float(conf_raw) * 100
                 details += f" {{{service_name}, {confidence:.1f}%}}\n"
         else:
             details += " {(нет кандидатов)}\n"
@@ -283,7 +285,8 @@ Session ID: {session_id}
         if isinstance(vector_search, dict) and vector_search.get('candidates'):
             for cand in vector_search['candidates']:
                 service_name = cand.get('service_name', 'Unknown')
-                confidence = cand.get('confidence', 0.0) * 100
+                conf_raw = cand.get('confidence', 0.0) or 0.0
+                confidence = float(conf_raw) * 100
                 details += f" {{{service_name}, {confidence:.1f}%}}\n"
         else:
             details += " {(нет кандидатов)}\n"
@@ -295,7 +298,8 @@ Session ID: {session_id}
             for filter_name, filter_data in established_filters.items():
                 if isinstance(filter_data, dict):
                     value = filter_data.get('value', 'N/A')
-                    confidence = filter_data.get('confidence', 0.0) * 100
+                    conf_raw = filter_data.get('confidence', 0.0) or 0.0
+                    confidence = float(conf_raw) * 100
                     details += f" {{{filter_name} = {value}, {confidence:.0f}%}}\n"
                 else:
                     details += f" {{{filter_name} = {filter_data}}}\n"
@@ -311,7 +315,8 @@ Session ID: {session_id}
             status = ai_orchestrator.get('status', 'unknown')
             service_id = ai_orchestrator.get('service_id', 'N/A')
             service_name = ai_orchestrator.get('service_name', 'N/A')
-            confidence = ai_orchestrator.get('confidence', 0.0) * 100
+            confidence_raw = ai_orchestrator.get('confidence', 0.0) or 0.0
+            confidence = float(confidence_raw) * 100
             details += f" AI Orchestrator: Status={status}, ServiceID={service_id}, ServiceName={service_name}, Confidence={confidence:.1f}%\n"
 
         # Filter Detection
