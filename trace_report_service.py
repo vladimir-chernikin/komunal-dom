@@ -96,14 +96,23 @@ class TraceReportService:
                 )
                 try:
                     with conn.cursor() as cursor:
+                        # ИСПРАВЛЕНО (2026-01-06): Используем dialog_logs вместо message_handler_messagelog
+                        # Алиасы для совместимости с существующим кодом
                         cursor.execute("""
-                            SELECT id, direction, text, created_at, channel, user_id, session_id, metadata
-                            FROM message_handler_messagelog
-                            WHERE session_id = %s
-                            ORDER BY created_at ASC
-                        """, (session_id,))
+                            SELECT
+                                id,
+                                message_content as text,
+                                direction,
+                                channel,
+                                session_id,
+                                timestamp as created_at,
+                                metadata
+                            FROM dialog_logs
+                            WHERE session_id LIKE %s
+                            ORDER BY timestamp ASC
+                        """, (f"{session_id}%",))
 
-                        columns = ['id', 'direction', 'text', 'created_at', 'channel', 'user_id', 'session_id', 'metadata']
+                        columns = ['id', 'text', 'direction', 'channel', 'session_id', 'created_at', 'metadata']
                         messages = []
                         for row in cursor.fetchall():
                             msg = dict(zip(columns, row))
