@@ -142,62 +142,40 @@ class TraceReportService:
             return []
 
     def _generate_full_report(self, session_id: str, messages: List[Dict]) -> str:
-        """Генерирует полный отчет по улучшенному шаблону."""
+        """Генерирует полный отчет по шаблону ТЗ (2026-01-06)."""
 
         channel = messages[0].get('channel', 'unknown') if messages else 'unknown'
         first_msg_time = messages[0].get('created_at') if messages else None
         last_msg_time = messages[-1].get('created_at') if messages else None
 
-        # Извлекаем txtPrb из metadata каждого сообщения
-        report = f"""{'=' * 80}
-ОТЧЕТ ТРАССИРОВКИ ДИАЛОГА (улучшенный шаблон - 2025-12-28)
-{'=' * 80}
+        # Канал на русском
+        channel_map = {
+            'telegram': 'Телеграм',
+            'web': 'Веб-чат',
+            'test': 'ПрограммныйТест'
+        }
+        channel_ru = channel_map.get(channel, channel)
+
+        # Заголовок отчета
+        report = f"""================================================================================
+ОТЧЕТ ТРАССИРОВКИ ДИАЛОГА (по шаблону ТЗ v3.0 - 2026-01-06)
+================================================================================
 Session ID: {session_id}
-Канал: {channel}
+Канал: {channel_ru}
 Всего сообщений: {len(messages)}
 Период: {first_msg_time} - {last_msg_time}
 
-{'=' * 80}
-ИСТОРИЯ txtPrb (накопление описания проблемы)
-{'=' * 80}
+================================================================================
+ДЕТАЛЬНАЯ ТРАССИРОВКА ПО ШАГАМ
+================================================================================
 
 """
 
-        # Добавляем txtPrb для КАЖДОГО сообщения
-        for i, msg in enumerate(messages, 1):
-            metadata = msg.get('metadata')
-
-            # Парсим metadata если строка
-            if metadata is None:
-                metadata = {}
-            elif isinstance(metadata, str):
-                try:
-                    metadata = json.loads(metadata)
-                except:
-                    metadata = {}
-
-            # Проверяем txtPrb как в metadata напрямую, так и в service_result._metadata
-            txtPrb = ''
-            if isinstance(metadata, dict) and metadata:
-                txtPrb = metadata.get('txtPrb', '')
-                if not txtPrb:
-                    service_result = metadata.get('service_result', {})
-                    if isinstance(service_result, dict):
-                        service_metadata = service_result.get('_metadata', {})
-                        if isinstance(service_metadata, dict):
-                            txtPrb = service_metadata.get('txtPrb', '')
-
-            report += f"#{i}: {txtPrb if txtPrb else '(нет значимой информации)'}\n"
-
-        report += f"\n{'=' * 80}\n"
-        report += "ДЕТАЛЬНАЯ ТРАССИРОВКА ПО СООБЩЕНИЯМ\n"
-        report += f"{'=' * 80}\n\n"
-
         # Детальная трассировка каждого сообщения
         for i, msg in enumerate(messages, 1):
-            # ИСПРАВЛЕНО (2025-12-29): Передаем следующее сообщение для связки inbound+outbound
             next_msg = messages[i] if i < len(messages) else None
             report += self._format_message_details(i, msg, messages[:i], next_msg)
+            report += "\n"
 
         # Статистика
         report += f"\n{'=' * 80}\n"
@@ -211,10 +189,15 @@ Session ID: {session_id}
         return report
 
     def _format_message_details(self, num: int, msg: Dict, previous_messages: List[Dict], next_msg: Dict = None) -> str:
-        """Форматирует детали сообщения с улучшенным форматом.
+        """Форматирует детали сообщения по шаблону ТЗ (2026-01-06).
 
-        ИСПРАВЛЕНО (2025-12-29): Добавлен параметр next_msg для связки inbound+outbound.
-        Если текущее сообщение inbound и следующее outbound - показываем ответ бота в конце inbound.
+        Шаблон для User -> Bot (inbound):
+        1. Направление
+        2. Текст
+        3. txtPrb
+
+        Шаблон для Bot -> User (outbound):
+        1-9. Все пункты включая микросервисы, фильтры, стоимость
         """
 
         direction = msg.get('direction', 'unknown')
@@ -224,19 +207,6 @@ Session ID: {session_id}
         msg_id = msg.get('id', '')
         metadata = msg.get('metadata', {})
 
-        direction_label = "inbound (пользователь → бот)" if direction == 'inbound' else "outbound (бот → пользователь)"
-
-        details = f"""
-{'=' * 80}
-СООБЩЕНИЕ #{num}
-{'-' * 80}
-ID: {msg_id}
-Направление: {direction_label}
-Текст: "{text}"
-Время: {created_at}
-Канал: {channel}
-"""
-
         # Парсим metadata если это строка
         if isinstance(metadata, str):
             try:
@@ -244,162 +214,146 @@ ID: {msg_id}
             except:
                 metadata = {}
 
-        # ИСПРАВЛЕНО (2025-12-28): Добавлен блок 🔍 ДИАГНОСТИКА
-        # Извлекаем диагностику из service_result._metadata
-        service_result = metadata.get('service_result', {})
-        service_metadata = service_result.get('_metadata', {}) if isinstance(service_result, dict) else {}
+        # Определяем направление
+        if direction == 'inbound':
+            direction_label = "User -> Bot"
+        else:
+            direction_label = "Bot -> User"
 
-        if service_metadata:
-            details += f"""
-{'─' * 80}
-🔍 ДИАГНОСТИКА (process_service_detection)
-{'─' * 80}
-"""
-            # txtPrb
-            txtPrb = service_metadata.get('txtPrb', '')
-            if txtPrb:
-                details += f"""
-📝 txtPrb:
-   {txtPrb}
-"""
+        # Канал на русском
+        channel_map = {
+            'telegram': 'Телеграм',
+            'web': 'Веб-чат',
+            'test': 'ПрограммныйТест'
+        }
+        channel_ru = channel_map.get(channel, channel)
 
-            # accumulated_fields
-            accumulated_fields = service_metadata.get('accumulated_fields', {})
-            if accumulated_fields:
-                details += f"""
-🔧 accumulated_fields:
-   {json.dumps(accumulated_fields, ensure_ascii=False, indent=2)}
-"""
-
-            # established_filters
-            established_filters = service_metadata.get('established_filters', {})
-            if established_filters:
-                details += f"""
-🔧 established_filters:
-   {json.dumps(established_filters, ensure_ascii=False, indent=2)}
-"""
-
-            # microservices_results
-            microservices_results = service_metadata.get('microservices_results', {})
-            if microservices_results:
-                details += f"""
-👥 МИКРОСЕРВИСЫ (результаты поиска):
-   Найдено результатов: {len(microservices_results)}
-"""
-                for ms_name, ms_result in microservices_results.items():
-                    if isinstance(ms_result, dict) and ms_result.get('candidates'):
-                        details += f"   - {ms_name}: {len(ms_result['candidates'])} кандидатов\n"
-
-            # filter_detection (если есть)
-            filter_detection = service_metadata.get('filter_detection', {})
-            if filter_detection and isinstance(filter_detection, dict):
-                details += f"""
-{'─' * 80}
-🔍 ФИЛЬТРЫ (FilterDetectionService)
-{'─' * 80}
-"""
-                # Prompt
-                prompt = filter_detection.get('prompt', '')
-                if prompt:
-                    details += f"""
-🤖 ЗАПРОС К LLM:
-{prompt[:500]}{'...' if len(prompt) > 500 else ''}
-"""
-
-                # Filters
-                filters = filter_detection.get('filters', {})
-                if filters:
-                    details += f"""
-🔧 ФИЛЬТРЫ:
-   {json.dumps(filters, ensure_ascii=False, indent=3)}
-"""
-
-                # LLM Response
-                llm_response = filter_detection.get('llm_response', '')
-                if llm_response:
-                    details += f"""
-🤖 ОТВЕТ LLM:
-{llm_response[:300]}{'...' if len(llm_response) > 300 else ''}
-"""
-
-            # ai_orchestrator (если есть)
-            ai_orchestrator = service_metadata.get('ai_orchestrator', {})
-            if ai_orchestrator and isinstance(ai_orchestrator, dict):
-                confidence = ai_orchestrator.get('confidence', 0.0) or 0.0
-                status_raw = ai_orchestrator.get('status', 'unknown')
-                status_translated = self._translate_status(status_raw)
-                details += f"""
-{'─' * 80}
-🔍 AI ORCHESTRATOR
-{'─' * 80}
-   Status: {status_translated} ({status_raw})
-   Service: {ai_orchestrator.get('service_name', 'N/A')}
-   Confidence: {confidence*100:.1f}%
-   Message: {ai_orchestrator.get('message', 'N/A')[:100]}
-"""
-
-        # ВСЕГДА добавляем текущий txtPrb (если еще не добавлен в 🔍 ДИАГНОСТИКА)
+        # Извлекаем txtPrb
+        txtPrb = ''
         if isinstance(metadata, dict):
             txtPrb = metadata.get('txtPrb', '')
             if not txtPrb:
-                # Проверяем в service_result._metadata
                 service_result = metadata.get('service_result', {})
                 if isinstance(service_result, dict):
                     service_metadata = service_result.get('_metadata', {})
                     txtPrb = service_metadata.get('txtPrb', '')
 
-            if txtPrb and '📝 txtPrb:' not in details:  # Проверяем что еще не добавили в 🔍 блоке
-                details += f"""
-{'─' * 80}
-ИЗВЕСТНАЯ ИНФОРМАЦИЯ (txtPrb):
-{txtPrb}
+        # Начинаем формировать отчет по шагу
+        details = f"""
+===== Шаг № {num}=====
+1. Направление: {direction_label} ({channel_ru})
+2. Текст: {text}
+3. txtPrb = {txtPrb if txtPrb else '(нет данных)'}
 """
 
-        # Добавляем METADATA с подробной расшифровкой
-        if metadata:
-            details += f"""
-{'─' * 80}
-METADATA:
-{self._format_metadata_v2(metadata, previous_messages)}
-"""
-
-        # Анализ значимости информации
-        details += f"""
-{'-' * 80}
-ЗАКЛЮЧЕНИЕ ШАГА #{num}:
-"""
+        # Для User -> Bot - только пункты 1-3
         if direction == 'inbound':
-            # Анализируем входящее сообщение
-            significance = self._analyze_message_significance(text, metadata, previous_messages)
-            details += significance
+            return details
 
-            # ИСПРАВЛЕНО (2025-12-29): Если следующее сообщение outbound - показываем ответ бота
-            if next_msg and next_msg.get('direction') == 'outbound':
-                bot_response = next_msg.get('text', '')
-                details += f"""
+        # Для Bot -> User - все 9 пунктов
+        service_result = metadata.get('service_result', {})
+        service_metadata = service_result.get('_metadata', {}) if isinstance(service_result, dict) else {}
 
-{'─' * 80}
-💬 ОТВЕТ БОТА:
-{bot_response}
-"""
-                # Если есть metadata в outbound сообщении (редкий случай)
-                next_metadata = next_msg.get('metadata', {})
-                if isinstance(next_metadata, dict) and next_metadata:
-                    details += f"""
-{'─' * 80}
-METADATA OUTBOUND:
-{self._format_metadata_v2(next_metadata, previous_messages, indent="│ ")}"""
+        # 4. TagSearchService
+        details += "\n4. TagSearchService\n"
+        microservices_results = service_metadata.get('microservices_results', {})
+        tag_search = microservices_results.get('tag_search', {}) if isinstance(microservices_results, dict) else {}
+        if isinstance(tag_search, dict) and tag_search.get('candidates'):
+            for cand in tag_search['candidates']:
+                service_name = cand.get('service_name', 'Unknown')
+                confidence = cand.get('confidence', 0.0) * 100
+                details += f" {{{service_name}, {confidence:.1f}%}}\n"
         else:
-            # Анализируем ответ бота
-            # ИСПРАВЛЕНО (2025-12-29): Пропускаем outbound сообщение если ответ уже показан в предыдущем inbound
-            # Добавляем маркер что это outbound без ответа (аварийный случай)
-            details += """
-[!] Это outbound сообщение (ответ бота)
-[!] Обычно ответ показывается в предыдущем inbound сообщении
-"""
-            details += self._analyze_bot_response(metadata)
+            details += " {(нет кандидатов)}\n"
 
-        details += "\n"
+        # 5. SemanticSearchService
+        details += "\n5. SemanticSearchService\n"
+        semantic_search = microservices_results.get('semantic_search', {}) if isinstance(microservices_results, dict) else {}
+        if isinstance(semantic_search, dict) and semantic_search.get('candidates'):
+            for cand in semantic_search['candidates']:
+                service_name = cand.get('service_name', 'Unknown')
+                confidence = cand.get('confidence', 0.0) * 100
+                details += f" {{{service_name}, {confidence:.1f}%}}\n"
+        else:
+            details += " {(нет кандидатов)}\n"
+
+        # 6. VectorSearchService
+        details += "\n6. VectorSearchService\n"
+        vector_search = microservices_results.get('vector_search', {}) if isinstance(microservices_results, dict) else {}
+        if isinstance(vector_search, dict) and vector_search.get('candidates'):
+            for cand in vector_search['candidates']:
+                service_name = cand.get('service_name', 'Unknown')
+                confidence = cand.get('confidence', 0.0) * 100
+                details += f" {{{service_name}, {confidence:.1f}%}}\n"
+        else:
+            details += " {(нет кандидатов)}\n"
+
+        # 7. Таблица установленных фильтров
+        details += "\n7. Таблица установленных фильтров:\n"
+        established_filters = service_metadata.get('established_filters', {})
+        if isinstance(established_filters, dict) and established_filters:
+            for filter_name, filter_data in established_filters.items():
+                if isinstance(filter_data, dict):
+                    value = filter_data.get('value', 'N/A')
+                    confidence = filter_data.get('confidence', 0.0) * 100
+                    details += f" {{{filter_name} = {value}, {confidence:.0f}%}}\n"
+                else:
+                    details += f" {{{filter_name} = {filter_data}}}\n"
+        else:
+            details += " {(нет фильтров)}\n"
+
+        # 8. Прочая отладочная информация
+        details += "\n8. Прочая отладочная информация:\n"
+
+        # AI Orchestrator
+        ai_orchestrator = service_metadata.get('ai_orchestrator', {})
+        if isinstance(ai_orchestrator, dict) and ai_orchestrator:
+            status = ai_orchestrator.get('status', 'unknown')
+            service_id = ai_orchestrator.get('service_id', 'N/A')
+            service_name = ai_orchestrator.get('service_name', 'N/A')
+            confidence = ai_orchestrator.get('confidence', 0.0) * 100
+            details += f" AI Orchestrator: Status={status}, ServiceID={service_id}, ServiceName={service_name}, Confidence={confidence:.1f}%\n"
+
+        # Filter Detection
+        filter_detection = service_metadata.get('filter_detection', {})
+        if isinstance(filter_detection, dict) and filter_detection:
+            detected_filters = filter_detection.get('filters', {})
+            if detected_filters:
+                details += f" FilterDetection: {json.dumps(detected_filters, ensure_ascii=False)}\n"
+
+        # Candidates
+        candidates = service_result.get('candidates', []) if isinstance(service_result, dict) else []
+        if candidates:
+            details += f" Всего кандидатов: {len(candidates)}\n"
+
+        # 9. Стоимость шага
+        details += "\n9. Стоимость шага:\n"
+
+        # Ищем информацию о стоимости в разных местах
+        cost_found = False
+
+        # Проверяем service_result._metadata._ai_metadata
+        ai_metadata = service_result.get('_ai_metadata') if isinstance(service_result, dict) else None
+        if ai_metadata:
+            usage = ai_metadata.get('usage', {}) if isinstance(ai_metadata, dict) else {}
+            model = ai_metadata.get('model', 'unknown') if isinstance(ai_metadata, dict) else 'unknown'
+            if usage:
+                tokens = usage.get('total_tokens', 0)
+                cost = usage.get('cost_rub', 0.0)
+                details += f" {model} = {tokens} токенов, {cost:.4f} рублей\n"
+                cost_found = True
+
+        # Проверяем service_result._metadata (старый формат)
+        if not cost_found:
+            tokens = service_metadata.get('tokens', 0)
+            cost = service_metadata.get('cost', 0) or service_metadata.get('total_cost', 0)
+            model = service_metadata.get('model') or service_metadata.get('llm_model', 'unknown')
+            if tokens or cost:
+                details += f" {model} = {tokens} токенов, {cost:.4f} рублей\n"
+                cost_found = True
+
+        if not cost_found:
+            details += " {(данные о стоимости отсутствуют)}\n"
 
         return details
 
