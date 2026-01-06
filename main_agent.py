@@ -445,13 +445,15 @@ class MainAgent:
                 logger.info("[!] Меняем стратегию: задаем другой вопрос")
 
                 # Возвращаем специальный результат
+                # ИСПРАВЛЕНО (2026-01-06): Добавляем microservices_results для трассировки
                 result_metadata = {
                     'txtPrb': txtPrb,
                     'accumulated_fields': accumulated_fields,
                     'established_filters': established_filters,
                     'repeated_answer_detected': True,
                     'repeat_count': repeat_count,
-                    'semantic_check': semantic_check_result  # ИСПРАВЛЕНО (2026-01-03)
+                    'semantic_check': semantic_check_result,  # ИСПРАВЛЕНО (2026-01-03)
+                    'microservices_results': {}  # Пусто, т.к. микросервисы не запускались
                 }
 
                 return {
