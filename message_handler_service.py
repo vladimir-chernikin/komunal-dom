@@ -203,6 +203,20 @@ class MessageHandlerService:
                     }
                 )
 
+            # ИСПРАВЛЕНО (2026-01-06): Обновляем metadata для inbound сообщения с txtPrb
+            # КРИТИЧЕСКИ ВАЖНО: TraceReportService читает metadata из БД!
+            if '_metadata' in result and isinstance(message_log, dict):
+                inbound_message_id = message_log.get('id')
+                if inbound_message_id and inbound_message_id > 0:
+                    try:
+                        await self._update_message_metadata(
+                            message_id=inbound_message_id,
+                            metadata=result['_metadata']
+                        )
+                        logger.info(f"[DEBUG] ✅ Metadata обновлена для inbound сообщения id={inbound_message_id}")
+                    except Exception as e:
+                        logger.warning(f"[WARNING] Не удалось обновить metadata для inbound: {e}")
+
             # 5. Формируем ответ бота
             bot_response = self._extract_bot_response(result)
 
@@ -387,7 +401,8 @@ class MessageHandlerService:
                     final_dialog_id = f"{session_hash[:8]}-{session_hash[8:12]}-{session_hash[12:16]}-{session_hash[16:20]}-{session_hash[20:32]}"
 
             # Логируем через DialogLoggerService
-            await dialog_logger.log_message(
+            # ИСПРАВЛЕНО (2026-01-06): Получаем реальный ID созданной записи
+            record_id = await dialog_logger.log_message(
                 dialog_id=final_dialog_id,  # ИСПРАВЛЕНО: гарантированно UUID
                 user_id=user_id_int,
                 message_type=message_type,
@@ -414,14 +429,66 @@ class MessageHandlerService:
                 django_user_id=django_user_id
             )
 
+            # ИСПРАВЛЕНО (2026-01-06): Возвращаем реальный ID из БД
             return {
-                'id': 0,  # dialog_logs не возвращает ID
+                'id': record_id if record_id else 0,
                 'created_at': None
             }
 
         except Exception as e:
             logger.error(f"MessageHandler: Ошибка логирования в dialog_logs: {e}")
             return {}
+
+    async def _update_message_metadata(self, message_id: int, metadata: Dict) -> bool:
+        """
+        Обновляет metadata для сообщения в dialog_logs
+
+        ИСПРАВЛЕНО (2026-01-06): Добавлено для обновления txtPrb в inbound сообщениях
+
+        Args:
+            message_id: ID сообщения в dialog_logs
+            metadata: Новые метаданные (будут объединены с существующими)
+
+        Returns:
+            bool: True если успешно, False если ошибка
+        """
+        try:
+            from django.db import connection
+
+            def update_sync():
+                with connection.cursor() as cursor:
+                    # Читаем существующую metadata
+                    cursor.execute("""
+                        SELECT metadata FROM dialog_logs WHERE id = %s
+                    """, [message_id])
+
+                    row = cursor.fetchone()
+                    if not row:
+                        logger.warning(f"Сообщение id={message_id} не найдено")
+                        return False
+
+                    import json
+                    existing_metadata = json.loads(row[0]) if row[0] else {}
+
+                    # Объединяем метаданные
+                    existing_metadata.update(metadata)
+
+                    # Обновляем в БД
+                    cursor.execute("""
+                        UPDATE dialog_logs
+                        SET metadata = %s
+                        WHERE id = %s
+                    """, [json.dumps(existing_metadata, ensure_ascii=False), message_id])
+
+                    logger.debug(f"Metadata обновлена для сообщения id={message_id}")
+                    return True
+
+            result = await sync_to_async(update_sync)()
+            return result
+
+        except Exception as e:
+            logger.error(f"Ошибка обновления metadata для сообщения {message_id}: {e}")
+            return False
 
     async def _get_dialog_history(self, session_id: str, limit: int = 10) -> list:
         """
