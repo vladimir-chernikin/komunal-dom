@@ -449,12 +449,23 @@ Session ID: {session_id}
 
         # 9.1. LLM вызовы (промпты и ответы из таблицы llm_request_log)
         # ИСПРАВЛЕНО (2026-01-06): Берем данные из таблицы llm_request_log вместо metadata
+        # ИСПРАВЛЕНО (2026-01-06): Для outbound сообщений берем LLM вызовы от предыдущего inbound
         llm_calls_found = False
         llm_total_cost = 0.0  # Для подсчета общей стоимости
         cost_found = False  # ИСПРАВЛЕНО (2026-01-06): Инициализация переменной
 
-        if llm_logs_map and msg_id in llm_logs_map:
-            llm_calls = llm_logs_map[msg_id]
+        # Определяем какой message_id искать
+        target_message_id = msg_id
+        if direction == 'outbound' and previous_messages:
+            # Для outbound берем LLM вызовы от предыдущего inbound сообщения
+            # ИСПРАВЛЕНО (2026-01-06): Ищем последнее inbound в previous_messages
+            for prev_msg in reversed(previous_messages):
+                if prev_msg.get('direction') == 'inbound':
+                    target_message_id = prev_msg.get('id')
+                    break
+
+        if llm_logs_map and target_message_id in llm_logs_map:
+            llm_calls = llm_logs_map[target_message_id]
             for llm_call in llm_calls:
                 cost_found = True  # ИСПРАВЛЕНО (2026-01-06): Нашлись LLM вызовы
                 provider = llm_call.get('provider', 'unknown')
@@ -472,9 +483,13 @@ Session ID: {session_id}
 
                 details += f"\n [{provider} - {model}]\n"
                 if prompt_text:
-                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_text}\n"
+                    # Ограничиваем длину промпта для читаемости
+                    prompt_preview = prompt_text[:1000] + "..." if len(prompt_text) > 1000 else prompt_text
+                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_preview}\n"
                 if response_text:
-                    details += f"  ОТВЕТ LLM:\n{response_text}\n"
+                    # Ограничиваем длину ответа для читаемости
+                    response_preview = response_text[:500] + "..." if len(response_text) > 500 else response_text
+                    details += f"  ОТВЕТ LLM:\n{response_preview}\n"
 
         if not llm_calls_found:
             details += "\n9.1. LLM ВЫЗОВЫ:\n {(нет данных из llm_request_log)}\n"
