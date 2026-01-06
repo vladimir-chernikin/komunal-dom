@@ -214,11 +214,12 @@ class TraceReportService:
                             msg_time = msg['created_at']
                             msg_id = msg['id']
 
-                            # Ищем LLM запросы в временном окне +-60 секунд от сообщения
+                            # Ищем LLM запросы в временном окне +-5 секунд от сообщения
+                            # ИСПРАВЛЕНО (2026-01-06): Сужено с 60 до 5 секунд для точного связывания
                             # Это нужно чтобы определить какие именно LLM вызовы были для этого сообщения
                             from datetime import timedelta
-                            time_window_start = msg_time - timedelta(seconds=60)
-                            time_window_end = msg_time + timedelta(seconds=60)
+                            time_window_start = msg_time - timedelta(seconds=5)
+                            time_window_end = msg_time + timedelta(seconds=5)
 
                             matching_llm = []
                             for llm in all_llm_logs:
