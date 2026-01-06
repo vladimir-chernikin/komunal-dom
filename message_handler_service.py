@@ -196,6 +196,7 @@ class MessageHandlerService:
                         'user_id': user_id,
                         'channel': channel,
                         'session_id': session_id,
+                        'message_id': message_log.get('id') if isinstance(message_log, dict) else None,  # ИСПРАВЛЕНО (2026-01-06)
                         'dialog_history': dialog_history,  # История через user_context
                         'is_followup': is_followup,  # Флаг для объединения контекста
                         'cleaned_message': search_text  # Добавляем очищенное сообщение

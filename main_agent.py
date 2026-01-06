@@ -220,12 +220,14 @@ class MainAgent:
         is_followup = False
         dialog_history = []
         session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
+        message_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем message_id
 
         if user_context:
             original_message = user_context.get('original_message', message_text)
             is_followup = user_context.get('is_followup', False)
             dialog_history = user_context.get('dialog_history', [])
             session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
+            message_id = user_context.get('message_id')  # ИСПРАВЛЕНО (2026-01-06)
 
             if is_followup and dialog_history:
                 logger.info(f"Главный Агент обрабатывает уточняющее сообщение: '{original_message}' (история: {len(dialog_history)} сообщений)")
@@ -332,13 +334,14 @@ class MainAgent:
                             break
 
                 # Накапливаем информацию из текущего сообщения
-                # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+                # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
                 accumulation_result = await self.problem_accumulator.extract_and_accumulate(
                     message_text=message_text,
                     current_problem=txtPrb,
                     bot_question=last_bot_question,
                     dialog_history=dialog_history,
-                    session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
+                    session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+                    message_id=message_id   # ИСПРАВЛЕНО (2026-01-06)
                 )
 
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
@@ -671,8 +674,8 @@ class MainAgent:
                     logger.info(f"Запускаем FilterDetectionService (кандидатов: {len(candidates_data)})")
 
                     # Вызываем FilterDetectionService
-                    # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
-                    filter_result = await self.filter_detection.detect_filters(original_message, dialog_history, session_id=session_id)
+                    # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
+                    filter_result = await self.filter_detection.detect_filters(original_message, dialog_history, session_id=session_id, message_id=message_id)
 
                     if filter_result.get('status') == 'success':
                         filters = filter_result.get('filters', {})
@@ -2296,11 +2299,12 @@ JSON:"""
 
         try:
             # Вызываем FilterDetectionService (уже использует YandexGPT Lite)
-            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
             filter_result = await self.filter_detection.detect_filters(
                 message_text=message_text,
                 dialog_history=dialog_history,
-                session_id=session_id
+                session_id=session_id,
+                message_id=message_id
             )
 
             if filter_result.get('status') != 'success':

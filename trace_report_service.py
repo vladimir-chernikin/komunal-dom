@@ -176,7 +176,7 @@ class TraceReportService:
 
                 try:
                     with conn.cursor() as cursor:
-                        # ИСПРАВЛЕНО (2026-01-06): Загружаем по session_id вместо временного окна
+                        # ИСПРАВЛЕНО (2026-01-06): Загружаем по session_id и связываем с message_id
                         cursor.execute("""
                             SELECT
                                 id,
@@ -190,7 +190,8 @@ class TraceReportService:
                                 cost_rub,
                                 created_at,
                                 status,
-                                error_message
+                                error_message,
+                                message_id
                             FROM llm_request_log
                             WHERE session_id = %s
                             ORDER BY created_at ASC
@@ -198,36 +199,29 @@ class TraceReportService:
 
                         columns = ['id', 'provider', 'model', 'prompt_text', 'response_text',
                                    'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_rub',
-                                   'created_at', 'status', 'error_message']
+                                   'created_at', 'status', 'error_message', 'message_id']
 
                         all_llm_logs = []
                         for row in cursor.fetchall():
                             llm_log = dict(zip(columns, row))
                             all_llm_logs.append(llm_log)
 
-                        # Связываем LLM запросы с сообщениями по времени и сессии
-                        # ИСПРАВЛЕНО (2026-01-06): Простое связывание - все LLM запросы сессии доступны
+                        # Связываем LLM запросы с сообщениями по message_id
+                        # ИСПРАВЛЕНО (2026-01-06): Надежное связывание по message_id вместо временного окна
                         message_llm_map = {}
 
-                        # Для каждого сообщения находим ближайшие LLM запросы
+                        # Группируем LLM запросы по message_id
+                        from collections import defaultdict
+                        llm_by_message_id = defaultdict(list)
+                        for llm in all_llm_logs:
+                            if llm.get('message_id'):
+                                llm_by_message_id[llm['message_id']].append(llm)
+
+                        # Создаем map: message_id -> список LLM запросов
                         for msg in messages:
-                            msg_time = msg['created_at']
                             msg_id = msg['id']
-
-                            # Ищем LLM запросы в временном окне +-60 секунд от сообщения
-                            # ВРЕМЕННОЕ РЕШЕНИЕ пока нет поля message_id в llm_request_log
-                            # TODO: Добавить message_id в call_llm и связывать по ID вместо времени
-                            from datetime import timedelta
-                            time_window_start = msg_time - timedelta(seconds=60)
-                            time_window_end = msg_time + timedelta(seconds=60)
-
-                            matching_llm = []
-                            for llm in all_llm_logs:
-                                if time_window_start <= llm['created_at'] <= time_window_end:
-                                    matching_llm.append(llm)
-
-                            if matching_llm:
-                                message_llm_map[msg_id] = matching_llm
+                            if msg_id in llm_by_message_id:
+                                message_llm_map[msg_id] = llm_by_message_id[msg_id]
 
                         logger.info(f"Загружено {len(all_llm_logs)} LLM запросов по session_id={session_id}, связано с {len(message_llm_map)} сообщений")
                         return message_llm_map
