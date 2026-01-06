@@ -1311,6 +1311,36 @@ class MainAgent:
             candidate = filtered_candidates[0]
             logger.info(f"После фильтрации остался 1 кандидат: {candidate['service_name']} (ID: {candidate['service_id']})")
 
+            # ИСПРАВЛЕНИЕ (2026-01-06): Проверяем - ВСЕ ЛИ важные фильтры установлены
+            # Если у кандидата ЕСТЬ category/location/incident в services_catalog,
+            # но FilterDetectionService НЕ установил их (confidence < 0.6) → нужно уточнить
+
+            # Проверяем category
+            candidate_category = candidate.get('category', '')
+            category_filter = established_filters.get('category', {})
+            category_confidence = category_filter.get('confidence', 0.0) if isinstance(category_filter, dict) else 0.0
+            category_value = category_filter.get('value', '') if isinstance(category_filter, dict) else ''
+
+            # Если у услуги ЕСТЬ категория в БД, но НЕ установлена в фильтрах
+            needs_category_clarification = (
+                candidate_category and  # В БД есть категория
+                category_confidence < 0.6  # Но FilterDetectionService НЕ установил (или низкая уверенность)
+            )
+
+            if needs_category_clarification:
+                logger.warning(f"[КАТЕГОРИЯ] У услуги '{candidate['service_name']}' есть category='{candidate_category}' в БД, но НЕ установлена в фильтрах (confidence={category_confidence})")
+                logger.warning(f"[КАТЕГОРИЯ] Нужно уточнить категорию перед SUCCESS")
+
+                # Генерируем вопрос через AI (без хардкода!)
+                return await self._ask_about_missing_attribute(
+                    candidate=candidate,
+                    attribute_name='category',
+                    attribute_value=candidate_category,
+                    dialog_history=dialog_history,
+                    txtPrb=txtPrb,
+                    established_filters=established_filters
+                )
+
             # ИСПРАВЛЕНО (2025-12-25): Добавляем needs_confirmation для низкого confidence
             # Получаем confidence из LLM ранжирования если было
             llm_confidence = ranking_result.get('confidence', 0.0) if 'ranking_result' in locals() else 0.0
@@ -1326,34 +1356,6 @@ class MainAgent:
                             already_asked_confirmation = True
                             logger.info(f"[!] УЖЕ был подтверждающий вопрос: '{text[:60]}...'")
                             break
-
-            # ИСПРАВЛЕНИЕ (2026-01-06): Проверяем нужна ли категория для трубы
-            # Если услуга содержит "труба" но category НЕ установлен - уточняем
-            service_name_lower = candidate.get('service_name', '').lower()
-            has_truba = 'труб' in service_name_lower
-
-            # Проверяем установлена ли категория с высокой уверенностью
-            category_filter = established_filters.get('category', {})
-            category_confidence = category_filter.get('confidence', 0.0) if isinstance(category_filter, dict) else 0.0
-            category_is_known = category_filter.get('value') if isinstance(category_filter, dict) else None
-
-            logger.info(f"[ПРОВЕРКА КАТЕГОРИИ] has_truba={has_truba}, category={category_is_known}, confidence={category_confidence}")
-
-            # Если есть труба БЕЗ категории - задаем уточняющий вопрос
-            if has_truba and category_confidence < 0.8:
-                logger.warning(f"[КАТЕГОРИЯ НЕ УСТАНОВЛЕНА] Услуга '{candidate['service_name']}' содержит 'труба' но категория неизвестна")
-                return {
-                    'status': 'AMBIGUOUS',
-                    'message': 'Уточните, пожалуйста: это водопроводная, отопительная или канализационная труба?',
-                    'single_candidate': None,
-                    'filtered_candidates': filtered_candidates,
-                    'needs_clarification': True,
-                    'is_followup': is_followup,
-                    '_metadata': {
-                        'clarification_reason': 'pipe_category_unknown',
-                        'service_name': candidate['service_name']
-                    }
-                }
 
             # Если confidence < 0.9 И еще НЕ спрашивали подтверждение - спрашиваем
             # Если УЖЕ спрашивали - НЕ повторяем, сразу создаем заявку
@@ -1709,6 +1711,102 @@ class MainAgent:
         if is_followup:
             return "Уточните детали проблемы."
         return "Опишите подробнее, что именно произошло."
+
+    async def _ask_about_missing_attribute(
+        self,
+        candidate: Dict,
+        attribute_name: str,
+        attribute_value: str,
+        dialog_history: List[Dict],
+        txtPrb: str,
+        established_filters: Dict
+    ) -> Dict:
+        """
+        Генерирует уточняющий вопрос о пропущенном атрибуте через AI
+
+        ИСПРАВЛЕНИЕ (2026-01-06): БЕЗ хардкода! Использует AI для генерации вопроса
+
+        Args:
+            candidate: Кандидат-услуга
+            attribute_name: Имя атрибута ('category', 'location_type', etc.)
+            attribute_value: Значение атрибута из БД
+            dialog_history: История диалога
+            txtPrb: Накопленное описание проблемы
+            established_filters: Установленные фильтры
+
+        Returns:
+            Dict: AMBIGUOUS с сгенерированным вопросом
+        """
+        try:
+            # Формируем промпт для AI
+            prompt = f"""Ты - диспетчер управляющей компании. У пользователя проблема.
+
+НАКОПЛЕННАЯ ИНФОРМАЦИЯ:
+{txtPrb}
+
+УСТАНОВЛЕННЫЕ ФИЛЬТРЫ:
+- location: {established_filters.get('location_type', {}).get('value', 'неизвестно')}
+- incident: {established_filters.get('incident_type', {}).get('value', 'неизвестно')}
+- category: {established_filters.get('category', {}).get('value', 'НЕ УСТАНОВЛЕНО')} ← ПРОБЛЕМА!
+
+ПРЕДВАРИТЕЛЬНАЯ УСЛУГА:
+{candidate['service_name']} (категория: {attribute_value})
+
+ЗАДАЧА:
+Пользователь НЕ указал категорию проблемы (водоснабжение/отопление/канализация/и т.д.).
+Задай ЕДИНСТВЕННЫЙ вопрос чтобы уточнить категорию.
+
+ВАЖНО:
+- Вопрос должен быть КРАТКИМ (1 предложение)
+- НЕ используй эмодзи
+- НЕ перечисляй варианты - дай пользователю ответить свободно
+- Вопрос должен помогать определить категорию из контекста
+
+ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ:
+- "Уточните, пожалуйста: к какой системе относится проблема?"
+- "Что именно является источником проблемы?"
+- "Какой элемент неисправен?"
+
+Верни ТОЛЬКО текст вопроса (без кавычек и пояснений)."""
+
+            # Вызываем LLM
+            response, usage = await self.ai_agent.call_llm(
+                prompt=prompt,
+                provider='yandexgpt',
+                model='lite'
+            )
+
+            question = response.strip().strip('\'"').strip()
+
+            logger.info(f"[AI QUESTION] Сгенерирован вопрос о category: '{question}'")
+
+            return {
+                'status': 'AMBIGUOUS',
+                'message': question,
+                'single_candidate': None,
+                'filtered_candidates': [candidate],
+                'needs_clarification': True,
+                'is_followup': True,
+                '_metadata': {
+                    'clarification_reason': f'missing_attribute_{attribute_name}',
+                    'attribute_name': attribute_name,
+                    'attribute_value': attribute_value,
+                    'service_name': candidate['service_name'],
+                    'ai_generated_question': True
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Ошибка генерации вопроса о {attribute_name}: {e}")
+            # Fallback вопрос
+            return {
+                'status': 'AMBIGUOUS',
+                'message': f'Уточните, пожалуйста: к какой категории относится проблема?',
+                'single_candidate': None,
+                'filtered_candidates': [candidate],
+                'needs_clarification': True,
+                'is_followup': True
+            }
 
     def _create_error_result(self, error_message: str) -> Dict:
         return {
