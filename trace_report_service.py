@@ -60,8 +60,11 @@ class TraceReportService:
             logger.warning(f"Нет сообщений для сессии {session_id}")
             return None
 
+        # ИСПРАВЛЕНО (2026-01-06): Загружаем LLM запросы из таблицы llm_request_log
+        llm_logs_map = await self._load_llm_logs_for_session(session_id, messages)
+
         # Генерируем отчет
-        report_content = self._generate_full_report(session_id, messages)
+        report_content = self._generate_full_report(session_id, messages, llm_logs_map)
 
         # Определяем путь к файлу
         if output_path is None:
@@ -141,8 +144,114 @@ class TraceReportService:
             logger.error(f"Ошибка загрузки сообщений: {e}")
             return []
 
-    def _generate_full_report(self, session_id: str, messages: List[Dict]) -> str:
-        """Генерирует полный отчет по шаблону ТЗ (2026-01-06)."""
+    async def _load_llm_logs_for_session(self, session_id: str, messages: List[Dict]) -> Dict[int, List[Dict]]:
+        """
+        Загружает LLM запросы для каждого сообщения из llm_request_log
+
+        ИСПРАВЛЕНО (2026-01-06):
+        - Берет промпты из таблицы llm_request_log вместо metadata
+        - Связывает по временному окну: LLM запросы в +-10 секунд от сообщения
+
+        Args:
+            session_id: ID сессии
+            messages: Список сообщений из dialog_logs
+
+        Returns:
+            Dict: {message_id: [llm_requests]}
+        """
+        try:
+            from django.conf import settings
+            import psycopg2
+
+            db_settings = settings.DATABASES['default']
+
+            def load_llm_sync():
+                conn = psycopg2.connect(
+                    host=db_settings['HOST'],
+                    database=db_settings['NAME'],
+                    user=db_settings['USER'],
+                    password=db_settings['PASSWORD'],
+                    port=db_settings.get('PORT', 5432)
+                )
+
+                try:
+                    with conn.cursor() as cursor:
+                        # Загружаем все LLM запросы за период сессии
+                        if not messages:
+                            return {}
+
+                        # Определяем временной диапазон сессии
+                        min_time = min(msg['created_at'] for msg in messages)
+                        max_time = max(msg['created_at'] for msg in messages)
+
+                        # Добавляем запас по времени (10 минут)
+                        from datetime import timedelta
+                        start_time = min_time - timedelta(minutes=10)
+                        end_time = max_time + timedelta(minutes=10)
+
+                        cursor.execute("""
+                            SELECT
+                                id,
+                                provider,
+                                model,
+                                prompt_text,
+                                response_text,
+                                prompt_tokens,
+                                completion_tokens,
+                                total_tokens,
+                                cost_rub,
+                                created_at,
+                                status,
+                                error_message
+                            FROM llm_request_log
+                            WHERE created_at BETWEEN %s AND %s
+                            ORDER BY created_at ASC
+                        """, (start_time, end_time))
+
+                        columns = ['id', 'provider', 'model', 'prompt_text', 'response_text',
+                                   'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_rub',
+                                   'created_at', 'status', 'error_message']
+
+                        all_llm_logs = []
+                        for row in cursor.fetchall():
+                            llm_log = dict(zip(columns, row))
+                            all_llm_logs.append(llm_log)
+
+                        # Связываем LLM запросы с сообщениями по времени
+                        message_llm_map = {}
+                        for msg in messages:
+                            msg_time = msg['created_at']
+                            msg_id = msg['id']
+
+                            # Ищем LLM запросы в временном окне +-30 секунд
+                            time_window_start = msg_time - timedelta(seconds=30)
+                            time_window_end = msg_time + timedelta(seconds=30)
+
+                            matching_llm = []
+                            for llm in all_llm_logs:
+                                if time_window_start <= llm['created_at'] <= time_window_end:
+                                    matching_llm.append(llm)
+
+                            if matching_llm:
+                                message_llm_map[msg_id] = matching_llm
+
+                        logger.info(f"Загружено {len(all_llm_logs)} LLM запросов, связано с {len(message_llm_map)} сообщений")
+                        return message_llm_map
+
+                finally:
+                    conn.close()
+
+            return await asyncio.to_thread(load_llm_sync)
+
+        except Exception as e:
+            logger.error(f"Ошибка загрузки LLM логов: {e}")
+            return {}
+
+    def _generate_full_report(self, session_id: str, messages: List[Dict], llm_logs_map: Dict[int, List[Dict]] = None) -> str:
+        """Генерирует полный отчет по шаблону ТЗ (2026-01-06).
+
+        ИСПРАВЛЕНО (2026-01-06): Добавлен параметр llm_logs_map для LLM запросов из таблицы
+        """
 
         channel = messages[0].get('channel', 'unknown') if messages else 'unknown'
         first_msg_time = messages[0].get('created_at') if messages else None
@@ -174,7 +283,8 @@ Session ID: {session_id}
         # Детальная трассировка каждого сообщения
         for i, msg in enumerate(messages, 1):
             next_msg = messages[i] if i < len(messages) else None
-            report += self._format_message_details(i, msg, messages[:i], next_msg)
+            # ИСПРАВЛЕНО (2026-01-06): Передаем llm_logs_map
+            report += self._format_message_details(i, msg, messages[:i], next_msg, llm_logs_map)
             report += "\n"
 
         # Статистика
@@ -188,8 +298,10 @@ Session ID: {session_id}
 
         return report
 
-    def _format_message_details(self, num: int, msg: Dict, previous_messages: List[Dict], next_msg: Dict = None) -> str:
+    def _format_message_details(self, num: int, msg: Dict, previous_messages: List[Dict], next_msg: Dict = None, llm_logs_map: Dict[int, List[Dict]] = None) -> str:
         """Форматирует детали сообщения по шаблону ТЗ (2026-01-06).
+
+        ИСПРАВЛЕНО (2026-01-06): Добавлен параметр llm_logs_map для LLM запросов из таблицы
 
         Шаблон для User -> Bot (inbound):
         1. Направление
@@ -347,83 +459,64 @@ Session ID: {session_id}
         if candidates_mainagent:
             details += f" Всего кандидатов: {len(candidates_mainagent)}\n"
 
-        # 9.1. LLM вызовы (промпты и ответы)
+        # 9.1. LLM вызовы (промпты и ответы из таблицы llm_request_log)
+        # ИСПРАВЛЕНО (2026-01-06): Берем данные из таблицы llm_request_log вместо metadata
         llm_calls_found = False
+        llm_total_cost = 0.0  # Для подсчета общей стоимости
 
-        # FilterDetectionService LLM вызов
-        if isinstance(filter_detection, dict) and filter_detection:
-            prompt = filter_detection.get('prompt', '')
-            llm_response = filter_detection.get('llm_response', '')
+        if llm_logs_map and msg_id in llm_logs_map:
+            llm_calls = llm_logs_map[msg_id]
+            for llm_call in llm_calls:
+                provider = llm_call.get('provider', 'unknown')
+                model = llm_call.get('model', 'unknown')
+                prompt_text = llm_call.get('prompt_text', '')
+                response_text = llm_call.get('response_text', '')
+                total_tokens = llm_call.get('total_tokens', 0)
+                cost_rub = llm_call.get('cost_rub', 0.0)
 
-            if prompt or llm_response:
+                llm_total_cost += cost_rub  # Суммируем стоимость
+
                 if not llm_calls_found:
                     details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
                     llm_calls_found = True
 
-                details += "\n [FilterDetectionService - YandexGPT]\n"
-                if prompt:
-                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt}\n"
-                if llm_response:
-                    details += f"  ОТВЕТ LLM:\n{llm_response}\n"
+                details += f"\n [{provider} - {model}]\n"
+                if prompt_text:
+                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_text}\n"
+                if response_text:
+                    details += f"  ОТВЕТ LLM:\n{response_text}\n"
 
-        # AIAgentService LLM вызов (генерация вопросов)
-        ai_metadata = service_result.get('_ai_metadata') if isinstance(service_result, dict) else None
-        if isinstance(ai_metadata, dict) and ai_metadata:
-            ai_prompt = ai_metadata.get('prompt', '')
-            ai_response = ai_metadata.get('response', '')
-
-            if ai_prompt or ai_response:
-                if not llm_calls_found:
-                    details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
-                    llm_calls_found = True
-
-                model = ai_metadata.get('model', 'unknown')
-                details += f"\n [AIAgentService - {model} - генерация вопроса]\n"
-                if ai_prompt:
-                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{ai_prompt}\n"
-                if ai_response:
-                    details += f"  ОТВЕТ LLM:\n{ai_response}\n"
-
-        # Другие LLM вызовы из metadata
-        # Проверяем на наличие полей prompt/response в metadata напрямую
-        if isinstance(metadata, dict):
-            direct_prompt = metadata.get('prompt', '')
-            direct_response = metadata.get('response', '')
-            if direct_prompt or direct_response:
-                if not llm_calls_found:
-                    details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
-                    llm_calls_found = True
-
-                details += f"\n [Direct LLM call]\n"
-                if direct_prompt:
-                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{direct_prompt}\n"
-                if direct_response:
-                    details += f"  ОТВЕТ LLM:\n{direct_response}\n"
+        if not llm_calls_found:
+            details += "\n9.1. LLM ВЫЗОВЫ:\n {(нет данных из llm_request_log)}\n"
 
         # 10. Стоимость шага
         details += "\n10. Стоимость шага:\n"
 
-        # Ищем информацию о стоимости в разных местах
-        cost_found = False
+        # ИСПРАВЛЕНО (2026-01-06): Берем стоимость из llm_logs_map
+        if llm_calls_found and llm_total_cost > 0:
+            details += f" Итого: {llm_total_cost:.4f} рублей (из llm_request_log)\n"
+        else:
+            # Фоллбэк на metadata если данных нет в llm_request_log
+            cost_found = False
 
-        # Проверяем service_result._metadata._ai_metadata
-        ai_metadata = service_result.get('_ai_metadata') if isinstance(service_result, dict) else None
-        if ai_metadata:
-            usage = ai_metadata.get('usage', {}) if isinstance(ai_metadata, dict) else {}
-            model = ai_metadata.get('model', 'unknown') if isinstance(ai_metadata, dict) else 'unknown'
-            if usage:
-                tokens = usage.get('total_tokens', 0)
-                cost = usage.get('cost_rub', 0.0)
-                details += f" {model} = {tokens} токенов, {cost:.4f} рублей\n"
-                cost_found = True
+            # Проверяем service_result._metadata._ai_metadata
+            ai_metadata = service_result.get('_ai_metadata') if isinstance(service_result, dict) else None
+            if ai_metadata:
+                usage = ai_metadata.get('usage', {}) if isinstance(ai_metadata, dict) else {}
+                model = ai_metadata.get('model', 'unknown') if isinstance(ai_metadata, dict) else 'unknown'
+                if usage:
+                    tokens = usage.get('total_tokens', 0)
+                    cost = usage.get('cost_rub', 0.0)
+                    details += f" {model} = {tokens} токенов, {cost:.4f} рублей\n"
+                    cost_found = True
 
-        # Проверяем service_result._metadata (старый формат)
-        if not cost_found:
-            tokens = service_metadata.get('tokens', 0)
-            cost = service_metadata.get('cost', 0) or service_metadata.get('total_cost', 0)
-            model = service_metadata.get('model') or service_metadata.get('llm_model', 'unknown')
-            if tokens or cost:
-                details += f" {model} = {tokens} токенов, {cost:.4f} рублей\n"
+            # Проверяем service_result._metadata (старый формат)
+            if not cost_found:
+                tokens = service_metadata.get('tokens', 0)
+                cost = service_metadata.get('cost', 0) or service_metadata.get('total_cost', 0)
+                model = service_metadata.get('model') or service_metadata.get('llm_model', 'unknown')
+                if tokens or cost:
+                    details += f" {model} = {tokens} токенов, {cost:.4f} рублей\n"
                 cost_found = True
 
         if not cost_found:
