@@ -128,22 +128,9 @@ class MessageHandlerService:
                 search_text = cleaned_text
 
                 # Проверяем: если сообщение только приветствие - отвечаем приветствием
+                # ИСПРАВЛЕНО (2026-01-06): НЕ логируем здесь - будет залогировано ниже (строки 247-255)
                 if self.message_cleaner.is_greeting_only(text):
                     logger.info(f"Обнаружено чистое приветствие от user {user_id}")
-                    greeting_log = await self._log_message(
-                        text="Здравствуйте! Опишите вашу проблему, и я попробую помочь.",
-                        user_id=user_id,
-                        channel=channel,
-                        message_id=f"bot_{uuid.uuid4().hex[:16]}",
-                        session_id=session_id,
-                        direction='outbound',
-                        metadata={'auto_greeting': True}
-                    )
-                    logger.info(f"[DEBUG] Приветствие залогировано: session_id={session_id}, result={greeting_log}")
-
-                    # ИСПРАВЛЕНО (2026-01-05): Проверяем что outbound записался
-                    history_check = await self._get_dialog_history(session_id, limit=10)
-                    logger.info(f"[DEBUG] История ПОСЛЕ логирования приветствия: {len(history_check)} сообщений")
 
                     return {
                         'status': 'success',
