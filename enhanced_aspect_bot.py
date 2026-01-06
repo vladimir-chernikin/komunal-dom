@@ -426,7 +426,9 @@ class EnhancedAspectBot:
                     return
 
                 # Обычный ответ
-                await self._reply_and_log(update, response, session_id)
+                # ИСПРАВЛЕНО (2026-01-06): Добавляем metadata для всех ответов
+                metadata = result.get('raw_result', {}).get('_metadata', {})
+                await self._reply_and_log(update, response, session_id, metadata)
 
             else:
                 # Ошибка обработки
