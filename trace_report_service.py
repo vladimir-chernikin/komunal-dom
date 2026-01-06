@@ -362,12 +362,9 @@ Session ID: {session_id}
 
                 details += "\n [FilterDetectionService - YandexGPT]\n"
                 if prompt:
-                    # Обрезаем слишком длинный промпт
-                    prompt_to_show = prompt[:1500] + "..." if len(prompt) > 1500 else prompt
-                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_to_show}\n"
+                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt}\n"
                 if llm_response:
-                    response_to_show = llm_response[:800] + "..." if len(llm_response) > 800 else llm_response
-                    details += f"  ОТВЕТ LLM:\n{response_to_show}\n"
+                    details += f"  ОТВЕТ LLM:\n{llm_response}\n"
 
         # AIAgentService LLM вызов (генерация вопросов)
         ai_metadata = service_result.get('_ai_metadata') if isinstance(service_result, dict) else None
@@ -383,11 +380,9 @@ Session ID: {session_id}
                 model = ai_metadata.get('model', 'unknown')
                 details += f"\n [AIAgentService - {model} - генерация вопроса]\n"
                 if ai_prompt:
-                    prompt_to_show = ai_prompt[:1500] + "..." if len(ai_prompt) > 1500 else ai_prompt
-                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_to_show}\n"
+                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{ai_prompt}\n"
                 if ai_response:
-                    response_to_show = ai_response[:800] + "..." if len(ai_response) > 800 else ai_response
-                    details += f"  ОТВЕТ LLM:\n{response_to_show}\n"
+                    details += f"  ОТВЕТ LLM:\n{ai_response}\n"
 
         # Другие LLM вызовы из metadata
         # Проверяем на наличие полей prompt/response в metadata напрямую
@@ -401,11 +396,9 @@ Session ID: {session_id}
 
                 details += f"\n [Direct LLM call]\n"
                 if direct_prompt:
-                    prompt_to_show = direct_prompt[:1500] + "..." if len(direct_prompt) > 1500 else direct_prompt
-                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_to_show}\n"
+                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{direct_prompt}\n"
                 if direct_response:
-                    response_to_show = direct_response[:800] + "..." if len(direct_response) > 800 else direct_response
-                    details += f"  ОТВЕТ LLM:\n{response_to_show}\n"
+                    details += f"  ОТВЕТ LLM:\n{direct_response}\n"
 
         # 10. Стоимость шага
         details += "\n10. Стоимость шага:\n"
