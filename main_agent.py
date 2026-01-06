@@ -1127,11 +1127,13 @@ class MainAgent:
                     filter_svc_filters = filter_result.get('filters', {})
                     # Если FilterDetectionService вернул значения - используем их
                     if filter_svc_filters.get('location_type'):
-                        filters['location'] = filter_svc_filters['location_type']
+                        filters['location_type'] = filter_svc_filters['location_type']
                     if filter_svc_filters.get('category'):
                         filters['category'] = filter_svc_filters['category']
+                    # ИСПРАВЛЕНО (2026-01-06): Используем incident_type вместо incident
+                    # filters['incident'] создавало путаницу - дублирование с incident_type
                     if filter_svc_filters.get('incident_type'):
-                        filters['incident'] = filter_svc_filters['incident_type']
+                        filters['incident_type'] = filter_svc_filters['incident_type']
                     if filter_svc_filters.get('object_description'):
                         filters['object_description'] = filter_svc_filters['object_description']
                         logger.info(f"FilterDetectionService извлек object_description: {filters['object_description']}")

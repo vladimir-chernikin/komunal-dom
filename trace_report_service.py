@@ -291,8 +291,24 @@ Session ID: {session_id}
         else:
             details += " {(нет кандидатов)}\n"
 
-        # 7. Таблица установленных фильтров
-        details += "\n7. Таблица установленных фильтров:\n"
+        # 7. Итоговое объединение сервисов (MainAgent)
+        details += "\n7. Итоговое объединение сервисов (MainAgent):\n"
+
+        # Берем кандидатов из service_result (уже объединенные MainAgent)
+        candidates = service_result.get('candidates', []) if isinstance(service_result, dict) else []
+        if candidates:
+            for cand in candidates:
+                service_name = cand.get('service_name', 'Unknown')
+                conf_raw = cand.get('confidence', 0.0) or 0.0
+                confidence = float(conf_raw) * 100
+                sources = cand.get('sources', ['unknown'])
+                sources_str = ', '.join(sources)
+                details += f" {{{service_name}, {confidence:.1f}%}} (источники: {sources_str})\n"
+        else:
+            details += " {(нет кандидатов)}\n"
+
+        # 8. Таблица установленных фильтров
+        details += "\n8. Таблица установленных фильтров:\n"
         established_filters = service_metadata.get('established_filters', {})
         if isinstance(established_filters, dict) and established_filters:
             for filter_name, filter_data in established_filters.items():
@@ -306,8 +322,8 @@ Session ID: {session_id}
         else:
             details += " {(нет фильтров)}\n"
 
-        # 8. Прочая отладочная информация
-        details += "\n8. Прочая отладочная информация:\n"
+        # 9. Прочая отладочная информация
+        details += "\n9. Прочая отладочная информация:\n"
 
         # AI Orchestrator
         ai_orchestrator = service_metadata.get('ai_orchestrator', {})
@@ -327,12 +343,12 @@ Session ID: {session_id}
                 details += f" FilterDetection: {json.dumps(detected_filters, ensure_ascii=False)}\n"
 
         # Candidates
-        candidates = service_result.get('candidates', []) if isinstance(service_result, dict) else []
-        if candidates:
-            details += f" Всего кандидатов: {len(candidates)}\n"
+        candidates_mainagent = service_result.get('candidates', []) if isinstance(service_result, dict) else []
+        if candidates_mainagent:
+            details += f" Всего кандидатов: {len(candidates_mainagent)}\n"
 
-        # 9. Стоимость шага
-        details += "\n9. Стоимость шага:\n"
+        # 10. Стоимость шага
+        details += "\n10. Стоимость шага:\n"
 
         # Ищем информацию о стоимости в разных местах
         cost_found = False

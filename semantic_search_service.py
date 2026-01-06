@@ -287,8 +287,13 @@ class SemanticSearchService:
             # Учитываем оба типа совпадений
             total_matches = matches + normalized_matches
             if total_matches > 0:
-                # Рассчитываем уверенность для этого признака
-                confidence = min(total_matches / len(feature_data['keywords']), 1.0)
+                # ИСПРАВЛЕНО (2026-01-06): Для коротких запросов учитываем сами совпадения, не деля на количество keywords
+                # Старая логика: confidence = (total_matches / len(keywords)) * weight
+                # Проблема: 1 совпадение из 10 keywords = 0.1 * 0.9 = 0.09 (слишком мало!)
+
+                # Новая логика: каждое совпадение дает вес, нормализуем на максимально возможное
+                max_possible_matches = min(len(feature_data['keywords']), 3)  # Максимум 3 совпадения учитываем
+                confidence = min(total_matches / max_possible_matches, 1.0)
                 confidence *= feature_data['weight']
 
                 features[feature_name] = {

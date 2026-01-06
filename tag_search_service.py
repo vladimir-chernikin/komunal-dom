@@ -147,19 +147,55 @@ class TagSearchService:
                     matching_service_ids.add(service_id)
 
             # Формируем результат
+            # ИСПРАВЛЕНО (2026-01-06): Вычисляем score на основе совпадений слов
             # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
-            candidates = []
+            candidates_with_scores = []
             for service_id in matching_service_ids:
                 service_data = self.service_cache[service_id]
-                candidates.append({
+
+                # Вычисляем score: количество совпавших слов
+                matched_terms = 0
+                for word in words:
+                    if len(word) < 4:
+                        continue
+                    for term in service_data['search_terms']:
+                        if len(term) < 4:
+                            continue
+                        if word == term or word in term or term in word:
+                            matched_terms += 1
+                            break
+
+                candidates_with_scores.append({
                     "service_id": service_id,
                     "service_name": service_data['service_name'],
-                    "confidence": 1.0,  # По ТЗ: если есть в множестве = 100%
+                    "matched_terms": matched_terms,
                     "source": "tag_search",
                     "incident_type": service_data.get('incident_type', ''),
                     "category": service_data.get('category', ''),
                     "location_type": service_data.get('location_type', '')
                 })
+
+            # ИСПРАВЛЕНО (2026-01-06): Нормализуем confidence
+            if candidates_with_scores:
+                # Вычисляем общую сумму scores
+                total_score = sum(c["matched_terms"] for c in candidates_with_scores)
+
+                if total_score == 0:
+                    # Если нет совпадений - всем равная вероятность
+                    n = len(candidates_with_scores)
+                    confidence_per_candidate = 1.0 / n
+                    for c in candidates_with_scores:
+                        c["confidence"] = confidence_per_candidate
+                else:
+                    # Вычисляем confidence пропорционально score
+                    for c in candidates_with_scores:
+                        c["confidence"] = c["matched_terms"] / total_score
+
+            # Убираем matched_terms из финального результата
+            candidates = [
+                {k: v for k, v in c.items() if k != "matched_terms"}
+                for c in candidates_with_scores
+            ]
 
             if candidates:
                 return {
