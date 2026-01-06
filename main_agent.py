@@ -3417,19 +3417,26 @@ JSON:"""
 
             unique_candidates.append(final_candidate)
 
-        # Сортируем по priority (убывание)
-        unique_candidates.sort(key=lambda x: x.get('priority', 0.0), reverse=True)
+        # ИСПРАВЛЕНО (2026-01-06): Сортируем по комбинированному показателю (priority + confidence)
+        # Проблема: сортировка только по priority выбирала не лучшего кандидата
+        # Решение: учитываем и priority (60%) и confidence (40%)
+        unique_candidates.sort(
+            key=lambda x: (
+                x.get('priority', 0.0) * 0.6 + x.get('confidence', 0.0) * 0.4,
+                len(x.get('sources', []))
+            ),
+            reverse=True
+        )
 
         logger.info(f"Дедупликация: {len(all_candidates)} -> {len(unique_candidates)} кандидатов")
 
         # Логируем топ-3 кандидатов с отладочной информацией
         for i, c in enumerate(unique_candidates[:3], 1):
             debug = c.get('_debug_info', {})
+            score = c.get('priority', 0.0) * 0.6 + c.get('confidence', 0.0) * 0.4
             logger.info(
-                f"  #{i} ID:{c['service_id']} | priority={c['priority']:.3f} "
-                f"(weighted={debug.get('weighted_priority', 0):.3f} "
-                f"+source_bonus={debug.get('source_bonus', 0):.3f} "
-                f"+conf_bonus={debug.get('confidence_bonus', 0):.3f}) "
+                f"  #{i} ID:{c['service_id']} | {c.get('service_name', 'Unknown')[:30]} "
+                f"| score={score:.3f} (priority={c['priority']:.3f} + conf={c.get('confidence', 0):.2f}) "
                 f"| sources={c['sources']}"
             )
 

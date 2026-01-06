@@ -399,15 +399,29 @@ class EnhancedAspectBot:
                     # Используем ИЗНАЧАЛЬНОЕ сообщение от MainAgent (без изменений!)
                     confirm_text = result['raw_result'].get('message', f"Правильно ли я понял, что у вас: {service_name}?")
 
-                    # ИСПРАВЛЕНО (2026-01-05): Логируем с metadata из result
-                    metadata = result.get('raw_result', {}).get('_metadata', {})
+                    # ИСПРАВЛЕНО (2026-01-06): Объединяем _metadata и _ai_metadata
+                    raw_result = result.get('raw_result', {})
+                    metadata = raw_result.get('_metadata', {})
+                    ai_metadata = raw_result.get('_ai_metadata', {})
+
+                    # Если есть _ai_metadata - добавляем к metadata
+                    if ai_metadata:
+                        metadata = {**metadata, **ai_metadata}
+
                     await self._reply_and_log(update, confirm_text, session_id, metadata)
                     return
 
                 # Если нужна детализация (AMBIGUOUS)
                 elif result.get('raw_result', {}).get('status') == 'AMBIGUOUS':
-                    # Отправляем уточняющий вопрос с metadata
-                    metadata = result.get('raw_result', {}).get('_metadata', {})
+                    # ИСПРАВЛЕНО (2026-01-06): Объединяем _metadata и _ai_metadata
+                    raw_result = result.get('raw_result', {})
+                    metadata = raw_result.get('_metadata', {})
+                    ai_metadata = raw_result.get('_ai_metadata', {})
+
+                    # Если есть _ai_metadata - добавляем к metadata
+                    if ai_metadata:
+                        metadata = {**metadata, **ai_metadata}
+
                     await self._reply_and_log(update, response, session_id, metadata)
                     return
 

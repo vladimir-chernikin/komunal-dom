@@ -242,15 +242,17 @@ class MessageHandlerService:
                 else:
                     logger.warning(f"[WARNING] ⚠️ txtPrb НЕ ДОБАВЛЕН в outbound_metadata!")
 
-                await self._log_message(
-                    text=bot_response,
-                    user_id=user_id,
-                    channel=channel,
-                    message_id=f"bot_{uuid.uuid4().hex[:16]}",
-                    session_id=session_id,
-                    direction='outbound',
-                    metadata=outbound_metadata
-                )
+                # ИСПРАВЛЕНО (2026-01-06): Убрано дублирование логирования outbound
+                # Outbound сообщения логируются в enhanced_aspect_bot.py через log_outbound_message
+                # await self._log_message(
+                #     text=bot_response,
+                #     user_id=user_id,
+                #     channel=channel,
+                #     message_id=f"bot_{uuid.uuid4().hex[:16]}",
+                #     session_id=session_id,
+                #     direction='outbound',
+                #     metadata=outbound_metadata
+                # )
 
             logger.info(
                 f"MessageHandler: Обработка завершена | "
