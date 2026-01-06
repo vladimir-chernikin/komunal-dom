@@ -1327,6 +1327,34 @@ class MainAgent:
                             logger.info(f"[!] УЖЕ был подтверждающий вопрос: '{text[:60]}...'")
                             break
 
+            # ИСПРАВЛЕНИЕ (2026-01-06): Проверяем нужна ли категория для трубы
+            # Если услуга содержит "труба" но category НЕ установлен - уточняем
+            service_name_lower = candidate.get('service_name', '').lower()
+            has_truba = 'труб' in service_name_lower
+
+            # Проверяем установлена ли категория с высокой уверенностью
+            category_filter = established_filters.get('category', {})
+            category_confidence = category_filter.get('confidence', 0.0) if isinstance(category_filter, dict) else 0.0
+            category_is_known = category_filter.get('value') if isinstance(category_filter, dict) else None
+
+            logger.info(f"[ПРОВЕРКА КАТЕГОРИИ] has_truba={has_truba}, category={category_is_known}, confidence={category_confidence}")
+
+            # Если есть труба БЕЗ категории - задаем уточняющий вопрос
+            if has_truba and category_confidence < 0.8:
+                logger.warning(f"[КАТЕГОРИЯ НЕ УСТАНОВЛЕНА] Услуга '{candidate['service_name']}' содержит 'труба' но категория неизвестна")
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': 'Уточните, пожалуйста: это водопроводная, отопительная или канализационная труба?',
+                    'single_candidate': None,
+                    'filtered_candidates': filtered_candidates,
+                    'needs_clarification': True,
+                    'is_followup': is_followup,
+                    '_metadata': {
+                        'clarification_reason': 'pipe_category_unknown',
+                        'service_name': candidate['service_name']
+                    }
+                }
+
             # Если confidence < 0.9 И еще НЕ спрашивали подтверждение - спрашиваем
             # Если УЖЕ спрашивали - НЕ повторяем, сразу создаем заявку
             needs_confirmation = llm_confidence < 0.9 and not already_asked_confirmation
