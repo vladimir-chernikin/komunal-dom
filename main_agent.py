@@ -219,11 +219,13 @@ class MainAgent:
         original_message = message_text
         is_followup = False
         dialog_history = []
+        session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
 
         if user_context:
             original_message = user_context.get('original_message', message_text)
             is_followup = user_context.get('is_followup', False)
             dialog_history = user_context.get('dialog_history', [])
+            session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
 
             if is_followup and dialog_history:
                 logger.info(f"Главный Агент обрабатывает уточняющее сообщение: '{original_message}' (история: {len(dialog_history)} сообщений)")
@@ -330,11 +332,13 @@ class MainAgent:
                             break
 
                 # Накапливаем информацию из текущего сообщения
+                # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
                 accumulation_result = await self.problem_accumulator.extract_and_accumulate(
                     message_text=message_text,
                     current_problem=txtPrb,
                     bot_question=last_bot_question,
-                    dialog_history=dialog_history
+                    dialog_history=dialog_history,
+                    session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
                 )
 
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
@@ -363,9 +367,11 @@ class MainAgent:
         if self.filter_detection and self.ai_agent:
             try:
                 logger.info("Запускаем SemanticPreCheck для извлечения абсолютных фактов...")
+                # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
                 semantic_check_result = await self._semantic_pre_check(
                     message_text=search_text,
-                    dialog_history=dialog_history
+                    dialog_history=dialog_history,
+                    session_id=session_id
                 )
 
                 if semantic_check_result.get('absolute_facts'):
@@ -663,7 +669,8 @@ class MainAgent:
                     logger.info(f"Запускаем FilterDetectionService (кандидатов: {len(candidates_data)})")
 
                     # Вызываем FilterDetectionService
-                    filter_result = await self.filter_detection.detect_filters(original_message, dialog_history)
+                    # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+                    filter_result = await self.filter_detection.detect_filters(original_message, dialog_history, session_id=session_id)
 
                     if filter_result.get('status') == 'success':
                         filters = filter_result.get('filters', {})
@@ -1117,10 +1124,12 @@ class MainAgent:
                         # Если уже в event loop - создаем задачу
                         import concurrent.futures
                         with concurrent.futures.ThreadPoolExecutor() as pool:
-                            future = pool.submit(asyncio.run, self.filter_detection.detect_filters(message_text, dialog_history or []))
+                            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+                            future = pool.submit(asyncio.run, self.filter_detection.detect_filters(message_text, dialog_history or [], session_id=session_id))
                             return future.result()
                     else:
-                        return asyncio.run(self.filter_detection.detect_filters(message_text, dialog_history or []))
+                        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+                        return asyncio.run(self.filter_detection.detect_filters(message_text, dialog_history or [], session_id=session_id))
 
                 filter_result = call_filter_sync()
                 if filter_result.get('status') == 'success':
@@ -1243,15 +1252,18 @@ class MainAgent:
                                     self.filter_detection.rank_candidates_by_relevance(
                                         message_text=original_message,
                                         candidates=filtered_candidates,
-                                        dialog_history=dialog_history
+                                        dialog_history=dialog_history,
+                                        session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
                                     )
                                 )
                                 return future.result()
+                        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
                         return asyncio.run(
                             self.filter_detection.rank_candidates_by_relevance(
                                 message_text=original_message,
                                 candidates=filtered_candidates,
-                                dialog_history=dialog_history
+                                dialog_history=dialog_history,
+                                session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
                             )
                         )
 
@@ -2109,7 +2121,8 @@ JSON:"""
     async def _semantic_pre_check(
         self,
         message_text: str,
-        dialog_history: List[Dict] = None
+        dialog_history: List[Dict] = None,
+        session_id: str = None
     ) -> Dict:
         """
         ИСПРАВЛЕНО (2026-01-03): Семантический Pre-Check через FilterDetectionService
@@ -2155,9 +2168,11 @@ JSON:"""
 
         try:
             # Вызываем FilterDetectionService (уже использует YandexGPT Lite)
+            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
             filter_result = await self.filter_detection.detect_filters(
                 message_text=message_text,
-                dialog_history=dialog_history
+                dialog_history=dialog_history,
+                session_id=session_id
             )
 
             if filter_result.get('status') != 'success':
