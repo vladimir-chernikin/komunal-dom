@@ -257,7 +257,7 @@ JSON:"""
             logger.error(f"FilterDetectionService: Ошибка обработки ответа: {e}")
             return {}
 
-    async def detect_filters(self, message_text: str, dialog_history: List[Dict] = None) -> Dict:
+    async def detect_filters(self, message_text: str, dialog_history: List[Dict] = None, session_id: str = None) -> Dict:
         """
         Определяет фильтры на основе истории диалога через LLM
 
@@ -308,10 +308,12 @@ JSON:"""
             logger.info(f"FilterDetectionService: отправляем промпт через AIAgentService (длина: {len(prompt)} символов)")
 
             # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
+            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
             response, usage_info = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',  # Можно менять на 'gigachat'
-                model='lite'            # Или 'pro', 'GigaChat', 'GigaChat-2', etc.
+                model='lite',          # Или 'pro', 'GigaChat', 'GigaChat-2', etc.
+                session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
             )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем ответ
@@ -377,7 +379,8 @@ JSON:"""
         self,
         message_text: str,
         candidates: List[Dict],
-        dialog_history: List[Dict] = None
+        dialog_history: List[Dict] = None,
+        session_id: str = None
     ) -> Dict:
         """
         Ранжирует кандидатов по релевантности через LLM
@@ -465,10 +468,12 @@ JSON:"""
             logger.info(f"FilterDetectionService: отправляем промпт ранжирования (длина: {len(prompt)} символов)")
 
             # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
+            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
             response, usage_info = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
-                model='lite'
+                model='lite',
+                session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
             )
 
             if not response:

@@ -38,7 +38,8 @@ class ProblemAccumulationService:
         message_text: str,
         current_problem: str,
         bot_question: str = None,
-        dialog_history: List[Dict] = None
+        dialog_history: List[Dict] = None,
+        session_id: str = None
     ) -> Dict[str, Any]:
         """
         Извлекает информацию из сообщения и накапливает описание проблемы.
@@ -86,10 +87,12 @@ class ProblemAccumulationService:
 
         try:
             # Вызываем LLM через публичный метод call_llm
+            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
             response_text, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
-                model='lite'
+                model='lite',
+                session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
             )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем ответ

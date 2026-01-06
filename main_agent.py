@@ -1146,7 +1146,7 @@ class MainAgent:
 
         return filters
 
-    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None) -> Dict:
+    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -1179,13 +1179,15 @@ class MainAgent:
                 'dialog_history': dialog_history or []
             }
             # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI + ПЕРЕДАЕМ txtPrb и established_filters
+            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
             message = await self._generate_ai_question(
                 context=context.get('original_message', ''),
                 dialog_history=context.get('dialog_history', []),
                 candidates=None,
                 established_filters=established_filters,  # ИСПРАВЛЕНО
                 txtPrb=txtPrb,  # ИСПРАВЛЕНО
-                question_type='clarification'
+                question_type='clarification',
+                session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -1394,13 +1396,15 @@ class MainAgent:
         context = f"Пользователь написал: {original_message}"
         # ИСПРАВЛЕНО (2025-12-28): ПЕРЕДАЕМ txtPrb и established_filters
         # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
+        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
         ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=filtered_candidates,
             established_filters=established_filters,  # ИСПРАВЛЕНО
             txtPrb=txtPrb,  # ИСПРАВЛЕНО
-            question_type='clarification'
+            question_type='clarification',
+            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
         )
 
         return {
@@ -1469,7 +1473,7 @@ class MainAgent:
         logger.info(f"Дедуплицировано кандидатов: {len(merged)}")
         return merged
 
-    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> Dict:
+    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None) -> Dict:
         """
         Создание результата с неопределенностью
 
@@ -1482,12 +1486,14 @@ class MainAgent:
                 'dialog_history': dialog_history or []
             }
             # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI
+            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
             clarification_message = await self._generate_ai_question(
                 context=context.get('original_message', ''),
                 dialog_history=context.get('dialog_history', []),
                 candidates=None,
                 established_filters=None,
-                question_type='clarification'
+                question_type='clarification',
+                session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -1902,7 +1908,7 @@ class MainAgent:
     
     
     async def _ask_ai_what_happened(self, message_text: str, dialog_history: List[Dict],
-                                    established_filters: Dict = None, txtPrb: str = None) -> str:
+                                    established_filters: Dict = None, txtPrb: str = None, session_id: str = None) -> str:
         """Спрашивает у AI что случилось и где
 
         ИСПРАВЛЕНО (2025-12-26): Использует CommunicativeScriptsService вместо AI генерации
@@ -1941,13 +1947,15 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопроса
         # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
         # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
+        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
         context = f"Пользователь написал: {message_text}"
         ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             established_filters=established_filters,
             txtPrb=txtPrb,
-            question_type='what_happened'
+            question_type='what_happened',
+            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
         )
 
         question = ai_result['question']
@@ -2558,13 +2566,15 @@ JSON:"""
         candidates: List[Dict] = None,
         established_filters: Dict = None,
         txtPrb: str = None,
-        question_type: str = "clarification"
+        question_type: str = "clarification",
+        session_id: str = None
     ) -> Dict[str, str]:
         """
         Универсальный метод для генерации вопросов через AI
 
         ИСПРАВЛЕНО (2025-12-28): Все вопросы генерируются через YandexGPT
         ИСПРАВЛЕНО (2025-12-29): Возвращает Dict с вопросом И метаданными для трассировки
+        ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -2578,6 +2588,7 @@ JSON:"""
                 - 'what_happened' - что случилось
                 - 'location' - где произошло
                 - 'details' - детали проблемы
+            session_id: ID сессии для сохранения в llm_request_log
 
         Returns:
             Dict: {
@@ -2659,10 +2670,12 @@ JSON:"""
                 model = 'pro' if question_type in question_types_requiring_pro else 'lite'
 
                 # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
+                # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
                 response, usage = await self.ai_agent.call_llm(
                     prompt=prompt,
                     provider='yandexgpt',  # Можно менять на 'gigachat'
-                    model=model
+                    model=model,
+                    session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
                 )
                 question = response.strip()
 
@@ -3188,7 +3201,8 @@ JSON:"""
         message_text: str,
         candidates: List[Dict],
         dialog_history: List[Dict],
-        established_filters: Dict = None
+        established_filters: Dict = None,
+        session_id: str = None
     ) -> Dict:
         """Спрашивает у AI как уточнить - использует AI для анализа кандидатов
 
@@ -3246,13 +3260,15 @@ JSON:"""
 
         # Генерируем вопрос через универсальный метод
         # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
+        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
         ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=candidates,
             established_filters=established_filters,
             txtPrb=extracted_txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
-            question_type='clarification'
+            question_type='clarification',
+            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
         )
 
         ai_question = ai_result['question']
@@ -3279,7 +3295,8 @@ JSON:"""
         message_text: str,
         candidates: List[Dict],
         dialog_history: List[Dict],
-        established_filters: Dict = None
+        established_filters: Dict = None,
+        session_id: str = None
     ) -> Dict:
         """Спрашивает как уточнить - использует CommunicativeScriptsService
 
@@ -3300,13 +3317,15 @@ JSON:"""
             extracted_txtPrb = self.problem_accumulator.get_txtPrb_from_metadata(dialog_history)
 
         # ИСПРАВЛЕНО (2026-01-05): Получаем Dict с вопросом И метаданными, ПЕРЕДАЕМ established_filters
+        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
         ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
             candidates=candidates,
             established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-05): передаем фильтры
             txtPrb=extracted_txtPrb,
-            question_type='clarification'
+            question_type='clarification',
+            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
         )
 
         ai_question = ai_result['question']

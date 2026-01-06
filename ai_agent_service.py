@@ -635,7 +635,7 @@ class AIAgentService:
 """
         return prompt
 
-    async def detect_service(self, message: str) -> Dict[str, Any]:
+    async def detect_service(self, message: str, session_id: str = None) -> Dict[str, Any]:
         """
         Определить услугу по сообщению
 
@@ -655,7 +655,8 @@ class AIAgentService:
         await self._load_services()
         prompt = self._create_service_detection_prompt(message)
 
-        response, usage = await self.call_llm(prompt)
+        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+        response, usage = await self.call_llm(prompt, session_id=session_id)
 
         try:
             result = json.loads(response)
