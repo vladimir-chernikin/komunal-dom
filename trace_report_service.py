@@ -456,10 +456,12 @@ Session ID: {session_id}
         # ИСПРАВЛЕНО (2026-01-06): Берем данные из таблицы llm_request_log вместо metadata
         llm_calls_found = False
         llm_total_cost = 0.0  # Для подсчета общей стоимости
+        cost_found = False  # ИСПРАВЛЕНО (2026-01-06): Инициализация переменной
 
         if llm_logs_map and msg_id in llm_logs_map:
             llm_calls = llm_logs_map[msg_id]
             for llm_call in llm_calls:
+                cost_found = True  # ИСПРАВЛЕНО (2026-01-06): Нашлись LLM вызовы
                 provider = llm_call.get('provider', 'unknown')
                 model = llm_call.get('model', 'unknown')
                 prompt_text = llm_call.get('prompt_text', '')
