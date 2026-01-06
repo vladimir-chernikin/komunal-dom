@@ -120,11 +120,12 @@ class EnhancedAspectBot:
         metadata: Dict = None
     ):
         """
-        Отправляет ответ пользователю И логирует outbound сообщение
+        Отправляет ответ пользователю
 
-        ИСПРАВЛЕНО (2026-01-05):
-        - Логирует все Bot -> User сообщения в dialog_logs
-        - Это нужно для трассировки и accumulation txtPrb
+        ИСПРАВЛЕНО (2026-01-06):
+        - НЕ логирует здесь - дублирование!
+        - Логирование происходит в message_handler_service.py (строка 234)
+        - handle_incoming_message() логирует ВСЕ outbound сообщения
 
         Args:
             update: Telegram Update объект
@@ -142,18 +143,8 @@ class EnhancedAspectBot:
         # Отправляем ответ пользователю
         await update.message.reply_text(text)
 
-        # Логируем outbound сообщение
-        if self.message_handler and session_id:
-            try:
-                await self.message_handler.log_outbound_message(
-                    text=text,
-                    user_id=str(user.id),
-                    channel='telegram',
-                    session_id=session_id,
-                    metadata=metadata or {}
-                )
-            except Exception as e:
-                logger.error(f"Ошибка логирования outbound сообщения: {e}")
+        # ИСПРАВЛЕНО (2026-01-06): НЕ логируем здесь - будет залогировано в message_handler
+        # чтобы избежать дублирования в БД
 
     async def ask_yandexgpt(self, prompt, max_tokens=300):
         """Запрос к YandexGPT API с системным промптом из БД"""
