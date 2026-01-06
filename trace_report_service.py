@@ -347,6 +347,66 @@ Session ID: {session_id}
         if candidates_mainagent:
             details += f" Всего кандидатов: {len(candidates_mainagent)}\n"
 
+        # 9.1. LLM вызовы (промпты и ответы)
+        llm_calls_found = False
+
+        # FilterDetectionService LLM вызов
+        if isinstance(filter_detection, dict) and filter_detection:
+            prompt = filter_detection.get('prompt', '')
+            llm_response = filter_detection.get('llm_response', '')
+
+            if prompt or llm_response:
+                if not llm_calls_found:
+                    details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
+                    llm_calls_found = True
+
+                details += "\n [FilterDetectionService - YandexGPT]\n"
+                if prompt:
+                    # Обрезаем слишком длинный промпт
+                    prompt_to_show = prompt[:1500] + "..." if len(prompt) > 1500 else prompt
+                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_to_show}\n"
+                if llm_response:
+                    response_to_show = llm_response[:800] + "..." if len(llm_response) > 800 else llm_response
+                    details += f"  ОТВЕТ LLM:\n{response_to_show}\n"
+
+        # AIAgentService LLM вызов (генерация вопросов)
+        ai_metadata = service_result.get('_ai_metadata') if isinstance(service_result, dict) else None
+        if isinstance(ai_metadata, dict) and ai_metadata:
+            ai_prompt = ai_metadata.get('prompt', '')
+            ai_response = ai_metadata.get('response', '')
+
+            if ai_prompt or ai_response:
+                if not llm_calls_found:
+                    details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
+                    llm_calls_found = True
+
+                model = ai_metadata.get('model', 'unknown')
+                details += f"\n [AIAgentService - {model} - генерация вопроса]\n"
+                if ai_prompt:
+                    prompt_to_show = ai_prompt[:1500] + "..." if len(ai_prompt) > 1500 else ai_prompt
+                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_to_show}\n"
+                if ai_response:
+                    response_to_show = ai_response[:800] + "..." if len(ai_response) > 800 else ai_response
+                    details += f"  ОТВЕТ LLM:\n{response_to_show}\n"
+
+        # Другие LLM вызовы из metadata
+        # Проверяем на наличие полей prompt/response в metadata напрямую
+        if isinstance(metadata, dict):
+            direct_prompt = metadata.get('prompt', '')
+            direct_response = metadata.get('response', '')
+            if direct_prompt or direct_response:
+                if not llm_calls_found:
+                    details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
+                    llm_calls_found = True
+
+                details += f"\n [Direct LLM call]\n"
+                if direct_prompt:
+                    prompt_to_show = direct_prompt[:1500] + "..." if len(direct_prompt) > 1500 else direct_prompt
+                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_to_show}\n"
+                if direct_response:
+                    response_to_show = direct_response[:800] + "..." if len(direct_response) > 800 else direct_response
+                    details += f"  ОТВЕТ LLM:\n{response_to_show}\n"
+
         # 10. Стоимость шага
         details += "\n10. Стоимость шага:\n"
 
