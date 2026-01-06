@@ -459,14 +459,15 @@ JSON:"""
 
         Returns:
             {
-                'location': {'value': 'зал', 'confidence': 0.95},
+                'location_type': {'value': 'Индивидуальное', 'confidence': 0.95},
                 'category': {'value': 'отопление', 'confidence': 0.95},
-                'incident': {'value': 'Инцидент', 'confidence': 0.85}
+                'incident_type': {'value': 'Инцидент', 'confidence': 0.85}
             }
         """
         filters = {}
 
-        # Определяем incident по ключевым словам
+        # Определяем incident_type по ключевым словам
+        # ИСПРАВЛЕНО (2026-01-06): Переименовано incident -> incident_type для единообразия
         txtPrb_lower = txtPrb.lower()
         if any(word in txtPrb_lower for word in ['авария', 'прорв', 'течет', 'затоп', 'сломал', 'не работает']):
             incident_value = 'Инцидент'
@@ -475,16 +476,17 @@ JSON:"""
             incident_value = 'Запрос'
             incident_confidence = 0.70
 
-        filters['incident'] = {'value': incident_value, 'confidence': incident_confidence}
+        filters['incident_type'] = {'value': incident_value, 'confidence': incident_confidence}
 
-        # Определяем location
+        # Определяем location_type
+        # ИСПРАВЛЕНО (2026-01-06): Переименовано location -> location_type для единообразия
         location = fields.get('location')
         if location:
             # Проверяем упомянута ли локация в txtPrb
             if location.lower() in txtPrb_lower:
-                filters['location'] = {'value': 'Индивидуальное' if self._is_indoor_location(location) else 'Общедомовое', 'confidence': 0.95}
+                filters['location_type'] = {'value': 'Индивидуальное' if self._is_indoor_location(location) else 'Общедомовое', 'confidence': 0.95}
             else:
-                filters['location'] = {'value': 'Индивидуальное', 'confidence': 0.70}
+                filters['location_type'] = {'value': 'Индивидуальное', 'confidence': 0.70}
 
         # Определяем category
         category = fields.get('category')
