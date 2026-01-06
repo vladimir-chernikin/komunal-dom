@@ -158,10 +158,13 @@ class AIAgentService:
         provider: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 1000
+        max_tokens: int = 1000,
+        session_id: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         ЕДИНЫЙ МЕТОД ДЛЯ ВСЕХ LLM ЗАПРОСОВ
+
+        ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с dialog_logs
 
         Args:
             prompt: Промпт для LLM
@@ -169,6 +172,7 @@ class AIAgentService:
             model: Модель, если None - используется default_model
             temperature: Температура (0.0 - 1.0)
             max_tokens: Максимальное количество токенов
+            session_id: ID сессии диалога (для сохранения в llm_request_log)
 
         Returns:
             (response_text, usage_info)
@@ -190,10 +194,11 @@ class AIAgentService:
         model = model or self.default_model
 
         # Вызываем соответствующий провайдер
+        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id в методы
         if provider == 'yandexgpt':
-            return await self._call_yandexgpt(prompt, model, temperature, max_tokens)
+            return await self._call_yandexgpt(prompt, model, temperature, max_tokens, session_id)
         elif provider == 'gigachat':
-            return await self._call_gigachat(prompt, model, temperature, max_tokens)
+            return await self._call_gigachat(prompt, model, temperature, max_tokens, session_id)
         else:
             raise ValueError(f"Неверный провайдер: {provider}. Доступно: yandexgpt, gigachat")
 
@@ -202,9 +207,14 @@ class AIAgentService:
         prompt: str,
         model: str = 'lite',
         temperature: float = 0.7,
-        max_tokens: int = 1000
+        max_tokens: int = 1000,
+        session_id: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        """Вызов YandexGPT API"""
+        """
+        Вызов YandexGPT API
+
+        ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с dialog_logs
+        """
 
         if not self.yandexgpt_available:
             raise Exception("YandexGPT недоступен (не настроен API key или folder ID)")
@@ -309,12 +319,14 @@ class AIAgentService:
                         self._update_statistics('yandexgpt', total_tokens, total_cost)
 
                         # Сохраняем в БД
+                        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для связи с dialog_logs
                         await self._save_statistics_to_db(
                             provider='yandexgpt',
                             model=model,
                             prompt=prompt,
                             response=response_text,
-                            usage_info=usage_info
+                            usage_info=usage_info,
+                            session_id=session_id
                         )
 
                         return response_text, usage_info
@@ -331,10 +343,14 @@ class AIAgentService:
         prompt: str,
         model: str = 'GigaChat',
         temperature: float = 0.7,
-        max_tokens: int = 1000
+        max_tokens: int = 1000,
+        session_id: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        """Вызов GigaChat API"""
+        """
+        Вызов GigaChat API
 
+        ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с dialog_logs
+        """
         if not self.gigachat_available:
             raise Exception("GigaChat недоступен (не настроен Client ID или Auth Key)")
 
@@ -416,12 +432,14 @@ class AIAgentService:
                     self._update_statistics('gigachat', total_tokens, total_cost)
 
                     # Сохраняем в БД
+                    # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для связи с dialog_logs
                     await self._save_statistics_to_db(
                         provider='gigachat',
                         model=model,
                         prompt=prompt,
                         response=response_text,
-                        usage_info=usage_info
+                        usage_info=usage_info,
+                        session_id=session_id
                     )
 
                     return response_text, usage_info
@@ -507,9 +525,14 @@ class AIAgentService:
         model: str,
         prompt: str,
         response: str,
-        usage_info: Dict[str, Any]
+        usage_info: Dict[str, Any],
+        session_id: Optional[str] = None
     ):
-        """Сохранить статистику запроса в БД"""
+        """
+        Сохранить статистику запроса в БД
+
+        ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с dialog_logs
+        """
         try:
             def save_sync():
                 with connection.cursor() as cursor:
@@ -524,9 +547,10 @@ class AIAgentService:
                             completion_tokens,
                             total_tokens,
                             cost_rub,
+                            session_id,
                             created_at
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                         )
                     """, [
                         str(uuid.uuid4()),
@@ -537,7 +561,8 @@ class AIAgentService:
                         usage_info['prompt_tokens'],
                         usage_info['completion_tokens'],
                         usage_info['total_tokens'],
-                        usage_info['cost_rub']
+                        usage_info['cost_rub'],
+                        session_id  # ИСПРАВЛЕНО (2026-01-06): Добавлено session_id
                     ])
 
             await sync_to_async(save_sync)()

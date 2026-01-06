@@ -150,7 +150,7 @@ class TraceReportService:
 
         ИСПРАВЛЕНО (2026-01-06):
         - Берет промпты из таблицы llm_request_log вместо metadata
-        - Связывает по временному окну: LLM запросы в +-10 секунд от сообщения
+        - Связывает ПО session_id - надежное связывание вместо временного окна
 
         Args:
             session_id: ID сессии
@@ -176,19 +176,7 @@ class TraceReportService:
 
                 try:
                     with conn.cursor() as cursor:
-                        # Загружаем все LLM запросы за период сессии
-                        if not messages:
-                            return {}
-
-                        # Определяем временной диапазон сессии
-                        min_time = min(msg['created_at'] for msg in messages)
-                        max_time = max(msg['created_at'] for msg in messages)
-
-                        # Добавляем запас по времени (10 минут)
-                        from datetime import timedelta
-                        start_time = min_time - timedelta(minutes=10)
-                        end_time = max_time + timedelta(minutes=10)
-
+                        # ИСПРАВЛЕНО (2026-01-06): Загружаем по session_id вместо временного окна
                         cursor.execute("""
                             SELECT
                                 id,
@@ -204,9 +192,9 @@ class TraceReportService:
                                 status,
                                 error_message
                             FROM llm_request_log
-                            WHERE created_at BETWEEN %s AND %s
+                            WHERE session_id = %s
                             ORDER BY created_at ASC
-                        """, (start_time, end_time))
+                        """, (session_id,))
 
                         columns = ['id', 'provider', 'model', 'prompt_text', 'response_text',
                                    'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_rub',
@@ -217,15 +205,20 @@ class TraceReportService:
                             llm_log = dict(zip(columns, row))
                             all_llm_logs.append(llm_log)
 
-                        # Связываем LLM запросы с сообщениями по времени
+                        # Связываем LLM запросы с сообщениями по времени и сессии
+                        # ИСПРАВЛЕНО (2026-01-06): Простое связывание - все LLM запросы сессии доступны
                         message_llm_map = {}
+
+                        # Для каждого сообщения находим ближайшие LLM запросы
                         for msg in messages:
                             msg_time = msg['created_at']
                             msg_id = msg['id']
 
-                            # Ищем LLM запросы в временном окне +-30 секунд
-                            time_window_start = msg_time - timedelta(seconds=30)
-                            time_window_end = msg_time + timedelta(seconds=30)
+                            # Ищем LLM запросы в временном окне +-60 секунд от сообщения
+                            # Это нужно чтобы определить какие именно LLM вызовы были для этого сообщения
+                            from datetime import timedelta
+                            time_window_start = msg_time - timedelta(seconds=60)
+                            time_window_end = msg_time + timedelta(seconds=60)
 
                             matching_llm = []
                             for llm in all_llm_logs:
@@ -235,7 +228,7 @@ class TraceReportService:
                             if matching_llm:
                                 message_llm_map[msg_id] = matching_llm
 
-                        logger.info(f"Загружено {len(all_llm_logs)} LLM запросов, связано с {len(message_llm_map)} сообщений")
+                        logger.info(f"Загружено {len(all_llm_logs)} LLM запросов по session_id={session_id}, связано с {len(message_llm_map)} сообщений")
                         return message_llm_map
 
                 finally:
