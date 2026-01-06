@@ -465,7 +465,7 @@ Session ID: {session_id}
                 prompt_text = llm_call.get('prompt_text', '')
                 response_text = llm_call.get('response_text', '')
                 total_tokens = llm_call.get('total_tokens', 0)
-                cost_rub = llm_call.get('cost_rub', 0.0)
+                cost_rub = float(llm_call.get('cost_rub', 0.0))  # ИСПРАВЛЕНО (2026-01-06): Decimal -> float
 
                 llm_total_cost += cost_rub  # Суммируем стоимость
 
