@@ -136,15 +136,15 @@ class DialogLoggerService:
                                 django_user_id
                             ])
 
-                    # ИСПРАВЛЕНО (2026-01-06): Получаем ID созданной записи
-                    record_id = cursor.fetchone()[0]
+                            # ИСПРАВЛЕНО (2026-01-06): Получаем ID ВНУТРИ блока with cursor (пока cursor открыт!)
+                            record_id = cursor.fetchone()[0]
 
-                    # ИСПРАВЛЕНО (2026-01-05): Отладочный лог
-                    import logging
-                    logger_debug = logging.getLogger(__name__)
-                    logger_debug.info(f"[DialogLogger] INSERT выполнен: id={record_id}, session_id={session_id}, type={message_type}, direction={direction}")
+                            # ИСПРАВЛЕНО (2026-01-05): Отладочный лог
+                            import logging
+                            logger_debug = logging.getLogger(__name__)
+                            logger_debug.info(f"[DialogLogger] INSERT выполнен: id={record_id}, session_id={session_id}, type={message_type}, direction={direction}")
 
-                    return record_id
+                            return record_id
 
                 except Exception as e:
                     import logging
@@ -152,13 +152,11 @@ class DialogLoggerService:
                     logger_err.error(f"[DialogLogger] ОКАЗАНИЕСЬ ОШИБКА при INSERT: {e}")
                     raise
 
-                # transaction.atomic() автоматически коммитит при выходе из блока
-                return record_id  # ИСПРАВЛЕНО (2026-01-06): Возвращаем ID созданной записи
-
+            # ИСПРАВЛЕНО (2026-01-06): save_sync теперь возвращает ID
             record_id = await sync_to_async(save_sync)()
             logger.debug(f"DialogLogger: сообщение записано и закоммичено (id={record_id}, dialog_id={dialog_id}, type={message_type})")
 
-            return record_id  # ИСПРАВЛЕНО (2026-01-06): Возвращаем ID из save_sync
+            return record_id if record_id else None
 
         except Exception as e:
             logger.error(f"DialogLogger: ошибка записи сообщения: {e}")

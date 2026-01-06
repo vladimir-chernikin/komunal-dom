@@ -370,11 +370,12 @@ class MainAgent:
         if self.filter_detection and self.ai_agent:
             try:
                 logger.info("Запускаем SemanticPreCheck для извлечения абсолютных фактов...")
-                # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+                # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
                 semantic_check_result = await self._semantic_pre_check(
                     message_text=search_text,
                     dialog_history=dialog_history,
-                    session_id=session_id
+                    session_id=session_id,
+                    message_id=message_id
                 )
 
                 if semantic_check_result.get('absolute_facts'):
@@ -2253,7 +2254,8 @@ JSON:"""
         self,
         message_text: str,
         dialog_history: List[Dict] = None,
-        session_id: str = None
+        session_id: str = None,
+        message_id: int = None
     ) -> Dict:
         """
         ИСПРАВЛЕНО (2026-01-03): Семантический Pre-Check через FilterDetectionService
@@ -2265,10 +2267,13 @@ JSON:"""
         - Объект (труба, кран, батарея)
 
         ИСПРАВЛЕНО (2026-01-03): Добавлено кеширование результатов
+        ИСПРАВЛЕНО (2026-01-06): Добавлен message_id для логирования
 
         Args:
             message_text: Текст сообщения
             dialog_history: История диалога
+            session_id: ID сессии
+            message_id: ID сообщения для логирования LLM
 
         Returns:
             Dict: {
