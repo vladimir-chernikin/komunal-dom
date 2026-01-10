@@ -104,6 +104,7 @@ class TraceReportService:
                         cursor.execute("""
                             SELECT
                                 id,
+                                message_id,
                                 message_content as text,
                                 direction,
                                 channel,
@@ -115,7 +116,7 @@ class TraceReportService:
                             ORDER BY timestamp ASC
                         """, (f"{session_id}%",))
 
-                        columns = ['id', 'text', 'direction', 'channel', 'session_id', 'created_at', 'metadata']
+                        columns = ['id', 'message_id', 'text', 'direction', 'channel', 'session_id', 'created_at', 'metadata']
                         messages = []
                         for row in cursor.fetchall():
                             msg = dict(zip(columns, row))
