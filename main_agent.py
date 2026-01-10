@@ -366,13 +366,15 @@ class MainAgent:
 
         # ИСПРАВЛЕНО (2026-01-03): SemanticPreCheck - извлечение абсолютных фактов ДО поиска
         # Это позволяет оптимизировать работу микросервисов и избежать избыточных вопросов
+        # ИСПРАВЛЕНО (2026-01-10): Используем txtPrb вместо search_text для полного контекста!
         semantic_check_result = {}
-        if self.filter_detection and self.ai_agent:
+        if self.filter_detection and self.ai_agent and txtPrb:
             try:
                 logger.info("Запускаем SemanticPreCheck для извлечения абсолютных фактов...")
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
+                # ИСПРАВЛЕНО (2026-01-10): Используем txtPrb вместо search_text (полный контекст!)
                 semantic_check_result = await self._semantic_pre_check(
-                    message_text=search_text,
+                    message_text=txtPrb,  # ИСПРАВЛЕНО (2026-01-10): было search_text, стало txtPrb
                     dialog_history=dialog_history,
                     session_id=session_id,
                     message_id=message_id
@@ -383,10 +385,23 @@ class MainAgent:
                     for fact in semantic_check_result['absolute_facts']:
                         logger.info(f"  ✓ {fact}")
 
+                    # ИСПРАВЛЕНО (2026-01-10): Защита от переопределения фильтров с высокой уверенностью
                     # Объединяем с established_filters от ProblemAccumulationService
                     if semantic_check_result.get('filters'):
                         for filter_name, filter_data in semantic_check_result['filters'].items():
-                            if filter_name not in established_filters:
+                            # ИСПРАВЛЕНО (2026-01-10): НЕ переопределяем фильтры с высокой уверенностью
+                            if filter_name in established_filters:
+                                existing_confidence = established_filters[filter_name].get('confidence', 0.0)
+                                new_confidence = filter_data.get('confidence', 0.0)
+                                # Если существующий фильтр имеет уверенность >=75% → НЕ переопределяем!
+                                if existing_confidence >= 0.75:
+                                    logger.info(f"  ⚠️ Фильтр {filter_name} СУЩЕСТВУЕТ с уверенностью {existing_confidence:.0%} - ПРЕНОПРЕДЕЛЯЕМSemanticPreCheck!")
+                                    continue  # Пропускаем этот фильтр
+                                # Иначе добавляем/обновляем
+                                established_filters[filter_name] = filter_data
+                                logger.info(f"  Добавлен фильтр из PreCheck: {filter_name}={filter_data['value']} (confidence: {new_confidence:.0%})")
+                            else:
+                                # Фильтра еще нет - добавляем
                                 established_filters[filter_name] = filter_data
                                 logger.info(f"  Добавлен фильтр из PreCheck: {filter_name}={filter_data['value']}")
 
