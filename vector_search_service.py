@@ -90,24 +90,38 @@ class VectorSearchService:
             candidates = await self._search_with_pg_trgm(message_clean)
 
             # ИСПРАВЛЕНО (2026-01-10): Применяем фильтры к кандидатам
+            # ИСПРАВЛЕНО (2026-01-10): Извлекаем .get('value') из словаря фильтров
             if filters:
                 before_count = len(candidates)
                 filtered = candidates
 
-                if filters.get('incident_type'):
-                    filtered = [c for c in filtered
-                               if filters['incident_type'] in c.get('incident_type', '')]
-                    logger.info(f"VectorSearch: Отфильтровано по incident_type={filters['incident_type']}: {len(filtered)} из {before_count}")
+                # Helper функция для извлечения значения из фильтра
+                def get_filter_value(filter_key):
+                    """Извлекает value из фильтра, который может быть строкой или dict {'value': ..., 'confidence': ...}"""
+                    filter_data = filters.get(filter_key)
+                    if filter_data is None:
+                        return None
+                    if isinstance(filter_data, dict):
+                        return filter_data.get('value')
+                    return filter_data
 
-                if filters.get('location_type'):
+                incident_value = get_filter_value('incident_type')
+                if incident_value:
                     filtered = [c for c in filtered
-                               if filters['location_type'] in c.get('location_type', '')]
-                    logger.info(f"VectorSearch: Отфильтровано по location_type={filters['location_type']}: {len(filtered)} из {before_count}")
+                               if incident_value in c.get('incident_type', '')]
+                    logger.info(f"VectorSearch: Отфильтровано по incident_type={incident_value}: {len(filtered)} из {before_count}")
 
-                if filters.get('category'):
+                location_value = get_filter_value('location_type')
+                if location_value:
                     filtered = [c for c in filtered
-                               if filters['category'].lower() in c.get('category', '').lower()]
-                    logger.info(f"VectorSearch: Отфильтровано по category={filters['category']}: {len(filtered)} из {before_count}")
+                               if location_value in c.get('location_type', '')]
+                    logger.info(f"VectorSearch: Отфильтровано по location_type={location_value}: {len(filtered)} из {before_count}")
+
+                category_value = get_filter_value('category')
+                if category_value:
+                    filtered = [c for c in filtered
+                               if category_value.lower() in c.get('category', '').lower()]
+                    logger.info(f"VectorSearch: Отфильтровано по category={category_value}: {len(filtered)} из {before_count}")
 
                 candidates = filtered
 
