@@ -64,7 +64,9 @@ class TagSearchService:
                         tags = row[6] or ""
 
                         # Извлекаем теги
-                        tag_list = [tag.strip().lower() for tag in tags.split(',') if tag.strip()]
+                        # ИСПРАВЛЕНО (2026-01-10): Фильтруем слишком длинные "теги-предложения"
+                        # Теги длиннее 30 символов - это целые предложения, которые вызывают ложные совпадения
+                        tag_list = [tag.strip().lower() for tag in tags.split(',') if tag.strip() and len(tag.strip()) <= 30]
 
                         # ИСПРАВЛЕНО: Разбиваем теги-фразы на отдельные слова
                         # "течет труба" -> ["течет", "труба", "течет труба"]
