@@ -186,10 +186,12 @@ def get_dialogs_list(request):
         from message_handler.models import MessageLog
         from django.db.models import Min, Max
 
-        # Получаем все уникальные сессии пользователя
+        # ИСПРАВЛЕНО (2026-01-10): django_user → django_user_id (IntegerField)
+        # ИСПРАВЛЕНО (2026-01-10): Добавлен фильтр django_user_id__isnull=False
         sessions = MessageLog.objects.filter(
             channel='web',
-            django_user=request.user
+            django_user_id=request.user.id,
+            django_user_id__isnull=False
         ).values('session_id').annotate(
             first_message_time=Min('created_at'),
             last_message_time=Max('created_at'),
@@ -201,10 +203,11 @@ def get_dialogs_list(request):
         for session in sessions:
             session_id = session['session_id']
 
+            # ИСПРАВЛЕНО (2026-01-10): django_user → django_user_id
             # Получаем третье сообщение (или первое, если сообщений меньше)
             messages = MessageLog.objects.filter(
                 channel='web',
-                django_user=request.user,
+                django_user_id=request.user.id,
                 session_id=session_id
             ).order_by('created_at')
 
