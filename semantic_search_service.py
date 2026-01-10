@@ -103,11 +103,19 @@ class SemanticSearchService:
             'water': {
                 'definition': 'Проблемы с водоснабжением',
                 'keywords': [
-                    'вода', 'течет', 'протекает', 'прорыв', 'утечка',
-                    'засор', 'канализация', 'сантехника', 'кран',
-                    'смеситель', 'раковина', 'унитаз', 'туалет'
+                    'вода', 'кран', 'водопровод', 'смеситель', 'раковина',
+                    'унитаз', 'туалет', 'смыв', 'насос', 'вода',
+                    'горячая вода', 'холодная вода', 'напор'
                 ],
                 'weight': 0.9
+            },
+            'leak': {
+                'definition': 'Утечка, протечка, прорыв',
+                'keywords': [
+                    'течет', 'протекает', 'прорыв', 'утечка', 'капает',
+                    'льется', 'текут', 'вытекает'
+                ],
+                'weight': 0.95
             },
             'electricity': {
                 'definition': 'Проблемы с электричеством',
@@ -161,8 +169,9 @@ class SemanticSearchService:
             'roof': {
                 'definition': 'Проблемы с крышей',
                 'keywords': [
-                    'крыша', 'кровля', 'течет', 'протекает', 'затекает',
-                    'чердачек', 'желоб', 'водосток'
+                    'крыша', 'кровля', 'затекает',  # УБРАНО: 'течет', 'протекает' (без контекста крыши!)
+                    'чердачек', 'желоб', 'водосток', 'потекает',
+                    'крыши', 'потолок'  # Добавлено уточнение
                 ],
                 'weight': 0.9
             },
@@ -327,6 +336,10 @@ class SemanticSearchService:
             required_categories = set()
             if 'water' in features:
                 required_categories.update(['Водоснабжение', 'Санитария'])
+            if 'leak' in features:
+                # ИСПРАВЛЕНО (2026-01-10): 'leak' может относиться к ЛЮБОЙ категории где есть трубы/системы
+                # Водоснабжение, Отопление, Канализация, Конструктив (крыша)
+                required_categories.update(['Водоснабжение', 'Отопление', 'Канализация', 'Конструктив'])
             if 'electricity' in features:
                 required_categories.add('Электричество')
             if 'heating' in features:
@@ -343,10 +356,29 @@ class SemanticSearchService:
                 required_categories.add('Конструктив')
 
             # Если есть требуемые категории - проверяем соответствие
-            if required_categories:
-                service_category = (service_info.get('category') or '').strip()
-                service_name = (service_info.get('scenario_name') or '').strip()
+            # ИСПРАВЛЕНО (2026-01-10): ВСЕГДА проверяем категорию, даже если required_categories пусто!
+            # Если признаки детектированы (incident, water, etc.) - услуга ДОЛЖНА соответствовать хотя бы одному
 
+            service_category = (service_info.get('category') or '').strip()
+            service_name = (service_info.get('scenario_name') or '').strip()
+            service_incident = service_info.get('incident_type', '')
+
+            # ИСПРАВЛЕНО (2026-01-10): КРИТИЧЕСКИ ВАЖНО!
+            # Если есть features БЕЗ категории (например, только 'incident' без 'water'),
+            # то НЕ добавляем балл за incident если категория услуги не совпадает!
+            # Это предотвращает 66% для ЛЮБОЙ услуги с incident_type='Инцидент'
+
+            should_add_incident_score = True  # По умолчанию добавляем
+
+            # Если есть признак incident НО нет признаков категории (water, heating, etc.)
+            if 'incident' in features and not any(f in features for f in ['water', 'electricity', 'heating', 'construction', 'cleaning', 'landscape', 'elevator', 'roof']):
+                # НЕ добавляем балл incident если категория услуги неочевидна
+                # Это отсечёт случайные совпадения
+                should_add_incident_score = False
+                logger.debug(f"Service {service_id}: incident БЕЗ категории - пропускаем (service_category={service_category})")
+
+            # Если есть требуемые категории - проверяем соответствие
+            if required_categories:
                 # Проверяем что услуга относится хотя бы к одной требуемой категории
                 category_match = any(
                     cat.lower() in service_category.lower() or cat.lower() in service_name.lower()
@@ -358,7 +390,8 @@ class SemanticSearchService:
                     continue
 
             # Анализ по типу (incident_type)
-            if 'incident' in features:
+            # ИСПРАВЛЕНО (2026-01-10): Добавляем балл ТОЛЬКО если should_add_incident_score=True
+            if 'incident' in features and should_add_incident_score:
                 if service_info.get('incident_type') == 'Инцидент':
                     score += features['incident']['confidence'] * 0.6
                     reasons.append('emergency_incident')
@@ -369,8 +402,10 @@ class SemanticSearchService:
                     reasons.append('service_request')
 
             # Анализ по категории (category) - увеличен вес
+            # ИСПРАВЛЕНО (2026-01-10): Добавлен 'leak'
             category_matches = {
                 'water': ['Водоснабжение', 'Санитария'],
+                'leak': ['Водоснабжение', 'Отопление', 'Канализация', 'Конструктив'],
                 'electricity': ['Электричество'],
                 'heating': ['Отопление'],
                 'construction': ['Ремонт МАФ и покрытий', 'Конструктив'],
