@@ -119,10 +119,17 @@ class TagSearchService:
         # Предлоги и союзы ("и", "в", "на", "у") - 1-2 буквы - отсеиваем
         return [w for w in words if len(w) > 2]
 
-    async def search(self, message_text: str) -> Dict:
+    async def search(self, message_text: str, filters: Dict = None) -> Dict:
         """
         Основной метод поиска услуги по тексту сообщения
         Возвращает JSON с множеством service_id (по ТЗ)
+
+        Args:
+            message_text: Текст сообщения пользователя
+            filters: Словарь фильтров для применения к кандидатам
+                     {'incident_type': 'Инцидент', 'location_type': 'Индивидуальное', 'category': 'Водоснабжение'}
+
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр filters и логика фильтрации candidates
         """
         try:
             if not self.service_cache:
@@ -196,6 +203,28 @@ class TagSearchService:
                 {k: v for k, v in c.items() if k != "matched_terms"}
                 for c in candidates_with_scores
             ]
+
+            # ИСПРАВЛЕНО (2026-01-10): Применяем фильтры к кандидатам
+            if filters:
+                before_count = len(candidates)
+                filtered = candidates
+
+                if filters.get('incident_type'):
+                    filtered = [c for c in filtered
+                               if filters['incident_type'] in c.get('incident_type', '')]
+                    logger.info(f"TagSearch: Отфильтровано по incident_type={filters['incident_type']}: {len(filtered)} из {before_count}")
+
+                if filters.get('location_type'):
+                    filtered = [c for c in filtered
+                               if filters['location_type'] in c.get('location_type', '')]
+                    logger.info(f"TagSearch: Отфильтровано по location_type={filters['location_type']}: {len(filtered)} из {before_count}")
+
+                if filters.get('category'):
+                    filtered = [c for c in filtered
+                               if filters['category'].lower() in c.get('category', '').lower()]
+                    logger.info(f"TagSearch: Отфильтровано по category={filters['category']}: {len(filtered)} из {before_count}")
+
+                candidates = filtered
 
             if candidates:
                 return {

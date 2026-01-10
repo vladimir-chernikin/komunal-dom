@@ -498,16 +498,17 @@ class MainAgent:
 
         try:
             # ===== ШАГ 1: Параллельно запускаем БЫСТРЫЕ микросервисы =====
+            # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для фильтрации candidates
             search_tasks = []
 
             if self.tag_search:
-                search_tasks.append(self._run_tag_search(search_text))
+                search_tasks.append(self._run_tag_search(search_text, filters=established_filters))
 
             if self.semantic_search:
-                search_tasks.append(self._run_semantic_search(search_text))
+                search_tasks.append(self._run_semantic_search(search_text, filters=established_filters))
 
             if self.vector_search:
-                search_tasks.append(self._run_vector_search(search_text))
+                search_tasks.append(self._run_vector_search(search_text, filters=established_filters))
 
             # Ждем результаты от быстрых микросервисов
             if search_tasks:
@@ -848,26 +849,35 @@ class MainAgent:
         # AI не нужен
         return None
 
-    async def _run_tag_search(self, message_text: str) -> Dict:
-        """Запуск TagSearchService"""
+    async def _run_tag_search(self, message_text: str, filters: Dict = None) -> Dict:
+        """Запуск TagSearchService
+
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр filters для фильтрации candidates
+        """
         try:
-            return await self.tag_search.search(message_text)
+            return await self.tag_search.search(message_text, filters=filters)
         except Exception as e:
             logger.error(f"Ошибка TagSearchService: {e}")
             return {}
 
-    async def _run_semantic_search(self, message_text: str) -> Dict:
-        """Запуск SemanticSearchService"""
+    async def _run_semantic_search(self, message_text: str, filters: Dict = None) -> Dict:
+        """Запуск SemanticSearchService
+
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр filters для фильтрации candidates
+        """
         try:
-            return await self.semantic_search.search(message_text)
+            return await self.semantic_search.search(message_text, filters=filters)
         except Exception as e:
             logger.error(f"Ошибка SemanticSearchService: {e}")
             return {}
 
-    async def _run_vector_search(self, message_text: str) -> Dict:
-        """Запуск VectorSearchService"""
+    async def _run_vector_search(self, message_text: str, filters: Dict = None) -> Dict:
+        """Запуск VectorSearchService
+
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр filters для фильтрации candidates
+        """
         try:
-            return await self.vector_search.search(message_text)
+            return await self.vector_search.search(message_text, filters=filters)
         except Exception as e:
             logger.error(f"Ошибка VectorSearchService: {e}")
             return {}

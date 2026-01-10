@@ -58,15 +58,19 @@ class VectorSearchService:
             logger.error(f"Ошибка загрузки услуг: {e}")
             self.service_cache = {}
 
-    async def search(self, message_text: str) -> Dict:
+    async def search(self, message_text: str, filters: Dict = None) -> Dict:
         """
         Поиск услуг с триграммным поиском через pg_trgm
 
         Args:
             message_text: Текст сообщения пользователя
+            filters: Словарь фильтров для применения к кандидатам
+                     {'incident_type': 'Инцидент', 'location_type': 'Индивидуальное', 'category': 'Водоснабжение'}
 
         Returns:
             Dict: Результат поиска в формате JSON {[КодУслуги], [Релевантность]}
+
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр filters и логика фильтрации candidates
         """
         try:
             logger.info(f"VectorSearch: поиск по тексту '{message_text[:50]}...'")
@@ -84,6 +88,28 @@ class VectorSearchService:
 
             # Используем pg_trgm для прямого поиска в БД
             candidates = await self._search_with_pg_trgm(message_clean)
+
+            # ИСПРАВЛЕНО (2026-01-10): Применяем фильтры к кандидатам
+            if filters:
+                before_count = len(candidates)
+                filtered = candidates
+
+                if filters.get('incident_type'):
+                    filtered = [c for c in filtered
+                               if filters['incident_type'] in c.get('incident_type', '')]
+                    logger.info(f"VectorSearch: Отфильтровано по incident_type={filters['incident_type']}: {len(filtered)} из {before_count}")
+
+                if filters.get('location_type'):
+                    filtered = [c for c in filtered
+                               if filters['location_type'] in c.get('location_type', '')]
+                    logger.info(f"VectorSearch: Отфильтровано по location_type={filters['location_type']}: {len(filtered)} из {before_count}")
+
+                if filters.get('category'):
+                    filtered = [c for c in filtered
+                               if filters['category'].lower() in c.get('category', '').lower()]
+                    logger.info(f"VectorSearch: Отфильтровано по category={filters['category']}: {len(filtered)} из {before_count}")
+
+                candidates = filtered
 
             result = {
                 'status': 'success',
