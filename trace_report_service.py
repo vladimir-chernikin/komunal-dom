@@ -409,17 +409,30 @@ Session ID: {session_id}
             details += " {(нет кандидатов)}\n"
 
         # 8. Таблица установленных фильтров
+        # ИСПРАВЛЕНО (2026-01-10): Показывать ВСЕ фильтры включая null (задача 8)
         details += "\n8. Таблица установленных фильтров:\n"
         established_filters = service_metadata.get('established_filters', {})
         if isinstance(established_filters, dict) and established_filters:
+            # Сортировка фильтров: location_type, category, incident_type, object_description
+            filter_order = ['location_type', 'category', 'incident_type', 'object_description', 'semantic_check']
+            for filter_name in filter_order:
+                if filter_name in established_filters:
+                    filter_data = established_filters[filter_name]
+                    if isinstance(filter_data, dict):
+                        value = filter_data.get('value', 'null')
+                        conf_raw = filter_data.get('confidence', 0.0) or 0.0
+                        confidence = float(conf_raw) * 100
+                        if value == 'null' or value is None:
+                            details += f" {filter_name} = null (не определено)\n"
+                        else:
+                            details += f" {filter_name} = {value} ({confidence:.0f}%)\n"
+                    else:
+                        details += f" {filter_name} = {filter_data}\n"
+
+            # Показываем остальные фильтры (если есть)
             for filter_name, filter_data in established_filters.items():
-                if isinstance(filter_data, dict):
-                    value = filter_data.get('value', 'N/A')
-                    conf_raw = filter_data.get('confidence', 0.0) or 0.0
-                    confidence = float(conf_raw) * 100
-                    details += f" {{{filter_name} = {value}, {confidence:.0f}%}}\n"
-                else:
-                    details += f" {{{filter_name} = {filter_data}}}\n"
+                if filter_name not in filter_order:
+                    details += f" {filter_name} = {filter_data}\n"
         else:
             details += " {(нет фильтров)}\n"
 
@@ -444,7 +457,6 @@ Session ID: {session_id}
             }
             status_description = status_map.get(status, status)
 
-            details += "\n9. Прочая отладочная информация:\n"
             details += f" AI Orchestrator: {status_description}\n"
             if service_id:
                 details += f"  ├─ ServiceID: {service_id} (ID определенной услуги)\n"
