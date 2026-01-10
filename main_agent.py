@@ -224,6 +224,7 @@ class MainAgent:
         dialog_history = []
         session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
         message_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем message_id
+        established_filters = None  # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters
 
         if user_context:
             original_message = user_context.get('original_message', message_text)
@@ -231,6 +232,7 @@ class MainAgent:
             dialog_history = user_context.get('dialog_history', [])
             session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
             message_id = user_context.get('message_id')  # ИСПРАВЛЕНО (2026-01-06)
+            established_filters = user_context.get('established_filters')  # ИСПРАВЛЕНО (2026-01-10)
 
             # ИСПРАВЛЕНО (2026-01-10): Устанавливаем current_message_id для логирования LLM вызовов
             self.current_message_id = message_id
@@ -629,8 +631,9 @@ class MainAgent:
 
                 # Если есть кандидаты - фильтруем их
                 if orch_candidates:
+                    # ИСПРАВЛЕНО (2026-01-10): Передаем session_id и established_filters
                     result = await self._create_ambiguous_result_from_candidates(
-                        orch_candidates, original_message, is_followup, dialog_history
+                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters
                     )
                     # Сохраняем AI Orchestrator message
                     result['_ai_orchestrator_message'] = orch_result.get('message')
@@ -780,7 +783,8 @@ class MainAgent:
 
             # ИСПРАВЛЕНО (2025-12-29): Получаем результат и добавляем metadata
             # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
-            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id)
+            # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для умных вопросов
+            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters)
 
             # Добавляем metadata если его нет
             if '_metadata' not in result and 'result_metadata' in locals():
@@ -1579,7 +1583,7 @@ class MainAgent:
         logger.info(f"Дедуплицировано кандидатов: {len(merged)}")
         return merged
 
-    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None) -> Dict:
+    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None) -> Dict:
         """
         Создание результата с неопределенностью
 
@@ -1593,11 +1597,12 @@ class MainAgent:
             }
             # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI
             # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+            # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для умных вопросов
             clarification_message = await self._generate_ai_question(
                 context=context.get('original_message', ''),
                 dialog_history=context.get('dialog_history', []),
                 candidates=None,
-                established_filters=None,
+                established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
                 question_type='clarification',
                 session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
             )

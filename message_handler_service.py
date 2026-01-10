@@ -183,6 +183,19 @@ class MessageHandlerService:
                 if is_followup:
                     logger.info(f"MessageHandler: is_followup=True (контекстных сообщений: {len(non_greeting_messages)})")
 
+                # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters из последнего bot сообщения
+                # КРИТИЧЕСКИ ВАЖНО: established_filters должны передаваться между вызовами MainAgent!
+                established_filters = None
+                if dialog_history and len(dialog_history) > 0:
+                    # Ищем последнее сообщение бота
+                    for msg in reversed(dialog_history):
+                        if msg.get('role') == 'bot':
+                            metadata = msg.get('metadata', {})
+                            if isinstance(metadata, dict) and 'established_filters' in metadata:
+                                established_filters = metadata['established_filters']
+                                logger.info(f"[DEBUG] Извлечены established_filters из истории: {list(established_filters.keys()) if established_filters else 'None'}")
+                                break
+
                 # ИСПРАВЛЕНО (2026-01-05): Отладочный лог - проверяем dialog_history ПЕРЕД передачей в MainAgent
                 logger.info(f"[DEBUG] dialog_history ПЕРЕД передачей в MainAgent: {len(dialog_history)} сообщений")
                 if dialog_history and len(dialog_history) > 0:
@@ -199,7 +212,8 @@ class MessageHandlerService:
                         'message_id': message_log.get('id') if isinstance(message_log, dict) else None,  # ИСПРАВЛЕНО (2026-01-06)
                         'dialog_history': dialog_history,  # История через user_context
                         'is_followup': is_followup,  # Флаг для объединения контекста
-                        'cleaned_message': search_text  # Добавляем очищенное сообщение
+                        'cleaned_message': search_text,  # Добавляем очищенное сообщение
+                        'established_filters': established_filters  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
                     }
                 )
 
