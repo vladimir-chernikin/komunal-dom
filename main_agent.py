@@ -1213,12 +1213,12 @@ class MainAgent:
 
         # ИЗВЛЕКАЕМ ФИЛЬТРЫ ИЗ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ И ИСТОРИИ ДИАЛОГА
         extracted_filters = self._extract_filters_from_message(original_message, dialog_history)
-        known_location = extracted_filters['location']
-        known_category = extracted_filters['category']
-        known_incident = extracted_filters['incident']
+        known_location = extracted_filters.get('location')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
+        known_category = extracted_filters.get('category')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
+        known_incident = extracted_filters.get('incident_type')  # ИСПРАВЛЕНО (2026-01-10): БАГ! было 'incident'
         known_object = extracted_filters.get('object_description', '')  # ИСПРАВЛЕНО (2025-12-25)
 
-        logger.info(f"Извлеченные фильтры: location={known_location}, category={known_category}, incident={known_incident}, object={known_object}")
+        logger.info(f"Извлеченные фильтры: location={known_location}, category={known_category}, incident_type={known_incident}, object={known_object}")
 
         # Фильтруем кандидатов на основе известной информации
         filtered_candidates = candidates_with_attrs
@@ -3179,6 +3179,24 @@ JSON:"""
    - Фильтр: location=Индивидуальное (90%), вопрос: "Где это произошло?" → ЗАПРЕЩЕНО!
    - Фильтр: category=Водоснабжение (95%), вопрос: "Это водоснабжение?" → ЗАПРЕЩЕНО!
    - Фильтр: object=труба (90%), вопрос: "Из чего течет?" → ЗАПРЕЩЕНО!
+
+5. ИСПРАВЛЕНО (2026-01-10): Если source/object_description НЕ установлен или null:
+   - Проверь блок "ОПИСАНИЕ ПРОБЛЕМЫ" выше - если там нет источника проблемы
+   - ОБЯЗАТЕЛЬНО спроси: "Что именно течет/сломалось?" или "Откуда именно?"
+   - НЕ спрашивай про конкретную категорию (водоснабжение/отопление) если она НЕ установлена!
+   - Пользователь НЕ ЗНАЕТ категорию - он знает только симптомы!
+
+   ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ (source=null):
+   - "Что именно течет?" (пользователь сказал "течет" но не указал источник)
+   - "Откуда именно течет?" (пользователь сказал "течет в зале" но не сказал источник)
+   - "Какой объект неисправен?" (общий вопрос про объект)
+
+   ПРИМЕРЫ НЕПРАВИЛЬНЫХ ВОПРОСОВ (category=null, source=null):
+   - "Что происходит с водоснабжением?" → ЗАПРЕЩЕНО! (категория не установлена)
+   - "Это проблема с отоплением?" → ЗАПРЕЩЕНО! (категория не установлена)
+   - "Какой характер протечки?" → ЗАПРЕЩЕНО! (не помогает определить источник)
+
+   ПРАВИЛО: СНАЧАЛА выясни источник (что именно), ПОТОМ категорию определишь!
 
 ══════════════════════════════════════════════════════════════════════════════
 ЗАДАЧА
