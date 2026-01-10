@@ -101,11 +101,17 @@ class FilterDetectionService:
             self.categories_list = []
             self.objects_examples = []
 
-    def _create_filter_detection_prompt(self, message_text: str, dialog_history: List[Dict]) -> str:
+    def _create_filter_detection_prompt(self, message_text: str, dialog_history: List[Dict], txtPrb: str = None) -> str:
         """
         Создание оптимизированного промпта для определения фильтров
 
         ИСПРАВЛЕНО (2026-01-03): Оптимизация токенов (1082 → ~700)
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
+
+        Args:
+            message_text: Текущее сообщение пользователя
+            dialog_history: История диалога
+            txtPrb: Накопленное описание проблемы (КРИТИЧЕСКИ ВАЖНО!)
 
         Returns:
             str: Промпт для YandexGPT
@@ -122,14 +128,23 @@ class FilterDetectionService:
         # Формируем список категорий для промпта
         categories_str = ", ".join([f'"{cat}"' for cat in self.categories_list])
 
+        # ИСПРАВЛЕНО (2026-01-10): КРИТИЧЕСКИ ВАЖНО! Используем txtPrb вместо message_text
+        # txtPrb содержит накопленное описание проблемы из всей истории диалога
+        problem_description = txtPrb if txtPrb else message_text
+
         # ИСПРАВЛЕНО (2026-01-03): Оптимизированный промпт
         # ИСПРАВЛЕНО (2026-01-10): Усилены правила для incident_type и category
+        # ИСПРАВЛЕНО (2026-01-10): Используем problem_description (txtPrb) вместо message_text
         prompt = f"""Анализируй обращение и верни JSON фильтров.
 
 История (последние 3 сообщения):
 {history_text}
 
-Текущее: "{message_text}"
+⛔⛔⛔ КРИТИЧЕСКИ ВАЖНО - АНАЛИЗИРУЙ ПОЛНОЕ ОПИСАНИЕ ПРОБЛЕМЫ! ⛔⛔⛔
+Накопленное описание проблемы (txtPrb): "{problem_description}"
+Текущее сообщение: "{message_text}"
+
+ОБЯЗАТЕЛЬНО используй txtPrb для анализа - это ПОЛНЫЙ контекст проблемы из всей истории диалога!
 
 ДОСТУПНЫЕ КАТЕГОРИИ УСЛУГ (из базы данных):
 {categories_str}
@@ -304,15 +319,17 @@ JSON:"""
             logger.error(f"FilterDetectionService: Ошибка обработки ответа: {e}")
             return {}
 
-    async def detect_filters(self, message_text: str, dialog_history: List[Dict] = None, session_id: str = None, message_id: int = None) -> Dict:
+    async def detect_filters(self, message_text: str, dialog_history: List[Dict] = None, txtPrb: str = None, session_id: str = None, message_id: int = None) -> Dict:
         """
         Определяет фильтры на основе истории диалога через LLM
 
         ИСПРАВЛЕНО: Использует AIAgentService вместо прямых запросов к API
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
 
         Args:
             message_text: Текущее сообщение пользователя
             dialog_history: История диалога
+            txtPrb: Накопленное описание проблемы (ProblemAccumulationService) - КРИТИЧЕСКИ ВАЖНО!
 
         Returns:
             Dict: Результат с определенными фильтрами
@@ -344,7 +361,8 @@ JSON:"""
                 }
 
             # Создаем промпт
-            prompt = self._create_filter_detection_prompt(message_text, dialog_history or [])
+            # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
+            prompt = self._create_filter_detection_prompt(message_text, dialog_history or [], txtPrb)
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем промт
             logger.info(f"🤖 FilterDetection PROMPT:")

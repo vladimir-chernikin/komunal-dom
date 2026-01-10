@@ -376,6 +376,7 @@ class MainAgent:
                 semantic_check_result = await self._semantic_pre_check(
                     message_text=txtPrb,  # ИСПРАВЛЕНО (2026-01-10): было search_text, стало txtPrb
                     dialog_history=dialog_history,
+                    txtPrb=txtPrb,  # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для FilterDetectionService
                     session_id=session_id,
                     message_id=message_id
                 )
@@ -691,7 +692,8 @@ class MainAgent:
 
                     # Вызываем FilterDetectionService
                     # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
-                    filter_result = await self.filter_detection.detect_filters(original_message, dialog_history, session_id=session_id, message_id=message_id)
+                    # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
+                    filter_result = await self.filter_detection.detect_filters(original_message, dialog_history, txtPrb, session_id=session_id, message_id=message_id)
 
                     if filter_result.get('status') == 'success':
                         filters = filter_result.get('filters', {})
@@ -1108,23 +1110,16 @@ class MainAgent:
             logger.error(f"Ошибка поиска услуг по фильтрам: {e}")
             return []
 
-    def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None) -> Dict:
+    def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None, txtPrb: str = None) -> Dict:
         """
         Извлекает фильтры (location, category, incident, object_description) из текста сообщения и истории диалога
 
-        ИСПРАВЛЕНО (2025-12-25): Добавлен вызов FilterDetectionService для object_description
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
 
         Args:
             message_text: Текст сообщения пользователя
             dialog_history: История диалога
-
-        Returns:
-            Dict: {
-                'location': 'Индивидуальное' | 'Общедомовое' | None,
-                'category': 'Водоснабжение' | ... | None,
-                'incident': 'Инцидент' | 'Запрос' | None,
-                'object_description': 'описание объекта' | None
-            }
+            txtPrb: Накопленное описание проблемы (ProblemAccumulationService) - КРИТИЧЕСКИ ВАЖНО!
         """
         filters = {
             'location': None,
@@ -1134,6 +1129,7 @@ class MainAgent:
         }
 
         # ИСПРАВЛЕНО (2025-12-25): Сначала пробуем FilterDetectionService для object_description
+        # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
         if self.filter_detection:
             try:
                 # ИСПРАВЛЕНО: Используем await вместо asyncio.run()
@@ -1146,11 +1142,13 @@ class MainAgent:
                         import concurrent.futures
                         with concurrent.futures.ThreadPoolExecutor() as pool:
                             # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
-                            future = pool.submit(asyncio.run, self.filter_detection.detect_filters(message_text, dialog_history or [], session_id=session_id))
+                            # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
+                            future = pool.submit(asyncio.run, self.filter_detection.detect_filters(message_text, dialog_history or [], txtPrb, session_id=session_id))
                             return future.result()
                     else:
                         # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
-                        return asyncio.run(self.filter_detection.detect_filters(message_text, dialog_history or [], session_id=session_id))
+                        # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
+                        return asyncio.run(self.filter_detection.detect_filters(message_text, dialog_history or [], txtPrb, session_id=session_id))
 
                 filter_result = call_filter_sync()
                 if filter_result.get('status') == 'success':
@@ -1227,7 +1225,8 @@ class MainAgent:
             }
 
         # ИЗВЛЕКАЕМ ФИЛЬТРЫ ИЗ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ И ИСТОРИИ ДИАЛОГА
-        extracted_filters = self._extract_filters_from_message(original_message, dialog_history)
+        # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
+        extracted_filters = self._extract_filters_from_message(original_message, dialog_history, txtPrb)
         known_location = extracted_filters.get('location')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
         known_category = extracted_filters.get('category')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
         known_incident = extracted_filters.get('incident_type')  # ИСПРАВЛЕНО (2026-01-10): БАГ! было 'incident'
@@ -2303,6 +2302,7 @@ JSON:"""
         self,
         message_text: str,
         dialog_history: List[Dict] = None,
+        txtPrb: str = None,
         session_id: str = None,
         message_id: int = None
     ) -> Dict:
@@ -2317,10 +2317,12 @@ JSON:"""
 
         ИСПРАВЛЕНО (2026-01-03): Добавлено кеширование результатов
         ИСПРАВЛЕНО (2026-01-06): Добавлен message_id для логирования
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
 
         Args:
             message_text: Текст сообщения
             dialog_history: История диалога
+            txtPrb: Накопленное описание проблемы (ProblemAccumulationService)
             session_id: ID сессии
             message_id: ID сообщения для логирования LLM
 
@@ -2354,9 +2356,11 @@ JSON:"""
         try:
             # Вызываем FilterDetectionService (уже использует YandexGPT Lite)
             # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
+            # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
             filter_result = await self.filter_detection.detect_filters(
                 message_text=message_text,
                 dialog_history=dialog_history,
+                txtPrb=txtPrb,  # txtPrb может быть None (если не передан)
                 session_id=session_id,
                 message_id=message_id
             )
