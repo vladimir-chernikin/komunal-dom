@@ -2176,7 +2176,7 @@ class MainAgent:
                     return "Где именно это произошло?"
                 elif 'прорыв' in question_lower or 'теч' in question_lower:
                     logger.info("Исправляем на вопрос об объекте")
-                    return "Что именно течет или прорвалось?"
+                    return "Уточните детали: что именно происходит?"  # БАГФИКС (2026-01-10): Не возвращаем вопрос с 'или'!
                 else:
                     logger.info("Исправляем на общий вопрос")
                     return "Опишите подробнее, что именно произошло?"
@@ -2199,6 +2199,54 @@ class MainAgent:
                 if len(found_keywords) >= 2:
                     logger.warning(f"⚠️ DETECTED DOUBLE QUESTION (regex): вопрос содержит 2+ вопросительных слова: '{question[:50]}...'")
                     return "Опишите подробнее, что именно произошло?"
+
+        # ИСПРАВЛЕНО (2026-01-10): Проверка абсолютных фактов ДО LLM вызова (критично!)
+        if txtPrb or (established_filters and established_filters.get('location_type')):
+            # Извлекаем факты из txtPrb и established_filters
+            forbidden_questions = []
+
+            # Проверяем location_type (КРИТИЧНО: не спрашивать локацию если известна!)
+            if established_filters and established_filters.get('location_type'):
+                location_data = established_filters['location_type']
+                location_value = location_data.get('value') if isinstance(location_data, dict) else location_data
+                location_conf = location_data.get('confidence') if isinstance(location_data, dict) else 0.9
+
+                if location_conf >= 0.8:
+                    if location_value == 'Индивидуальное' and re.search(r'(квартира|дом|общедом)', question_lower):
+                        logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
+                        forbidden_questions.append('location')
+                    elif location_value == 'Общедомовое' and re.search(r'(квартира|индивидуа)', question_lower):
+                        logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
+                        forbidden_questions.append('location')
+
+            # Проверяем object_description (КРИТИЧНО: не спрашивать объект если известен!)
+            if established_filters and established_filters.get('object_description'):
+                obj_data = established_filters['object_description']
+                obj_value = obj_data.get('value') if isinstance(obj_data, dict) else obj_data
+                obj_conf = obj_data.get('confidence') if isinstance(obj_data, dict) else 0.9
+
+                # Если объект уже известен (не абстрактный), не спрашиваем "что именно?"
+                if obj_conf >= 0.8 and obj_value and obj_value not in ['течёт', 'прорыв', 'капает', 'проблема']:
+                    if re.search(r'(что именно|какой объект|что прорвало|что течет)', question_lower):
+                        logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN OBJECT: object уже '{obj_value}' (confidence: {obj_conf:.0%})")
+                        forbidden_questions.append('object')
+
+            # Если есть запрещенные вопросы - заменяем
+            if forbidden_questions:
+                logger.info(f"Заменяем вопрос из-за известных фактов: {forbidden_questions}")
+                # Генерируем вопрос на основе того, что НЕ известно
+                if 'location' not in forbidden_questions and 'object' not in forbidden_questions:
+                    # Известны и объект, и локация - спрашиваем детали
+                    return "Опишите подробнее что именно происходит."
+                elif 'location' in forbidden_questions and 'object' not in forbidden_questions:
+                    # Локация известна, объект нет - спрашиваем про детали объекта
+                    return "Уточните детали проблемы."
+                elif 'location' not in forbidden_questions and 'object' in forbidden_questions:
+                    # Объект известен, локация нет - спрашиваем про локацию
+                    return "Где именно это произошло?"
+                else:
+                    # Ничего не известно
+                    return "Опишите подробнее, что именно произошло."
 
         # Формируем абсолютные факты для промпта
         absolute_facts = []
