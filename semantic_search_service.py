@@ -401,29 +401,22 @@ class SemanticSearchService:
                     score += features['request']['confidence'] * 0.6
                     reasons.append('service_request')
 
-            # Анализ по категории (category) - увеличен вес
-            # ИСПРАВЛЕНО (2026-01-10): Добавлен 'leak'
-            category_matches = {
-                'water': ['Водоснабжение', 'Санитария'],
-                'leak': ['Водоснабжение', 'Отопление', 'Канализация', 'Конструктив'],
-                'electricity': ['Электричество'],
-                'heating': ['Отопление'],
-                'construction': ['Ремонт МАФ и покрытий', 'Конструктив'],
-                'cleaning': ['Санитария'],
-                'landscape': ['Озеленение'],
-                'elevator': ['Лифты'],
-                'roof': ['Конструктив']
-            }
-
-            for category, cat_keywords in category_matches.items():
-                if category in features:
-                    category_lower = (service_info.get('category') or '').lower()
+            # ИСПРАВЛЕНО (2026-01-10): Уточненная логика маппинга признаков на категории
+            # СТАРАЯ ЛОГИКА: Если category в списке → score (ЛОЖНЫЕ СОВПАДЕНИЯ!)
+            # НОВАЯ ЛОГИКА: Если СЛОВА ПРИЗНАКА в названии/описании → score (ТОЧНО!)
+            for feature_key, feature_data in features.items():
+                if feature_key in self.semantic_patterns:
+                    pattern_keywords = self.semantic_patterns[feature_key]['keywords']
                     name_lower = (service_info.get('scenario_name') or '').lower()
-                    for keyword in cat_keywords:
-                        if keyword.lower() in category_lower or keyword.lower() in name_lower:
-                            score += features[category]['confidence'] * 0.5
-                            reasons.append(f'{category}_match')
-                            break
+                    desc_lower = (service_info.get('description_for_search') or '').lower()
+
+                    # Проверяем есть ли СЛОВА ПРИЗНАКА в названии или описании услуги
+                    for keyword in pattern_keywords:
+                        keyword_lower = keyword.lower()
+                        if keyword_lower in name_lower or keyword_lower in desc_lower:
+                            score += feature_data['confidence'] * 0.5
+                            reasons.append(f'{feature_key}_match')
+                            break  # Только первое совпадение
 
             # ИСПРАВЛЕНО: Анализ по локации (location_type) - ТОЛЬКО если пользователь указал локацию
             # НЕ наказываем услуги если пользователь не сказал где именно проблема
