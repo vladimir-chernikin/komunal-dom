@@ -2139,20 +2139,24 @@ class MainAgent:
         self,
         question: str,
         txtPrb: str = None,
-        established_filters: Dict = None
+        established_filters: Dict = None,
+        asked_questions: List[str] = None
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): LLM-валидация вопроса вместо Regex
         ИСПРАВЛЕНО (2026-01-10): Добавлена regex-проверка двойных вопросов
+        ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
 
         Проверяет через YandexGPT Lite:
         1. Не спрашивает ли бот о том, что уже известно
         2. Не является ли вопрос двойным
+        3. Не повторяет ли уже заданные вопросы
 
         Args:
             question: Сгенерированный вопрос
             txtPrb: Накопленное описание проблемы
             established_filters: Установленные фильтры
+            asked_questions: Список уже заданных вопросов
 
         Returns:
             str: Валидированный вопрос
@@ -2199,6 +2203,41 @@ class MainAgent:
                 if len(found_keywords) >= 2:
                     logger.warning(f"⚠️ DETECTED DOUBLE QUESTION (regex): вопрос содержит 2+ вопросительных слова: '{question[:50]}...'")
                     return "Опишите подробнее, что именно произошло?"
+
+        # ИСПРАВЛЕНО (2026-01-10): Проверка на повторяющиеся вопросы (БЕЗ LLM!)
+        if asked_questions:
+            # Нормализуем новый вопрос для сравнения
+            new_question_normalized = question_lower.replace('?', '').replace('.', '').strip()
+            new_question_words = set(new_question_normalized.split())
+
+            # Проверяем каждый заданный вопрос
+            for asked in asked_questions:
+                asked_normalized = asked.lower().replace('?', '').replace('.', '').strip()
+                asked_words = set(asked_normalized.split())
+
+                # Проверяем пересечение слов (более 70% общих слов = повтор)
+                if new_question_words and asked_words:
+                    intersection = new_question_words & asked_words
+                    union = new_question_words | asked_words
+                    similarity = len(intersection) / len(union) if union else 0
+
+                    # Если сходство > 70% И есть вопросительные слова - это ПОВТОР
+                    question_words_check = ['что', 'где', 'какой', 'который', 'как', 'когда', 'почему', 'откуда', 'уточните', 'опишите']
+                    has_question_words = any(word in new_question_normalized for word in question_words_check)
+
+                    if similarity > 0.7 and has_question_words:
+                        logger.warning(f"⚠️ DETECTED REPEATED QUESTION (regex): похож на заданный вопрос: '{asked[:50]}...'")
+                        logger.info(f"  Сходство: {similarity:.0%}, новый: '{question[:50]}...'")
+                        # Генерируем альтернативный вопрос в зависимости от того, что спрашивали
+                        if 'где' in asked_normalized or 'мест' in asked_normalized:
+                            # Уже спрашивали "где?" → спрашиваем "что?"
+                            return "Уточните детали: что именно происходит?"
+                        elif 'что' in asked_normalized or 'объект' in asked_normalized:
+                            # Уже спрашивали "что?" → спрашиваем "где?"
+                            return "Где именно это произошло?"
+                        else:
+                            # Общий случай → спрашиваем детали
+                            return "Опишите подробнее что именно происходит."
 
         # ИСПРАВЛЕНО (2026-01-10): Проверка абсолютных фактов ДО LLM вызова (критично!)
         if txtPrb or (established_filters and established_filters.get('location_type')):
@@ -3047,10 +3086,12 @@ JSON:"""
                     question = question[1:-1]
 
                 # ИСПРАВЛЕНО (2026-01-03): Regex-валидаторы удалены, используем LLM-валидацию
+                # ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
                 question = await self._llm_validate_question(
                     question=question,
                     txtPrb=txtPrb,
-                    established_filters=established_filters
+                    established_filters=established_filters,
+                    asked_questions=asked_questions  # ИСПРАВЛЕНО (2026-01-10)
                 )
 
                 # ИСПРАВЛЕНО (2025-12-29): Отладочный режим - добавляем объяснение к вопросу
