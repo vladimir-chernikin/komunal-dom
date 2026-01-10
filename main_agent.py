@@ -4000,19 +4000,20 @@ JSON:"""
                     after_count = len(filtered_candidates)
                     logger.info(f"  [OK] Фильтр incident_type: {before_count} -> {after_count} (оставили Инцидент)")
 
-            # ИСПРАВЛЕНИЕ (2026-01-05): ОТКЛЮЧАЕМ фильтрацию по category
-            # ПРИЧИНА: FilterDetectionService часто ошибается (определил 'Канализация' для 'прорвало трубу')
-            # Фильтр убивал всех кандидатов (5 → 0) из-за неправильной категории
+            # ИСПРАВЛЕНО (2026-01-10): ВКЛЮЧАЕМ фильтрацию по category (была отключена в bypass)
             elif filter_name == 'category' and value:
-                logger.info(f"[!] Фильтр category={value}: ПРОПУСКАЕМ (FilterDetectionService часто ошибается)")
-                continue
+                before_count = len(filtered_candidates)
+                filtered_candidates = [
+                    c for c in filtered_candidates
+                    if value.lower() in c.get('category', '').lower()
+                ]
+                after_count = len(filtered_candidates)
+                logger.info(f"  [OK] Фильтр category: {before_count} -> {after_count} (оставили {value})")
 
-            # ИСПРАВЛЕНИЕ (2026-01-05): ОТКЛЮЧАЕМ фильтрацию по object_description
-            # ПРИЧИНА: object_description='труба прорвало' - это описание проблемы,
-            # а НЕ подстрока для поиска в названии услуги. Неправильная логика убивала всех кандидатов.
-            elif filter_name == 'object_description' and value:
-                logger.info(f"[!] Фильтр object_description={value}: ПРОПУСКАЕМ (неправильная логика)")
-                continue
+            # object_description НЕ используется для фильтрации кандидатов
+            # Это описание проблемы, а НЕ критерий поиска
+
+            # УДАЛЕНО (2026-01-10): Временный bypass от 2026-01-05 больше не нужен
 
         return filtered_candidates
 
