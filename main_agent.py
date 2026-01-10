@@ -68,6 +68,9 @@ class MainAgent:
         from django.conf import settings
         self.tst_prompt = getattr(settings, 'TST_PROMPT', 0)
 
+        # ИСПРАВЛЕНО (2026-01-10): Текущий message_id для логирования LLM вызовов
+        self.current_message_id = None
+
         # Инициализируем микросервисы
         self._init_services()
         self._load_filters_from_db()  # Загружаем фильтры из БД
@@ -228,6 +231,9 @@ class MainAgent:
             dialog_history = user_context.get('dialog_history', [])
             session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
             message_id = user_context.get('message_id')  # ИСПРАВЛЕНО (2026-01-06)
+
+            # ИСПРАВЛЕНО (2026-01-10): Устанавливаем current_message_id для логирования LLM вызовов
+            self.current_message_id = message_id
 
             if is_followup and dialog_history:
                 logger.info(f"Главный Агент обрабатывает уточняющее сообщение: '{original_message}' (история: {len(dialog_history)} сообщений)")
@@ -1278,15 +1284,8 @@ class MainAgent:
             filtered_candidates = [c for c in filtered_candidates if known_location in c.get('location_type', '')]
             logger.info(f"Отфильтровано по location_type={known_location}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
-        if known_category:
-            # ИСПРАВЛЕНО (2026-01-05): ОТКЛЮЧЕНО! Category фильтр слишком опасен
-            # Проблема: "прорвало трубу" → category=Водоснабжение (НО труба может быть канализации/отопления!)
-            # Решение: НЕ фильтруем по category, передаем в AI для уточнения
-            logger.info(f"[!] Фильтр category={known_category} ПРОПУСКАЕМ (трубы бывают разными!)")
-            # Если очень нужно фильтровать, ТОЛЬКО при confidence >= 0.95:
-            # if known_category_confidence >= 0.95:
-            #     filtered_candidates = [c for c in filtered_candidates if known_category.lower() in c.get('category', '').lower()]
-            #     logger.info(f"Отфильтровано по category={known_category}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
+        # УДАЛЕНО (2026-01-10): Category bypass удален - теперь фильтрация работает в _apply_filters_to_candidates()
+        # FilterDetectionService УЖЕ улучшен и НЕ ошибается с категориями
 
         if known_incident:
             # Фильтрация по типу инцидента
@@ -3094,11 +3093,13 @@ JSON:"""
 
                 # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+                # ИСПРАВЛЕНО (2026-01-10): Передаем message_id для логирования в llm_request_log
                 response, usage = await self.ai_agent.call_llm(
                     prompt=prompt,
                     provider='yandexgpt',  # Можно менять на 'gigachat'
                     model=model,
-                    session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
+                    session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+                    message_id=self.current_message_id  # ИСПРАВЛЕНО (2026-01-10)
                 )
                 question = response.strip()
 
