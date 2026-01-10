@@ -944,7 +944,7 @@ class MainAgent:
         # AI не нужен
         return None
 
-    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None) -> Dict:
+    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None) -> Dict:
         """
         Создание результата из таблицы кандидатов по ТЗ 3.2.2
 
@@ -970,7 +970,13 @@ class MainAgent:
 
         # Генерируем умный уточняющий вопрос с учетом истории
         # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
-        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id)
+        # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters и txtPrb для умных вопросов
+        clarification_result = await self._generate_smart_clarification(
+            candidates_with_attrs, original_message, is_followup, dialog_history,
+            txtPrb=None,  # Будет извлечен внутри
+            established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10)
+            session_id=session_id
+        )
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
