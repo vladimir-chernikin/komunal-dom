@@ -423,18 +423,39 @@ Session ID: {session_id}
         else:
             details += " {(нет фильтров)}\n"
 
-        # 9. Прочая отладочная информация
+        # AI Orchestrator
+        # ИСПРАВЛЕНО (2026-01-10): Добавлен заголовок блока (задача 9)
         details += "\n9. Прочая отладочная информация:\n"
 
-        # AI Orchestrator
         ai_orchestrator = service_metadata.get('ai_orchestrator', {})
         if isinstance(ai_orchestrator, dict) and ai_orchestrator:
             status = ai_orchestrator.get('status', 'unknown')
-            service_id = ai_orchestrator.get('service_id', 'N/A')
-            service_name = ai_orchestrator.get('service_name', 'N/A')
+            service_id = ai_orchestrator.get('service_id')
+            service_name = ai_orchestrator.get('service_name', '')
             confidence_raw = ai_orchestrator.get('confidence', 0.0) or 0.0
             confidence = float(confidence_raw) * 100
-            details += f" AI Orchestrator: Status={status}, ServiceID={service_id}, ServiceName={service_name}, Confidence={confidence:.1f}%\n"
+
+            # ИСПРАВЛЕНО (2026-01-10): Расшифровка статусов AI Orchestrator (задача 9)
+            status_map = {
+                'SUCCESS': 'Услуга определена однозначно',
+                'AMBIGUOUS': 'Требуется уточнение',
+                'ERROR': 'Ошибка при определении',
+                'unknown': 'Статус не определен'
+            }
+            status_description = status_map.get(status, status)
+
+            details += "\n9. Прочая отладочная информация:\n"
+            details += f" AI Orchestrator: {status_description}\n"
+            if service_id:
+                details += f"  ├─ ServiceID: {service_id} (ID определенной услуги)\n"
+            else:
+                details += f"  ├─ ServiceID: None (услуга не определена)\n"
+            if service_name:
+                details += f"  ├─ ServiceName: {service_name} (название услуги)\n"
+            else:
+                details += f"  ├─ ServiceName: None (название не определено)\n"
+            details += f"  ├─ Confidence: {confidence:.1f}% (уверенность определения)\n"
+            details += f"  └─ Всего кандидатов: {len(service_result.get('candidates', []))} (найдено услуг)\n"
 
         # Filter Detection
         filter_detection = service_metadata.get('filter_detection', {})
@@ -482,15 +503,26 @@ Session ID: {session_id}
                     details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
                     llm_calls_found = True
 
-                details += f"\n [{provider} - {model}]\n"
+                # ИСПРАВЛЕНО (2026-01-10): Определяем сервис по промпту (задача 10)
+                service_name = "Unknown"
+                if 'ProblemAccumulationService' in prompt_text or 'аналитик, извлекающий' in prompt_text:
+                    service_name = "ProblemAccumulationService"
+                elif 'FilterDetectionService' in prompt_text or 'Анализируй обращение и верни JSON фильтров' in prompt_text:
+                    service_name = "FilterDetectionService"
+                elif 'AI-диспетчер управляющей компании' in prompt_text:
+                    service_name = "MainAgent (AI Question Generator)"
+                elif 'строгий логический валидатор' in prompt_text:
+                    service_name = "QuestionValidatorService"
+
+                details += f"\n{'=' * 20} {service_name} ({provider} - {model}) {'=' * 20}\n"
                 if prompt_text:
                     # Ограничиваем длину промпта для читаемости
                     prompt_preview = prompt_text[:1000] + "..." if len(prompt_text) > 1000 else prompt_text
-                    details += f"  ПРЕДОСТАВЛЕННЫЙ ПРОМПТ:\n{prompt_preview}\n"
+                    details += f"ПРОМПТ:\n{prompt_preview}\n"
                 if response_text:
                     # Ограничиваем длину ответа для читаемости
                     response_preview = response_text[:500] + "..." if len(response_text) > 500 else response_text
-                    details += f"  ОТВЕТ LLM:\n{response_preview}\n"
+                    details += f"ОТВЕТ LLM:\n{response_preview}\n"
 
         if not llm_calls_found:
             details += "\n9.1. LLM ВЫЗОВЫ:\n {(нет данных из llm_request_log)}\n"
