@@ -2766,13 +2766,24 @@ JSON:"""
 """
 
         # Блок абсолютных фактов
+        # ИСПРАВЛЕНО (2026-01-10): Усилена формулировка с конкретными примерами
         facts_block = ""
         if absolute_facts:
             facts_list = "\n".join([f"- {fact}" for fact in absolute_facts])
             facts_block = f"""
-БЛОК: АБСОЛЮТНЫЕ ФАКТЫ (ЗАПРЕТ НА ВОПРОСЫ)
-Ниже перечислены факты, которые УЖЕ установлены. ТЕБЕ ЗАПРЕЩЕНО ЗАДАВАТЬ ВОПРОСЫ ОБ ЭТОМ.
+⛔⛔⛔ КРИТИЧЕСКИ ВАЖНО: АБСОЛЮТНЫЕ ФАКТЫ (ЗАПРЕТ НА ВОПРОСЫ) ⛔⛔⛔
+
+Ниже перечислены факты, которые УЖЕ установлены с высокой уверенностью (>80%).
+
 {facts_list}
+
+🚨 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом:
+- Если "Уже известна проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?", "Что случилось?", "В чем проблема?"
+- Если "Уже известна локация: зале" → НЕЛЬЗЯ спрашивать "Где именно?", "В каком месте?"
+- Если "Уже известна категория: Водоснабжение" → НЕЛЬЗЯ спрашивать "Это водоснабжение?"
+
+ТЕБЕ ЗАПРЕЩЕНО ЗАДАВАТЬ ВОПРОСЫ О ТОМ, ЧТО УЖЕ ИЗВЕСТНО!
+Задавай ТОЛЬКО вопросы о НЕИЗВЕСТНЫХ деталях.
 """
 
         # ИСПРАВЛЕНО (2026-01-05): Блок уже заданных вопросов
@@ -3046,6 +3057,36 @@ JSON:"""
                 semantic_check = established_filters.get('semantic_check', {})
                 if semantic_check.get('absolute_facts'):
                     absolute_facts = semantic_check['absolute_facts']
+            
+            # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
+            # КРИТИЧЕСКИ ВАЖНО: extracted фильтры должны попадать в absolute_facts!
+            if established_filters:
+                # object_description - если известен с высокой уверенностью
+                obj_desc = established_filters.get('object_description')
+                if obj_desc and obj_desc.get('confidence', 0) >= 0.8:
+                    obj_value = obj_desc.get('value')
+                    if obj_value:
+                        absolute_facts.append(f"Уже известна проблема: {obj_value}")
+                        logger.info(f"[!] Absolute fact: object_description={obj_value} (confidence: {obj_desc.get('confidence', 0)})")
+                
+                # location_type - если известна с высокой уверенностью
+                location = established_filters.get('location_type')
+                if location and location.get('confidence', 0) >= 0.8:
+                    loc_value = location.get('value')
+                    if loc_value:
+                        absolute_facts.append(f"Уже известна локация: {loc_value}")
+                        logger.info(f"[!] Absolute fact: location_type={loc_value} (confidence: {location.get('confidence', 0)})")
+                
+                # category - если известна с высокой уверенностью
+                category = established_filters.get('category')
+                if category and category.get('confidence', 0) >= 0.8:
+                    cat_value = category.get('value')
+                    if cat_value:
+                        absolute_facts.append(f"Уже известна категория: {cat_value}")
+                        logger.info(f"[!] Absolute fact: category={cat_value} (confidence: {category.get('confidence', 0)})")
+            
+
+
 
             # ИСПРАВЛЕНО (2026-01-05): Извлекаем уже заданные вопросы из истории
             asked_questions = []
