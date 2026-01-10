@@ -1280,7 +1280,11 @@ class MainAgent:
                 'status': 'AMBIGUOUS',
                 'message': message,
                 'single_candidate': None,
-                'filtered_candidates': []
+                'filtered_candidates': [],
+                '_metadata': {  # ИСПРАВЛЕНО (2026-01-10): Добавляем established_filters
+                    'established_filters': established_filters,
+                    'txtPrb': txtPrb
+                }
             }
 
         # ИЗВЛЕКАЕМ ФИЛЬТРЫ ИЗ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ И ИСТОРИИ ДИАЛОГА
@@ -1482,7 +1486,11 @@ class MainAgent:
                     'status': 'AMBIGUOUS',
                     'message': f"Уточните, пожалуйста, детали проблемы (выберите один из вариантов ниже)",
                     'single_candidate': None,
-                    'filtered_candidates': filtered_candidates
+                    'filtered_candidates': filtered_candidates,
+                    '_metadata': {  # ИСПРАВЛЕНО (2026-01-10): Добавляем established_filters
+                        'established_filters': established_filters,
+                        'txtPrb': txtPrb
+                    }
                 }
 
         # Если осталось 0 кандидатов после фильтрации - используем оригинальный список
@@ -1533,6 +1541,10 @@ class MainAgent:
                 'response': ai_result['response'],
                 'model': ai_result['model'],
                 'usage': ai_result['usage']
+            },
+            '_metadata': {  # ИСПРАВЛЕНО (2026-01-10): Добавляем established_filters для сохранения в БД
+                'established_filters': established_filters,
+                'txtPrb': txtPrb
             }
         }
 
