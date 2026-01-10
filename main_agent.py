@@ -1120,16 +1120,18 @@ class MainAgent:
             logger.error(f"Ошибка поиска услуг по фильтрам: {e}")
             return []
 
-    def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None, txtPrb: str = None) -> Dict:
+    def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None) -> Dict:
         """
         Извлекает фильтры (location, category, incident, object_description) из текста сообщения и истории диалога
 
         ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
+        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр established_filters для fallback на semantic_check
 
         Args:
             message_text: Текст сообщения пользователя
             dialog_history: История диалога
             txtPrb: Накопленное описание проблемы (ProblemAccumulationService) - КРИТИЧЕСКИ ВАЖНО!
+            established_filters: Установленные фильтры (для fallback на semantic_check)
         """
         filters = {
             'location': None,
@@ -1177,6 +1179,31 @@ class MainAgent:
                         logger.info(f"FilterDetectionService извлек object_description: {filters['object_description']}")
             except Exception as e:
                 logger.warning(f"Ошибка вызова FilterDetectionService: {e}")
+
+        # ИСПРАВЛЕНО (2026-01-10): Fallback на semantic_check если FilterDetection вернул None
+        # КРИТИЧНО: ProblemAccumulationService может извлечь location лучше чем FilterDetectionService!
+        if not filters.get('location') and established_filters:
+            semantic_check = established_filters.get('semantic_check', {})
+            if isinstance(semantic_check, dict):
+                normalized_fields = semantic_check.get('normalized_fields', {})
+                if isinstance(normalized_fields, dict):
+                    location_from_semantic = normalized_fields.get('location')
+                    if location_from_semantic:
+                        # Пробуем определить location_type из location
+                        location_lower = location_from_semantic.lower()
+
+                        # Проверяем на "Индивидуальное" (квартира, ванная, кухня, зал, балкон и т.д.)
+                        individual_places = ['квартир', 'ванная', 'ванн', 'кухн', 'зал', 'спальн', 'комнат', 'балкон', 'лоджий', 'туалет', 'санузел']
+                        if any(place in location_lower for place in individual_places):
+                            filters['location'] = 'Индивидуальное'
+                            logger.info(f"Fallback: location=Индивидуальное (из semantic_check.location='{location_from_semantic}')")
+
+                        # Проверяем на "Общедомовое" (подъезд, крыша, подвал, фасад, чердак и т.д.)
+                        else:
+                            common_places = ['подъезд', 'крыш', 'подвал', 'фасад', 'чердак', 'лестнич', 'обществ', 'подъездн']
+                            if any(place in location_lower for place in common_places):
+                                filters['location'] = 'Общедомовое'
+                                logger.info(f"Fallback: location=Общедомовое (из semantic_check.location='{location_from_semantic}')")
 
         # УДАЛЕНО (2025-12-25): Весь fallback хардкод keywords удален
         # FilterDetectionService теперь является единственным источником фильтров
@@ -1236,7 +1263,8 @@ class MainAgent:
 
         # ИЗВЛЕКАЕМ ФИЛЬТРЫ ИЗ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ И ИСТОРИИ ДИАЛОГА
         # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
-        extracted_filters = self._extract_filters_from_message(original_message, dialog_history, txtPrb)
+        # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для fallback на semantic_check
+        extracted_filters = self._extract_filters_from_message(original_message, dialog_history, txtPrb, established_filters)
         known_location = extracted_filters.get('location')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
         known_category = extracted_filters.get('category')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
         known_incident = extracted_filters.get('incident_type')  # ИСПРАВЛЕНО (2026-01-10): БАГ! было 'incident'
