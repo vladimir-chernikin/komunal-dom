@@ -779,7 +779,8 @@ class MainAgent:
                         candidates_data = filtered
 
             # ИСПРАВЛЕНО (2025-12-29): Получаем результат и добавляем metadata
-            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history)
+            # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
+            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id)
 
             # Добавляем metadata если его нет
             if '_metadata' not in result and 'result_metadata' in locals():
@@ -939,7 +940,7 @@ class MainAgent:
         # AI не нужен
         return None
 
-    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None) -> Dict:
+    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None) -> Dict:
         """
         Создание результата из таблицы кандидатов по ТЗ 3.2.2
 
@@ -964,7 +965,8 @@ class MainAgent:
         candidates_with_attrs = await self._load_candidates_attributes(candidates_data[:5])
 
         # Генерируем умный уточняющий вопрос с учетом истории
-        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+        # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
+        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id)
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
@@ -1126,7 +1128,7 @@ class MainAgent:
             logger.error(f"Ошибка поиска услуг по фильтрам: {e}")
             return []
 
-    def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None) -> Dict:
+    def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None) -> Dict:
         """
         Извлекает фильтры (location, category, incident, object_description) из текста сообщения и истории диалога
 
@@ -1238,6 +1240,10 @@ class MainAgent:
             except Exception as e:
                 logger.warning(f"_generate_smart_clarification: ошибка извлечения txtPrb: {e}")
 
+        # ИСПРАВЛЕНО (2026-01-10): Убеждаемся, что established_filters - это dict (не None)
+        if established_filters is None:
+            established_filters = {}
+
         # ИСПРАВЛЕНО (2025-12-28): Добавляем отладочные логи
         logger.info("[SEARCH] _generate_smart_clarification ДИАГНОСТИКА:")
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:80] if txtPrb else '(не передан)'}'")
@@ -1270,7 +1276,8 @@ class MainAgent:
         # ИЗВЛЕКАЕМ ФИЛЬТРЫ ИЗ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ И ИСТОРИИ ДИАЛОГА
         # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
         # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для fallback на semantic_check
-        extracted_filters = self._extract_filters_from_message(original_message, dialog_history, txtPrb, established_filters)
+        # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
+        extracted_filters = self._extract_filters_from_message(original_message, dialog_history, txtPrb, established_filters, session_id)
         known_location = extracted_filters.get('location')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
         known_category = extracted_filters.get('category')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
         known_incident = extracted_filters.get('incident_type')  # ИСПРАВЛЕНО (2026-01-10): БАГ! было 'incident'
@@ -1606,7 +1613,8 @@ class MainAgent:
         # ИСПРАВЛЕНО: Загружаем атрибуты из БД вместо пустых значений
         candidates_with_attrs = await self._load_candidates_attributes(candidates[:3])
 
-        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history)
+        # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
+        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id)
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
