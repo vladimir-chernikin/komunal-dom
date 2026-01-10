@@ -188,13 +188,14 @@ def get_dialogs_list(request):
 
         # ИСПРАВЛЕНО (2026-01-10): django_user → django_user_id (IntegerField)
         # ИСПРАВЛЕНО (2026-01-10): Добавлен фильтр django_user_id__isnull=False
+        # ИСПРАВЛЕНО (2026-01-10): created_at → timestamp (правильное имя поля в модели)
         sessions = MessageLog.objects.filter(
             channel='web',
             django_user_id=request.user.id,
             django_user_id__isnull=False
         ).values('session_id').annotate(
-            first_message_time=Min('created_at'),
-            last_message_time=Max('created_at'),
+            first_message_time=Min('timestamp'),
+            last_message_time=Max('timestamp'),
             message_count=Count('message_id')
         ).order_by('-last_message_time')
 
@@ -204,18 +205,21 @@ def get_dialogs_list(request):
             session_id = session['session_id']
 
             # ИСПРАВЛЕНО (2026-01-10): django_user → django_user_id
+            # ИСПРАВЛЕНО (2026-01-10): created_at → timestamp (правильное имя поля в модели)
             # Получаем третье сообщение (или первое, если сообщений меньше)
             messages = MessageLog.objects.filter(
                 channel='web',
                 django_user_id=request.user.id,
                 session_id=session_id
-            ).order_by('created_at')
+            ).order_by('timestamp')
 
             third_message_text = ""
             if messages.count() >= 3:
-                third_message_text = messages[2].text[:100]  # Первые 100 символов
+                # ИСПРАВЛЕНО (2026-01-10): text → message_content (правильное имя поля в модели)
+                third_message_text = messages[2].message_content[:100]  # Первые 100 символов
             elif messages.count() > 0:
-                third_message_text = messages[0].text[:100]
+                # ИСПРАВЛЕНО (2026-01-10): text → message_content (правильное имя поля в модели)
+                third_message_text = messages[0].message_content[:100]
 
             dialogs_list.append({
                 'session_id': session_id,
