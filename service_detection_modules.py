@@ -1031,6 +1031,31 @@ class AddressExtractor:
                 r'(?:бул\.?|бульвар)\s+([А-Яа-я-]+)(?=\s+|$|,|\d)',
             ]
 
+            # ИСПРАВЛЕНИЕ (2026-01-11): Добавляем паттерн для свободной формы "название улицы + номер"
+            # КРИТИЧЕСКИ ВАЖНО для голосового интерфейса - пользователь говорит "мира 25", а не "ул. Мира, д. 25"
+            # Паттерн: название (2+ слова) + пробел + номер (1-3 цифры) + опционально "кв X"
+            # Примеры: "мира 25", "ленина 10", "ленина 10 кв 5", "черноморская 15", "победы 7а"
+            freeform_match = re.match(
+                r'^\s*([А-Яа-яЁё-]{2,}(?:\s+[А-Яа-яЁё-]+)*)\s+(\d{1,3}[а-яА-Я/]?)\s*(?:кв\.?\s*\d+)?\s*$',
+                text_lower.strip()
+            )
+            if freeform_match and not result.get('street'):
+                street_candidate = freeform_match.group(1).strip()
+                house_candidate = freeform_match.group(2)
+
+                # Проверка что это не похоже на описание проблемы
+                # (исключаем слова характерные для описания проблем)
+                problem_keywords = [
+                    'теч', 'прорыв', 'сломал', 'засор', 'нет', 'горяч', 'холодн',
+                    'батар', 'кран', 'труба', 'унитаз', 'смесит', 'раковин'
+                ]
+                is_problem = any(kw in street_candidate.lower() for kw in problem_keywords)
+
+                if not is_problem:
+                    result['street'] = street_candidate.capitalize()
+                    result['house_number'] = house_candidate
+                    logger.debug(f"Found freeform address: street={result['street']}, house={result['house_number']}")
+
             for pattern in street_patterns:
                 match = re.search(pattern, text_lower, re.IGNORECASE)
                 if match:
