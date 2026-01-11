@@ -979,8 +979,8 @@ class AddressExtractor:
             Dict с адресными компонентами + confidence
         """
 
-        # ШАГ 1: Парсить текущее сообщение
-        current_components = self._parse_address_text(text)
+        # ШАГ 1: Парсить текущее сообщение (передаем context_memory для умного парсинга)
+        current_components = self._parse_address_text(text, context_memory=context_memory)
 
         # ШАГ 2: Объединить с памятью
         if context_memory:
@@ -998,12 +998,13 @@ class AddressExtractor:
 
         return result
 
-    def _parse_address_text(self, text: str) -> Dict:
+    def _parse_address_text(self, text: str, context_memory: Dict = None) -> Dict:
         """
         Парсит текущее сообщение на предмет адресных компонентов.
 
         Args:
             text: Текст сообщения
+            context_memory: Dict с предыдущими компонентами (для умного парсинга)
 
         Returns:
             Dict: Компоненты адреса из ТЕКУЩЕГО сообщения только
@@ -1031,30 +1032,74 @@ class AddressExtractor:
                 r'(?:бул\.?|бульвар)\s+([А-Яа-я-]+)(?=\s+|$|,|\d)',
             ]
 
-            # ИСПРАВЛЕНИЕ (2026-01-11): Добавляем паттерн для свободной формы "название улицы + номер"
-            # КРИТИЧЕСКИ ВАЖНО для голосового интерфейса - пользователь говорит "мира 25", а не "ул. Мира, д. 25"
-            # Паттерн: название (2+ слова) + пробел + номер (1-3 цифры) + опционально "кв X"
-            # Примеры: "мира 25", "ленина 10", "ленина 10 кв 5", "черноморская 15", "победы 7а"
-            freeform_match = re.match(
+            # ИСПРАВЛЕНИЕ (2026-01-11): Добавлены паттерны для свободной формы адреса
+            # КРИТИЧЕСКИ ВАЖНО для голосового интерфейса - пользователь говорит естественным языком
+            # Примеры: "на мира", "мира 25", "ленина 10", "ленина 10 кв 5"
+
+            # Паттерн 1: "на + название улицы" (без номера дома)
+            on_match = re.match(
+                r'^\s*(?:на|в)\s+([А-Яа-яЁё-]{2,}(?:\s+[А-Яа-яЁё-]+)*)\s*$',
+                text_lower.strip()
+            )
+            if on_match and not result.get('street'):
+                street_candidate = on_match.group(1).strip()
+
+                # Фильтруем слова-проблемы
+                problem_keywords = [
+                    'теч', 'прорыв', 'сломал', 'засор', 'нет', 'горяч', 'холодн',
+                    'батар', 'кран', 'труба', 'унитаз', 'смесит', 'раковин',
+                    'дом', 'дома', 'доме'  # Исключаем чтобы не распознать "дом" как улицу
+                ]
+                is_problem = any(kw in street_candidate.lower() for kw in problem_keywords)
+
+                if not is_problem:
+                    result['street'] = street_candidate.capitalize()
+                    logger.debug(f"Found street (on pattern): {result['street']}")
+
+            # Паттерн 2: название улицы + номер дома (полный адрес)
+            full_match = re.match(
                 r'^\s*([А-Яа-яЁё-]{2,}(?:\s+[А-Яа-яЁё-]+)*)\s+(\d{1,3}[а-яА-Я/]?)\s*(?:кв\.?\s*\d+)?\s*$',
                 text_lower.strip()
             )
-            if freeform_match and not result.get('street'):
-                street_candidate = freeform_match.group(1).strip()
-                house_candidate = freeform_match.group(2)
+            if full_match and not result.get('street'):
+                street_candidate = full_match.group(1).strip()
+                house_candidate = full_match.group(2)
 
-                # Проверка что это не похоже на описание проблемы
-                # (исключаем слова характерные для описания проблем)
+                # Фильтруем слова-проблемы
                 problem_keywords = [
                     'теч', 'прорыв', 'сломал', 'засор', 'нет', 'горяч', 'холодн',
-                    'батар', 'кран', 'труба', 'унитаз', 'смесит', 'раковин'
+                    'батар', 'кран', 'труба', 'унитаз', 'смесит', 'раковин',
+                    'дом', 'дома', 'доме'  # Исключаем чтобы не распознать "дом" как улицу
                 ]
                 is_problem = any(kw in street_candidate.lower() for kw in problem_keywords)
 
                 if not is_problem:
                     result['street'] = street_candidate.capitalize()
                     result['house_number'] = house_candidate
-                    logger.debug(f"Found freeform address: street={result['street']}, house={result['house_number']}")
+                    logger.debug(f"Found full address: street={result['street']}, house={result['house_number']}")
+
+            # Паттерн 3: Просто название улицы (если прошлое сообщение было об адресе)
+            # Используем ТОЛЬКО если есть context_memory с уже распознанным домом!
+            if context_memory and context_memory.get('house_number') and not result.get('street'):
+                # Если уже знаем дом - maybe user говорит только улицу
+                street_only_match = re.match(
+                    r'^\s*([А-Яа-яЁё-]{2,}(?:\s+[А-Яа-яЁё-]+)*)\s*$',
+                    text_lower.strip()
+                )
+                if street_only_match:
+                    street_candidate = street_only_match.group(1).strip()
+
+                    # Фильтруем слова-проблемы
+                    problem_keywords = [
+                        'теч', 'прорыв', 'сломал', 'засор', 'нет', 'горяч', 'холодн',
+                        'батар', 'кран', 'труба', 'унитаз', 'смесит', 'раковин',
+                        'дом', 'дома', 'доме'  # Исключаем чтобы не распознать "дом" как улицу
+                    ]
+                    is_problem = any(kw in street_candidate.lower() for kw in problem_keywords)
+
+                    if not is_problem:
+                        result['street'] = street_candidate.capitalize()
+                        logger.debug(f"Found street (only): {result['street']}")
 
             for pattern in street_patterns:
                 match = re.search(pattern, text_lower, re.IGNORECASE)

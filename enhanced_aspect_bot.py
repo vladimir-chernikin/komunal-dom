@@ -439,65 +439,85 @@ class EnhancedAspectBot:
             )
 
     async def handle_address_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-        """Обработка ввода адреса для заявки"""
+        """Обработка ввода адреса для заявки с поддержкой ввода по частям"""
         user = update.effective_user
         state = self.get_conversation_state(user.id)
 
-        # ИСПРАВЛЕНО: AddressExtractor теперь интегрирован в MainAgent
-        # При повторном вызове с адресом, MainAgent извлечет адрес из сообщения
+        # ИСПРАВЛЕНО (2026-01-11): Добавлен ввод адреса по частям для голосового интерфейса
+        # Пользователь может сказать: "на Мира" → "дом 25" → "квартира 5"
+        # КРИТИЧЕСКИ ВАЖНО: Накапливаем компоненты адреса между сообщениями!
+
         if not self.message_handler:
             await update.message.reply_text("Система временно недоступна")
             return
 
         try:
-            # Обрабатываем сообщение с адресом через MessageHandlerService
-            result = await self.message_handler.handle_incoming_message(
-                text=text,
-                user_id=str(user.id),
-                channel='telegram',
-                session_id=f"telegram_{user.id}",
-                metadata={
-                    'username': user.username,
-                    'first_name': user.first_name,
-                    'is_address_input': True  # Флаг что это ввод адреса
-                }
+            # Шаг 1: Извлекаем адресные компоненты из текущего сообщения
+            # Импортируем AddressExtractor локально чтобы избежать circular import
+            from service_detection_modules import AddressExtractor
+            extractor = AddressExtractor()
+
+            # Объединяем с сохраненными компонентами (накопление по частям!)
+            previous_components = state.address_components or {}
+            current_components = extractor.extract_address_components(
+                text,
+                context_memory=previous_components  # Передаем память для объединения
             )
 
-            # Анализируем результат
-            if result.get('status') == 'success':
-                raw_result = result.get('raw_result', {})
+            logger.info(f"Адрес накопление: было={previous_components}, стало={current_components}")
 
-                # Если адрес найден в raw_result
-                address_components = raw_result.get('address_components', {})
-                address_string = raw_result.get('address_string', '')
+            # Шаг 2: Проверяем что получилось
+            has_street = bool(current_components.get('street'))
+            has_house = bool(current_components.get('house_number'))
+            has_apartment = bool(current_components.get('apartment_number'))
 
-                # Сохраняем адрес
-                if address_components:
-                    state.address_components = address_components
-                    state.current_address = address_string or text
+            # Шаг 3: Сохраняем накопленные компоненты
+            state.address_components = current_components
 
-                    # Переходим к подтверждению
-                    state.mode = 'CONFIRMATION'
+            # Формируем строку адреса для отображения
+            address_parts = []
+            if has_street:
+                address_parts.append(f"ул. {current_components['street']}")
+            if has_house:
+                address_parts.append(f"д. {current_components['house_number']}")
+            if has_apartment:
+                address_parts.append(f"кв. {current_components['apartment_number']}")
+            address_string = ', '.join(address_parts) if address_parts else text
 
-                    # ИСПРАВЛЕНО (2025-12-25): Голосовой интерфейс - открытые вопросы!
-                    # КРИТИЧЕСКИ ВАЖНО: НЕ добавлять "Ответьте да или нет" - это закрытый вопрос!
-                    confirm_text = f"Проверьте информацию:\n\n"
-                    confirm_text += f"Услуга: {state.current_service_name}\n"
-                    if address_string:
-                        confirm_text += f"Адрес: {address_string}\n"
-                    confirm_text += f"\nВсе верно?"
+            # Шаг 4: Проверяем полноту адреса
+            if has_street and has_house:
+                # Адрес ПОЛНЫЙ (есть улица + дом) - переходим к подтверждению
+                state.current_address = address_string
+                state.mode = 'CONFIRMATION'
 
-                    await update.message.reply_text(confirm_text)
-                    return
+                # ИСПРАВЛЕНО (2025-12-25): Голосовой интерфейс - открытые вопросы!
+                confirm_text = f"Проверьте информацию:\n\n"
+                confirm_text += f"Услуга: {state.current_service_name}\n"
+                confirm_text += f"Адрес: {address_string}\n"
+                confirm_text += f"\nВсе верно?"
 
-            # ИСПРАВЛЕНО (2026-01-11): Голосовой интерфейс - не требуем строгий формат!
-            # Пользователь может сказать "мира 25" или "ленина 10" - это нормальная форма
-            # Если адрес не распознан - просим уточнить естественным языком
-            await update.message.reply_text(
-                "Не удалось распознать адрес.\n\n"
-                "Пожалуйста, скажите адрес в свободной форме.\n"
-                "Например: Мира 25, или Ленина 10 квартира 5"
-            )
+                await update.message.reply_text(confirm_text)
+                return
+
+            # Шаг 5: Адрес НЕ полный - спрашиваем следующую часть
+            # ИСПРАВЛЕНИЕ (2026-01-11): Голосовой интерфейс - естественные вопросы!
+            if not has_street and not has_house:
+                # Ничего не распознано
+                await update.message.reply_text(
+                    "Не удалось распознать адрес.\n\n"
+                    "Пожалуйста, скажите адрес в свободной форме.\n"
+                    "Например: Мира 25, или Ленина 10"
+                )
+            elif has_street and not has_house:
+                # Есть улица, нет дома
+                await update.message.reply_text(
+                    f"Улица {current_components['street']}. Какой номер дома?"
+                )
+            elif has_house and not has_street:
+                # Есть дом, нет улицы (редкий случай)
+                await update.message.reply_text(
+                    f"Дом {current_components['house_number']}. Какая улица?"
+                )
 
         except Exception as e:
             logger.error(f"Ошибка при обработке адреса: {e}")
