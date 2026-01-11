@@ -992,9 +992,10 @@ class AddressExtractor:
         result = self._normalize_components(result)
 
         # ШАГ 4: Рассчитать confidence (0-1)
-        parts = sum(1 for v in [result.get('street'), result.get('house_number'),
+        # ИСПРАВЛЕНИЕ (2026-01-11): Добавлен город в расчет confidence
+        parts = sum(1 for v in [result.get('city'), result.get('street'), result.get('house_number'),
                                result.get('apartment_number')] if v)
-        result['confidence'] = min(1.0, parts / 3.0)
+        result['confidence'] = min(1.0, parts / 4.0)  # Теперь 4 компонента вместо 3
 
         return result
 
@@ -1010,6 +1011,7 @@ class AddressExtractor:
             Dict: Компоненты адреса из ТЕКУЩЕГО сообщения только
         """
         result = {
+            'city': None,  # ИСПРАВЛЕНИЕ (2026-01-11): Добавлен город
             'street': None,
             'house_number': None,
             'apartment_number': None,
@@ -1018,6 +1020,89 @@ class AddressExtractor:
 
         try:
             text_lower = text.lower()
+
+            # 0. ГОРОД - ИСПРАВЛЕНИЕ (2026-01-11): Распознаем город ПЕРВЫМ!
+            # КРИТИЧЕСКИ ВАЖНО: Город должен быть определен до улицы
+            # Примеры: "Ярославль мира 25", "город Ярославль, улица Мира 25", "Ярославль"
+            city_patterns = [
+                # "город Название" или "г. Название"
+                r'(?:город|г\.?)\s+([А-Яа-яЁё-]{2,})(?:\s+|,|$)',
+                # Просто название в начале (если после него идет "улица", "проспект" и т.д.)
+                r'^([А-Яа-яЁё-]{2,})\s+(?:ул\.?|улица|пр\.?|проспект|пер\.?|переулок)',
+            ]
+
+            # Сначала проверяем паттерны с явным указанием "город" или "улица"
+            for pattern in city_patterns:
+                match = re.search(pattern, text_lower, re.IGNORECASE)
+                if match:
+                    city_candidate = match.group(1).strip().capitalize()
+
+                    # Фильтруем слова которые НЕ являются городами
+                    not_city_keywords = [
+                        'теч', 'прорыв', 'сломал', 'засор', 'нет', 'горяч', 'холодн',
+                        'батар', 'кран', 'труба', 'унитаз', 'смесит', 'раковин',
+                        'дом', 'дома', 'доме', 'квартира', 'подъезд', 'этаж'
+                    ]
+                    is_not_city = any(kw in city_candidate.lower() for kw in not_city_keywords)
+
+                    if not is_not_city:
+                        result['city'] = city_candidate
+                        logger.debug(f"Found city: {city_candidate}")
+                        break
+
+            # ИСПРАВЛЕНИЕ (2026-01-11): Если город НЕ найден - проверяем первое слово
+            # Паттерн: "Город Улица Номер" (например "Ярославль мира 25")
+            if not result.get('city'):
+                # Разбиваем на слова
+                words = text_lower.strip().split()
+
+                # Если одно слово - maybe это город?
+                if len(words) == 1 and not context_memory:
+                    first_word = words[0].capitalize()
+
+                    # Проверяем что это не номер, не улица, не проблема
+                    not_city_keywords = [
+                        'теч', 'прорыв', 'сломал', 'засор', 'нет', 'горяч', 'холодн',
+                        'батар', 'кран', 'труба', 'унитаз', 'смесит', 'раковин',
+                        'дом', 'дома', 'доме', 'квартира', 'подъезд', 'этаж',
+                        'на', 'в', 'у', 'от', 'из', 'с', 'по', 'к', 'для',
+                        'улица', 'ул', 'проспект', 'пр', 'переулок', 'пер'
+                    ]
+                    is_not_city = first_word.lower() in not_city_keywords
+                    is_number = bool(re.match(r'^\d+[а-яА-Я/]?$', first_word))
+
+                    # Если это не число и не стоп-слово - считаем городом
+                    if not is_not_city and not is_number and len(first_word) >= 3:
+                        result['city'] = first_word
+                        logger.debug(f"Found city (single word): {first_word}")
+
+                elif len(words) >= 2:
+                    # Первое слово - maybe город?
+                    first_word = words[0].capitalize()
+
+                    # Проверяем что первое слово - это не номер и не проблема
+                    not_city_keywords = [
+                        'теч', 'прорыв', 'сломал', 'засор', 'нет', 'горяч', 'холодн',
+                        'батар', 'кран', 'труба', 'унитаз', 'смесит', 'раковин',
+                        'дом', 'дома', 'доме', 'квартира', 'подъезд', 'этаж',
+                        'на', 'в', 'у', 'от', 'из', 'с', 'по', 'к', 'для'
+                    ]
+                    is_not_city = first_word.lower() in not_city_keywords
+                    is_number = bool(re.match(r'^\d+[а-яА-Я/]?$', first_word))
+
+                    # Второе слово - maybe улица?
+                    # Если второе слово выглядит как название улицы (оканчивается на а/я) или далее идет номер
+                    second_word = words[1] if len(words) > 1 else ''
+                    is_street_like = (
+                        second_word.endswith('а') or
+                        second_word.endswith('я') or
+                        second_word.endswith('ая') or
+                        (len(words) >= 3 and words[2].isdigit())
+                    )
+
+                    if not is_not_city and not is_number and is_street_like:
+                        result['city'] = first_word
+                        logger.debug(f"Found city (first word): {first_word}")
 
             # 1. УЛИЦА - регулярные выражения
             street_patterns = [
@@ -1057,9 +1142,16 @@ class AddressExtractor:
                     logger.debug(f"Found street (on pattern): {result['street']}")
 
             # Паттерн 2: название улицы + номер дома (полный адрес)
+            # ИСПРАВЛЕНИЕ (2026-01-11): Убираем город из текста если он найден!
+            text_for_street = text_lower
+            if result.get('city'):
+                # Убираем город из начала текста
+                city_prefix = result['city'].lower() + r'\s*'
+                text_for_street = re.sub(f'^{city_prefix}', '', text_lower).strip()
+
             full_match = re.match(
                 r'^\s*([А-Яа-яЁё-]{2,}(?:\s+[А-Яа-яЁё-]+)*)\s+(\d{1,3}[а-яА-Я/]?)\s*(?:кв\.?\s*\d+)?\s*$',
-                text_lower.strip()
+                text_for_street.strip()
             )
             if full_match and not result.get('street'):
                 street_candidate = full_match.group(1).strip()
@@ -1180,14 +1272,15 @@ class AddressExtractor:
         try:
             result = {}
 
+            # ИСПРАВЛЕНИЕ (2026-01-11): Добавлен город в объединение!
             # Приоритет: текущее сообщение (current) ИЛИ память (memory)
-            for key in ['street', 'house_number', 'apartment_number', 'entrance']:
+            for key in ['city', 'street', 'house_number', 'apartment_number', 'entrance']:
                 result[key] = current.get(key) or memory.get(key)
 
             # Отметить, восстановлено ли из памяти
             result['from_memory'] = any(
                 not current.get(k) and memory.get(k)
-                for k in ['street', 'house_number', 'apartment_number', 'entrance']
+                for k in ['city', 'street', 'house_number', 'apartment_number', 'entrance']
             )
 
             logger.info(f"Merged address components: {result}")

@@ -467,6 +467,9 @@ class EnhancedAspectBot:
             logger.info(f"Адрес накопление: было={previous_components}, стало={current_components}")
 
             # Шаг 2: Проверяем что получилось
+            # ИСПРАВЛЕНИЕ (2026-01-11): Добавлена проверка города!
+            # КРИТИЧЕСКИ ВАЖНО: Город должен быть определен ПЕРВЫМ
+            has_city = bool(current_components.get('city'))
             has_street = bool(current_components.get('street'))
             has_house = bool(current_components.get('house_number'))
             has_apartment = bool(current_components.get('apartment_number'))
@@ -476,6 +479,8 @@ class EnhancedAspectBot:
 
             # Формируем строку адреса для отображения
             address_parts = []
+            if has_city:
+                address_parts.append(f"г. {current_components['city']}")
             if has_street:
                 address_parts.append(f"ул. {current_components['street']}")
             if has_house:
@@ -485,8 +490,16 @@ class EnhancedAspectBot:
             address_string = ', '.join(address_parts) if address_parts else text
 
             # Шаг 4: Проверяем полноту адреса
+            # ИСПРАВЛЕНИЕ (2026-01-11): Сначала проверяем город!
+            if not has_city:
+                # Город НЕ указан - спрашиваем город
+                await update.message.reply_text(
+                    "Какой город? Пожалуйста, назовите населенный пункт."
+                )
+                return
+
             if has_street and has_house:
-                # Адрес ПОЛНЫЙ (есть улица + дом) - переходим к подтверждению
+                # Адрес ПОЛНЫЙ (есть город + улица + дом) - переходим к подтверждению
                 state.current_address = address_string
                 state.mode = 'CONFIRMATION'
 
@@ -502,11 +515,10 @@ class EnhancedAspectBot:
             # Шаг 5: Адрес НЕ полный - спрашиваем следующую часть
             # ИСПРАВЛЕНИЕ (2026-01-11): Голосовой интерфейс - естественные вопросы!
             if not has_street and not has_house:
-                # Ничего не распознано
+                # Есть город, но нет улицы и дома
                 await update.message.reply_text(
-                    "Не удалось распознать адрес.\n\n"
-                    "Пожалуйста, скажите адрес в свободной форме.\n"
-                    "Например: Мира 25, или Ленина 10"
+                    f"Город {current_components['city']}. Какой адрес?\n\n"
+                    "Пожалуйста, скажите улицу и номер дома."
                 )
             elif has_street and not has_house:
                 # Есть улица, нет дома
