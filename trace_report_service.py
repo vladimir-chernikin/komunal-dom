@@ -534,7 +534,7 @@ Session ID: {session_id}
                 if response_text:
                     # Ограничиваем длину ответа для читаемости
                     response_preview = response_text[:500] + "..." if len(response_text) > 500 else response_text
-                    details += f"ОТВЕТ LLM:\n{response_preview}\n"
+                    details += f"------------ ОТВЕТ LLM -----\nОТВЕТ LLM:\n{response_preview}\n"
 
         if not llm_calls_found:
             details += "\n9.1. LLM ВЫЗОВЫ:\n {(нет данных из llm_request_log)}\n"
