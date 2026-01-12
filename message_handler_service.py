@@ -661,15 +661,32 @@ class MessageHandlerService:
             last_bot_msg = bot_messages[-1]
             last_bot_text = last_bot_msg.get('text', '')
 
-            # Проверяем: бот спрашивал подтверждение?
-            if 'Правильно ли я понял' not in last_bot_text and 'правильно ли я понял' not in last_bot_text.lower():
+            # ИСПРАВЛЕНИЕ (2026-01-12): Проверяем открытые вопросы ("Похоже на проблему", "Опишите подробнее")
+            # Старые закрытые вопросы больше не используются по правилу 7 CLAUDE.md
+            has_clarification_question = (
+                'похоже на' in last_bot_text.lower() or
+                'опишите подробнее' in last_bot_text.lower() or
+                'уточните детали' in last_bot_text.lower() or
+                # Для обратной совместимости со старыми диалогами
+                'правильно ли я понял' in last_bot_text.lower()
+            )
+
+            if not has_clarification_question:
                 return {'is_confirmation_response': False}
 
-            # Это ответ на подтверждение - проверяем что ответил пользователь
+            # Это ответ на уточняющий вопрос - проверяем что ответил пользователь
             text_lower = text.lower().strip()
 
-            # ПОДТВЕРЖДЕНИЕ
-            if text_lower in ['да', 'верно', 'правильно', 'то самое', 'ага', 'yes']:
+            # ИСПРАВЛЕНИЕ (2026-01-12): Обработка неопределенных ответов
+            # "не знаю", "возможно", "не уверен" - передаем в MainAgent для дополнительного анализа
+            uncertain_responses = ['не знаю', 'не уверен', 'возможно', 'хз', 'может быть', 'точно не знаю']
+            if any(resp in text_lower for resp in uncertain_responses):
+                logger.info(f"MessageHandler: Неопределенный ответ: '{text}' - передаем в MainAgent")
+                # НЕ помечаем как confirmation_response, даем MainAgent обработать
+                return {'is_confirmation_response': False, 'is_uncertain': True}
+
+            # ПОДТВЕРЖДЕНИЕ (пользователь явно подтверждает)
+            if text_lower in ['да', 'верно', 'правильно', 'то самое', 'ага', 'yes', 'подтверждаю']:
                 logger.info(f"MessageHandler: Обнаружено подтверждение '{text}'")
 
                 # ИСПРАВЛЕНО (2025-12-25): Пробуем извлечь service_result из разных источников
@@ -690,7 +707,7 @@ class MessageHandlerService:
                         'status': 'CONFIRMED',
                         'service_id': service_id,
                         'service_name': service_name,
-                        'message': f"Спасибо за подтверждение. Заявка создана на услугу: {service_name}",
+                        'message': f"Спасибо. Создаю заявку: {service_name}",
                         'confirmed': True
                     }
 
@@ -705,13 +722,13 @@ class MessageHandlerService:
                     logger.warning("MessageHandler: Не удалось извлечь service_result для подтверждения")
                     return {'is_confirmation_response': False}
 
-            # ОТРИЦАНИЕ
-            elif text_lower in ['нет', 'неправильно', 'не то', 'нет не то', 'no']:
+            # ОТРИЦАНИЕ (пользователь явно отрицает)
+            elif text_lower in ['нет', 'неправильно', 'не то', 'нет не то', 'no', 'неверно']:
                 logger.info(f"MessageHandler: Обнаружено отрицание '{text}'")
 
                 result = {
                     'status': 'REJECTED',
-                    'message': "Понял, уточните пожалуйста что именно у вас проблема?"
+                    'message': "Понял. Опишите вашу проблему подробнее, чтобы я мог правильно помочь."
                 }
 
                 return {
@@ -719,9 +736,9 @@ class MessageHandlerService:
                     'result': result
                 }
 
-            # Неопределенный ответ - передаем в MainAgent как обычное сообщение
+            # Другой ответ - передаем в MainAgent как обычное сообщение
             else:
-                logger.info(f"MessageHandler: Неопределенный ответ на подтверждение: '{text}'")
+                logger.info(f"MessageHandler: Ответ на уточнение: '{text}' - передаем в MainAgent")
                 return {'is_confirmation_response': False}
 
         except Exception as e:
@@ -764,6 +781,7 @@ class MessageHandlerService:
         Извлекает service_result из истории диалога (fallback для тестов)
 
         ИСПРАВЛЕНО (2025-12-25): Добавлено для работы без БД в тестах
+        ИСПРАВЛЕНО (2026-01-12): Обновлено для открытых вопросов
 
         Args:
             dialog_history: История диалога
@@ -772,23 +790,31 @@ class MessageHandlerService:
             Dict: Mock service_result или None
         """
         try:
-            # Для теста: возвращаем mock данные если есть фраза "Правильно ли я понял"
+            # ИСПРАВЛЕНИЕ (2026-01-12): Проверяем открытые вопросы ("Похоже на проблему: ...")
             for msg in reversed(dialog_history):
                 if msg.get('role') == 'bot':
                     text = msg.get('text', '')
-                    if 'Правильно ли я понял' in text:
-                        # Извлекаем название услуги из текста
-                        import re
-                        match = re.search(r': (.+)\?', text)
-                        if match:
-                            service_name = match.group(1)
-                            # Mock service_result
-                            return {
-                                'status': 'SUCCESS',
-                                'service_id': 25,  # Mock ID
-                                'service_name': service_name,
-                                'confidence': 0.8
-                            }
+                    # Ищем название услуги после "Похоже на проблему:" или "Правильно ли я понял, что у вас:"
+                    import re
+                    # Новый формат: "Похоже на проблему: X. Опишите подробнее..."
+                    match_new = re.search(r'Похоже на проблему[:\s]+([^.]+)', text, re.IGNORECASE)
+                    # Старый формат (для обратной совместимости): "Правильно ли я понял, что у вас: X?"
+                    match_old = re.search(r'что у вас[:\s]+([^.]+)', text, re.IGNORECASE)
+
+                    service_name = None
+                    if match_new:
+                        service_name = match_new.group(1).strip()
+                    elif match_old:
+                        service_name = match_old.group(1).strip()
+
+                    if service_name:
+                        # Mock service_result
+                        return {
+                            'status': 'SUCCESS',
+                            'service_id': 25,  # Mock ID
+                            'service_name': service_name,
+                            'confidence': 0.8
+                        }
 
             return None
 

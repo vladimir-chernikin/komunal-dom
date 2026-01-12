@@ -675,15 +675,17 @@ class MainAgent:
                     if ai_result and ai_result.get('candidates'):
                         ai_candidates = ai_result['candidates']
                         if len(ai_candidates) == 1:
+                            # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - открытые вопросы
+                            # Вопрос БЕЗ названия услуги (иначе сбивает пользователя)
                             result = {
                                 'status': 'SUCCESS',
                                 'service_id': ai_candidates[0]['service_id'],
                                 'service_name': ai_candidates[0]['service_name'],
                                 'confidence': ai_candidates[0].get('confidence', 0.8),
                                 'source': 'ai_agent',
-                                'message': f'Правильно ли я понял, что у вас проблема: {ai_candidates[0]["service_name"]}?',
+                                'message': 'Опишите подробнее, что именно происходит?',
                                 'candidates': ai_candidates,
-                                'needs_confirmation': True,
+                                'needs_clarification': True,
                                 '_metadata': result_metadata  # ИСПРАВЛЕНО (2025-12-27): Добавляем metadata
                             }
                             return self._add_address_to_result(result, address_components)
@@ -1427,29 +1429,40 @@ class MainAgent:
             # Получаем confidence из LLM ранжирования если было
             llm_confidence = ranking_result.get('confidence', 0.0) if 'ranking_result' in locals() else 0.0
 
-            # ИСПРАВЛЕНО (2026-01-05): Проверяем - был ли уже подтверждающий вопрос
+            # ИСПРАВЛЕНИЕ (2026-01-12): Проверяем confidence от FilterDetectionService
+            # Если фильтры установлены с высокой уверенностью - считаем как высокую уверенность
+            filter_confidence = 0.0
+            if established_filters.get('semantic_check'):
+                semantic_conf = established_filters['semantic_check'].get('confidence', 0.0)
+                filter_confidence = max(filter_confidence, semantic_conf)
+
+            # ИСПРАВЛЕНО (2026-01-05): Проверяем - был ли уже уточняющий вопрос
             already_asked_confirmation = False
             if dialog_history:
                 for msg in dialog_history:
                     is_bot = msg.get('direction') == 'outbound' or msg.get('role') == 'bot'
                     if is_bot:
                         text = msg.get('message_text', '') or msg.get('text', '')
-                        if 'правильно ли я понял' in text.lower() or 'подтверд' in text.lower():
+                        if 'правильно ли я понял' in text.lower() or 'подтверд' in text.lower() or 'опишите подробнее' in text.lower():
                             already_asked_confirmation = True
-                            logger.info(f"[!] УЖЕ был подтверждающий вопрос: '{text[:60]}...'")
+                            logger.info(f"[!] УЖЕ был уточняющий вопрос: '{text[:60]}...'")
                             break
 
-            # Если confidence < 0.9 И еще НЕ спрашивали подтверждение - спрашиваем
-            # Если УЖЕ спрашивали - НЕ повторяем, сразу создаем заявку
-            needs_confirmation = llm_confidence < 0.9 and not already_asked_confirmation
+            # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - ЗАПРЕЩЕНЫ закрытые вопросы!
+            # Логика:
+            # - confidence >= 0.9 (LLM ИЛИ фильтры): просто сообщаем что услуга определена
+            # - confidence < 0.9: задаем открытый вопрос БЕЗ названия услуги (иначе сбивает)
+            actual_confidence = max(llm_confidence, filter_confidence)
+            needs_clarification = actual_confidence < 0.9 and not already_asked_confirmation
 
-            # Формируем сообщение
-            if needs_confirmation:
-                message = f"Правильно ли я понял, что у вас: {candidate['service_name']}?"
+            # Формируем сообщение (открытые вопросы только!)
+            if needs_clarification:
+                # Открытый вопрос БЕЗ названия услуги (иначе пользователь путается)
+                message = "Опишите подробнее, что именно происходит?"
             else:
-                # Если уже спрашивали подтверждение - сообщаем что создаем заявку
-                if already_asked_confirmation:
-                    message = f"Создаю заявку: {candidate['service_name']}"
+                # Если уже спрашивали уточнение ИЛИ высокая уверенность - создаем заявку
+                if already_asked_confirmation or actual_confidence >= 0.9:
+                    message = f"Понял, у вас: {candidate['service_name']}. Создаю заявку."
                 else:
                     message = f"Понял, у вас: {candidate['service_name']}"
 
@@ -1457,12 +1470,12 @@ class MainAgent:
                 'status': 'SUCCESS',
                 'service_id': candidate['service_id'],
                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
-                'confidence': llm_confidence if llm_confidence > 0 else 1.0,
+                'confidence': actual_confidence if actual_confidence > 0 else 1.0,  # ИСПРАВЛЕНО (2026-01-12): берем макс
                 'source': 'filtered_search_with_llm',
                 'message': message,
                 'single_candidate': candidate,
                 'filtered_candidates': filtered_candidates,
-                'needs_confirmation': needs_confirmation,
+                'needs_clarification': needs_clarification,  # ИСПРАВЛЕНО (2026-01-12): переименовано
                 'is_followup': is_followup
             }
 
@@ -2111,14 +2124,15 @@ class MainAgent:
             confidence = candidate.get('confidence', 0.0)
 
             if confidence >= 0.9:
-                # Высокий confidence - подтверждаем
+                # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - открытые вопросы только
+                # При высокой уверенности НЕ задаем вопросы, просто сообщаем
                 return {
                     'status': 'SUCCESS',
                     'service_id': candidate['service_id'],
                     'service_name': candidate['service_name'],
                     'confidence': confidence,
-                    'message': f"Понял, у вас: {candidate['service_name']}. Правильно?",
-                    'needs_confirmation': True,
+                    'message': f"Понял, у вас: {candidate['service_name']}. Уточните детали если нужно.",
+                    'needs_clarification': False,
                     'source': 'orchestrator'
                 }
             else:
@@ -2950,21 +2964,25 @@ JSON:"""
 
             if has_confirm_question:
                 logger.info(f"[DEBUG] Используем альтернативный вопрос (уже спрашивали подтверждение)")
-                # Уже спрашивали подтверждение - задаем короткий вопрос
+                # ИСПРАВЛЕНИЕ (2026-01-12): Открытые вопросы только по правилу 7 CLAUDE.md
+                # Уже спрашивали - даем возможность уточнить детали
                 task_block = f"""
 БЛОК: ЗАДАЧА
 Услуга определена с вероятностью >90%: {candidate_name}.
-Вы УЖЕ задавали подтверждающий вопрос выше.
-НЕ ПОВТОРЯЙ "Правильно ли я понял?"!
-Задай вопрос для подтверждения: "Подтверждаете?" или "Верно?"
+Вы УЖЕ задавали уточняющий вопрос выше.
+ЗАПРЕЩЕНО задавать "да/нет" вопросы! Дай пользователю возможность уточнить детали.
+Формула: "Уточните детали если нужно, или я создаю заявку."
+
+Кандидат: {candidate_name}
 """
             else:
-                # Первый раз - задаем полный подтверждающий вопрос
-                logger.info(f"[DEBUG] Первый подтверждающий вопрос")
+                # Первый раз - задаем уточняющий вопрос (открытый!)
+                logger.info(f"[DEBUG] Первый уточняющий вопрос")
                 task_block = f"""
 БЛОК: ЗАДАЧА
-Услуга определена с вероятностью >90%. Задай подтверждающий вопрос.
-Формула: "Правильно ли я понял, что [описание проблемы]?"
+Услуга определена с вероятностью >90%.
+ЗАПРЕЩЕНО задавать "да/нет" вопросы! Используй открытые вопросы.
+Формула: "Похоже на [описание проблемы]. Опишите подробнее что происходит."
 
 Кандидат: {candidate_name}
 """
@@ -3425,13 +3443,10 @@ JSON:"""
 НЕ ПРИМЕНЯЙ:
 - Двойные вопросы ("что и где?")
 - Перечисления вариантов ("например, труба или батарея?")
-- Закрытые вопросы (да/нет) - КРОМЕ исключения ниже
+- ЗАКРЫТЫЕ ВОПРОСЫ (да/нет) - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО!
 - Слово "например" и любые перечисления через него
 - Внутренние термины "Инцидент/Запрос" - говори по-человечески
 - Вопросы которые НЕ приближают к решению (не позволяют установить фильтр)
-
-ИСКЛЮЧЕНИЕ (закрытый вопрос РАЗРЕШЕН):
-Если один кандидат имеет вероятность 90%+ → спроси: "Правильно ли я понял, что у вас [описание проблемы]?"
 
 ПРИМЕНЯЙ:
 - Открытый вопрос, уточнение одного параметра
@@ -3444,7 +3459,7 @@ JSON:"""
 
 1. Анализируй историю диалога в блоке [ИСТОРИЯ ДИАЛОГА]
 2. Если можешь однозначно определить услугу (вероятность 90%+):
-   → Задай вопрос: "Правильно ли я понял, что у вас [описание]?"
+   → Открытый вопрос: "Похоже на [описание]. Опишите подробнее что происходит."
 3. Если невозможно однозначно определить:
    → Задай уточняющий вопрос который отфильтрует большинство кандидатов
    → Ответ пользователя позволит установить фильтр для следующего этапа
@@ -3647,14 +3662,15 @@ JSON:"""
 ХОРОШО: "Опишите что именно сломалось"
    Цель: Установить фильтр Объект (Труба/Кран/Батарея)
 
-ХОРОШО (90%+ кандидат): "Правильно ли я понял, что у вас течет из трубы в ванной?"
-   Цель: Подтвердить кандидата с высокой вероятностью (ИСКЛЮЧЕНИЕ: закрытый вопрос разрешен)
+ХОРОШО (90%+ кандидат): "Похоже что течет из трубы в ванной. Опишите подробнее проблему."
+   Цель: Уточнить детали при высокой вероятности (открытый вопрос)
 
 ПЛОХО: "Что и где?" (двойной вопрос)
-ПЛОХО: "Это труба или батарея?" (закрытый вопрос без 90%+ кандидата)
+ПЛОХО: "Это труба или батарея?" (закрытый вопрос)
 ПЛОХО: "Это труба отопления или водоснабжения?" (закрытый вопрос с "или")
 ПЛОХО: "Какой характер? Например, капает или струей?" (НЕ приближает к решению + перечисление)
 ПЛОХО: "Это инцидент или запрос?" (внутренние термины, не для пользователя)
+ПЛОХО: "Правильно ли я понял, что у вас течет из трубы в ванной?" (закрытый вопрос)
 
 Вопрос:"""
 

@@ -278,8 +278,9 @@ class TestBotSimulator:
             # Добавляем ответ бота в историю
             self.dialog_history.append({'role': 'bot', 'text': bot_response})
 
+            # ИСПРАВЛЕНИЕ (2026-01-12): Проверяем 'success' (строчными) как в message_handler_service
             # Проверяем, успешно ли определена услуга
-            if status == 'SUCCESS' and service_detected:
+            if status == 'success' and service_detected:
                 logger.info("=" * 60)
                 logger.info(f"✅ УСПЕХ: Услуга определена (ID: {service_detected})")
                 logger.info(f"=" * 60)
