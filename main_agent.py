@@ -768,13 +768,15 @@ class MainAgent:
                         # Если после фильтрации остался 1 кандидат - SUCCESS
                         if len(filtered) == 1:
                             candidate = filtered[0]
+                            # ИСПРАВЛЕНИЕ (2026-01-12): По правилу 7 CLAUDE.md - только открытые вопросы!
+                            # ЗАПРЕЩЕНО: "Это правильно?" - закрытый вопрос
                             result = {
                                 'status': 'SUCCESS',
                                 'service_id': candidate['service_id'],
                                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
                                 'confidence': filter_result.get('confidence', 0.8),
                                 'source': 'filter_detection',
-                                'message': f"Понял, у вас: {candidate.get('service_name', candidate.get('scenario_name'))}. Это правильно?",
+                                'message': f"Понял, у вас: {candidate.get('service_name', candidate.get('scenario_name'))}. Опишите подробнее детали.",
                                 'candidates': [candidate],
                                 'needs_confirmation': True,
                                 'is_followup': is_followup
@@ -2664,18 +2666,20 @@ JSON:"""
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): Определение стратегии по количеству кандидатов
+        ИСПРАВЛЕНО (2026-01-12): Добавлена проверка confidence для стратегии A
 
         Стратегии:
-        - A: 1 кандидат с уверенностью >90% → Подтверждение
+        - A: 1 кандидат с уверенностью >=70% → Подтверждение с открытым вопросом
         - B: 2-10 кандидатов → Уточнение по списку
         - C: >10 кандидатов → Фильтрация без списка
+        - NONE: 0 кандидатов ИЛИ 1 кандидат с уверенностью <70% → Уточнение без анализа услуг
 
         Args:
             candidates: Список кандидатов услуг
             established_filters: Установленные фильтры
 
         Returns:
-            str: Стратегия ('A', 'B', или 'C')
+            str: Стратегия ('A', 'B', 'C', или 'NONE')
         """
         # ИСПРАВЛЕНО (2026-01-06): Если нет кандидатов - НЕ используем стратегию C
         # Стратегия C требует_candidates_для анализа различий
@@ -2685,11 +2689,21 @@ JSON:"""
 
         count = len(candidates)
 
-        # ИСПРАВЛЕНИЕ (2026-01-05): 1 кандидат = стратегия A (подтверждение)
-        # Не важно какой confidence - если остался 1 кандидат после фильтрации,
-        # значит нужно подтвердить, а не уточнять
+        # ИСПРАВЛЕНИЕ (2026-01-12): КРИТИЧЕСКИ ВАЖНО для правила 7 CLAUDE.md!
+        # 1 кандидат проверяем confidence - при низком используем NONE
         if count == 1:
-            return 'A'  # Подтверждение (всегда для 1 кандидата)
+            candidate = candidates[0]
+            confidence = candidate.get('confidence', 0.0)
+
+            # Если confidence < 70% - НЕ подтверждаем, а уточняем
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: при низком confidence не задаём "Правильно ли я понял?"
+            if confidence < 0.7:
+                logger.warning(f"[!] 1 кандидат с низким confidence={confidence:.2%} - используем стратегию NONE")
+                return 'NONE'  # Уточнение (низкая уверенность)
+
+            # Confidence >= 70% - можно подтверждать с открытым вопросом
+            logger.info(f"[OK] 1 кандидат с достаточным confidence={confidence:.2%} - стратегия A")
+            return 'A'  # Подтверждение (достаточная уверенность)
 
         # Стратегия B: 2-10 кандидатов
         if count <= 10:

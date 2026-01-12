@@ -587,7 +587,9 @@ class MessageHandlerService:
 
             if message:
                 return message
-            return f"Понял, у вас: {service_name}. Это правильно?"
+            # ИСПРАВЛЕНИЕ (2026-01-12): По правилу 7 CLAUDE.md - только открытые вопросы!
+            # ЗАПРЕЩЕНО: "Это правильно?" - закрытый вопрос
+            return f"Понял, у вас: {service_name}. Опишите подробнее детали, если нужно."
 
         elif status == 'CONFIRMED':
             # ИСПРАВЛЕНО (2025-12-25): Пользователь подтвердил услугу
@@ -614,8 +616,10 @@ class MessageHandlerService:
             # Если нет message, используем список кандидатов
             candidates = result.get('candidates', [])
             if candidates:
-                names = [c.get('service_name') for c in candidates[:3]]
-                return f"Уточните, пожалуйста: это {', '.join(names)}?"
+                # ИСПРАВЛЕНИЕ (2026-01-12): По правилу 7 CLAUDE.md - только открытые вопросы!
+                # ЗАПРЕЩЕНО: "это X, Y, Z?" - перечисление + закрытый вопрос
+                # ПРАВИЛЬНО: открытый вопрос без перечисления
+                return "Опишите подробнее, что именно произошло?"
 
             return "Пожалуйста, уточните детали проблемы."
 

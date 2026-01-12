@@ -388,7 +388,8 @@ class EnhancedAspectBot:
                     state.mode = 'CONFIRMATION'
 
                     # Используем ИЗНАЧАЛЬНОЕ сообщение от MainAgent (без изменений!)
-                    confirm_text = result['raw_result'].get('message', f"Правильно ли я понял, что у вас: {service_name}?")
+                    # ИСПРАВЛЕНИЕ (2026-01-12): Заглушка тоже должна быть открытым вопросом по правилу 7
+                    confirm_text = result['raw_result'].get('message', f"Понял, у вас: {service_name}. Опишите подробнее детали.")
 
                     # ИСПРАВЛЕНО (2026-01-06): Объединяем _metadata и _ai_metadata
                     raw_result = result.get('raw_result', {})
