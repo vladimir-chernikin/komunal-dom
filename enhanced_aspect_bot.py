@@ -699,6 +699,21 @@ class EnhancedAspectBot:
                 await update.message.reply_text("Пожалуйста, избегайте нецензурной лексики в сообщениях.")
                 return
 
+        # ИСПРАВЛЕНО (2026-01-12): Проверка приветствий ПЕРЕД определением режима
+        # КРИТИЧЕСКИ ВАЖНО: Приветствия должны обрабатываться через MessageHandlerService
+        # чтобы они логировались и создавали новую сессию
+        if self.message_handler:
+            from message_cleaner_service import MessageCleanerService
+            if not hasattr(self, '_message_cleaner'):
+                self._message_cleaner = MessageCleanerService()
+
+            # Проверяем: является ли сообщение только приветствием?
+            if self._message_cleaner.is_greeting_only(text):
+                logger.info(f"Обнаружено приветствие в handle_message: '{text}'")
+                # Обрабатываем через MessageHandlerService для логирования
+                await self.handle_service_request(update, context, text)
+                return
+
         # Обработка в зависимости от режима
         if state.mode == 'SERVICE_REQUEST':
             await self.handle_service_request(update, context, text)

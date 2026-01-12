@@ -43,6 +43,18 @@ class MessageCleanerService:
         'доброго времени суток', 'доброго дня'
     ]
 
+    # ИСПРАВЛЕНО (2026-01-12): Частые опечатки в приветствиях
+    COMMON_TYPO_GREETINGS = {
+        'приет': 'привет',
+        'привт': 'привет',
+        'привит': 'привет',
+        'здрасте': 'здравствуйте',
+        'здраствуйте': 'здравствуйте',
+        'дарова': 'привет',
+        'добрай день': 'добрый день',
+        'дрбрый день': 'добрый день',
+    }
+
     # ИСПРАВЛЕНО (2025-12-25): Частые опечатки и их исправления
     COMMON_TYPOS = {
         'тетчет': 'течет',
@@ -281,6 +293,11 @@ class MessageCleanerService:
         """
         Проверка: является ли сообщение только приветствием
 
+        ИСПРАВЛЕНО (2026-01-12): Добавлено распознавание опечаток
+        - "приет" → "привет"
+        - "здрасте" → "здравствуйте"
+        - "дрбрый день" → "добрый день"
+
         Args:
             text: Текст сообщения
 
@@ -295,11 +312,95 @@ class MessageCleanerService:
 
         # Если слов мало и все они приветствия
         if len(words) <= 3:
-            greeting_words = [w for w in words if any(g in w for g in self.GREETINGS)]
+            greeting_words = [w for w in words if self._is_greeting_word(w)]
             if len(greeting_words) == len(words):
                 return True
 
         return False
+
+    def _is_greeting_word(self, word: str) -> bool:
+        """
+        Проверяет является ли слово приветствием (с опечатками)
+
+        ИСПРАВЛЕНО (2026-01-12): Добавлено распознавание опечаток
+
+        Args:
+            word: Слово для проверки
+
+        Returns:
+            bool: True если слово является приветствием
+        """
+        # ИСПРАВЛЕНО (2026-01-12): Проверка частых опечаток
+        if word in self.COMMON_TYPO_GREETINGS:
+            return True
+
+        # Точное совпадение
+        if any(g == word for g in self.GREETINGS):
+            return True
+
+        # Проверка на вхождение (для "привет" внутри "приветики")
+        if any(g in word or word in g for g in self.GREETINGS if len(g) > 4):
+            return True
+
+        # ИСПРАВЛЕНО (2026-01-12): Нечеткое сравнение для частых опечаток
+        # Проверяем расстояние Левенштейна для слов похожей длины
+        for greeting in self.GREETINGS:
+            # ИСПРАВЛЕНИЕ: Более мягкий порог для длины
+            if abs(len(word) - len(greeting)) <= max(3, len(greeting) * 0.4):
+                # Если слова похожей длины - проверяем нечеткое совпадение
+                if self._fuzzy_match(word, greeting, threshold=0.65):
+                    return True
+
+        return False
+
+    def _fuzzy_match(self, s1: str, s2: str, threshold: float = 0.7) -> bool:
+        """
+        Нечеткое сравнение строк на основе расстояния Левенштейна
+
+        ИСПРАВЛЕНО (2026-01-12): Добавлено для распознавания опечаток
+
+        Args:
+            s1: Первая строка
+            s2: Вторая строка
+            threshold: Порог схожести (0.0 - 1.0)
+
+        Returns:
+            bool: True если строки похожи
+        """
+        if not s1 or not s2:
+            return False
+
+        # Простое расстояние Левенштейна
+        len1, len2 = len(s1), len(s2)
+
+        # Если разница в длине слишком большая - не совпадает
+        if abs(len1 - len2) > max(len1, len2) * (1 - threshold):
+            return False
+
+        # Вычисляем расстояние Левенштейна
+        if len1 < len2:
+            s1, s2 = s2, s1
+            len1, len2 = len2, len1
+
+        # s1 всегда длиннее или равен s2
+        previous_row = list(range(len2 + 1))
+
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+
+        distance = previous_row[-1]
+        max_len = max(len1, len2)
+
+        # Нормализуем расстояние
+        similarity = 1 - (distance / max_len) if max_len > 0 else 0
+
+        return similarity >= threshold
 
     def get_meaningful_words(self, text: str) -> list:
         """
