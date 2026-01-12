@@ -4,31 +4,7 @@
 
 {% block extra_css %}
 <style>
-* {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-body {
-    background: #f8f9fa;
-}
-
-.card {
-    border: 1px solid #dee2e6;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
-.card-header {
-    padding: 8px 12px;
-    background: #fff;
-    color: #1a1a1a;
-    border-bottom: 1px solid #e8e8e8;
-    font-size: 0.875rem;
-    font-weight: 600;
-}
-
-.card-body {
-    padding: 0.75rem;
-}
+/* Стили специфичные для страницы трассировки */
 
 .message-card {
     transition: all 0.2s ease-in-out;
@@ -44,12 +20,7 @@ body {
 }
 
 .message-outbound {
-    border-left: 3px solid #3b82f6;
-}
-
-.pre-wrap {
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    border-left: 3px solid #374151;
 }
 
 .session-item {
@@ -62,12 +33,12 @@ body {
 
 .session-item:hover {
     background-color: #f8f9fa;
-    border-left-color: #3b82f6;
+    border-left-color: #374151;
 }
 
 .session-item.active {
     background-color: #e7f3ff;
-    border-left-color: #3b82f6;
+    border-left-color: #374151;
 }
 
 .file-link {
@@ -78,7 +49,7 @@ body {
 
 .file-link:hover {
     background-color: #f8f9fa;
-    border-left-color: #3b82f6;
+    border-left-color: #374151;
 }
 
 .messages-container {
@@ -91,44 +62,59 @@ body {
     overflow-y: auto;
 }
 
-.small-text {
-    font-size: 0.75rem;
-}
-
-.badge {
-    font-size: 0.7rem;
-    padding: 0.3em 0.5em;
-    border-radius: 4px;
-    font-weight: 500;
-}
-
-.nav-tabs .nav-link {
-    font-size: 0.875rem;
-    padding: 0.5rem 0.75rem;
-    color: #495057;
-    border: 1px solid transparent;
-}
-
-.nav-tabs .nav-link.active {
-    color: #3b82f6;
-    border-color: #dee2e6 #dee2e6 #3b82f6;
-    font-weight: 500;
-}
-
-.nav-tabs .nav-link:hover {
-    color: #3b82f6;
-    border-color: #e9ecef #e9ecef #dee2e6;
-}
-
-.spinner-border {
-    width: 1.5rem;
-    height: 1.5rem;
-}
-
 .report-preview {
     max-height: 500px;
     overflow-y: auto;
     font-size: 12px;
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 991px) {
+    .sessions-list-container,
+    .messages-container {
+        max-height: 400px;
+    }
+}
+
+@media (max-width: 768px) {
+    .session-item {
+        padding: 0.4rem 0.5rem !important;
+        font-size: 0.85rem;
+    }
+
+    .message-card {
+        font-size: 0.85rem;
+    }
+
+    .pre-wrap {
+        font-size: 0.8rem;
+    }
+
+    .messages-container,
+    .sessions-list-container {
+        max-height: 350px;
+    }
+}
+
+@media (max-width: 576px) {
+    .container {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+
+    .session-item {
+        padding: 0.3rem 0.4rem !important;
+    }
+
+    .badge {
+        font-size: 0.65rem;
+        padding: 0.25em 0.4em;
+    }
+
+    .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
 }
 </style>
 {% endblock %}
@@ -161,7 +147,7 @@ body {
     <!-- Две колонки: выбор сессии и просмотр -->
     <div class="row">
         <!-- Левая колонка: список сессий -->
-        <div class="col-lg-4 col-md-4">
+        <div class="col-lg-6 col-md-6">
             <div class="card h-100">
                 <div class="card-header">
                     <i class="fas fa-list text-success"></i> Сессии
@@ -178,7 +164,7 @@ body {
         </div>
 
         <!-- Правая колонка: просмотр -->
-        <div class="col-lg-8 col-md-8">
+        <div class="col-lg-6 col-md-6">
             <!-- Вкладки -->
             <ul class="nav nav-tabs mb-2" id="traceTabs" role="tablist">
                 <li class="nav-item" role="presentation">
@@ -366,7 +352,7 @@ async function loadTrace(sessionId) {
             const borderClass = isInbound ? 'message-inbound' : 'message-outbound';
             const icon = isInbound ? '<i class="fas fa-user text-success"></i>' : '<i class="fas fa-robot text-primary"></i>';
             const directionLabel = isInbound ? 'Пользователь' : 'Бот';
-            const time = new Date(msg.created_at).toLocaleString('ru-RU');
+            const time = msg.timestamp ? new Date(msg.timestamp).toLocaleString('ru-RU') : 'Нет даты';
 
             html += `
                 <div class="card message-card ${bgClass} ${borderClass} mb-2">
@@ -375,7 +361,7 @@ async function loadTrace(sessionId) {
                             <small class="fw-bold">${icon} ${directionLabel}</small>
                             <span class="badge ${isInbound ? 'bg-success' : 'bg-primary'}">${msg.direction}</span>
                         </div>
-                        <div class="pre-wrap bg-white border p-2 rounded small">${msg.text}</div>
+                        <div class="pre-wrap bg-white border p-2 rounded small">${msg.message_content || 'Нет текста'}</div>
                         <div class="d-flex justify-content-between align-items-center mt-2">
                             <small class="text-muted small-text">
                                 <i class="fas fa-clock"></i> ${time}
