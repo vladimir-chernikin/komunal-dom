@@ -464,13 +464,27 @@ class MainAgent:
                     if len(user_responses) >= 3:
                         break
 
-            # Проверяем есть ли повторения
-            if len(user_responses) >= 2 and user_responses[0] == user_responses[1]:
+            # ИСПРАВЛЕНО (2026-01-13): Детекция выражений недовольства
+            # Проверяем последний ответ на "я же сказал", "уже говорил", "повторяю"
+            frustration_phrases = [
+                'я же сказал', 'я уже говорил', 'уже сказал', 'повторяю',
+                'однозначно', 'конечно же'
+            ]
+            last_response = user_responses[0] if user_responses else ''
+            has_frustration = any(phrase in last_response for phrase in frustration_phrases)
+
+            # Проверяем есть ли повторения (полное равенство ИЛИ выражение недовольства)
+            is_repeated = (
+                (len(user_responses) >= 2 and user_responses[0] == user_responses[1]) or
+                has_frustration
+            )
+
+            if is_repeated:
                 repeated_answer = user_responses[0]
-                logger.warning(f"[!] Обнаружен повторяющийся ответ: '{repeated_answer}' (2+ раза)")
+                logger.warning(f"[!] Обнаружен повтор или недовольство: '{repeated_answer[:80]}...'")
 
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА меняем стратегию при повторяющихся ответах
-                # Не проверяем уверенность фильтров - если пользователь повторяет, значит нужно менять вопрос!
+                # ИСПРАВЛЕНО (2026-01-13): Генерируем вопрос с учетом txtPrb при недовольстве
 
                 # Проверяем: сколько раз повторяется?
                 repeat_count = 1
@@ -480,10 +494,28 @@ class MainAgent:
                     else:
                         break
 
-                logger.info(f"[!] Ответ повторяется {repeat_count} раз")
+                # ИСПРАВЛЕНО (2026-01-13): Если недовольство - считаем как 2 повтора
+                if has_frustration:
+                    repeat_count = max(repeat_count, 2)
 
-                # Меняем сообщение в зависимости от количества повторений
-                if repeat_count >= 3:
+                logger.info(f"[!] Ответ повторяется {repeat_count} раз (has_frustration={has_frustration})")
+
+                # ИСПРАВЛЕНО (2026-01-13): Генерируем вопрос с учетом txtPrb
+                if has_frustration and txtPrb:
+                    # Пользователь недоволен + есть txtPrb → анализируем контекст
+                    txtPrb_lower = txtPrb.lower()
+
+                    # Анализируем ключевые слова
+                    if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
+                        message = 'Понял, что-то течет или капает. Что именно?'
+                    elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
+                        message = 'Понял, есть запах. Откуда именно?'
+                    elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
+                        message = 'Понял, что-то сломалось. Что именно?'
+                    else:
+                        # Общий случай с учетом txtPrb
+                        message = f'Понял: {txtPrb[:50]}. Уточните детали.'
+                elif repeat_count >= 3:
                     # 3+ повторения - просим описать проблему другими словами
                     message = 'Пожалуйста, опишите проблему другими словами. Что именно случилось?'
                 else:

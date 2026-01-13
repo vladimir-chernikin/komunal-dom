@@ -568,8 +568,9 @@ JSON:"""
 
         # Определяем incident_type по ключевым словам
         # ИСПРАВЛЕНО (2026-01-06): Переименовано incident -> incident_type для единообразия
+        # ИСПРАВЛЕНО (2026-01-13): Добавлены 'капает', 'льет' как ключевые слова инцидентов
         txtPrb_lower = txtPrb.lower()
-        if any(word in txtPrb_lower for word in ['авария', 'прорв', 'течет', 'затоп', 'сломал', 'не работает']):
+        if any(word in txtPrb_lower for word in ['авария', 'прорв', 'течет', 'затоп', 'сломал', 'не работает', 'капает', 'льет', 'мокр']):
             incident_value = 'Инцидент'
             incident_confidence = 0.90
         else:

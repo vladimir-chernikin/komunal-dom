@@ -290,24 +290,118 @@ python trace_report_service.py telegram_123456
 
 # ВОРОНКА ТОЧНОСТИ - СИСТЕМА ОПРЕДЕЛЕНИЯ УСЛУГ
 
-### Статус: ✅ ЗАВЕРШЕНО
+### Статус: ✅ ЗАВЕРШЕНО (с векторным поиском)
 
 **Основные компоненты:**
 1. **MainAgent** (`main_agent.py`) - главный координатор
-2. **TagSearchService** (`tag_search_service.py`) - нечеткий поиск по тегам
+2. **TagSearchService** (`tag_search_service.py`) - нечеткий поиск по тегам (pg_trgm + pymorphy2 + rapidfuzz)
 3. **SemanticSearchService** (`semantic_search_service.py`) - логико-семантический поиск
-4. **VectorSearchService** (`vector_search_service.py`) - семантический поиск
+4. **VectorSearchService** (`vector_search_service.py`) - векторный поиск с Yandex Embeddings API
 5. **AIAgentService** (`ai_agent_service.py`) - поиск с помощью YandexGPT
 
 **Алгоритм:**
 1. Параллельный запуск микросервисов
-2. Сбор и фильтрация (порог 75%, дедупликация)
+2. Сбор и фильтрация (порог 70%, дедупликация)
 3. Анализ пересечений:
    - **1 кандидат:** SUCCESS → создание заявки
    - **Несколько:** AMBIGUOUS → уточнение
    - **Нет:** AMBIGUOUS → запрос уточнения
 
-**База данных:** таблица `services` (id, name, category, object_type, incident_type, location_type, tags, keywords)
+---
+
+## ВЕКТОРНЫЙ ПОИСК (VectorSearchService)
+
+### Реализация: ✅ 2026-01-13
+
+**Двойной векторный поиск:**
+1. **По embedding тегов** (точность):
+   - Загружает embedding из `ref_tags.embedding_tag` (JSONB, 256 float)
+   - Вычисляет косинусное сходство
+   - Порог: 0.70
+   - Группирует по service_id (максимум)
+
+2. **По embedding услуг** (полнота):
+   - Загружает embedding из `services_catalog.embedding_service` (JSONB, 256 float)
+   - Вычисляет косинусное сходство
+   - Порог: 0.70
+
+3. **Слияние результатов**:
+   - Используется **СРЕДНЕВЗВЕШЕННОЕ**: `0.6 * tag_conf + 0.4 * service_conf`
+   - Если найден только в одном → не штрафуем (confidence = найденный)
+   - Сортировка по DESC, возврат TOP-10
+
+**Формула косинусного сходства:**
+```
+cosine_sim = (vec1 · vec2) / (||vec1|| * ||vec2||)
+где:
+- vec1 · vec2 = скалярное произведение
+- ||vec|| = L2 норма (длина вектора)
+```
+
+**Генерация embedding:**
+- Скрипты: `generate_tag_embeddings.py`, `generate_service_embeddings.py`
+- Модель: Yandex Embeddings API (`text-search-doc`)
+- Размерность: 256 float
+- Предобработка: NLTK stopwords (151 слово) + pymorphy2 лемматизация
+- Стоимость: ~0.14 руб для всей БД (350 тегов + 68 услуг)
+
+---
+
+## СТРУКТУРА БД (услуги и теги)
+
+### Таблицы:
+
+**services_catalog** (68 услуг):
+```sql
+service_id          PK
+scenario_name       VARCHAR
+category_id         FK → ref_categories
+object_id           FK → ref_objects
+type_id             FK → ref_service_types
+localization_id     FK → ref_localization
+embedding_service   JSONB     -- Вектор услуги (256 float)
+embedding_text      TEXT      -- Текст для векторизации
+is_active           BOOLEAN
+```
+
+**ref_tags** (350 тегов):
+```sql
+tag_id          PK
+tag_name        VARCHAR
+embedding_tag   JSONB     -- Вектор тега (256 float)
+embedding_text  TEXT      -- Текст для векторизации
+is_active       BOOLEAN
+```
+
+**service_tags** (m:n связь, ~377 записей):
+```sql
+service_id  FK → services_catalog
+tag_id      FK → ref_tags
+```
+
+**ref_service_types**:
+```sql
+type_id     PK
+type_name   VARCHAR  -- 'Инцидент', 'Плановые работы'
+```
+
+**ref_categories**:
+```sql
+category_id     PK
+category_name   VARCHAR  -- 'Водоснабжение', 'Отопление'
+```
+
+**ref_localization**:
+```sql
+localization_id     PK
+localization_name   VARCHAR  -- 'Индивидуальное', 'Общедомовое'
+```
+
+**ref_objects**:
+```sql
+object_id     PK
+object_name   VARCHAR  -- 'Квартира', 'Подъезд'
+```
 
 ---
 
