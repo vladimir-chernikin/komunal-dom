@@ -83,7 +83,7 @@
     width: 24px;
     text-align: center;
     margin-right: 0.75rem;
-    color: #2563eb;
+    color: #374151;
     flex-shrink: 0;
 }
 
@@ -169,6 +169,52 @@
 .empty-state p {
     font-size: 1rem;
     margin: 0;
+}
+
+/* Адаптивность */
+@media (max-width: 991px) {
+    .request-card {
+        margin-bottom: 1rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .request-card {
+        padding: 0.75rem;
+    }
+
+    .request-card-header {
+        padding: 0.6rem 0.75rem;
+    }
+
+    .request-card-body {
+        padding: 0.75rem;
+    }
+
+    .table-sm td {
+        padding: 0.4rem 0.3rem;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .request-card-icon {
+        width: 20px;
+        margin-right: 0.5rem;
+    }
+
+    .request-card-label {
+        font-size: 0.7rem;
+    }
+
+    .request-card-value {
+        font-size: 0.85rem;
+    }
+
+    .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
 }
 </style>
 {% endblock %}

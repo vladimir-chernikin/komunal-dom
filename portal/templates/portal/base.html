@@ -72,11 +72,11 @@
         }
         .navbar-brand:hover,
         .nav-link:hover {
-            color: #2563eb !important;
+            color: #374151 !important;
         }
 
         .nav-link.active {
-            color: #2563eb !important;
+            color: #374151 !important;
             font-weight: 500;
         }
         .nav-link i {
@@ -87,7 +87,7 @@
         .navbar-brand-custom {
             font-size: 1.1rem;
             font-weight: 700;
-            color: #2563eb;
+            color: #374151;
         }
 
         /* Футер */
@@ -110,6 +110,126 @@
             width: 100%;
             text-align: left;
             padding: 0.25rem 1rem;
+        }
+
+        /* ========== ОБЩИЕ СТИЛИ ДЛЯ ВСЕХ СТРАНИЦ ========== */
+
+        /* Базовые стили тела страницы */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f8f9fa;
+        }
+
+        /* Утилитарные классы */
+        .pre-wrap {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .small-text {
+            font-size: 0.75rem;
+        }
+
+        /* Карточки */
+        .card {
+            border: 1px solid #dee2e6;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card-header {
+            padding: 8px 12px;
+            background: #fff;
+            color: #1a1a1a;
+            border-bottom: 1px solid #e8e8e8;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .card-body {
+            padding: 0.75rem;
+        }
+
+        /* Бейджи */
+        .badge {
+            font-size: 0.7rem;
+            padding: 0.3em 0.5em;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        /* Навигационные вкладки */
+        .nav-tabs .nav-link {
+            font-size: 0.875rem;
+            padding: 0.5rem 0.75rem;
+            color: #495057;
+            border: 1px solid transparent;
+        }
+
+        .nav-tabs .nav-link.active {
+            color: #374151;
+            border-color: #dee2e6 #dee2e6 #374151;
+            font-weight: 500;
+        }
+
+        .nav-tabs .nav-link:hover {
+            color: #374151;
+            border-color: #e9ecef #e9ecef #dee2e6;
+        }
+
+        /* Спиннер загрузки */
+        .spinner-border {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+
+        /* ========== КОНЕЦ ОБЩИХ СТИЛЕЙ ========== */
+
+        /* ========== АДАПТИВНОСТЬ ========== */
+        @media (max-width: 768px) {
+            .navbar-custom .navbar-nav {
+                align-items: flex-start;
+            }
+
+            .navbar-brand {
+                font-size: 1rem;
+            }
+
+            .nav-link {
+                padding: 0.5rem 0.75rem;
+            }
+
+            .footer-custom {
+                padding: 1.5rem 0;
+            }
+
+            .container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+
+            .card {
+                margin-bottom: 1rem;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .navbar-brand-custom {
+                font-size: 1rem;
+            }
+
+            .card-header {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.8rem;
+            }
+
+            .card-body {
+                padding: 0.5rem;
+            }
+
+            .btn {
+                font-size: 0.85rem;
+                padding: 0.4rem 0.8rem;
+            }
         }
     </style>
 
@@ -140,12 +260,11 @@
                                 <i class="fas fa-user"></i> {{ user.username }}
                             </a>
                             <ul class="dropdown-menu" aria-labelledby="navbarDropdown" role="menu">
-                                {% if user.userprofile.role != 'uk_user' %}
-                                <li role="none"><a class="dropdown-item" href="{% url 'portal:dashboard' %}" role="menuitem">Личный кабинет</a></li>
-                                {% endif %}
                                 {% if user.userprofile.is_django_admin %}
-                                <li role="none"><a class="dropdown-item" href="{% url 'portal:admin_page' %}" role="menuitem">Панель администратора</a></li>
+                                <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Кабинет DBA</a></li>
                                 <li role="none"><a class="dropdown-item" href="/admin/" role="menuitem">Админ-панель Django</a></li>
+                                {% elif user.userprofile.is_dba %}
+                                <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Кабинет DBA</a></li>
                                 {% endif %}
                                 <li role="none"><hr class="dropdown-divider"></li>
                                 <li role="none">

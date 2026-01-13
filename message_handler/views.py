@@ -17,28 +17,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@login_required
-def chat_interface(request):
-    """
-    Страница с веб-интерфейсом чата
-
-    Args:
-        request: Django request
-
-    Returns:
-        HttpResponse: Рендеринг шаблона чата
-    """
-    # Получаем session_id для пользователя
-    session_id = f"web_{request.user.id}_{request.session.session_key}"
-
-    context = {
-        'user': request.user,
-        'session_id': session_id,
-    }
-
-    return render(request, 'message_handler/chat.html', context)
-
-
 @require_http_methods(["POST"])
 @csrf_exempt  # Для AJAX запросов будем использовать CSRF token в headers
 @login_required

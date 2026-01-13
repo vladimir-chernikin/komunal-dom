@@ -1,4 +1,5 @@
 {% extends 'portal/base.html' %}
+{% load static %}
 
 {% block title %}Нормативный чат - ООО "Аспект"{% endblock %}
 
@@ -18,7 +19,7 @@
     }
 
     .chat-header {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        background: linear-gradient(135deg, #374151 0%, #111827 100%);
         color: white;
         padding: 1.5rem 2rem;
         text-align: center;
@@ -66,7 +67,7 @@
     }
 
     .message.user .message-bubble {
-        background: #3b82f6;
+        background: #374151;
         color: white;
         border-bottom-right-radius: 4px;
     }
@@ -113,12 +114,12 @@
     }
 
     .chat-input:focus {
-        border-color: #3b82f6;
+        border-color: #374151;
     }
 
     .send-button {
         padding: 0.75rem 1.5rem;
-        background: #3b82f6;
+        background: #374151;
         color: white;
         border: none;
         border-radius: 24px;
@@ -128,7 +129,7 @@
     }
 
     .send-button:hover {
-        background: #2563eb;
+        background: #111827;
     }
 
     .send-button:disabled {
@@ -146,7 +147,7 @@
     .token-counter {
         padding: 0.75rem 1rem;
         background: #eff6ff;
-        border: 1px solid #3b82f6;
+        border: 1px solid #374151;
         border-radius: 8px;
         margin-bottom: 1rem;
         font-size: 0.9rem;
@@ -160,13 +161,161 @@
     .token-counter-value {
         font-size: 1.25rem;
         font-weight: 600;
-        color: #3b82f6;
+        color: #374151;
     }
 
     .token-counter-cost {
         font-size: 0.85rem;
         color: #6c757d;
         margin-top: 0.25rem;
+    }
+
+    /* Результаты поиска */
+    .search-result {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .search-result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+
+    .search-result-document {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .search-result-score {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        background: #d1fae5;
+        color: #065f46;
+        border-radius: 12px;
+    }
+
+    .search-result-content {
+        font-size: 0.9rem;
+        line-height: 1.6;
+        color: #4b5563;
+        margin-bottom: 0.75rem;
+    }
+
+    .search-result-meta {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.8rem;
+        color: #6b7280;
+    }
+
+    .search-result-meta span {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .loading-indicator {
+        text-align: center;
+        padding: 1rem;
+        color: #6c757d;
+        font-style: italic;
+    }
+
+    .error-message {
+        background: #fee2e2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        font-size: 0.9rem;
+    }
+
+    .token-usage-info {
+        background: #f0fdf4;
+        border: 1px solid #86efac;
+        color: #166534;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        font-size: 0.85rem;
+        text-align: center;
+    }
+
+    .token-usage-info strong {
+        font-size: 1.1rem;
+    }
+
+    /* Адаптивность чата */
+    @media (max-width: 991px) {
+        .regulatory-chat-container {
+            margin: 1rem;
+        }
+
+        .chat-messages {
+            height: 350px;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .regulatory-chat-container {
+            margin: 0.5rem;
+            border-radius: 8px;
+        }
+
+        .chat-header {
+            padding: 1rem 1.5rem;
+        }
+
+        .chat-header h2 {
+            font-size: 1.25rem;
+        }
+
+        .chat-messages {
+            height: 300px;
+            padding: 1rem;
+        }
+
+        .message-bubble {
+            max-width: 85%;
+            padding: 0.6rem 0.8rem;
+            font-size: 0.9rem;
+        }
+
+        .chat-input {
+            padding: 0.6rem 0.8rem;
+            font-size: 0.9rem;
+        }
+
+        .send-button {
+            padding: 0.6rem 1rem;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .regulatory-chat-container {
+            margin: 0;
+            border-radius: 0;
+        }
+
+        .chat-messages {
+            height: 250px;
+        }
+
+        .chat-header h2 {
+            font-size: 1.1rem;
+        }
+
+        .message-bubble {
+            max-width: 90%;
+            font-size: 0.85rem;
+        }
     }
 </style>
 {% endblock %}
@@ -211,75 +360,5 @@
     </div>
 </div>
 
-<script>
-    const chatMessages = document.getElementById('chatMessages');
-    const chatForm = document.getElementById('chatForm');
-    const messageInput = document.getElementById('messageInput');
-    const sendButton = document.getElementById('sendButton');
-    const tokenCounter = document.getElementById('tokenCounter');
-    const tokenCountEl = document.getElementById('tokenCount');
-    const rublesCostEl = document.getElementById('rublesCost');
-
-    const TOKEN_PRICE = 0.0002;
-
-    function calculateTokens(text) {
-        return Math.ceil(text.length / 4);
-    }
-
-    function updateTokenCounter() {
-        const text = messageInput.value.trim();
-        if (text.length > 0) {
-            const tokens = calculateTokens(text);
-            const rubles = (tokens * TOKEN_PRICE).toFixed(2);
-
-            tokenCountEl.textContent = tokens;
-            rublesCostEl.textContent = rubles;
-            tokenCounter.style.display = 'block';
-        } else {
-            tokenCounter.style.display = 'none';
-        }
-    }
-
-    function addMessage(text, type) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${type}`;
-
-        const bubble = document.createElement('div');
-        bubble.className = 'message-bubble';
-        bubble.textContent = text;
-
-        const meta = document.createElement('div');
-        meta.className = 'message-meta';
-        meta.textContent = type === 'user' ? 'Вы' : 'Бот';
-
-        messageDiv.appendChild(bubble);
-        messageDiv.appendChild(meta);
-
-        chatMessages.appendChild(messageDiv);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-    messageInput.addEventListener('input', updateTokenCounter);
-
-    chatForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        const message = messageInput.value.trim();
-        if (!message) return;
-
-        addMessage(message, 'user');
-        messageInput.value = '';
-        tokenCounter.style.display = 'none';
-
-        sendButton.disabled = true;
-
-        setTimeout(function() {
-            addMessage('Функционал находится в разработке', 'bot');
-            sendButton.disabled = false;
-            messageInput.focus();
-        }, 500);
-    });
-
-    messageInput.focus();
-</script>
+<script src="{% static 'js/normative-chat.js' %}?v=20250113-002" charset="UTF-8"></script>
 {% endblock %}

@@ -21,12 +21,15 @@ class AdminAccessMiddleware:
                             # Если это не главная страница админки, просто блокируем
                             return HttpResponseForbidden("Доступ запрещен")
                         else:
-                            # Если главная - перенаправляем в личный кабинет
-                            return redirect('portal:dashboard')
+                            # Если главная - перенаправляем на admin-uk или dba
+                            if profile.is_dba():
+                                return redirect('portal:dba_page')
+                            else:
+                                return redirect('portal:welcome')
                 except UserProfile.DoesNotExist:
                     # Если профиля нет, создаем и перенаправляем
-                    UserProfile.objects.create(user=request.user, role='uk_user')
-                    return redirect('portal:dashboard')
+                    UserProfile.objects.create(user=request.user, role='resident')
+                    return redirect('portal:welcome')
 
         response = self.get_response(request)
         return response

@@ -13,22 +13,41 @@ from .decorators import file_access_required, admin_access_required
 @login_required
 @file_access_required
 def file_list(request):
-    """Список файлов текущего пользователя"""
-    files = UserFile.objects.filter(user=request.user).order_by('-uploaded_at')
+    """Список файлов - для админов все файлы, для пользователей свои"""
+    try:
+        profile = request.user.userprofile
+        if profile.has_admin_access():
+            # Админы видят все файлы
+            files = UserFile.objects.all().order_by('-uploaded_at')
+            per_page = 50
+            show_all_users = True
+        else:
+            # Остальные - только свои
+            files = UserFile.objects.filter(user=request.user).order_by('-uploaded_at')
+            per_page = 20
+            show_all_users = False
+    except:
+        files = UserFile.objects.filter(user=request.user).order_by('-uploaded_at')
+        per_page = 20
+        show_all_users = False
 
     # Пагинация
-    paginator = Paginator(files, 20)
+    paginator = Paginator(files, per_page)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
     # Статистика
     total_files = files.count()
-    total_size = sum(f.file_size for f in files)
+    if show_all_users:
+        total_size = None  # Не считаем для всех файлов
+    else:
+        total_size = sum(f.file_size for f in files)
 
     context = {
         'page_obj': page_obj,
         'total_files': total_files,
         'total_size': total_size,
+        'show_all_users': show_all_users,
     }
     return render(request, 'file_manager/file_list.html', context)
 
@@ -102,18 +121,3 @@ def delete_file(request, file_id):
     return render(request, 'file_manager/delete_file.html', {'file': user_file})
 
 
-@login_required
-@admin_access_required
-def all_files(request):
-    """Все файлы (только для администраторов)"""
-
-    files = UserFile.objects.all().order_by('-uploaded_at')
-    paginator = Paginator(files, 50)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-
-    context = {
-        'page_obj': page_obj,
-        'total_files': files.count(),
-    }
-    return render(request, 'file_manager/all_files.html', context)

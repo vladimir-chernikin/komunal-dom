@@ -157,21 +157,15 @@ class MainAgent:
                 self._categories_cache = [row[0] for row in cursor.fetchall()]
 
                 # Загружаем уникальные объекты
-                cursor.execute("""
-                    SELECT DISTINCT ro.object_name
-                    FROM services_catalog sc
-                    JOIN ref_objects ro ON sc.object_id = ro.object_id
-                    WHERE ro.object_name IS NOT NULL AND ro.object_name != ''
-                    ORDER BY ro.object_name
-                """)
+                cursor.execute("SELECT DISTINCT object_type FROM services_catalog WHERE object_type IS NOT NULL AND object_type != '' ORDER BY object_type")
                 self._objects_cache = [row[0] for row in cursor.fetchall()]
 
-                # Загружаем типы локации из справочника
-                cursor.execute("SELECT DISTINCT localization_name FROM ref_localization ORDER BY localization_name")
+                # Загружаем типы локации
+                cursor.execute("SELECT DISTINCT location_type FROM services_catalog WHERE location_type IS NOT NULL AND location_type != '' ORDER BY location_type")
                 self._location_types_cache = [row[0] for row in cursor.fetchall()]
 
-                # Загружаем типы инцидентов из справочника
-                cursor.execute("SELECT DISTINCT type_name FROM ref_service_types ORDER BY type_name")
+                # Загружаем типы инцидентов
+                cursor.execute("SELECT DISTINCT incident_type FROM services_catalog WHERE incident_type IS NOT NULL AND incident_type != '' ORDER BY incident_type")
                 self._incident_types_cache = [row[0] for row in cursor.fetchall()]
 
                 logger.info(f"[OK] Загружены фильтры из БД:")
@@ -375,20 +369,11 @@ class MainAgent:
                 else:
                     logger.info(f"txtPrb обновлен (короткий ответ): '{txtPrb[:100]}...'")
 
-                # ИСПРАВЛЕНО (2026-01-13): Обработка отказа пользователя
-                if accumulation_result.get('is_refusal'):
-                    logger.warning(f"[REFUSAL] Пользователь отказался от предложенной услуги")
-                    logger.warning(f"[REFUSAL] txtPrb обновлен с пометкой об отказе: '{txtPrb[:100]}...'")
-                    logger.warning(f"[REFUSAL] Сбрасываем фильтры established_filters")
-
-                    # Принудительно сбрасываем фильтры при отказе
-                    established_filters = {}
-                else:
-                    # Рассчитываем фильтры с весами (только если не было отказа)
-                    established_filters = self.problem_accumulator.calculate_filter_confidence(
-                        txtPrb, accumulated_fields
-                    )
-                    logger.info(f"Установленные фильтры: {established_filters}")
+                # Рассчитываем фильтры с весами
+                established_filters = self.problem_accumulator.calculate_filter_confidence(
+                    txtPrb, accumulated_fields
+                )
+                logger.info(f"Установленные фильтры: {established_filters}")
 
             except Exception as e:
                 logger.warning(f"Ошибка ProblemAccumulationService: {e}")
@@ -748,26 +733,62 @@ class MainAgent:
                             candidates_with_attrs = await self._load_all_services_by_filters(filters)
                             logger.info(f"Найдено услуг по фильтрам LLM: {len(candidates_with_attrs)}")
                         else:
-                            # Загружаем атрибуты существующих кандидатов
+                            # Загружаем атрибуты существующих кандидатов для фильтрации
                             candidates_with_attrs = await self._load_candidates_attributes(candidates_data)
 
-                        # ИСПРАВЛЕНО (2026-01-13): УБРАНА избыточная Python фильтрация
-                        # Фильтрация идет ТОЛЬКО в SQL WHERE в поисковых сервисах
-                        # Это исключает путаницу при отладке - понятно кто отфильтровал
-                        filtered = candidates_with_attrs if candidates_with_attrs else candidates_data
+                        # Фильтруем кандидатов по полученным фильтрам
+                        filtered = candidates_with_attrs
+                        before_count = len(filtered)
 
-                        # Сохраняем информацию о фильтрации
+                        if filters.get('incident_type'):
+                            filtered = [c for c in filtered
+                                       if filters['incident_type'] in c.get('incident_type', '')]
+                            logger.info(f"Отфильтровано по incident_type={filters['incident_type']}: {len(filtered)} из {len(candidates_with_attrs)}")
+
+                        if filters.get('location_type'):
+                            filtered = [c for c in filtered
+                                       if filters['location_type'] in c.get('location_type', '')]
+                            logger.info(f"Отфильтровано по location_type={filters['location_type']}: {len(filtered)} из {len(candidates_with_attrs)}")
+
+                        if filters.get('category'):
+                            filtered = [c for c in filtered
+                                       if filters['category'].lower() in c.get('category', '').lower()]
+                            logger.info(f"Отфильтровано по category={filters['category']}: {len(filtered)} из {len(candidates_with_attrs)}")
+
+                        # ИСПРАВЛЕНО (2025-12-29): Сохраняем информацию о фильтрации (второй проход)
                         result_metadata['second_pass'] = {
                             'enabled': True,
-                            'before_count': len(candidates_data),
+                            'before_count': before_count,
                             'after_count': len(filtered),
                             'applied_filters': {
                                 k: v for k, v in filters.items() if v
-                            },
-                            'note': 'Фильтрация применена в SQL WHERE поисковых сервисов'
+                            }
                         }
 
-                        # Передаем кандидатов в AMBIGUOUS (без дополнительной Python фильтрации)
+                        # Если после фильтрации остался 1 кандидат - SUCCESS
+                        if len(filtered) == 1:
+                            candidate = filtered[0]
+                            # ИСПРАВЛЕНИЕ (2026-01-12): По правилу 7 CLAUDE.md - только открытые вопросы!
+                            # ЗАПРЕЩЕНО: "Это правильно?" - закрытый вопрос
+                            result = {
+                                'status': 'SUCCESS',
+                                'service_id': candidate['service_id'],
+                                'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                                'confidence': filter_result.get('confidence', 0.8),
+                                'source': 'filter_detection',
+                                'message': f"Понял, у вас: {candidate.get('service_name', candidate.get('scenario_name'))}. Опишите подробнее детали.",
+                                'candidates': [candidate],
+                                'needs_confirmation': True,
+                                'is_followup': is_followup
+                            }
+                            return self._add_address_to_result(result, address_components)
+
+                        # Если кандидаты отфильтровались до 0 - используем оригинальный список
+                        if not filtered:
+                            logger.info("FilterDetectionService отфильтровал всех кандидатов, используем оригинальный список")
+                            filtered = candidates_with_attrs if candidates_with_attrs else candidates_data
+
+                        # Передаем отфильтрованных кандидатов в AMBIGUOUS
                         candidates_data = filtered
 
             # ИСПРАВЛЕНО (2025-12-29): Получаем результат и добавляем metadata
@@ -1079,36 +1100,25 @@ class MainAgent:
         try:
             def load_sync():
                 with connection.cursor() as cursor:
-                    # Строим SQL запрос с фильтрами через JOIN с справочниками
-                    # ИСПРАВЛЕНО (2026-01-13): Используем ref_* вместо varchar колонок
-                    sql = """
-                        SELECT sc.service_id, sc.scenario_name,
-                               COALESCE(rst.type_name, '') as incident_type,
-                               COALESCE(rc.category_name, '') as category,
-                               COALESCE(rl.localization_name, '') as location_type
-                        FROM services_catalog sc
-                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
-                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
-                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
-                        WHERE sc.is_active = TRUE
-                    """
+                    # Строим SQL запрос с фильтрами
+                    sql = "SELECT service_id, scenario_name, incident_type, category, location_type FROM services_catalog WHERE is_active = TRUE"
                     params = []
 
                     # Добавляем фильтры если они есть
                     if filters.get('incident_type'):
-                        sql += " AND rst.type_name = %s"
+                        sql += " AND incident_type = %s"
                         params.append(filters['incident_type'])
 
                     if filters.get('location_type'):
-                        sql += " AND rl.localization_name = %s"
+                        sql += " AND location_type = %s"
                         params.append(filters['location_type'])
 
                     if filters.get('category'):
                         # Частичное совпадение для категории
-                        sql += " AND rc.category_name ILIKE %s"
+                        sql += " AND category ILIKE %s"
                         params.append(f"%{filters['category']}%")
 
-                    sql += " ORDER BY sc.scenario_name"
+                    sql += " ORDER BY scenario_name"
                     logger.info(f"SQL для поиска по фильтрам: {sql} с параметрами {params}")
 
                     cursor.execute(sql, params)

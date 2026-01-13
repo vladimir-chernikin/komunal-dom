@@ -7,6 +7,10 @@ ProblemAccumulationService - Микросервис для итеративно�
 - 'Где течет?' - 'В зале' → txtPrb = 'у пользователя течет в зале'
 - 'Что именно течет' - 'Батарея' → txtPrb = 'у пользователя течет в зале из батареи'
 
+ИСПРАВЛЕНО (2026-01-13):
+- Добавлен детектор отказа пользователя
+- При отказе добавляется пометка в txtPrb: "пользователь не уверен что это услуга XXX"
+
 Автор: Claude Sonnet
 Дата: 2025-12-26
 """
@@ -58,6 +62,7 @@ class ProblemAccumulationService:
                 'updated_problem': str,  # Обновленное txtPrb
                 'extracted_info': dict,  # Извлеченная информация
                 'is_meaningful': bool,   # Содержит ли сообщение полезную информацию
+                'is_refusal': bool,      # ИСПРАВЛЕНО (2026-01-13): Является ли сообщением отказом
                 'new_info': str,         # Краткое описание новой информации
                 'fields': {              # Извлеченные поля
                     'problem': str | None,
@@ -70,6 +75,28 @@ class ProblemAccumulationService:
                 }
             }
         """
+        # ИСПРАВЛЕНО (2026-01-13): Детектор отказа пользователя
+        if self._is_refusal(message_text):
+            logger.warning(f"[REFUSAL] Обнаружен отказ пользователя: '{message_text[:80]}'")
+
+            # Извлекаем название услуги из последнего вопроса бота
+            refused_service = self._extract_service_from_question(bot_question)
+
+            # Формируем обновленное txtPrb с пометкой об отказе
+            if current_problem:
+                updated_problem = f"{current_problem}. Пользователь не уверен что это услуга '{refused_service}'"
+            else:
+                updated_problem = f"Пользователь не уверен что это услуга '{refused_service}'"
+
+            return {
+                'updated_problem': updated_problem,
+                'extracted_info': {},
+                'is_meaningful': False,
+                'is_refusal': True,  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа
+                'new_info': f"Пользователь отказался от услуги '{refused_service}'",
+                'fields': {}
+            }
+
         # ИСПРАВЛЕНО (2025-12-28): Отладочные логи входящих параметров
         logger.info("[SEARCH] ProblemAccumulationService ВХОДЯЩИЕ ПАРАМЕТРЫ:")
         logger.info(f"  [NOTE] message_text: '{message_text[:80]}'")
@@ -450,6 +477,72 @@ JSON:"""
                 return metadata['txtPrb']
 
         return ""
+
+    def _is_refusal(self, text: str) -> bool:
+        """
+        ИСПРАВЛЕНО (2026-01-13): Проверяет является ли текст отказом пользователя
+
+        Args:
+            text: Текст сообщения пользователя
+
+        Returns:
+            True если текст содержит отказ, иначе False
+        """
+        if not text:
+            return False
+
+        refusal_keywords = [
+            'нет', 'не то', 'не правильно', 'неправильно',
+            'ошибаешься', 'ошиблись', 'неверно',
+            'не это', 'не подходит', 'не тот',
+            'не та', 'не такие'
+        ]
+
+        text_lower = text.lower().strip()
+
+        # Проверяем наличие ключевых слов
+        for keyword in refusal_keywords:
+            if keyword in text_lower:
+                return True
+
+        return False
+
+    def _extract_service_from_question(self, bot_question: str) -> str:
+        """
+        ИСПРАВЛЕНО (2026-01-13): Извлекает название услуги из вопроса бота
+
+        Args:
+            bot_question: Последний вопрос бота
+
+        Returns:
+            Название услуги или 'предложенная услуга' если не удалось извлечь
+        """
+        if not bot_question:
+            return 'предложенная услуга'
+
+        # Ищем паттерны типа "Похоже на XXX" или "у вас: XXX"
+        import re
+
+        # Паттерн 1: "Похоже на [услуга]"
+        pattern1 = r'похоже на\s+([^,.:;!?\n]+)'
+        match1 = re.search(pattern1, bot_question, re.IGNORECASE)
+        if match1:
+            return match1.group(1).strip()
+
+        # Паттерн 2: "у вас: [услуга]" или "Понял, у вас: [услуга]"
+        pattern2 = r'у вас:\s*([^,.:;!?\n]+)'
+        match2 = re.search(pattern2, bot_question, re.IGNORECASE)
+        if match2:
+            return match2.group(1).strip()
+
+        # Паттерн 3: "Это [услуга]?"
+        pattern3 = r'это\s+([^,.:;!?\n]+)\?'
+        match3 = re.search(pattern3, bot_question, re.IGNORECASE)
+        if match3:
+            return match3.group(1).strip()
+
+        # Если не удалось извлечь - возвращаем общую фразу
+        return 'предложенная услуга'
 
     def calculate_filter_confidence(self, txtPrb: str, fields: Dict) -> Dict[str, Dict]:
         """

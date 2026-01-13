@@ -4,10 +4,7 @@
 
 {% block extra_css %}
 <style>
-.pre-wrap {
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
+/* Стиль специфичный для страницы просмотра отчета */
 .file-content {
     max-height: calc(100vh - 300px);
     overflow-y: auto;
@@ -15,6 +12,39 @@
 
 .report-preview-box {
     background-color: #f8f9fa;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .file-content {
+        max-height: calc(100vh - 250px);
+    }
+
+    .h3 {
+        font-size: 1.3rem;
+    }
+
+    .pre-wrap {
+        font-size: 0.75rem;
+        padding: 0.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .container {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+
+    .file-content {
+        max-height: calc(100vh - 200px);
+        font-size: 11px;
+    }
+
+    .btn-outline-secondary {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.8rem;
+    }
 }
 </style>
 {% endblock %}

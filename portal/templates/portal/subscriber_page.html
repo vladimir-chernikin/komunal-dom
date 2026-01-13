@@ -4,20 +4,9 @@
 
 {% block extra_css %}
 <style>
-* {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-body {
-    background: #f8f9fa;
-}
+/* Стили специфичные для страницы жителя */
 
 /* Компактные карточки */
-.card {
-    border: 1px solid #dee2e6;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
 .compact-card {
     border: 1px solid #dee2e6;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
@@ -41,19 +30,6 @@ body {
     margin: 0;
 }
 
-.card-header {
-    padding: 8px 12px;
-    background: #fff;
-    color: #1a1a1a;
-    border-bottom: 1px solid #e8e8e8;
-    font-size: 0.875rem;
-    font-weight: 600;
-}
-
-.card-body {
-    padding: 0.75rem;
-}
-
 /* Чат */
 .chat-embedded {
     max-width: 800px;
@@ -66,7 +42,7 @@ body {
 }
 
 .chat-embedded .chat-header {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    background: linear-gradient(135deg, #111827 0%, #374151 100%);
     color: white;
     padding: 6px 10px;
     display: flex;
@@ -281,16 +257,58 @@ body {
     font-weight: 500;
 }
 
-/* Badge */
-.badge {
-    font-size: 0.7rem;
-    padding: 0.3em 0.5em;
-    border-radius: 4px;
-    font-weight: 500;
-}
-
 .content-container {
     max-width: 900px;
+}
+
+/* Адаптивность чата */
+@media (max-width: 768px) {
+    .chat-embedded {
+        margin: 0 -0.5rem;
+        border-radius: 0;
+    }
+
+    .chat-messages {
+        height: 300px;
+        padding: 1rem;
+    }
+
+    .message-bubble {
+        max-width: 85%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+    }
+
+    .chat-input {
+        font-size: 0.9rem;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .send-button {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .content-container {
+        max-width: 100%;
+        padding: 0;
+    }
+
+    .chat-messages {
+        height: 250px;
+    }
+
+    .message-bubble {
+        max-width: 90%;
+        font-size: 0.85rem;
+    }
+
+    .new-dialog-btn {
+        font-size: 0.7rem;
+        padding: 0.3rem 0.6rem;
+    }
 }
 </style>
 {% endblock %}
@@ -300,11 +318,16 @@ body {
     <!-- Заголовок -->
     <div class="row mb-3">
         <div class="col-12">
-            <h6 class="mb-0">
-                <i class="fas fa-user text-primary"></i>
-                Здравствуйте, {{ user.username }}!
-                <small class="text-muted">- личный кабинет</small>
-            </h6>
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="fas fa-user text-primary"></i>
+                    Здравствуйте, {{ user.username }}!
+                    <small class="text-muted">- личный кабинет</small>
+                </h6>
+                <a href="{% url 'portal:regulatory_chat' %}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-book"></i> Нормативный чат
+                </a>
+            </div>
         </div>
     </div>
 

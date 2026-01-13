@@ -121,6 +121,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'portal.context_processors.admin_stats',
             ],
         },
     },
@@ -136,6 +137,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 # Настройки для Crispy Forms
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
@@ -156,7 +158,7 @@ os.makedirs(MEDIA_ROOT, exist_ok=True)
 # Настройки аутентификации
 LOGIN_URL = '/admin/login/'
 LOGOUT_URL = '/admin/logout/'
-LOGIN_REDIRECT_URL = '/dashboard/'
+LOGIN_REDIRECT_URL = '/subscribers/'
 
 # Настройки Jazzmin Admin
 JAZZMIN_SETTINGS = {
@@ -164,14 +166,14 @@ JAZZMIN_SETTINGS = {
     'site_title': 'УК "Аспект"',
     'site_header': 'Панель управления',
     'site_logo': None,  # Убираем логотип файлом
-    'site_brand': '🏢 УК "Аспект"',
+    'site_brand': 'УК "Аспект"',
 
     # Язык
     'language': 'ru',
 
     # Цветовая тема
     'theme': 'light',
-    'welcome_sign': '🏠',
+    'welcome_sign': 'Главная',
 
     # Кнопки
     'button_classes': {
@@ -198,4 +200,13 @@ JAZZMIN_SETTINGS = {
     # Настройка
     'default_model_permissions': ['add', 'change', 'view', 'delete'],
     'list_per_page': 25,
+
+    # Кастомные ссылки в меню пользователя
+    'usermenu_links': [
+        {
+            'name': 'Кабинет DBA',
+            'url': '/dba/',
+            'icon': 'fas fa-database',
+        },
+    ],
 }
