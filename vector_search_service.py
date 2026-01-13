@@ -23,117 +23,51 @@ class VectorSearchService:
 
     def __init__(self):
         # ИСПРАВЛЕНО (2026-01-13): УБРАНО кэширование для избежания проблем с памятью и параллельными запросами
-        logger.info("VectorSearchService инициализирован (БЕЗ кэша)")
-
-    async def _load_services(self):
-        """Асинхронная загрузка услуг из БД"""
-        try:
-            def load_sync():
-                with connection.cursor() as cursor:
-                    # ИСПРАВЛЕНО (2026-01-13): Используем JOIN с ref_* вместо избыточных колонок
-                    cursor.execute("""
-                        SELECT sc.service_id, sc.scenario_name, -- sc.description_for_search,  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
-                               COALESCE(rst.type_name, '') as incident_type,
-                               COALESCE(rc.category_name, '') as category,
-                               COALESCE(rl.localization_name, '') as location_type
-                        FROM services_catalog sc
-                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
-                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
-                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
-                        WHERE sc.is_active = TRUE
-                    """)
-                    services = cursor.fetchall()
-
-                service_cache = {}
-                for service_id, scenario_name, incident_type, category, location_type in services:
-                    # search_text = f"{scenario_name} {description or ''}".lower()  -- ЗАКОММЕНТИРОВАНО (2026-01-13)
-                    search_text = scenario_name.lower()
-                    service_cache[service_id] = {
-                        'service_id': service_id,
-                        'service_name': scenario_name,
-                        # 'description': description or '',  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
-                        'incident_type': incident_type or '',
-                        'category': category or '',
-                        'location_type': location_type or '',
-                        'search_text': search_text
-                    }
-
-                return service_cache
-
-            service_cache = await sync_to_async(load_sync)()
-            logger.info(f"VectorSearchService: загружено {len(service_cache)} услуг")
-            return service_cache  # ИСПРАВЛЕНО (2026-01-13): Возвращаем напрямую, без кэширования
-
-        except Exception as e:
-            logger.error(f"Ошибка загрузки услуг: {e}")
-            return {}  # ИСПРАВЛЕНО (2026-01-13): Возвращаем пустой словарь
+        # ИСПРАВЛЕНО (2026-01-13): Удален _load_services() - поиск идет прямым SQL с фильтрами
+        logger.info("VectorSearchService инициализирован (прямой SQL с pg_trgm)")
 
     async def search(self, message_text: str, filters: Dict = None) -> Dict:
         """
         Поиск услуг с триграммным поиском через pg_trgm
-        Загружает услуги НАЛЕТУ без кэширования
+        Фильтрация идет в SQL WHERE, Python фильтрация УБРАНА
 
         Args:
             message_text: Текст сообщения пользователя
-            filters: Словарь фильтров для применения к кандидатам
+            filters: Словарь фильтров для SQL WHERE
                      {'incident_type': 'Инцидент', 'location_type': 'Индивидуальное', 'category': 'Водоснабжение'}
 
         Returns:
             Dict: Результат поиска в формате JSON {[КодУслуги], [Релевантность]}
 
-        ИСПРАВЛЕНО (2026-01-13): Убрано кэширование - услуги загружаются НАЛЕТУ
+        ИСПРАВЛЕНО (2026-01-13):
+        - Убран _load_services() - поиск прямым SQL
+        - Фильтрация перенесена в SQL WHERE
+        - Убрана избыточная Python фильтрация
         """
         try:
             logger.info(f"VectorSearch: поиск по тексту '{message_text[:50]}...'")
-
-            # ИСПРАВЛЕНО (2026-01-13): ВСЕГДА загружаем услуги налету (БЕЗ кэша)
-            service_cache = await self._load_services()
-
-            if not service_cache:
-                return {'status': 'error', 'candidates': [], 'error': 'Услуги не загружены'}
 
             # Нормализуем текст сообщения
             message_clean = re.sub(r'[^\w\s]', ' ', message_text.lower())
             message_clean = re.sub(r'\s+', ' ', message_clean).strip()
 
-            # Используем pg_trgm для прямого поиска в БД
-            candidates = await self._search_with_pg_trgm(message_clean)
+            # Helper функция для извлечения значения из фильтра
+            def get_filter_value(filter_key):
+                """Извлекает value из фильтра, который может быть строкой или dict {'value': ..., 'confidence': ...}"""
+                filter_data = filters.get(filter_key) if filters else None
+                if filter_data is None:
+                    return None
+                if isinstance(filter_data, dict):
+                    return filter_data.get('value')
+                return filter_data
 
-            # ИСПРАВЛЕНО (2026-01-10): Применяем фильтры к кандидатам
-            # ИСПРАВЛЕНО (2026-01-10): Извлекаем .get('value') из словаря фильтров
-            if filters:
-                before_count = len(candidates)
-                filtered = candidates
+            # Извлекаем фильтры для SQL WHERE
+            incident_type = get_filter_value('incident_type') or ''
+            location_type = get_filter_value('location_type') or ''
+            category = get_filter_value('category') or ''
 
-                # Helper функция для извлечения значения из фильтра
-                def get_filter_value(filter_key):
-                    """Извлекает value из фильтра, который может быть строкой или dict {'value': ..., 'confidence': ...}"""
-                    filter_data = filters.get(filter_key)
-                    if filter_data is None:
-                        return None
-                    if isinstance(filter_data, dict):
-                        return filter_data.get('value')
-                    return filter_data
-
-                incident_value = get_filter_value('incident_type')
-                if incident_value:
-                    filtered = [c for c in filtered
-                               if incident_value in c.get('incident_type', '')]
-                    logger.info(f"VectorSearch: Отфильтровано по incident_type={incident_value}: {len(filtered)} из {before_count}")
-
-                location_value = get_filter_value('location_type')
-                if location_value:
-                    filtered = [c for c in filtered
-                               if location_value in c.get('location_type', '')]
-                    logger.info(f"VectorSearch: Отфильтровано по location_type={location_value}: {len(filtered)} из {before_count}")
-
-                category_value = get_filter_value('category')
-                if category_value:
-                    filtered = [c for c in filtered
-                               if category_value.lower() in c.get('category', '').lower()]
-                    logger.info(f"VectorSearch: Отфильтровано по category={category_value}: {len(filtered)} из {before_count}")
-
-                candidates = filtered
+            # ИСПРАВЛЕНО (2026-01-13): Используем pg_trgm с фильтрами в SQL WHERE
+            candidates = await self._search_with_pg_trgm(message_clean, incident_type, location_type, category)
 
             result = {
                 'status': 'success',
@@ -196,11 +130,14 @@ class VectorSearchService:
 
         return threshold, limit
 
-    async def _search_with_pg_trgm(self, message_text: str) -> List[Dict]:
+    async def _search_with_pg_trgm(self, message_text: str, incident_type: str = '', location_type: str = '', category: str = '') -> List[Dict]:
         """
         Поиск с использованием pg_trgm через SQL
+        Фильтрация идет в SQL WHERE (incident_type, location_type, category)
 
-        ИСПРАВЛЕНО (2025-12-25): Адаптивный порог и ТОП-N вместо фиксированного
+        ИСПРАВЛЕНО (2026-01-13):
+        - Добавлены фильтры в SQL WHERE
+        - Убрана избыточная Python фильтрация
         """
         try:
             def search_sync():
@@ -208,8 +145,8 @@ class VectorSearchService:
                     # Вычисляем адаптивный порог и лимит
                     threshold, limit = self._calculate_adaptive_threshold(message_text)
 
+                    # ИСПРАВЛЕНО (2026-01-13): Добавлены фильтры в SQL WHERE
                     # Для очень коротких запросов (< 5 букв) используем ILIKE
-                    # ИСПРАВЛЕНО (2026-01-13): Используем JOIN с ref_* вместо избыточных колонок
                     if len(message_text.strip()) < 5:
                         cursor.execute("""
                             SELECT
@@ -224,15 +161,16 @@ class VectorSearchService:
                             LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
                             LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
                             WHERE sc.is_active = TRUE
-                              AND (
-                                  sc.scenario_name ILIKE %s
-                                  -- OR sc.description_for_search ILIKE %s  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
-                              )
+                              AND (sc.scenario_name ILIKE %s)
+                              AND (%s = '' OR rst.type_name = %s)
+                              AND (%s = '' OR rl.localization_name = %s)
+                              AND (%s = '' OR rc.category_name = %s)
                             LIMIT %s
-                        """, [f'%{message_text}%', limit])  # ИСПРАВЛЕНО (2026-01-13): убран один параметр
+                        """, [f'%{message_text}%', incident_type, incident_type,
+                              location_type, location_type, category, category, limit])
                     else:
                         # Для остальных запросов используем word_similarity с адаптивным порогом
-                        # ИСПРАВЛЕНО (2026-01-13): Используем JOIN с ref_* вместо избыточных колонок
+                        # ИСПРАВЛЕНО (2026-01-13): Добавлены фильтры в SQL WHERE
                         cursor.execute("""
                             SELECT
                                 sc.service_id,
@@ -241,10 +179,7 @@ class VectorSearchService:
                                 COALESCE(rc.category_name, '') as category,
                                 COALESCE(rl.localization_name, '') as location_type,
                                 COALESCE(
-                                    GREATEST(
-                                        word_similarity(%s, sc.scenario_name)
-                                        -- , word_similarity(%s, sc.description_for_search)  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
-                                    ),
+                                    word_similarity(%s, sc.scenario_name),
                                     0
                                 ) as similarity
                             FROM services_catalog sc
@@ -252,18 +187,19 @@ class VectorSearchService:
                             LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
                             LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
                             WHERE sc.is_active = TRUE
-                              AND (
-                                  word_similarity(%s, sc.scenario_name) > %s
-                                  -- OR word_similarity(%s, sc.description_for_search) > %s  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
-                              )
+                              AND (word_similarity(%s, sc.scenario_name) > %s)
+                              AND (%s = '' OR rst.type_name = %s)
+                              AND (%s = '' OR rl.localization_name = %s)
+                              AND (%s = '' OR rc.category_name = %s)
                             ORDER BY similarity DESC
                             LIMIT %s
-                        """, [message_text, threshold, limit])  # ИСПРАВЛЕНО (2026-01-13): убраны параметры для description
+                        """, [message_text, message_text, threshold,
+                              incident_type, incident_type, location_type, location_type,
+                              category, category, limit])
 
                     results = cursor.fetchall()
 
                 # Фильтруем по адаптивному порогу и возвращаем ТОП-N
-                # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type в candidates
                 candidates = []
                 for service_id, service_name, incident_type, category, location_type, similarity in results:
                     if similarity >= threshold:  # Используем адаптивный порог
@@ -285,33 +221,49 @@ class VectorSearchService:
         except Exception as e:
             logger.error(f"Ошибка триграммного поиска: {e}")
             # Фоллбек на простой поиск
-            return await self._fallback_search(message_text)
+            return await self._fallback_search(message_text, incident_type, location_type, category)
 
-    async def _fallback_search(self, message_text: str) -> List[Dict]:
-        """Фоллбек на простой поиск через LIKE"""
+    async def _fallback_search(self, message_text: str, incident_type: str = '', location_type: str = '', category: str = '') -> List[Dict]:
+        """
+        Фоллбек на простой поиск через LIKE
+        ИСПРАВЛЕНО (2026-01-13): Добавлены фильтры в SQL WHERE
+        """
         try:
             def search_sync():
                 with connection.cursor() as cursor:
+                    # ИСПРАВЛЕНО (2026-01-13): Добавлены фильтры в SQL WHERE
                     cursor.execute("""
-                        SELECT service_id, scenario_name as service_name
-                        FROM services_catalog
-                        WHERE is_active = TRUE
-                          AND (
-                              scenario_name ILIKE %s
-                              -- OR description_for_search ILIKE %s  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
-                          )
+                        SELECT
+                            sc.service_id,
+                            sc.scenario_name as service_name,
+                            COALESCE(rst.type_name, '') as incident_type,
+                            COALESCE(rc.category_name, '') as category,
+                            COALESCE(rl.localization_name, '') as location_type
+                        FROM services_catalog sc
+                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
+                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
+                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
+                        WHERE sc.is_active = TRUE
+                          AND (sc.scenario_name ILIKE %s)
+                          AND (%s = '' OR rst.type_name = %s)
+                          AND (%s = '' OR rl.localization_name = %s)
+                          AND (%s = '' OR rc.category_name = %s)
                         LIMIT 10
-                    """, [f'%{message_text}%'])  # ИСПРАВЛЕНО (2026-01-13): убран один параметр
+                    """, [f'%{message_text}%', incident_type, incident_type,
+                          location_type, location_type, category, category])
 
                     results = cursor.fetchall()
 
                 candidates = []
-                for service_id, service_name in results:
+                for service_id, service_name, incident_type, category, location_type in results:
                     candidates.append({
                         'service_id': service_id,
                         'service_name': service_name,
                         'confidence': 0.5,  # Фиксированная уверенность для LIKE поиска
-                        'source': 'vector_search_fallback'
+                        'source': 'vector_search_fallback',
+                        'incident_type': incident_type or '',
+                        'category': category or '',
+                        'location_type': location_type or ''
                     })
 
                 return candidates
