@@ -22,8 +22,8 @@ class VectorSearchService:
     """Микросервис поиска услуг с триграммным индексом pg_trgm"""
 
     def __init__(self):
-        self.service_cache = None
-        logger.info("VectorSearchService инициализирован")
+        # ИСПРАВЛЕНО (2026-01-13): УБРАНО кэширование для избежания проблем с памятью и параллельными запросами
+        logger.info("VectorSearchService инициализирован (БЕЗ кэша)")
 
     async def _load_services(self):
         """Асинхронная загрузка услуг из БД"""
@@ -60,16 +60,18 @@ class VectorSearchService:
 
                 return service_cache
 
-            self.service_cache = await sync_to_async(load_sync)()
-            logger.info(f"VectorSearchService: загружено {len(self.service_cache)} услуг")
+            service_cache = await sync_to_async(load_sync)()
+            logger.info(f"VectorSearchService: загружено {len(service_cache)} услуг")
+            return service_cache  # ИСПРАВЛЕНО (2026-01-13): Возвращаем напрямую, без кэширования
 
         except Exception as e:
             logger.error(f"Ошибка загрузки услуг: {e}")
-            self.service_cache = {}
+            return {}  # ИСПРАВЛЕНО (2026-01-13): Возвращаем пустой словарь
 
     async def search(self, message_text: str, filters: Dict = None) -> Dict:
         """
         Поиск услуг с триграммным поиском через pg_trgm
+        Загружает услуги НАЛЕТУ без кэширования
 
         Args:
             message_text: Текст сообщения пользователя
@@ -79,16 +81,15 @@ class VectorSearchService:
         Returns:
             Dict: Результат поиска в формате JSON {[КодУслуги], [Релевантность]}
 
-        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр filters и логика фильтрации candidates
+        ИСПРАВЛЕНО (2026-01-13): Убрано кэширование - услуги загружаются НАЛЕТУ
         """
         try:
             logger.info(f"VectorSearch: поиск по тексту '{message_text[:50]}...'")
 
-            # Загружаем услуги если еще не загружены
-            if self.service_cache is None:
-                await self._load_services()
+            # ИСПРАВЛЕНО (2026-01-13): ВСЕГДА загружаем услуги налету (БЕЗ кэша)
+            service_cache = await self._load_services()
 
-            if not self.service_cache:
+            if not service_cache:
                 return {'status': 'error', 'candidates': [], 'error': 'Услуги не загружены'}
 
             # Нормализуем текст сообщения

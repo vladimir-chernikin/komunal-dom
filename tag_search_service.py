@@ -22,10 +22,9 @@ class TagSearchService:
     """Микросервис поиска услуг по тегам (pg_trgm + pymorphy2 + rapidfuzz)"""
 
     def __init__(self):
-        self.service_cache = None
+        # ИСПРАВЛЕНО (2026-01-13): УБРАНО кэширование для избежания проблем с памятью и параллельными запросами
         self.morph = None
-        self.last_filters = None  # ИСПРАВЛЕНО (2026-01-13): Запоминаем фильтры для сброса кэша
-        logger.info("TagSearchService инициализирован (поиск по ТЕГАМ с pg_trgm + pymorphy2 + rapidfuzz)")
+        logger.info("TagSearchService инициализирован (поиск по ТЕГАМ с pg_trgm + pymorphy2 + rapidfuzz БЕЗ кэша)")
 
     def _get_morph(self):
         """Ленивая инициализация морфологического анализатора"""
@@ -108,12 +107,13 @@ class TagSearchService:
                         }
                     return service_cache
 
-            self.service_cache = await sync_to_async(load_sync)()
-            logger.info(f"TagSearchService: загружено {len(self.service_cache)} услуг")
+            service_cache = await sync_to_async(load_sync)()
+            logger.info(f"TagSearchService: загружено {len(service_cache)} услуг")
+            return service_cache  # ИСПРАВЛЕНО (2026-01-13): Возвращаем напрямую, без кэширования
 
         except Exception as e:
             logger.error(f"Ошибка загрузки услуг: {e}")
-            self.service_cache = {}
+            return {}  # ИСПРАВЛЕНО (2026-01-13): Возвращаем пустой словарь
 
     async def search(self, message_text: str, filters: Dict = None) -> Dict:
         """
@@ -134,19 +134,10 @@ class TagSearchService:
         - Ищет только по тегам (scenario_name и description НЕ участвуют)
         """
         try:
-            # ИСПРАВЛЕНО (2026-01-13): Проверяем изменение фильтров для сброса кэша
-            need_reload = False
-            if not self.service_cache:
-                need_reload = True
-            elif self.last_filters != filters:
-                # Фильтры изменились - перезагружаем услуги
-                need_reload = True
+            # ИСПРАВЛЕНО (2026-01-13): ВСЕГДА загружаем услуги налету (БЕЗ кэша)
+            service_cache = await self._load_services(filters)
 
-            if need_reload:
-                await self._load_services(filters)
-                self.last_filters = filters  # Запоминаем фильтры
-
-            if not self.service_cache:
+            if not service_cache:
                 return {"status": "error", "message": "Нет загруженных услуг", "candidates": []}
 
             # Предобработка текста
@@ -183,7 +174,7 @@ class TagSearchService:
             logger.info(f"TagSearchService: после точного совпадения: {len(matching_service_ids)} кандидатов")
 
             # Формируем результат
-            candidates = await self._format_candidates(matching_service_ids)
+            candidates = await self._format_candidates(matching_service_ids, service_cache)
 
             if candidates:
                 return {
@@ -291,12 +282,13 @@ class TagSearchService:
             logger.error(f"Ошибка в _get_tags_for_candidates: {e}")
             return {}
 
-    async def _format_candidates(self, service_ids: Set[int]) -> List[Dict]:
+    async def _format_candidates(self, service_ids: Set[int], service_cache: Dict) -> List[Dict]:
         """
         Формирует кандидатов из ID услуг с вычислением confidence
 
         Args:
             service_ids: Set ID услуг
+            service_cache: Словарь услуг (ИСПРАВЛЕНО 2026-01-13: передаем как параметр)
 
         Returns:
             List of candidate dicts
@@ -312,7 +304,7 @@ class TagSearchService:
             base_confidence = 1.0 / n if n > 0 else 0.0
 
             for service_id in service_ids:
-                service_data = self.service_cache.get(service_id)
+                service_data = service_cache.get(service_id)  # ИСПРАВЛЕНО (2026-01-13): используем параметр
                 if service_data:
                     candidates.append({
                         "service_id": service_id,

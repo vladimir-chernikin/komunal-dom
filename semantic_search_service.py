@@ -27,10 +27,9 @@ class SemanticSearchService:
     """Микросервис поиска услуг по контенту (название + описание)"""
 
     def __init__(self):
-        self.service_cache = None
+        # ИСПРАВЛЕНО (2026-01-13): УБРАНО кэширование для избежания проблем с памятью и параллельными запросами
         self.morph = None
-        self.last_filters = None  # ИСПРАВЛЕНО (2026-01-13): Запоминаем фильтры для сброса кэша
-        logger.info("SemanticSearchService инициализирован (поиск по КОНТЕНТУ)")
+        logger.info("SemanticSearchService инициализирован (поиск по КОНТЕНТУ БЕЗ кэша)")
 
     def _get_morph(self):
         """Ленивая инициализация морфологического анализатора"""
@@ -40,13 +39,15 @@ class SemanticSearchService:
 
     async def _load_services(self, filters: Dict = None):
         """
-        Асинхронная загрузка услуг из БД в кэш
+        Загрузка услуг из БД БЕЗ кэширования (налету)
 
         ИСПРАВЛЕНО (2026-01-13):
+        - УБРАНО кэширование для избежания проблем с памятью и параллельными запросами
         - Загружает scenario_name, category_name, object_name (БЕЗ ТЕГОВ, БЕЗ description)
+        - НОРМАЛИЗУЕТ термины при загрузке (обе стороны - ошибка pymorphy2 схлопнется)
         - Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
         - Добавлен поиск по object_name (ВСЕГДА, так как фильтра object нет в MainAgent)
-        - Добавлена предварительная фильтрация по filters (только confidence >= 90%)
+        - Предварительная фильтрация по filters (только confidence >= 90%)
         """
         try:
             def load_sync():
@@ -98,6 +99,8 @@ class SemanticSearchService:
                     services = cursor.fetchall()
 
                     service_cache = {}
+                    morph = self._get_morph()
+
                     for row in services:
                         service_id = row[0]
                         scenario_name = row[1]
@@ -109,10 +112,18 @@ class SemanticSearchService:
 
                         # Формируем поисковые термины из названия (БЕЗ description и БЕЗ ТЕГОВ!)
                         name_words = self._tokenize_text(scenario_name)
-                        # desc_words = self._tokenize_text(description)  -- ЗАКОММЕНТИРОВАНО (2026-01-13)
 
-                        # ИСПРАВЛЕНО (2026-01-13): Добавляем category и object в поиск
-                        all_search_terms = set(name_words)  # | set(desc_words)
+                        # ИСПРАВЛЕНО (2026-01-13): НОРМАЛИЗУЕМ термины в кэше!
+                        # Нормализуем ОБЕ стороны (кэш и сообщение) - ошибка pymorphy2 "схлопнется"
+                        all_search_terms = set()
+
+                        for word in name_words:
+                            # Добавляем исходную форму
+                            all_search_terms.add(word)
+
+                            # Добавляем нормальную форму pymorphy2
+                            parsed = morph.parse(word)[0]
+                            all_search_terms.add(parsed.normal_form)
 
                         # Проверяем нужно ли добавлять category в поиск
                         use_category_in_search = True
@@ -126,12 +137,20 @@ class SemanticSearchService:
                         # ИСПРАВЛЕНО (2026-01-13): object_name ВСЕГДА добавляем в поиск (фильтра object нет в MainAgent)
                         if use_category_in_search and category:
                             category_words = self._tokenize_text(category)
-                            all_search_terms.update(category_words)
+                            # НОРМАЛИЗУЕМ category
+                            for word in category_words:
+                                all_search_terms.add(word)
+                                parsed = morph.parse(word)[0]
+                                all_search_terms.add(parsed.normal_form)
 
                         # object_name - ВСЕГДА добавляем в поиск (так как фильтра object нет)
                         if object_name:
                             object_words = self._tokenize_text(object_name)
-                            all_search_terms.update(object_words)
+                            # НОРМАЛИЗУЕМ object_name
+                            for word in object_words:
+                                all_search_terms.add(word)
+                                parsed = morph.parse(word)[0]
+                                all_search_terms.add(parsed.normal_form)
 
                         service_cache[service_id] = {
                             'service_id': service_id,
@@ -145,12 +164,13 @@ class SemanticSearchService:
                         }
                     return service_cache
 
-            self.service_cache = await sync_to_async(load_sync)()
-            logger.info(f"SemanticSearchService: загружено {len(self.service_cache)} услуг")
+            service_cache = await sync_to_async(load_sync)()
+            logger.info(f"SemanticSearchService: загружено {len(service_cache)} услуг")
+            return service_cache  # ИСПРАВЛЕНО (2026-01-13): Возвращаем напрямую, без кэширования
 
         except Exception as e:
             logger.error(f"Ошибка загрузки услуг: {e}")
-            self.service_cache = {}
+            return {}  # ИСПРАВЛЕНО (2026-01-13): Возвращаем пустой словарь
 
     def _tokenize_text(self, text: str) -> List[str]:
         """Разбивает текст на слова, убирая лишние символы"""
@@ -173,6 +193,7 @@ class SemanticSearchService:
         """
         Основной метод поиска услуги по тексту сообщения
         Ищет по scenario_name, category_name, object_name (БЕЗ ТЕГОВ, БЕЗ description)
+        Загружает услуги НАЛЕТУ без кэширования
 
         Args:
             message_text: Текст сообщения пользователя
@@ -182,26 +203,18 @@ class SemanticSearchService:
             Dict: Результат поиска в формате JSON {status, candidates: [{...}]}
 
         ИСПРАВЛЕНО (2026-01-13):
+        - УБРАНО кэширование - услуги загружаются НАЛЕТУ при каждом запросе
         - Ищет по scenario_name, category_name, object_name (БЕЗ ТЕГОВ, БЕЗ description)
         - Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
         - Добавлен поиск по object_name (ВСЕГДА, так как фильтра object нет в MainAgent)
-        - Использует pymorphy2 для морфологии
+        - Использует pymorphy2 для морфологии (НОРМАЛИЗАЦИЯ ОБЕИХ СТОРОН)
         - Использует rapidfuzz для нечеткого совпадения
         """
         try:
-            # ИСПРАВЛЕНО (2026-01-13): Проверяем изменение фильтров для сброса кэша
-            need_reload = False
-            if not self.service_cache:
-                need_reload = True
-            elif self.last_filters != filters:
-                # Фильтры изменились - перезагружаем услуги
-                need_reload = True
+            # ИСПРАВЛЕНО (2026-01-13): ВСЕГДА загружаем услуги налету (БЕЗ кэша)
+            service_cache = await self._load_services(filters)
 
-            if need_reload:
-                await self._load_services(filters)
-                self.last_filters = filters  # Запоминаем фильтры
-
-            if not self.service_cache:
+            if not service_cache:
                 return {"status": "error", "message": "Нет загруженных услуг", "candidates": []}
 
             # Предобработка текста
@@ -213,7 +226,7 @@ class SemanticSearchService:
             # Поиск по search_terms (название + описание)
             matching_service_ids = set()
 
-            for service_id, service_data in self.service_cache.items():
+            for service_id, service_data in service_cache.items():
                 # Проверяем есть ли совпадение
                 if self._has_match(words, service_data['search_terms']):
                     matching_service_ids.add(service_id)
@@ -221,7 +234,7 @@ class SemanticSearchService:
             # Формируем результат
             candidates_with_scores = []
             for service_id in matching_service_ids:
-                service_data = self.service_cache[service_id]
+                service_data = service_cache[service_id]
 
                 # Вычисляем score: количество совпавших слов
                 matched_terms = 0
