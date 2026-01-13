@@ -3,7 +3,10 @@
 
 """
 VectorSearchService - микросервис поиска услуг с триграммным индексом
-Использует pg_trgm для нечеткого поиска по scenario_name и description_for_search
+Использует pg_trgm для нечеткого поиска по scenario_name (БЕЗ description)
+
+ИСПРАВЛЕНО (2026-01-13):
+- Удален поиск по description_for_search (избыточное поле)
 """
 
 import logging
@@ -29,7 +32,7 @@ class VectorSearchService:
                 with connection.cursor() as cursor:
                     # ИСПРАВЛЕНО (2026-01-13): Используем JOIN с ref_* вместо избыточных колонок
                     cursor.execute("""
-                        SELECT sc.service_id, sc.scenario_name, sc.description_for_search,
+                        SELECT sc.service_id, sc.scenario_name, -- sc.description_for_search,  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                                COALESCE(rst.type_name, '') as incident_type,
                                COALESCE(rc.category_name, '') as category,
                                COALESCE(rl.localization_name, '') as location_type
@@ -42,12 +45,13 @@ class VectorSearchService:
                     services = cursor.fetchall()
 
                 service_cache = {}
-                for service_id, scenario_name, description, incident_type, category, location_type in services:
-                    search_text = f"{scenario_name} {description or ''}".lower()
+                for service_id, scenario_name, incident_type, category, location_type in services:
+                    # search_text = f"{scenario_name} {description or ''}".lower()  -- ЗАКОММЕНТИРОВАНО (2026-01-13)
+                    search_text = scenario_name.lower()
                     service_cache[service_id] = {
                         'service_id': service_id,
                         'service_name': scenario_name,
-                        'description': description or '',
+                        # 'description': description or '',  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                         'incident_type': incident_type or '',
                         'category': category or '',
                         'location_type': location_type or '',
@@ -221,10 +225,10 @@ class VectorSearchService:
                             WHERE sc.is_active = TRUE
                               AND (
                                   sc.scenario_name ILIKE %s
-                                  OR sc.description_for_search ILIKE %s
+                                  -- OR sc.description_for_search ILIKE %s  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                               )
                             LIMIT %s
-                        """, [f'%{message_text}%', f'%{message_text}%', limit])
+                        """, [f'%{message_text}%', limit])  # ИСПРАВЛЕНО (2026-01-13): убран один параметр
                     else:
                         # Для остальных запросов используем word_similarity с адаптивным порогом
                         # ИСПРАВЛЕНО (2026-01-13): Используем JOIN с ref_* вместо избыточных колонок
@@ -237,8 +241,8 @@ class VectorSearchService:
                                 COALESCE(rl.localization_name, '') as location_type,
                                 COALESCE(
                                     GREATEST(
-                                        word_similarity(%s, sc.scenario_name),
-                                        word_similarity(%s, sc.description_for_search)
+                                        word_similarity(%s, sc.scenario_name)
+                                        -- , word_similarity(%s, sc.description_for_search)  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                                     ),
                                     0
                                 ) as similarity
@@ -249,11 +253,11 @@ class VectorSearchService:
                             WHERE sc.is_active = TRUE
                               AND (
                                   word_similarity(%s, sc.scenario_name) > %s
-                                  OR word_similarity(%s, sc.description_for_search) > %s
+                                  -- OR word_similarity(%s, sc.description_for_search) > %s  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                               )
                             ORDER BY similarity DESC
                             LIMIT %s
-                        """, [message_text, message_text, message_text, threshold, message_text, threshold, limit])
+                        """, [message_text, threshold, limit])  # ИСПРАВЛЕНО (2026-01-13): убраны параметры для description
 
                     results = cursor.fetchall()
 
@@ -293,10 +297,10 @@ class VectorSearchService:
                         WHERE is_active = TRUE
                           AND (
                               scenario_name ILIKE %s
-                              OR description_for_search ILIKE %s
+                              -- OR description_for_search ILIKE %s  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                           )
                         LIMIT 10
-                    """, [f'%{message_text}%', f'%{message_text}%'])
+                    """, [f'%{message_text}%'])  # ИСПРАВЛЕНО (2026-01-13): убран один параметр
 
                     results = cursor.fetchall()
 

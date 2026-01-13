@@ -4,11 +4,12 @@
 """
 SemanticSearchService - микросервис поиска услуг по контенту
 Использует pymorphy2 для морфологии и rapidfuzz для нечеткого совпадения
-Ищет по scenario_name, description_for_search, category_name, object_name (БЕЗ ТЕГОВ)
+Ищет по scenario_name, category_name, object_name (БЕЗ ТЕГОВ, БЕЗ description)
 
 ИСПРАВЛЕНО (2026-01-13):
 - Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
 - Добавлен поиск по object_name (ВСЕГДА, так как фильтра object нет в MainAgent)
+- Удален поиск по description_for_search (избыточное поле)
 """
 
 import logging
@@ -42,9 +43,9 @@ class SemanticSearchService:
         Асинхронная загрузка услуг из БД в кэш
 
         ИСПРАВЛЕНО (2026-01-13):
-        - Загружает scenario_name, description_for_search, category_name, object_name (БЕЗ ТЕГОВ)
+        - Загружает scenario_name, category_name, object_name (БЕЗ ТЕГОВ, БЕЗ description)
         - Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
-        - Добавлен поиск по object_name если фильтр не установлен (confidence < 90%)
+        - Добавлен поиск по object_name (ВСЕГДА, так как фильтра object нет в MainAgent)
         - Добавлена предварительная фильтрация по filters (только confidence >= 90%)
         """
         try:
@@ -52,7 +53,7 @@ class SemanticSearchService:
                 with connection.cursor() as cursor:
                     # Строим SQL запрос с фильтрами
                     sql = """
-                        SELECT sc.service_id, sc.scenario_name, sc.description_for_search,
+                        SELECT sc.service_id, sc.scenario_name, -- sc.description_for_search,  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                                COALESCE(rc.category_name, '') as category,
                                COALESCE(ro.object_name, '') as object_name,
                                COALESCE(rst.type_name, '') as incident_type,
@@ -100,18 +101,18 @@ class SemanticSearchService:
                     for row in services:
                         service_id = row[0]
                         scenario_name = row[1]
-                        description = row[2] or ""
-                        category = row[3] or ""
-                        object_name = row[4] or ""
-                        incident_type = row[5] or ""
-                        location_type = row[6] or ""
+                        # description = row[2] or ""  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
+                        category = row[2] or ""
+                        object_name = row[3] or ""
+                        incident_type = row[4] or ""
+                        location_type = row[5] or ""
 
-                        # Формируем поисковые термины из названия и описания (БЕЗ ТЕГОВ!)
+                        # Формируем поисковые термины из названия (БЕЗ description и БЕЗ ТЕГОВ!)
                         name_words = self._tokenize_text(scenario_name)
-                        desc_words = self._tokenize_text(description)
+                        # desc_words = self._tokenize_text(description)  -- ЗАКОММЕНТИРОВАНО (2026-01-13)
 
                         # ИСПРАВЛЕНО (2026-01-13): Добавляем category и object в поиск
-                        all_search_terms = set(name_words) | set(desc_words)
+                        all_search_terms = set(name_words)  # | set(desc_words)
 
                         # Проверяем нужно ли добавлять category в поиск
                         use_category_in_search = True
@@ -135,7 +136,7 @@ class SemanticSearchService:
                         service_cache[service_id] = {
                             'service_id': service_id,
                             'service_name': scenario_name,
-                            'description': description,
+                            # 'description': description,  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                             'category': category,
                             'object_name': object_name,
                             'incident_type': incident_type,
@@ -171,7 +172,7 @@ class SemanticSearchService:
     async def search(self, message_text: str, filters: Dict = None) -> Dict:
         """
         Основной метод поиска услуги по тексту сообщения
-        Ищет по scenario_name, description_for_search, category_name, object_name (БЕЗ ТЕГОВ)
+        Ищет по scenario_name, category_name, object_name (БЕЗ ТЕГОВ, БЕЗ description)
 
         Args:
             message_text: Текст сообщения пользователя
@@ -181,9 +182,9 @@ class SemanticSearchService:
             Dict: Результат поиска в формате JSON {status, candidates: [{...}]}
 
         ИСПРАВЛЕНО (2026-01-13):
-        - Ищет по scenario_name и description_for_search (БЕЗ ТЕГОВ)
+        - Ищет по scenario_name, category_name, object_name (БЕЗ ТЕГОВ, БЕЗ description)
         - Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
-        - Добавлен поиск по object_name если фильтр не установлен (confidence < 90%)
+        - Добавлен поиск по object_name (ВСЕГДА, так как фильтра object нет в MainAgent)
         - Использует pymorphy2 для морфологии
         - Использует rapidfuzz для нечеткого совпадения
         """
@@ -237,7 +238,7 @@ class SemanticSearchService:
                 candidates_with_scores.append({
                     "service_id": service_id,
                     "service_name": service_data['service_name'],
-                    "description": service_data['description'],
+                    # "description": service_data['description'],  -- ЗАКОММЕНТИРОВАНО (2026-01-13): избыточное поле
                     "matched_terms": matched_terms,
                     "source": "semantic_search",
                     "category": service_data.get('category', ''),
