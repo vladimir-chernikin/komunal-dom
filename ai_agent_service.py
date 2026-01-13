@@ -57,6 +57,11 @@ class AIAgentService:
         'GigaChat-2.1': 1.80
     }
 
+    # Цены Yandex Embeddings (руб за 1000 токенов) - ПРЕДВАРИТЕЛЬНО
+    YANDEX_EMBEDDING_PRICES = {
+        'text-search-doc': 0.10  # Приблизительно (обычно дешевле LLM)
+    }
+
     def __init__(self, provider: str = 'gigachat', default_model: Optional[str] = None):
         """
         Инициализация сервиса
@@ -94,7 +99,8 @@ class AIAgentService:
             'total_tokens': 0,
             'total_cost': 0.0,
             'yandexgpt': {'requests': 0, 'tokens': 0, 'cost': 0.0},
-            'gigachat': {'requests': 0, 'tokens': 0, 'cost': 0.0}
+            'gigachat': {'requests': 0, 'tokens': 0, 'cost': 0.0},
+            'embeddings': {'requests': 0, 'tokens': 0, 'cost': 0.0}  # ИСПРАВЛЕНО (2026-01-13): Отдельная статистика для embeddings
         }
 
         # OAuth токен GigaChat
@@ -104,7 +110,8 @@ class AIAgentService:
         logger.info(
             f"AIAgentService инициализирован: "
             f"provider={provider}, model={self.default_model}, "
-            f"yandexgpt={self.yandexgpt_available}, gigachat={self.gigachat_available}"
+            f"yandexgpt={self.yandexgpt_available}, gigachat={self.gigachat_available}, "
+            f"embeddings=True (Yandex)"
         )
 
     def _get_default_model(self) -> str:
@@ -687,3 +694,112 @@ class AIAgentService:
                 'raw_response': response,
                 'usage': usage
             }
+
+    async def get_embedding(self, text: str, model: str = 'text-search-doc') -> Tuple[List[float], Dict[str, Any]]:
+        """
+        Получить embedding от Yandex API
+
+        ИСПРАВЛЕНО (2026-01-13):
+        - Добавлен метод для генерации embeddings через Yandex API
+        - Отдельное логирование стоимости от LLM промптов
+        - Статистика по embeddings в self.stats['embeddings']
+
+        Args:
+            text: Текст для векторизации
+            model: Модель embeddings (text-search-doc по умолчанию)
+
+        Returns:
+            (embedding_vector, usage_info)
+            - embedding_vector: List[float] длиной 256
+            - usage_info: Dict с информацией о вызове
+
+        Raises:
+            Exception: Ошибка API или недоступность Yandex
+
+        Пример:
+            vector, usage = await service.get_embedding("прорыв канализации")
+            print(len(vector))  # 256
+            print(usage['cost_rub'])  # 0.0012
+        """
+        if not self.yandexgpt_available:
+            raise Exception("Yandex Embeddings недоступен (не настроен API key или folder ID)")
+
+        try:
+            import aiohttp
+
+            # URL для Yandex Embeddings API
+            url = "https://llm.api.cloud.yandex.net/foundationModels/v1/textEmbedding"
+
+            # Headers
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Api-Key {self.yandexgpt_api_key}",
+                "x-folder-id": self.yandexgpt_folder_id
+            }
+
+            # Payload
+            payload = {
+                "modelUri": f"emb://{self.yandexgpt_folder_id}/text-search-doc/latest",
+                "text": text
+            }
+
+            logger.debug(f"AIAgentService: Yandex Embeddings REQUEST text='{text[:100]}...'")
+
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30.0)) as session:
+                async with session.post(url, headers=headers, json=payload) as response:
+                    logger.info(f"AIAgentService: Yandex Embeddings API response: {response.status}")
+
+                    if response.status == 200:
+                        result = await response.json()
+
+                        # Извлекаем embedding вектор
+                        embedding = result.get("embedding", [])
+
+                        if not embedding:
+                            raise Exception("Пустой embedding в ответе")
+
+                        # Рассчитываем количество токенов (примерно: 1 токен = 4 символа для русского)
+                        estimated_tokens = max(1, len(text) // 4)
+
+                        # Рассчитываем стоимость
+                        price_per_1k = self.YANDEX_EMBEDDING_PRICES.get(model, 0.10)
+                        cost = (estimated_tokens / 1000) * price_per_1k
+
+                        # Формируем usage_info
+                        usage_info = {
+                            'provider': 'yandex',
+                            'service': 'embeddings',
+                            'model': model,
+                            'text_length': len(text),
+                            'estimated_tokens': estimated_tokens,
+                            'embedding_dimension': len(embedding),
+                            'cost_rub': round(cost, 6),
+                            'cost_per_1k_tokens': price_per_1k
+                        }
+
+                        # Логирование
+                        logger.info(
+                            f"AIAgentService: Yandex Embeddings завершен. "
+                            f"Длина текста: {len(text)} символов, "
+                            f"размерность: {len(embedding)}, "
+                            f"стоимость: {cost:.6f} руб."
+                        )
+
+                        # Обновляем статистику
+                        self.stats['embeddings']['requests'] += 1
+                        self.stats['embeddings']['tokens'] += estimated_tokens
+                        self.stats['embeddings']['cost'] += cost
+                        self.stats['total_requests'] += 1
+                        self.stats['total_cost'] += cost
+
+                        return embedding, usage_info
+
+                    else:
+                        # Ошибка API
+                        error_text = await response.text()
+                        logger.error(f"Yandex Embeddings API error {response.status}: {error_text}")
+                        raise Exception(f"Yandex Embeddings API error {response.status}: {error_text}")
+
+        except Exception as e:
+            logger.error(f"Ошибка при вызове Yandex Embeddings: {e}")
+            raise
