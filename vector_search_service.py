@@ -27,12 +27,17 @@ class VectorSearchService:
         try:
             def load_sync():
                 with connection.cursor() as cursor:
-                    # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
+                    # ИСПРАВЛЕНО (2026-01-13): Используем JOIN с ref_* вместо избыточных колонок
                     cursor.execute("""
-                        SELECT service_id, scenario_name, description_for_search,
-                               incident_type, category, location_type
-                        FROM services_catalog
-                        WHERE is_active = TRUE
+                        SELECT sc.service_id, sc.scenario_name, sc.description_for_search,
+                               COALESCE(rst.type_name, '') as incident_type,
+                               COALESCE(rc.category_name, '') as category,
+                               COALESCE(rl.localization_name, '') as location_type
+                        FROM services_catalog sc
+                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
+                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
+                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
+                        WHERE sc.is_active = TRUE
                     """)
                     services = cursor.fetchall()
 
@@ -199,17 +204,20 @@ class VectorSearchService:
                     threshold, limit = self._calculate_adaptive_threshold(message_text)
 
                     # Для очень коротких запросов (< 5 букв) используем ILIKE
-                    # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
+                    # ИСПРАВЛЕНО (2026-01-13): Используем JOIN с ref_* вместо избыточных колонок
                     if len(message_text.strip()) < 5:
                         cursor.execute("""
                             SELECT
                                 sc.service_id,
                                 sc.scenario_name as service_name,
-                                sc.incident_type,
-                                sc.category,
-                                sc.location_type,
+                                COALESCE(rst.type_name, '') as incident_type,
+                                COALESCE(rc.category_name, '') as category,
+                                COALESCE(rl.localization_name, '') as location_type,
                                 0.5 as similarity
                             FROM services_catalog sc
+                            LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
+                            LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
+                            LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
                             WHERE sc.is_active = TRUE
                               AND (
                                   sc.scenario_name ILIKE %s
@@ -219,14 +227,14 @@ class VectorSearchService:
                         """, [f'%{message_text}%', f'%{message_text}%', limit])
                     else:
                         # Для остальных запросов используем word_similarity с адаптивным порогом
-                        # ИСПРАВЛЕНО (2025-12-26): Добавлены incident_type, category, location_type
+                        # ИСПРАВЛЕНО (2026-01-13): Используем JOIN с ref_* вместо избыточных колонок
                         cursor.execute("""
                             SELECT
                                 sc.service_id,
                                 sc.scenario_name as service_name,
-                                sc.incident_type,
-                                sc.category,
-                                sc.location_type,
+                                COALESCE(rst.type_name, '') as incident_type,
+                                COALESCE(rc.category_name, '') as category,
+                                COALESCE(rl.localization_name, '') as location_type,
                                 COALESCE(
                                     GREATEST(
                                         word_similarity(%s, sc.scenario_name),
@@ -235,6 +243,9 @@ class VectorSearchService:
                                     0
                                 ) as similarity
                             FROM services_catalog sc
+                            LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
+                            LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
+                            LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
                             WHERE sc.is_active = TRUE
                               AND (
                                   word_similarity(%s, sc.scenario_name) > %s

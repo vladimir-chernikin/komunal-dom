@@ -157,15 +157,21 @@ class MainAgent:
                 self._categories_cache = [row[0] for row in cursor.fetchall()]
 
                 # Загружаем уникальные объекты
-                cursor.execute("SELECT DISTINCT object_type FROM services_catalog WHERE object_type IS NOT NULL AND object_type != '' ORDER BY object_type")
+                cursor.execute("""
+                    SELECT DISTINCT ro.object_name
+                    FROM services_catalog sc
+                    JOIN ref_objects ro ON sc.object_id = ro.object_id
+                    WHERE ro.object_name IS NOT NULL AND ro.object_name != ''
+                    ORDER BY ro.object_name
+                """)
                 self._objects_cache = [row[0] for row in cursor.fetchall()]
 
-                # Загружаем типы локации
-                cursor.execute("SELECT DISTINCT location_type FROM services_catalog WHERE location_type IS NOT NULL AND location_type != '' ORDER BY location_type")
+                # Загружаем типы локации из справочника
+                cursor.execute("SELECT DISTINCT localization_name FROM ref_localization ORDER BY localization_name")
                 self._location_types_cache = [row[0] for row in cursor.fetchall()]
 
-                # Загружаем типы инцидентов
-                cursor.execute("SELECT DISTINCT incident_type FROM services_catalog WHERE incident_type IS NOT NULL AND incident_type != '' ORDER BY incident_type")
+                # Загружаем типы инцидентов из справочника
+                cursor.execute("SELECT DISTINCT type_name FROM ref_service_types ORDER BY type_name")
                 self._incident_types_cache = [row[0] for row in cursor.fetchall()]
 
                 logger.info(f"[OK] Загружены фильтры из БД:")
@@ -1100,25 +1106,36 @@ class MainAgent:
         try:
             def load_sync():
                 with connection.cursor() as cursor:
-                    # Строим SQL запрос с фильтрами
-                    sql = "SELECT service_id, scenario_name, incident_type, category, location_type FROM services_catalog WHERE is_active = TRUE"
+                    # Строим SQL запрос с фильтрами через JOIN с справочниками
+                    # ИСПРАВЛЕНО (2026-01-13): Используем ref_* вместо varchar колонок
+                    sql = """
+                        SELECT sc.service_id, sc.scenario_name,
+                               COALESCE(rst.type_name, '') as incident_type,
+                               COALESCE(rc.category_name, '') as category,
+                               COALESCE(rl.localization_name, '') as location_type
+                        FROM services_catalog sc
+                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
+                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
+                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
+                        WHERE sc.is_active = TRUE
+                    """
                     params = []
 
                     # Добавляем фильтры если они есть
                     if filters.get('incident_type'):
-                        sql += " AND incident_type = %s"
+                        sql += " AND rst.type_name = %s"
                         params.append(filters['incident_type'])
 
                     if filters.get('location_type'):
-                        sql += " AND location_type = %s"
+                        sql += " AND rl.localization_name = %s"
                         params.append(filters['location_type'])
 
                     if filters.get('category'):
                         # Частичное совпадение для категории
-                        sql += " AND category ILIKE %s"
+                        sql += " AND rc.category_name ILIKE %s"
                         params.append(f"%{filters['category']}%")
 
-                    sql += " ORDER BY scenario_name"
+                    sql += " ORDER BY sc.scenario_name"
                     logger.info(f"SQL для поиска по фильтрам: {sql} с параметрами {params}")
 
                     cursor.execute(sql, params)
