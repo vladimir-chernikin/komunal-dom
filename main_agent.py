@@ -1244,7 +1244,7 @@ class MainAgent:
         ИСПРАВЛЕНО (2025-12-25): Возвращает filtered_candidates для итеративного уточнения
         ИСПРАВЛЕНО (2025-12-28): Добавлены параметры txtPrb и established_filters для передачи в LLM
         ИСПРАВЛЕНО (2025-12-28): Извлечение txtPrb и established_filters из dialog_history если не переданы
-        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для комплементарного стиля вопроса
+        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для формирования intro_phrase
         """
         # ИСПРАВЛЕНО (2025-12-28): Если txtPrb и established_filters не переданы - извлекаем из истории
         if not txtPrb and dialog_history and self.problem_accumulator:
@@ -1257,6 +1257,26 @@ class MainAgent:
         # ИСПРАВЛЕНО (2026-01-10): Убеждаемся, что established_filters - это dict (не None)
         if established_filters is None:
             established_filters = {}
+
+        # ИСПРАВЛЕНО (2026-01-13): Формируем intro_phrase для комплементарного стиля при отказе
+        intro_phrase = None
+        if is_refusal and txtPrb:
+            import re
+            logger.warning("[REFUSAL] Формируем intro_phrase для комплементарного стиля")
+
+            # Извлекаем отвергнутую услугу из txtPrb
+            match = re.search(r"пользователь не уверен что это услуга '([^']+)'", txtPrb)
+            refused_service = match.group(1) if match else "предложенная услуга"
+
+            # Извлекаем описание фактов ДО отказа
+            facts_match = re.search(r"^(.+?)\. Пользователь не уверен", txtPrb)
+            facts = facts_match.group(1) if facts_match else txtPrb
+
+            # Формируем intro_phrase: факты + отвергнутая услуга
+            # ИИ сам сформулирует из этого комплементарную фразу
+            intro_phrase = f"{facts}. Отвергнута услуга: {refused_service}"
+            logger.warning(f"[REFUSAL] intro_phrase: '{intro_phrase[:100]}...'")
+
 
         # ИСПРАВЛЕНО (2025-12-28): Добавляем отладочные логи
         logger.info("[SEARCH] _generate_smart_clarification ДИАГНОСТИКА:")
@@ -1271,7 +1291,7 @@ class MainAgent:
             }
             # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI + ПЕРЕДАЕМ txtPrb и established_filters
             # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
-            # ИСПРАВЛЕНО (2026-01-13): Передаем is_refusal для комплементарного стиля
+            # ИСПРАВЛЕНО (2026-01-13): Передаем intro_phrase для комплементарного стиля
             message = await self._generate_ai_question(
                 context=context.get('original_message', ''),
                 dialog_history=context.get('dialog_history', []),
@@ -1280,7 +1300,7 @@ class MainAgent:
                 txtPrb=txtPrb,  # ИСПРАВЛЕНО
                 question_type='clarification',
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-                is_refusal=is_refusal  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа
+                intro_phrase=intro_phrase  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -1538,6 +1558,7 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-28): ПЕРЕДАЕМ txtPrb и established_filters
         # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
         # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+        # ИСПРАВЛЕНО (2026-01-13): Передаем intro_phrase для комплементарного стиля
         ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
@@ -1545,7 +1566,8 @@ class MainAgent:
             established_filters=established_filters,  # ИСПРАВЛЕНО
             txtPrb=txtPrb,  # ИСПРАВЛЕНО
             question_type='clarification',
-            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
+            session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+            intro_phrase=intro_phrase  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
         )
 
         return {
@@ -2826,12 +2848,14 @@ JSON:"""
         candidates: List[Dict] = None,
         missing_filter: str = None,
         txtPrb: str = None,
-        asked_questions: List[str] = None
+        asked_questions: List[str] = None,
+        intro_phrase: str = None  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): Динамическая сборка промпта по стратегии
         ИСПРАВЛЕНО (2026-01-05): Добавлен параметр asked_questions для исключения повторов
         ИСПРАВЛЕНО (2026-01-06): Добавлена стратегия NONE для случая без кандидатов
+        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля
 
         Стратегии:
         - A (1 кандидат, >90%): Подтверждение
@@ -2847,10 +2871,38 @@ JSON:"""
             missing_filter: Недостающий фильтр (для стратегии C)
             txtPrb: Описание проблемы
             asked_questions: Список уже заданных вопросов (ИСПРАВЛЕНО 2026-01-05)
+            intro_phrase: Вводная фраза с фактами и отвергнутой услугой (ИСПРАВЛЕНО 2026-01-13)
 
         Returns:
             str: Промпт для YandexGPT Pro
         """
+        # ИСПРАВЛЕНО (2026-01-13): Блок вводной фразы для комплементарного стиля
+        intro_block = ""
+        if intro_phrase:
+            intro_block = f"""
+⚠️⚠️⚠️ КРИТИЧЕСКИ ВАЖНО: КОМПЛЕМЕНТАРНЫЙ СТИЛЬ ВОПРОСА ⚠️⚠️⚠️
+
+Пользователь ПОТВЕРДИЛ факты: {intro_phrase}
+
+Но пользователь НЕ СОГЛАСЕН с предложенной ранее услугой.
+
+ТВОЯ ЗАДАЧА:
+1. СНАЧАЛА сформулируй комплементарную фразу (1 предложение):
+   - Признай факты которые подтвердил пользователь
+   - Отметь что предложенная услуга не подходит
+   - Используй формулировки "вижу что вы описали...", "понимаю что у вас..."
+   - НЕ используй "пользователь сказал" (говорить о пользователе в 3-м лице ЗАПРЕЩЕНО!)
+
+2. ПОТОМ задай уточняющий вопрос (максимум 10 слов)
+
+ПРИМЕРЫ правильных комплементарных фраз:
+✅ "Вижу, что у вас течь, но вы не считаете это прорывом канализации. Где именно это происходит?"
+✅ "Понимаю, что что-то сломалось, но это не [{услуга}]. Опишите подробнее что произошло."
+❌ "Пользователь сказал что у него течет. Но вы не согласны." (ЗАПРЕЩЕНО про "пользователь сказал"!)
+
+"""
+            logger.warning(f"[INTRO] Добавлен блок комплементарного стиля: '{intro_phrase[:100]}...'")
+
         # Базовый блок системы
         system_block = """Ты - AI-диспетчер управляющей компании.
 
@@ -3112,7 +3164,8 @@ JSON:"""
 """
 
         # ИСПРАВЛЕНО (2026-01-05): Собираем промпт с блоком уже заданных вопросов
-        prompt = f"{system_block}{facts_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
+        # ИСПРАВЛЕНО (2026-01-13): Добавлен блок intro_phrase для комплементарного стиля
+        prompt = f"{system_block}{intro_block}{facts_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
 
         # Добавляем инструкцию по формату ответа
         prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"
@@ -3128,7 +3181,7 @@ JSON:"""
         txtPrb: str = None,
         question_type: str = "clarification",
         session_id: str = None,
-        is_refusal: bool = False  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
+        intro_phrase: str = None  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
     ) -> Dict[str, str]:
         """
         Универсальный метод для генерации вопросов через AI
@@ -3136,7 +3189,7 @@ JSON:"""
         ИСПРАВЛЕНО (2025-12-28): Все вопросы генерируются через YandexGPT
         ИСПРАВЛЕНО (2025-12-29): Возвращает Dict с вопросом И метаданными для трассировки
         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
-        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для комплементарного стиля вопроса
+        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля вопроса
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -3151,7 +3204,7 @@ JSON:"""
                 - 'location' - где произошло
                 - 'details' - детали проблемы
             session_id: ID сессии для сохранения в llm_request_log
-            is_refusal: Флаг отказа пользователя (ИСПРАВЛЕНО 2026-01-13)
+            intro_phrase: Вводная фраза для ИИ (факты + отвергнутая услуга) - ИСПРАВЛЕНО 2026-01-13
 
         Returns:
             Dict: {
@@ -3170,28 +3223,7 @@ JSON:"""
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
         logger.info(f"  [TOOL] established_filters: {established_filters if established_filters else '(не переданы)'}")
         logger.info(f"  👥 candidates: {len(candidates) if candidates else 0} кандидатов")
-        logger.info(f"  [REFUSAL] is_refusal: {is_refusal}")  # ИСПРАВЛЕНО (2026-01-13)
-
-        # ИСПРАВЛЕНО (2026-01-13): Комплементарный стиль вопроса при отказе пользователя
-        if is_refusal and txtPrb:
-            logger.warning("[REFUSAL] Формируем комплементарный вопрос с изложением фактов")
-
-            # Извлекаем отвергнутую услугу из txtPrb
-            import re
-            match = re.search(r"пользователь не уверен что это услуга '([^']+)'", txtPrb)
-            refused_service = match.group(1) if match else "предложенная услуга"
-
-            # Извлекаем описание фактов ДО отказа
-            facts_match = re.search(r"^(.+?)\. Пользователь не уверен", txtPrb)
-            facts = facts_match.group(1) if facts_match else txtPrb
-
-            # Формируем комплементарный префикс
-            complimentary_prefix = f"Необходимо лучше разобраться: {facts}. Но вы не согласны, что это {refused_service}. Тогда разрешите уточнить: "
-
-            # Добавляем к context комплементарный префикс
-            context = complimentary_prefix + context
-
-            logger.warning(f"[REFUSAL] Комплементарный префикс: '{complimentary_prefix[:100]}...'")
+        logger.info(f"  [INTRO] intro_phrase: '{intro_phrase[:100] if intro_phrase else '(не передана)'}'")  # ИСПРАВЛЕНО (2026-01-13)
 
         try:
             # ИСПРАВЛЕНО (2026-01-03): Используем _build_dynamic_prompt вместо _build_question_prompt
@@ -3256,7 +3288,8 @@ JSON:"""
                     candidates=candidates,
                     missing_filter=missing_filter,
                     txtPrb=txtPrb,
-                    asked_questions=asked_questions if asked_questions else None  # ИСПРАВЛЕНО 2026-01-05
+                    asked_questions=asked_questions if asked_questions else None,  # ИСПРАВЛЕНО 2026-01-05
+                    intro_phrase=intro_phrase  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
                 )
                 logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
             else:
