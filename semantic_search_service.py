@@ -8,7 +8,7 @@ SemanticSearchService - микросервис поиска услуг по ко
 
 ИСПРАВЛЕНО (2026-01-13):
 - Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
-- Добавлен поиск по object_name если фильтр не установлен (confidence < 90%)
+- Добавлен поиск по object_name (ВСЕГДА, так как фильтра object нет в MainAgent)
 """
 
 import logging
@@ -66,7 +66,7 @@ class SemanticSearchService:
                     """
                     params = []
 
-                    # Предварительная фильтрация по category (confidence >= 90%)
+                    # ИСПРАВЛЕНО (2026-01-13): Только фильтры, которые существуют в MainAgent
                     if filters:
                         category_data = filters.get('category')
                         if category_data and isinstance(category_data, dict):
@@ -74,14 +74,6 @@ class SemanticSearchService:
                             if category_conf >= 0.9:
                                 sql += " AND rc.category_name = %s"
                                 params.append(category_data.get('value'))
-
-                        # Предварительная фильтрация по object (confidence >= 90%)
-                        object_data = filters.get('object')
-                        if object_data and isinstance(object_data, dict):
-                            object_conf = object_data.get('confidence', 0)
-                            if object_conf >= 0.9:
-                                sql += " AND ro.object_name = %s"
-                                params.append(object_data.get('value'))
 
                         # Предварительная фильтрация по incident_type (confidence >= 90%)
                         incident_data = filters.get('incident_type')
@@ -118,13 +110,11 @@ class SemanticSearchService:
                         name_words = self._tokenize_text(scenario_name)
                         desc_words = self._tokenize_text(description)
 
-                        # ИСПРАВЛЕНО (2026-01-13): Добавляем category и object если фильтры не установлены
+                        # ИСПРАВЛЕНО (2026-01-13): Добавляем category и object в поиск
                         all_search_terms = set(name_words) | set(desc_words)
 
-                        # Проверяем нужно ли добавлять category/object в поиск
+                        # Проверяем нужно ли добавлять category в поиск
                         use_category_in_search = True
-                        use_object_in_search = True
-
                         if filters:
                             # Если category установлен с confidence >= 90%, НЕ добавляем в поиск
                             category_data = filters.get('category')
@@ -132,17 +122,13 @@ class SemanticSearchService:
                                 if category_data.get('confidence', 0) >= 0.9:
                                     use_category_in_search = False
 
-                            # Если object установлен с confidence >= 90%, НЕ добавляем в поиск
-                            object_data = filters.get('object')
-                            if object_data and isinstance(object_data, dict):
-                                if object_data.get('confidence', 0) >= 0.9:
-                                    use_object_in_search = False
-
+                        # ИСПРАВЛЕНО (2026-01-13): object_name ВСЕГДА добавляем в поиск (фильтра object нет в MainAgent)
                         if use_category_in_search and category:
                             category_words = self._tokenize_text(category)
                             all_search_terms.update(category_words)
 
-                        if use_object_in_search and object_name:
+                        # object_name - ВСЕГДА добавляем в поиск (так как фильтра object нет)
+                        if object_name:
                             object_words = self._tokenize_text(object_name)
                             all_search_terms.update(object_words)
 

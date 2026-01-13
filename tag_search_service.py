@@ -59,7 +59,7 @@ class TagSearchService:
                     """
                     params = []
 
-                    # Предварительная фильтрация по category (confidence >= 90%)
+                    # ИСПРАВЛЕНО (2026-01-13): Только фильтры, которые существуют в MainAgent
                     if filters:
                         category_data = filters.get('category')
                         if category_data and isinstance(category_data, dict):
@@ -67,14 +67,6 @@ class TagSearchService:
                             if category_conf >= 0.9:
                                 sql += " AND rc.category_name = %s"
                                 params.append(category_data.get('value'))
-
-                        # Предварительная фильтрация по object (confidence >= 90%)
-                        object_data = filters.get('object')
-                        if object_data and isinstance(object_data, dict):
-                            object_conf = object_data.get('confidence', 0)
-                            if object_conf >= 0.9:
-                                sql += " AND ro.object_name = %s"
-                                params.append(object_data.get('value'))
 
                         # Предварительная фильтрация по incident_type (confidence >= 90%)
                         incident_data = filters.get('incident_type')
