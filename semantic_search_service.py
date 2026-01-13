@@ -4,7 +4,11 @@
 """
 SemanticSearchService - микросервис поиска услуг по контенту
 Использует pymorphy2 для морфологии и rapidfuzz для нечеткого совпадения
-Ищет по scenario_name и description_for_search (БЕЗ ТЕГОВ)
+Ищет по scenario_name, description_for_search, category_name, object_name (БЕЗ ТЕГОВ)
+
+ИСПРАВЛЕНО (2026-01-13):
+- Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
+- Добавлен поиск по object_name если фильтр не установлен (confidence < 90%)
 """
 
 import logging
@@ -24,6 +28,7 @@ class SemanticSearchService:
     def __init__(self):
         self.service_cache = None
         self.morph = None
+        self.last_filters = None  # ИСПРАВЛЕНО (2026-01-13): Запоминаем фильтры для сброса кэша
         logger.info("SemanticSearchService инициализирован (поиск по КОНТЕНТУ)")
 
     def _get_morph(self):
@@ -37,7 +42,9 @@ class SemanticSearchService:
         Асинхронная загрузка услуг из БД в кэш
 
         ИСПРАВЛЕНО (2026-01-13):
-        - Загружает scenario_name и description_for_search (БЕЗ ТЕГОВ)
+        - Загружает scenario_name, description_for_search, category_name, object_name (БЕЗ ТЕГОВ)
+        - Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
+        - Добавлен поиск по object_name если фильтр не установлен (confidence < 90%)
         - Добавлена предварительная фильтрация по filters (только confidence >= 90%)
         """
         try:
@@ -111,8 +118,33 @@ class SemanticSearchService:
                         name_words = self._tokenize_text(scenario_name)
                         desc_words = self._tokenize_text(description)
 
-                        # Все поисковые термины для этой услуги
+                        # ИСПРАВЛЕНО (2026-01-13): Добавляем category и object если фильтры не установлены
                         all_search_terms = set(name_words) | set(desc_words)
+
+                        # Проверяем нужно ли добавлять category/object в поиск
+                        use_category_in_search = True
+                        use_object_in_search = True
+
+                        if filters:
+                            # Если category установлен с confidence >= 90%, НЕ добавляем в поиск
+                            category_data = filters.get('category')
+                            if category_data and isinstance(category_data, dict):
+                                if category_data.get('confidence', 0) >= 0.9:
+                                    use_category_in_search = False
+
+                            # Если object установлен с confidence >= 90%, НЕ добавляем в поиск
+                            object_data = filters.get('object')
+                            if object_data and isinstance(object_data, dict):
+                                if object_data.get('confidence', 0) >= 0.9:
+                                    use_object_in_search = False
+
+                        if use_category_in_search and category:
+                            category_words = self._tokenize_text(category)
+                            all_search_terms.update(category_words)
+
+                        if use_object_in_search and object_name:
+                            object_words = self._tokenize_text(object_name)
+                            all_search_terms.update(object_words)
 
                         service_cache[service_id] = {
                             'service_id': service_id,
@@ -153,7 +185,7 @@ class SemanticSearchService:
     async def search(self, message_text: str, filters: Dict = None) -> Dict:
         """
         Основной метод поиска услуги по тексту сообщения
-        Ищет по scenario_name и description (БЕЗ ТЕГОВ)
+        Ищет по scenario_name, description_for_search, category_name, object_name (БЕЗ ТЕГОВ)
 
         Args:
             message_text: Текст сообщения пользователя
@@ -164,13 +196,23 @@ class SemanticSearchService:
 
         ИСПРАВЛЕНО (2026-01-13):
         - Ищет по scenario_name и description_for_search (БЕЗ ТЕГОВ)
+        - Добавлен поиск по category_name если фильтр не установлен (confidence < 90%)
+        - Добавлен поиск по object_name если фильтр не установлен (confidence < 90%)
         - Использует pymorphy2 для морфологии
         - Использует rapidfuzz для нечеткого совпадения
         """
         try:
-            # Предварительная фильтрация через загрузку услуг
+            # ИСПРАВЛЕНО (2026-01-13): Проверяем изменение фильтров для сброса кэша
+            need_reload = False
             if not self.service_cache:
+                need_reload = True
+            elif self.last_filters != filters:
+                # Фильтры изменились - перезагружаем услуги
+                need_reload = True
+
+            if need_reload:
                 await self._load_services(filters)
+                self.last_filters = filters  # Запоминаем фильтры
 
             if not self.service_cache:
                 return {"status": "error", "message": "Нет загруженных услуг", "candidates": []}
