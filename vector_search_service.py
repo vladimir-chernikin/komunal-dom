@@ -186,7 +186,7 @@ class VectorSearchService:
                 for row in rows:
                     service_id = row[0]
                     service_name = row[1]
-                    incident_type = row[2]
+                    db_incident_type = row[2]  # ИСПРАВЛЕНО: переименовано
                     cat = row[3]
                     loc_type = row[4]
                     tag_id = row[5]
@@ -207,7 +207,7 @@ class VectorSearchService:
                         tag_similarities[service_id] = similarity
                         service_data[service_id] = {
                             'service_name': service_name,
-                            'incident_type': incident_type or '',
+                            'incident_type': db_incident_type or '',
                             'category': cat or '',
                             'location_type': loc_type or '',
                             'matched_tag': tag_name
@@ -294,7 +294,7 @@ class VectorSearchService:
                 for row in rows:
                     service_id = row[0]
                     service_name = row[1]
-                    incident_type = row[2]
+                    db_incident_type = row[2]  # ИСПРАВЛЕНО: переименовано
                     cat = row[3]
                     loc_type = row[4]
                     embedding_json = row[5]
@@ -315,7 +315,7 @@ class VectorSearchService:
                             'service_name': service_name,
                             'confidence': round(similarity, 3),
                             'source': 'vector_service_search',
-                            'incident_type': incident_type or '',
+                            'incident_type': db_incident_type or '',
                             'category': cat or '',
                             'location_type': loc_type or ''
                         })
@@ -419,9 +419,9 @@ class VectorSearchService:
             service_conf = item['service_conf']
             data = item['data']
 
-            # ПРИМЕНЯЕМ СРЕДНЕВЗВЕШЕННОЕ
+            # ПРИМЕНЯЕМ СРЕДНЕВЗВЕШЕННОЕ (ВСЕГДА!)
             if tag_conf is not None and service_conf is not None:
-                # Случай 1: Оба нашли - средневзвешенное
+                # Случай 1: Оба нашли - полное средневзвешенное
                 final_conf = WEIGHT_TAG * tag_conf + WEIGHT_SERVICE * service_conf
                 data['source'] = 'vector_tag_search'  # Приоритет тегам
                 data['service_confidence'] = round(service_conf, 3)
@@ -429,14 +429,14 @@ class VectorSearchService:
                 data['confidence'] = round(final_conf, 3)
 
             elif tag_conf is not None:
-                # Случай 2: Только теги - НЕ штрафуем
-                final_conf = tag_conf
+                # Случай 2: Только теги - средневзвешенное с нулем (ШТРАФ 40%)
+                final_conf = WEIGHT_TAG * tag_conf  # service_conf = 0
                 data['confidence'] = round(final_conf, 3)
                 data['source'] = 'vector_tag_search'
 
             else:
-                # Случай 3: Только сервис - НЕ штрафуем
-                final_conf = service_conf
+                # Случай 3: Только сервис - средневзвешенное с нулем (ШТРАФ 60%)
+                final_conf = WEIGHT_SERVICE * service_conf  # tag_conf = 0
                 data['confidence'] = round(final_conf, 3)
                 data['source'] = 'vector_service_search'
 
