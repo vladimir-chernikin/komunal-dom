@@ -379,16 +379,15 @@ class MainAgent:
                 if accumulation_result.get('is_refusal'):
                     logger.warning(f"[REFUSAL] Пользователь отказался от предложенной услуги")
                     logger.warning(f"[REFUSAL] txtPrb обновлен с пометкой об отказе: '{txtPrb[:100]}...'")
-                    logger.warning(f"[REFUSAL] Сбрасываем фильтры established_filters")
+                    logger.warning(f"[REFUSAL] Фильтры БУДУТ пересчитаны из txtPrb (содержит отказ)")
 
-                    # Принудительно сбрасываем фильтры при отказе
-                    established_filters = {}
-                else:
-                    # Рассчитываем фильтры с весами (только если не было отказа)
-                    established_filters = self.problem_accumulator.calculate_filter_confidence(
-                        txtPrb, accumulated_fields
-                    )
-                    logger.info(f"Установленные фильтры: {established_filters}")
+                # Рассчитываем фильтры с весами (ВСЕГДА, даже при отказе!)
+                # ИСПРАВЛЕНО (2026-01-13): txtPrb с отказом передается в calculate_filter_confidence
+                # Если txtPrb содержит "пользователь не уверен" → calculate_filter_confidence вернет {}
+                established_filters = self.problem_accumulator.calculate_filter_confidence(
+                    txtPrb, accumulated_fields
+                )
+                logger.info(f"Установленные фильтры: {established_filters}")
 
             except Exception as e:
                 logger.warning(f"Ошибка ProblemAccumulationService: {e}")
@@ -960,11 +959,15 @@ class MainAgent:
         # Генерируем умный уточняющий вопрос с учетом истории
         # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
         # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters и txtPrb для умных вопросов
+        # ИСПРАВЛЕНО (2026-01-13): Передаем is_refusal для комплементарного стиля вопроса
+        is_refusal = 'пользователь не уверен' in txtPrb.lower() if txtPrb else False
+
         clarification_result = await self._generate_smart_clarification(
             candidates_with_attrs, original_message, is_followup, dialog_history,
             txtPrb=None,  # Будет извлечен внутри
             established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10)
-            session_id=session_id
+            session_id=session_id,
+            is_refusal=is_refusal  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
         )
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
@@ -1229,7 +1232,7 @@ class MainAgent:
 
         return filters
 
-    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None) -> Dict:
+    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -1241,6 +1244,7 @@ class MainAgent:
         ИСПРАВЛЕНО (2025-12-25): Возвращает filtered_candidates для итеративного уточнения
         ИСПРАВЛЕНО (2025-12-28): Добавлены параметры txtPrb и established_filters для передачи в LLM
         ИСПРАВЛЕНО (2025-12-28): Извлечение txtPrb и established_filters из dialog_history если не переданы
+        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для комплементарного стиля вопроса
         """
         # ИСПРАВЛЕНО (2025-12-28): Если txtPrb и established_filters не переданы - извлекаем из истории
         if not txtPrb and dialog_history and self.problem_accumulator:
@@ -1267,6 +1271,7 @@ class MainAgent:
             }
             # ИСПРАВЛЕНО (2025-12-28): Заменен hardcoded на AI + ПЕРЕДАЕМ txtPrb и established_filters
             # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+            # ИСПРАВЛЕНО (2026-01-13): Передаем is_refusal для комплементарного стиля
             message = await self._generate_ai_question(
                 context=context.get('original_message', ''),
                 dialog_history=context.get('dialog_history', []),
@@ -1274,7 +1279,8 @@ class MainAgent:
                 established_filters=established_filters,  # ИСПРАВЛЕНО
                 txtPrb=txtPrb,  # ИСПРАВЛЕНО
                 question_type='clarification',
-                session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
+                session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+                is_refusal=is_refusal  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -3121,7 +3127,8 @@ JSON:"""
         established_filters: Dict = None,
         txtPrb: str = None,
         question_type: str = "clarification",
-        session_id: str = None
+        session_id: str = None,
+        is_refusal: bool = False  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
     ) -> Dict[str, str]:
         """
         Универсальный метод для генерации вопросов через AI
@@ -3129,6 +3136,7 @@ JSON:"""
         ИСПРАВЛЕНО (2025-12-28): Все вопросы генерируются через YandexGPT
         ИСПРАВЛЕНО (2025-12-29): Возвращает Dict с вопросом И метаданными для трассировки
         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
+        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для комплементарного стиля вопроса
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -3143,6 +3151,7 @@ JSON:"""
                 - 'location' - где произошло
                 - 'details' - детали проблемы
             session_id: ID сессии для сохранения в llm_request_log
+            is_refusal: Флаг отказа пользователя (ИСПРАВЛЕНО 2026-01-13)
 
         Returns:
             Dict: {
@@ -3161,6 +3170,28 @@ JSON:"""
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
         logger.info(f"  [TOOL] established_filters: {established_filters if established_filters else '(не переданы)'}")
         logger.info(f"  👥 candidates: {len(candidates) if candidates else 0} кандидатов")
+        logger.info(f"  [REFUSAL] is_refusal: {is_refusal}")  # ИСПРАВЛЕНО (2026-01-13)
+
+        # ИСПРАВЛЕНО (2026-01-13): Комплементарный стиль вопроса при отказе пользователя
+        if is_refusal and txtPrb:
+            logger.warning("[REFUSAL] Формируем комплементарный вопрос с изложением фактов")
+
+            # Извлекаем отвергнутую услугу из txtPrb
+            import re
+            match = re.search(r"пользователь не уверен что это услуга '([^']+)'", txtPrb)
+            refused_service = match.group(1) if match else "предложенная услуга"
+
+            # Извлекаем описание фактов ДО отказа
+            facts_match = re.search(r"^(.+?)\. Пользователь не уверен", txtPrb)
+            facts = facts_match.group(1) if facts_match else txtPrb
+
+            # Формируем комплементарный префикс
+            complimentary_prefix = f"Необходимо лучше разобраться: {facts}. Но вы не согласны, что это {refused_service}. Тогда разрешите уточнить: "
+
+            # Добавляем к context комплементарный префикс
+            context = complimentary_prefix + context
+
+            logger.warning(f"[REFUSAL] Комплементарный префикс: '{complimentary_prefix[:100]}...'")
 
         try:
             # ИСПРАВЛЕНО (2026-01-03): Используем _build_dynamic_prompt вместо _build_question_prompt
