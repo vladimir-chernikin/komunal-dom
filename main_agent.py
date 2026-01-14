@@ -454,6 +454,23 @@ class MainAgent:
 
         # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
         # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
+        # ИСПРАВЛЕНО (2026-01-14): Проверяем message_text на недовольство (не только history!)
+
+        # Список фраз недовольства
+        frustration_phrases = [
+            'я же сказал', 'я уже говорил', 'уже сказал', 'повторяю',
+            'однозначно', 'конечно же'
+        ]
+
+        # Проверяем текущее сообщение на недовольство (КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ!)
+        current_msg_lower = message_text.strip().lower()
+        has_frustration_current = any(phrase in current_msg_lower for phrase in frustration_phrases)
+
+        if has_frustration_current:
+            logger.warning(f"[!] Обнаружено недовольство в ТЕКУЩЕМ сообщении: '{message_text[:80]}'")
+
+        # Проверяем историю на повторы
+        has_frustration_history = False
         if dialog_history and len(dialog_history) >= 4:
             # Получаем последние 2-3 ответа пользователя
             user_responses = []
@@ -464,27 +481,22 @@ class MainAgent:
                     if len(user_responses) >= 3:
                         break
 
-            # ИСПРАВЛЕНО (2026-01-13): Детекция выражений недовольства
-            # Проверяем последний ответ на "я же сказал", "уже говорил", "повторяю"
-            frustration_phrases = [
-                'я же сказал', 'я уже говорил', 'уже сказал', 'повторяю',
-                'однозначно', 'конечно же'
-            ]
+            # Проверяем последний ответ из истории на недовольство
             last_response = user_responses[0] if user_responses else ''
-            has_frustration = any(phrase in last_response for phrase in frustration_phrases)
+            has_frustration_history = any(phrase in last_response for phrase in frustration_phrases)
 
             # Проверяем есть ли повторения (полное равенство ИЛИ выражение недовольства)
             is_repeated = (
                 (len(user_responses) >= 2 and user_responses[0] == user_responses[1]) or
-                has_frustration
+                has_frustration_history
             )
 
             if is_repeated:
                 repeated_answer = user_responses[0]
-                logger.warning(f"[!] Обнаружен повтор или недовольство: '{repeated_answer[:80]}...'")
+                logger.warning(f"[!] Обнаружен повтор или недовольство в ИСТОРИИ: '{repeated_answer[:80]}...'")
 
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА меняем стратегию при повторяющихся ответах
-                # ИСПРАВЛЕНО (2026-01-13): Генерируем вопрос с учетом txtPrb при недовольстве
+                # ИСПРАВЛЕНО (2026-01-14): Генерируем вопрос с учетом txtPrb при недовольстве
 
                 # Проверяем: сколько раз повторяется?
                 repeat_count = 1
@@ -494,14 +506,14 @@ class MainAgent:
                     else:
                         break
 
-                # ИСПРАВЛЕНО (2026-01-13): Если недовольство - считаем как 2 повтора
-                if has_frustration:
+                # ИСПРАВЛЕНО (2026-01-14): Если недовольство - считаем как 2 повтора
+                if has_frustration_history:
                     repeat_count = max(repeat_count, 2)
 
-                logger.info(f"[!] Ответ повторяется {repeat_count} раз (has_frustration={has_frustration})")
+                logger.info(f"[!] Ответ повторяется {repeat_count} раз (has_frustration_history={has_frustration_history})")
 
-                # ИСПРАВЛЕНО (2026-01-13): Генерируем вопрос с учетом txtPrb
-                if has_frustration and txtPrb:
+                # ИСПРАВЛЕНО (2026-01-14): Генерируем вопрос с учетом txtPrb
+                if has_frustration_history and txtPrb:
                     # Пользователь недоволен + есть txtPrb → анализируем контекст
                     txtPrb_lower = txtPrb.lower()
 
@@ -545,6 +557,51 @@ class MainAgent:
                     'is_followup': is_followup,
                     '_metadata': result_metadata
                 }
+
+        # ИСПРАВЛЕНО (2026-01-14): Обработка недовольства в ТЕКУЩЕМ сообщении
+        # Если пользователь говорит "я же сказал" - реагируем немедленно, даже без истории
+        if has_frustration_current:
+            logger.warning(f"[!] Обнаружено недовольство в ТЕКУЩЕМ сообщении, обрабатываем...")
+
+            # Генерируем вопрос с учетом txtPrb
+            if txtPrb:
+                txtPrb_lower = txtPrb.lower()
+
+                # Анализируем ключевые слова
+                if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
+                    message = 'Понял, что-то течет или капает. Что именно?'
+                elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
+                    message = 'Понял, есть запах. Откуда именно?'
+                elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
+                    message = 'Понял, что-то сломалось. Что именно?'
+                else:
+                    # Общий случай с учетом txtPrb
+                    message = f'Понял: {txtPrb[:50]}. Уточните детали.'
+            else:
+                message = 'Пожалуйста, уточните: что именно произошло?'
+
+            logger.info(f"[!] Сгенерирован ответ на недовольство: {message}")
+
+            # Возвращаем результат
+            result_metadata = {
+                'txtPrb': txtPrb,
+                'accumulated_fields': accumulated_fields,
+                'established_filters': established_filters,
+                'frustration_detected': True,
+                'frustration_source': 'current_message',
+                'semantic_check': semantic_check_result,
+                'microservices_results': {}
+            }
+
+            return {
+                'status': 'AMBIGUOUS',
+                'candidates': [],
+                'candidate_names': [],
+                'message': message,
+                'needs_clarification': True,
+                'is_followup': is_followup,
+                '_metadata': result_metadata
+            }
 
         # Подготавливаем metadata для результата
         result_metadata = {
@@ -684,8 +741,9 @@ class MainAgent:
                 # Если есть кандидаты - фильтруем их
                 if orch_candidates:
                     # ИСПРАВЛЕНО (2026-01-10): Передаем session_id и established_filters
+                    # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
                     result = await self._create_ambiguous_result_from_candidates(
-                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters
+                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb
                     )
                     # Сохраняем AI Orchestrator message
                     result['_ai_orchestrator_message'] = orch_result.get('message')
@@ -804,7 +862,8 @@ class MainAgent:
             # ИСПРАВЛЕНО (2025-12-29): Получаем результат и добавляем metadata
             # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
             # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для умных вопросов
-            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters)
+            # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
+            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb)
 
             # Добавляем metadata если его нет
             if '_metadata' not in result and 'result_metadata' in locals():
@@ -964,11 +1023,12 @@ class MainAgent:
         # AI не нужен
         return None
 
-    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None) -> Dict:
+    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, txtPrb: str = None) -> Dict:
         """
         Создание результата из таблицы кандидатов по ТЗ 3.2.2
 
         ИСПРАВЛЕНО: Сделано async для загрузки атрибутов из БД
+        ИСПРАВЛЕНО (2026-01-14): Добавлен параметр txtPrb для определения is_refusal
         """
         # ИСПРАВЛЕНО (2026-01-05): Отладочный лог
         logger.info(f"[DEBUG] _create_ambiguous_result_from_candidates ВХОД: {len(candidates_data)} кандидатов")
