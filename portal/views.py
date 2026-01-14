@@ -419,11 +419,13 @@ def executor_dashboard(request):
             r.description,
             r.status,
             r.service_name,
-            s.category as service_category,
-            s.incident_type,
+            rc.category_name as service_category,
+            rst.type_name as incident_type,
             r.assigned_to
         FROM bot_service_requests r
         LEFT JOIN services_catalog s ON r.service_id = s.service_id
+        LEFT JOIN ref_categories rc ON s.category_id = rc.category_id
+        LEFT JOIN ref_service_types rst ON s.type_id = rst.type_id
         WHERE 1=1
     """
 

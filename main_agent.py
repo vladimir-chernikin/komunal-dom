@@ -1056,11 +1056,18 @@ class MainAgent:
 
         clarification_result = await self._generate_smart_clarification(
             candidates_with_attrs, original_message, is_followup, dialog_history,
-            txtPrb=None,  # Будет извлечен внутри
+            txtPrb=txtPrb,  # ИСПРАВЛЕНО (2026-01-14): был None, теперь передаем txtPrb
             established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10)
             session_id=session_id,
             is_refusal=is_refusal  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
         )
+
+        # ИСПРАВЛЕНИЕ (2026-01-14): Логирование для отладки SUCCESS
+        logger.info(f"[DEBUG] clarification_result status: {clarification_result.get("status")}")
+        if clarification_result.get("status") == "SUCCESS":
+            logger.warning(f"[DEBUG] SUCCESS от _generate_smart_clarification!")
+            logger.warning(f"[DEBUG] single_candidate: {clarification_result.get("single_candidate")}")
+            logger.warning(f"[DEBUG] message: {clarification_result.get("message", "")[:100]}")
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):

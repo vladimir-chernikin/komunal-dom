@@ -199,3 +199,38 @@ class SemanticPattern(models.Model):
 
     def __str__(self):
         return f"{self.pattern_type}: {self.keyword} (вес: {self.weight})"
+
+
+class ServicesCatalog(models.Model):
+    """Услуги из БД services_catalog (unmanaged модель)"""
+
+    service_id = models.IntegerField(primary_key=True, verbose_name="ID услуги")
+    scenario_id = models.CharField(max_length=255, verbose_name="ID сценария")
+    scenario_name = models.CharField(max_length=255, verbose_name="Название услуги")
+    type_id = models.SmallIntegerField(verbose_name="Тип услуги")
+    kind_id = models.SmallIntegerField(null=True, blank=True, verbose_name="Вид услуги")
+    localization_id = models.SmallIntegerField(verbose_name="Локализация")
+    category_id = models.SmallIntegerField(verbose_name="Категория")
+    object_id = models.SmallIntegerField(verbose_name="Объект")
+    payment_id = models.SmallIntegerField(null=True, blank=True, verbose_name="Оплата")
+    route_id = models.SmallIntegerField(null=True, blank=True, verbose_name="Маршрут")
+    urgency_id = models.SmallIntegerField(null=True, blank=True, verbose_name="Срочность")
+    description_for_search = models.TextField(blank=True, null=True, verbose_name="Описание для поиска")
+    is_active = models.BooleanField(default=True, verbose_name="Активна")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+    embedding_service = models.JSONField(null=True, blank=True, verbose_name="Embedding услуги")
+    embedding_text = models.TextField(blank=True, null=True, verbose_name="Текст для векторизации")
+    tags = models.TextField(blank=True, default='', verbose_name="Теги через запятую")
+    keywords = models.TextField(blank=True, default='', verbose_name="Ключевые слова через запятую")
+
+    class Meta:
+        managed = False  # НЕ управлять Django (таблица уже существует)
+        db_table = 'services_catalog'
+        verbose_name = "Услуга"
+        verbose_name_plural = "Услуги"
+        ordering = ['category_id', 'scenario_name']
+
+    def __str__(self):
+        return f"{self.scenario_name} (ID: {self.service_id})"
+
