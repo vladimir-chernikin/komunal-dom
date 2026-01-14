@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
-from .models import UserProfile, AIPrompt, SemanticPattern
+from .models import UserProfile, AIPrompt, SemanticPattern, ServicesCatalog
 
 
 # Отключаем стандартную регистрацию User
@@ -185,3 +185,98 @@ class SemanticPatternAdmin(admin.ModelAdmin):
         """Предпросмотр заметок"""
         return obj.notes[:50] + '...' if obj.notes and len(obj.notes) > 50 else obj.notes or ''
     notes_preview.short_description = 'Заметки'
+
+
+@admin.register(ServicesCatalog)
+class ServicesCatalogAdmin(admin.ModelAdmin):
+    """Админка для услуг из services_catalog"""
+
+    list_display = [
+        'service_id',
+        'scenario_name',
+        'category_display',
+        'type_display',
+        'object_display',
+        'is_active',
+        'tags_preview',
+        'keywords_preview'
+    ]
+
+    list_filter = ['is_active', 'category_id', 'type_id', 'localization_id', 'object_id']
+    search_fields = ['scenario_name', 'scenario_id', 'description_for_search', 'tags', 'keywords']
+    list_editable = ['is_active']
+    ordering = ['category_id', 'scenario_name']
+
+    fieldsets = (
+        ('Основное', {
+            'fields': ('service_id', 'scenario_id', 'scenario_name', 'is_active')
+        }),
+        ('Классификация', {
+            'fields': ('category_id', 'type_id', 'object_id', 'localization_id')
+        }),
+        ('Дополнительно', {
+            'fields': ('kind_id', 'payment_id', 'route_id', 'urgency_id', 'description_for_search')
+        }),
+        ('Поиск (тags/keywords)', {
+            'fields': ('tags', 'keywords'),
+            'description': 'Теги и ключевые слова для улучшения поиска (через запятую)'
+        }),
+        ('Embedding', {
+            'fields': ('embedding_text', 'embedding_service'),
+            'classes': ('collapse',),
+            'description': 'Векторное представление для семантического поиска'
+        }),
+        ('Системная информация', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    readonly_fields = ['service_id', 'created_at', 'updated_at', 'embedding_service']
+
+    def category_display(self, obj):
+        """Показать категорию"""
+        from django.db import connection
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT category_name FROM ref_categories WHERE category_id = %s", [obj.category_id])
+                result = cursor.fetchone()
+                return result[0] if result else f'ID:{obj.category_id}'
+        except:
+            return f'ID:{obj.category_id}'
+    category_display.short_description = 'Категория'
+
+    def type_display(self, obj):
+        """Показать тип"""
+        from django.db import connection
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT type_name FROM ref_service_types WHERE type_id = %s", [obj.type_id])
+                result = cursor.fetchone()
+                return result[0] if result else f'ID:{obj.type_id}'
+        except:
+            return f'ID:{obj.type_id}'
+    type_display.short_description = 'Тип'
+
+    def object_display(self, obj):
+        """Показать объект"""
+        from django.db import connection
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT object_name FROM ref_objects WHERE object_id = %s", [obj.object_id])
+                result = cursor.fetchone()
+                return result[0] if result else f'ID:{obj.object_id}'
+        except:
+            return f'ID:{obj.object_id}'
+    object_display.short_description = 'Объект'
+
+    def tags_preview(self, obj):
+        """Предпросмотр тегов"""
+        return obj.tags[:50] + '...' if obj.tags and len(obj.tags) > 50 else obj.tags or ''
+    tags_preview.short_description = 'Теги'
+
+    def keywords_preview(self, obj):
+        """Предпросмотр keywords"""
+        return obj.keywords[:50] + '...' if obj.keywords and len(obj.keywords) > 50 else obj.keywords or ''
+    keywords_preview.short_description = 'Keywords'
+

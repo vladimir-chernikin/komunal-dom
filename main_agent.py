@@ -1574,8 +1574,29 @@ class MainAgent:
 
             # Формируем сообщение (открытые вопросы только!)
             if needs_clarification:
-                # Открытый вопрос БЕЗ названия услуги (иначе пользователь путается)
-                message = "Опишите подробнее, что именно происходит?"
+                # ИСПРАВЛЕНИЕ (2026-01-14): Генерируем контекстный вопрос с учетом txtPrb
+                if txtPrb:
+                    txtPrb_lower = txtPrb.lower()
+
+                    # Анализируем ключевые слова для генерации контекстного вопроса
+                    if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр', 'протека']):
+                        message = 'Что именно течет или капает?'
+                    elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет', 'дурнопахн']):
+                        message = 'Откуда именно запах?'
+                    elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк', 'не включ', 'не включается']):
+                        message = 'Что именно сломалось или не работает?'
+                    elif any(word in txtPrb_lower for word in ['шум', 'гремит', 'стучит', 'гудит']):
+                        message = 'Что именно шумит или где именно звук?'
+                    elif any(word in txtPrb_lower for word in ['холодно', 'мерзн', 'нет тепла', 'батарея холод']):
+                        message = 'В каком помещении именно холодно?'
+                    elif any(word in txtPrb_lower for word in ['жарко', 'душно', 'нет кондиционер', 'жара']):
+                        message = 'В каком помещении именно жарко?'
+                    else:
+                        # Общий случай с учетом txtPrb
+                        message = 'Опишите подробнее, что именно происходит?'
+                else:
+                    # Если нет txtPrb - общий вопрос
+                    message = "Опишите подробнее, что именно происходит?"
             else:
                 # Если уже спрашивали уточнение ИЛИ высокая уверенность - создаем заявку
                 if already_asked_confirmation or actual_confidence >= 0.9:
@@ -2356,11 +2377,13 @@ class MainAgent:
         ИСПРАВЛЕНО (2026-01-03): LLM-валидация вопроса вместо Regex
         ИСПРАВЛЕНО (2026-01-10): Добавлена regex-проверка двойных вопросов
         ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
+        ИСПРАВЛЕНО (2026-01-14): Добавлена проверка absolute_facts для блокировки универсальных вопросов
 
         Проверяет через YandexGPT Lite:
         1. Не спрашивает ли бот о том, что уже известно
         2. Не является ли вопрос двойным
         3. Не повторяет ли уже заданные вопросы
+        4. Не является ли вопрос универсальным при наличии известных фактов
 
         Args:
             question: Сгенерированный вопрос
@@ -2373,6 +2396,49 @@ class MainAgent:
         """
         if not question or not self.ai_agent:
             return question
+
+        # ИСПРАВЛЕНИЕ (2026-01-14): Блокируем универсальные вопросы при наличии известных фактов
+        if established_filters:
+            semantic_check = established_filters.get('semantic_check', {})
+            absolute_facts = semantic_check.get('absolute_facts', [])
+
+            # Проверяем, есть ли факт "Уже известна проблема"
+            has_known_problem = any('уже известна проблема' in fact.lower() or 'Уже известна проблема' in fact for fact in absolute_facts)
+
+            # Универсальные вопросы, которые нужно блокировать при известных фактах
+            generic_questions = [
+                'опишите подробнее',
+                'опишите, пожалуйста',
+                'что именно произошло',
+                'что случилось',
+                'расскажите подробнее'
+            ]
+
+            question_lower = question.lower().strip()
+
+            if has_known_problem and any(phrase in question_lower for phrase in generic_questions):
+                logger.warning(f"⚠️ DETECTED GENERIC QUESTION WITH KNOWN FACTS!")
+                logger.warning(f"⚠️ Question: '{question}'")
+                logger.warning(f"⚠️ Absolute facts: {absolute_facts}")
+
+                # Генерируем контекстный вопрос с учетом txtPrb
+                if txtPrb:
+                    txtPrb_lower = txtPrb.lower()
+
+                    if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
+                        question = 'Что именно течет или капает?'
+                    elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
+                        question = 'Откуда именно запах?'
+                    elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
+                        question = 'Что именно сломалось?'
+                    elif any(word in txtPrb_lower for word in ['шум', 'гремит', 'стучит']):
+                        question = 'Что именно шумит?'
+                    else:
+                        # Если нет паттерна - спрашиваем что-то конкретное
+                        question = 'Уточните детали: что именно?'
+
+                    logger.warning(f"✅ REPLACED WITH: '{question}'")
+                    return question
 
         # ИСПРАВЛЕНО (2026-01-10): Regex-проверка двойных вопросов (БЕЗ LLM)
         import re
