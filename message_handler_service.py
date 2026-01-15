@@ -124,7 +124,7 @@ class MessageHandlerService:
             # 2.5. Очищаем сообщение от мусора (приветы, insignificant words)
             search_text = text
             if self.message_cleaner:
-                cleaned_text, clean_metadata = self.message_cleaner.clean_message(text)
+                cleaned_text, clean_metadata = await self.message_cleaner.clean_message(text)
                 search_text = cleaned_text
 
                 # Проверяем: если сообщение только приветствие - отвечаем приветствием

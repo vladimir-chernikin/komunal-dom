@@ -123,7 +123,8 @@ class MessageCleanerService:
             metadata['removed_greeting'] = True
 
         # ИСПРАВЛЕНО (2025-12-25): Шаг 1.5 - Коррекция опечаток
-        cleaned_text = self._correct_typos(cleaned_text)
+        # ИСПРАВЛЕНО (2026-01-15): Добавлен await для async _correct_typos
+        cleaned_text = await self._correct_typos(cleaned_text)
         if cleaned_text != original_text.strip():
             metadata['typos_corrected'] = True
             metadata['original'] = original_text.strip()
@@ -143,7 +144,7 @@ class MessageCleanerService:
 
         # Шаг 4: LLM-очистка (если включено и доступен AI)
         if use_llm and self.ai_agent:
-            cleaned_text = self._llm_clean(cleaned_text, metadata)
+            cleaned_text = await self._llm_clean(cleaned_text, metadata)
 
         # Финальная зачистка
         cleaned_text = cleaned_text.strip()
@@ -513,7 +514,7 @@ if __name__ == '__main__':
     print("=" * 60)
 
     for msg in test_messages:
-        cleaned, meta = cleaner.clean_message(msg)
+        cleaned, meta = await cleaner.clean_message(msg)
 
         print(f"\nИсходное:  '{msg}'")
         print(f"Очищенное: '{cleaned}'")
