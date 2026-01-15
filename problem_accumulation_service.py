@@ -76,25 +76,26 @@ class ProblemAccumulationService:
             }
         """
         # ИСПРАВЛЕНО (2026-01-13): Детектор отказа пользователя
+        # ИСПРАВЛЕНО (2026-01-15): НЕ засоряем txtPrb служебной информацией
         if self._is_refusal(message_text):
             logger.warning(f"[REFUSAL] Обнаружен отказ пользователя: '{message_text[:80]}'")
 
-            # Извлекаем название услуги из последнего вопроса бота
+            # Извлекаем название услуги от которой отказался пользователь
             refused_service = self._extract_service_from_question(bot_question)
 
-            # Формируем обновленное txtPrb с пометкой об отказе
-            if current_problem:
-                updated_problem = f"{current_problem}. Пользователь не уверен что это услуга '{refused_service}'"
-            else:
-                updated_problem = f"Пользователь не уверен что это услуга '{refused_service}'"
+            # ИСПРАВЛЕНО (2026-01-15): Оставляем txtPrb без изменений!
+            # НЕ добавляем мусор "Пользователь не уверен что это услуга..."
+            # Вместо этого возвращаем флаг is_refusal=True для обработки в MainAgent
+            logger.info(f"[REFUSAL] Отказ от услуги: '{refused_service}', txtPrb сохранен без изменений")
 
             return {
-                'updated_problem': updated_problem,
+                'updated_problem': current_problem,  # ИСПРАВЛЕНО (2026-01-15): НЕ меняем txtPrb!
                 'extracted_info': {},
                 'is_meaningful': False,
-                'is_refusal': True,  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа
+                'is_refusal': True,
                 'new_info': f"Пользователь отказался от услуги '{refused_service}'",
-                'fields': {}
+                'fields': {},
+                'refused_service': refused_service  # ИСПРАВЛЕНО (2026-01-15): Сохраняем для intro_phrase
             }
 
         # ИСПРАВЛЕНО (2025-12-28): Отладочные логи входящих параметров
