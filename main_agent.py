@@ -3258,7 +3258,8 @@ JSON:"""
 
         # ИСПРАВЛЕНО (2026-01-05): Собираем промпт с блоком уже заданных вопросов
         # ИСПРАВЛЕНО (2026-01-13): Добавлен блок intro_phrase для комплементарного стиля
-        prompt = f"{system_block}{intro_block}{facts_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
+        # ИСПРАВЛЕНО (2026-01-15): Убран facts_block (используется txtPrb в context_block)
+        prompt = f"{system_block}{intro_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
 
         # Добавляем инструкцию по формату ответа
         prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"
