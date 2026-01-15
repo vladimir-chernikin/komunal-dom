@@ -202,24 +202,37 @@ class TagSearchService:
         ШАГ 1: Быстрый первичный отбор кандидатов с помощью триграммного индекса (pg_trgm)
         Возвращает только ID услуг для дальнейшего анализа
 
+        ИСПРАВЛЕНО (2026-01-15): Разбивает текст на слова и ищет по КАЖДОМУ слову отдельно
         ИСПРАВЛЕНО (2026-01-13): Возвращает Set[int] вместо List[Dict]
         """
         try:
             def search_sync():
                 with connection.cursor() as cursor:
-                    # Ищем только по тегам с триграммным поиском
-                    cursor.execute("""
-                        SELECT DISTINCT sc.service_id
-                        FROM services_catalog sc
-                        LEFT JOIN service_tags st ON sc.service_id = st.service_id
-                        LEFT JOIN ref_tags rt ON st.tag_id = rt.tag_id AND rt.is_active = TRUE
-                        WHERE sc.is_active = TRUE
-                          AND word_similarity(%s, rt.tag_name) > 0.3
-                        ORDER BY sc.service_id
-                    """, [message_text])
+                    # ИСПРАВЛЕНО (2026-01-15): Разбиваем текст на слова (минимум 3 буквы)
+                    # word_similarity работает плохо с целыми предложениями
+                    words = [w.strip(',.!?;:"\'-') for w in message_text.split()
+                            if len(w.strip(',.!?;:"\'-')) >= 3]
 
-                    results = cursor.fetchall()
-                    return {row[0] for row in results}
+                    if not words:
+                        return set()
+
+                    # Ищем по каждому слову отдельно (UNION)
+                    all_service_ids = set()
+
+                    for word in words:
+                        cursor.execute("""
+                            SELECT DISTINCT sc.service_id
+                            FROM services_catalog sc
+                            LEFT JOIN service_tags st ON sc.service_id = st.service_id
+                            LEFT JOIN ref_tags rt ON st.tag_id = rt.tag_id AND rt.is_active = TRUE
+                            WHERE sc.is_active = TRUE
+                              AND word_similarity(%s, rt.tag_name) > 0.3
+                        """, [word.lower()])
+
+                        results = cursor.fetchall()
+                        all_service_ids.update({row[0] for row in results})
+
+                    return all_service_ids
 
             return await sync_to_async(search_sync)()
 

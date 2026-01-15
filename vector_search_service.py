@@ -433,12 +433,16 @@ class VectorSearchService:
                 final_conf = WEIGHT_TAG * tag_conf  # service_conf = 0
                 data['confidence'] = round(final_conf, 3)
                 data['source'] = 'vector_tag_search'
+                data['tag_confidence'] = round(tag_conf, 3)  # ИСПРАВЛЕНО (2026-01-15)
+                data['service_confidence'] = None
 
             else:
                 # Случай 3: Только сервис - средневзвешенное с нулем (ШТРАФ 60%)
                 final_conf = WEIGHT_SERVICE * service_conf  # tag_conf = 0
                 data['confidence'] = round(final_conf, 3)
                 data['source'] = 'vector_service_search'
+                data['tag_confidence'] = None  # ИСПРАВЛЕНО (2026-01-15)
+                data['service_confidence'] = round(service_conf, 3)  # ИСПРАВЛЕНО (2026-01-15)
 
             final_candidates.append(data)
 

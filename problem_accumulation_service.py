@@ -76,26 +76,28 @@ class ProblemAccumulationService:
             }
         """
         # ИСПРАВЛЕНО (2026-01-13): Детектор отказа пользователя
-        # ИСПРАВЛЕНО (2026-01-15): НЕ засоряем txtPrb служебной информацией
-        if self._is_refusal(message_text):
+        # ИСПРАВЛЕНО (2026-01-15): При отказе НЕ меняем txtPrb, чтобы не блокировать услугу
+        if await self._is_refusal(message_text):
             logger.warning(f"[REFUSAL] Обнаружен отказ пользователя: '{message_text[:80]}'")
 
             # Извлекаем название услуги от которой отказался пользователь
             refused_service = self._extract_service_from_question(bot_question)
 
-            # ИСПРАВЛЕНО (2026-01-15): Оставляем txtPrb без изменений!
-            # НЕ добавляем мусор "Пользователь не уверен что это услуга..."
-            # Вместо этого возвращаем флаг is_refusal=True для обработки в MainAgent
+            # ИСПРАВЛЕНО (2026-01-15): НЕ добавляем отказ в txtPrb!
+            # Причины:
+            # 1. Не блокируем возможность вернуться к этой услуге
+            # 2. txtPrb остается чистым описанием проблемы
+            # 3. MainAgent сам обрабатывает is_refusal=True и задает уточняющий вопрос
             logger.info(f"[REFUSAL] Отказ от услуги: '{refused_service}', txtPrb сохранен без изменений")
 
             return {
-                'updated_problem': current_problem,  # ИСПРАВЛЕНО (2026-01-15): НЕ меняем txtPrb!
+                'updated_problem': current_problem,  # НЕ меняем txtPrb!
                 'extracted_info': {},
-                'is_meaningful': False,
+                'is_meaningful': False,  # Отказ не содержит новой информации о проблеме
                 'is_refusal': True,
-                'new_info': f"Пользователь отказался от услуги '{refused_service}'",
+                'new_info': f"пользователь отказался от услуги '{refused_service}'",
                 'fields': {},
-                'refused_service': refused_service  # ИСПРАВЛЕНО (2026-01-15): Сохраняем для intro_phrase
+                'refused_service': refused_service
             }
 
         # ИСПРАВЛЕНО (2025-12-28): Отладочные логи входящих параметров
@@ -479,9 +481,83 @@ JSON:"""
 
         return ""
 
-    def _is_refusal(self, text: str) -> bool:
+    async def _is_refusal(self, text: str, context: str = None) -> bool:
         """
-        ИСПРАВЛЕНО (2026-01-13): Проверяет является ли текст отказом пользователя
+        ИСПРАВЛЕНО (2026-01-15): LLM-детектор отказа пользователя
+
+        Проверяет через YandexGPT Lite является ли текст отказом от услуги.
+        Отличает отказ от сообщения об отсутствии чего-либо.
+
+        Args:
+            text: Текст сообщения пользователя
+            context: Контекст (предложенная услуга или ситуация)
+
+        Returns:
+            True если пользователь ОТКАЗЫВАЕТСЯ от услуги, иначе False
+
+        Примеры:
+        - "нет не это" → True (отказ)
+        - "не подходит" → True (отказ)
+        - "в кране нет горячей воды" → False (сообщение об отсутствии!)
+        - "не приятно пахнет" → False (описание проблемы!)
+        """
+        if not text:
+            return False
+
+        try:
+            # Формируем промпт для LLM
+            prompt = f"""Ты - детектор отказов в диалоге с пользователем.
+
+ТЕКСТ ПОЛЬЗОВАТЕЛЯ:
+{text}
+
+КОНТЕКСТ (что предложил бот или текущая ситуация):
+{context if context else "неизвестно"}
+
+ЗАДАЧА:
+Определи - это ОТКАЗ от предложенной услуги/варианта ИЛИ сообщение о проблеме?
+
+ПРАВИЛА:
+1. ОТКАЗ - пользователь отвергает предложение: "нет не это", "не подходит", "это не то", "неверно"
+2. НЕ ОТКАЗ - пользователь описывает проблему или отсутствие чего-то: "в кране нет воды", "не приятно пахнет", "нет горячей"
+3. КРИТИЧЕСКИ ВАЖНО: "нет" в составе описания проблемы = НЕ ОТКАЗ!
+
+ВЕРНИ JSON:
+{{
+  "is_refusal": true или false,
+  "reasoning": "краткое обоснование"
+}}
+
+JSON:"""
+
+            response, _ = await self.ai_agent.call_llm(
+                prompt=prompt,
+                provider='yandexgpt',
+                model='lite'
+            )
+
+            result = self._parse_llm_response(response)
+
+            is_refusal = result.get('is_refusal', False)
+            reasoning = result.get('reasoning', '')
+
+            if is_refusal:
+                logger.warning(f"[REFUSAL] LLM-детектор: ОТКАЗ (reasoning: {reasoning})")
+            else:
+                logger.info(f"[REFUSAL] LLM-детектор: НЕ отказ (reasoning: {reasoning})")
+
+            return is_refusal
+
+        except Exception as e:
+            logger.warning(f"Ошибка LLM-детектора отказа: {e}, используем fallback")
+            # Fallback на простую проверку
+            return self._is_refusal_fallback(text)
+
+    def _is_refusal_fallback(self, text: str) -> bool:
+        """
+        Fallback-детектор отказа на основе ключевых слов
+
+        ИСПРАВЛЕНО (2026-01-15): Используется только если LLM недоступен
 
         Args:
             text: Текст сообщения пользователя
@@ -492,18 +568,22 @@ JSON:"""
         if not text:
             return False
 
-        refusal_keywords = [
-            'нет', 'не то', 'не правильно', 'неправильно',
-            'ошибаешься', 'ошиблись', 'неверно',
-            'не это', 'не подходит', 'не тот',
-            'не та', 'не такие'
+        # Явные маркеры отказа
+        refusal_patterns = [
+            r'\bнет\s+не\s+это\b',
+            r'\bне\s+подходит\b',
+            r'\bэто\s+не\s+то\b',
+            r'\bне\s+то\b',
+            r'\bошибаешься\b',
+            r'\bошиблись\b',
+            r'\bневерно\b'
         ]
 
         text_lower = text.lower().strip()
 
-        # Проверяем наличие ключевых слов
-        for keyword in refusal_keywords:
-            if keyword in text_lower:
+        # Проверяем паттерны
+        for pattern in refusal_patterns:
+            if re.search(pattern, text_lower):
                 return True
 
         return False
@@ -598,10 +678,14 @@ JSON:"""
             else:
                 filters['category'] = {'value': category, 'confidence': 0.70}
 
-        # Определяем object_description
-        obj = fields.get('object') or fields.get('source')
-        if obj:
-            filters['object_description'] = {'value': obj, 'confidence': 0.95}
+        # ИСПРАВЛЕНО (2026-01-15): Убрано object_description!
+        # Это поле устарело и не используется в новом промпте FilterDetectionService
+        # Вся информация об объекте содержится в txtPrb
+        # # СТАРЫЙ КОД (удален):
+        # # Определяем object_description
+        # obj = fields.get('object') or fields.get('source')
+        # if obj:
+        #     filters['object_description'] = {'value': obj, 'confidence': 0.95}
 
         return filters
 

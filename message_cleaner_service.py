@@ -56,27 +56,8 @@ class MessageCleanerService:
     }
 
     # ИСПРАВЛЕНО (2025-12-25): Частые опечатки и их исправления
-    # ИСПРАВЛЕНО (2026-01-15): Добавлены опечатки "комфорок", "не приятно"
-    # ИСПРАВЛЕНО (2026-01-15): Нечеткое сравнение через rapidfuzz для опечаток
-    COMMON_TYPOS = {
-        'тетчет': 'течет',
-        'течат': 'течет',
-        'тецт': 'течет',
-        'течетт': 'течет',
-        'ванных': 'ванной',  # "у меня течет ванных" → "у меня течет в ванной"
-        'потолок': 'потолка',  # "затекает с потолок" → "затекает с потолка"
-        'крыш': 'крыши',     # "протечка крыш" → "протечка крыши"
-        'труб': 'трубы',     # "прорыв труб" (если речь об одной)
-        # Опечатки для "конфорок"
-        'комфорок': 'конфорок',     # "пахнет от комфорок" → "пахнет от конфорок"
-        'комфорака': 'конфорка',   # редкий вариант
-        'комфороки': 'конфорки',   # множественное число
-        'комфораке': 'конфорке',   # предложный падеж
-        # Опечатки для "неприятно"
-        'не приятное': 'неприятное',
-        'не приятно': 'неприятно',   # "не приятно пахнет" → "неприятно пахнет"
-        'не приятным': 'неприятным',
-    }
+    # ИСПРАВЛЕНО (2026-01-15): УБРАНО - теперь используем LLM для исправления опечаток
+    # Хардкод словаря заменен на YandexGPT Lite (метод _correct_typos)
 
     # Слова-заполнители, не несущие смысла
     FILLER_WORDS = [
@@ -101,9 +82,11 @@ class MessageCleanerService:
         self.ai_agent = ai_agent_service
         logger.info("MessageCleanerService инициализирован")
 
-    def clean_message(self, message_text: str, use_llm: bool = False) -> Tuple[str, Dict]:
+    async def clean_message(self, message_text: str, use_llm: bool = False) -> Tuple[str, Dict]:
         """
         Очистка сообщения от мусора
+
+        ИСПРАВЛЕНО (2026-01-15): Сделан async для LLM-коррекции опечаток
 
         Args:
             message_text: Исходный текст сообщения
@@ -451,38 +434,61 @@ class MessageCleanerService:
 
         return meaningful
 
-    def _correct_typos(self, text: str) -> str:
+    async def _correct_typos(self, text: str) -> str:
         """
-        ИСПРАВЛЕНО (2025-12-25): Коррекция частых опечаток
+        ИСПРАВЛЕНО (2026-01-15): Коррекция опечаток через YandexGPT Lite
 
+        Заменяет хардкод словаря на LLM-анализ текста.
         Исправляет опечатки типа:
+        - "комфорок" → "конфорок"
         - "тетчет" → "течет"
-        - "ванных" → "ванной"
-        - "потолок" → "потолка"
+        - "не приятно" → "неприятно"
+
+        Args:
+            text: Исходный текст с возможными опечатками
+
+        Returns:
+            str: Исправленный текст
         """
-        if not text:
+        if not text or not self.ai_agent:
             return text
 
-        words = text.split()
-        corrected_words = []
+        # Если текст короткий и без явных опечаток - пропускаем
+        if len(text) < 10:
+            return text
 
-        for word in words:
-            word_lower = word.lower()
+        try:
+            prompt = f"""Ты - корректор русского языка. Исправь опечатки в тексте.
 
-            # Проверяем есть ли слово в списке опечаток
-            if word_lower in self.COMMON_TYPOS:
-                corrected = self.COMMON_TYPOS[word_lower]
+ТЕКСТ С ОПЕЧАТКАМИ:
+{text}
 
-                # Сохраняем регистр первого символа
-                if word[0].isupper():
-                    corrected = corrected[0].upper() + corrected[1:]
+ПРАВИЛА:
+1. Исправь только ЯВНЫЕ опечатки
+2. Сохраняй смысл и стиль сообщения
+3. НЕ меняй сленг и разговорные выражения (если они уместны)
+4. НЕ добавляй и НЕ удаляй слова
+5. Верни ТОЛЬКО исправленный текст, без объяснений
 
-                logger.info(f"Исправлена опечатка: '{word}' → '{corrected}'")
-                corrected_words.append(corrected)
-            else:
-                corrected_words.append(word)
+Исправленный текст:"""
 
-        return ' '.join(corrected_words)
+            response, _ = await self.ai_agent.call_llm(
+                prompt=prompt,
+                provider='yandexgpt',
+                model='lite'
+            )
+
+            corrected = response.strip()
+
+            if corrected and corrected != text:
+                logger.info(f"LLM-коррекция: '{text[:50]}...' → '{corrected[:50]}...'")
+                return corrected
+
+            return text
+
+        except Exception as e:
+            logger.warning(f"Ошибка LLM-коррекции опечаток: {e}")
+            return text
 
 
 # Для тестирования
