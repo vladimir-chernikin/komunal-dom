@@ -1235,10 +1235,11 @@ class MainAgent:
 
     def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None) -> Dict:
         """
-        Извлекает фильтры (location, category, incident, object_description) из текста сообщения и истории диалога
+        Извлекает фильтры (location, category, incident) из текста сообщения и истории диалога
 
         ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
         ИСПРАВЛЕНО (2026-01-10): Добавлен параметр established_filters для fallback на semantic_check
+        ИСПРАВЛЕНО (2026-01-15): Убрано object_description (используется txtPrb)
 
         Args:
             message_text: Текст сообщения пользователя
@@ -1249,11 +1250,10 @@ class MainAgent:
         filters = {
             'location': None,
             'category': None,
-            'incident': None,
-            'object_description': None  # ИСПРАВЛЕНО (2025-12-25)
+            'incident': None
         }
 
-        # ИСПРАВЛЕНО (2025-12-25): Сначала пробуем FilterDetectionService для object_description
+        # ИСПРАВЛЕНО (2026-01-15): Используем FilterDetectionService для location, category, incident_type
         # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
         if self.filter_detection:
             try:
@@ -1287,9 +1287,6 @@ class MainAgent:
                     # filters['incident'] создавало путаницу - дублирование с incident_type
                     if filter_svc_filters.get('incident_type'):
                         filters['incident_type'] = filter_svc_filters['incident_type']
-                    if filter_svc_filters.get('object_description'):
-                        filters['object_description'] = filter_svc_filters['object_description']
-                        logger.info(f"FilterDetectionService извлек object_description: {filters['object_description']}")
             except Exception as e:
                 logger.warning(f"Ошибка вызова FilterDetectionService: {e}")
 
@@ -1409,13 +1406,13 @@ class MainAgent:
         # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
         # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для fallback на semantic_check
         # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
+        # ИСПРАВЛЕНО (2026-01-15): Убрано object_description (используется txtPrb)
         extracted_filters = self._extract_filters_from_message(original_message, dialog_history, txtPrb, established_filters, session_id)
         known_location = extracted_filters.get('location')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
         known_category = extracted_filters.get('category')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
         known_incident = extracted_filters.get('incident_type')  # ИСПРАВЛЕНО (2026-01-10): БАГ! было 'incident'
-        known_object = extracted_filters.get('object_description', '')  # ИСПРАВЛЕНО (2025-12-25)
 
-        logger.info(f"Извлеченные фильтры: location={known_location}, category={known_category}, incident_type={known_incident}, object={known_object}")
+        logger.info(f"Извлеченные фильтры: location={known_location}, category={known_category}, incident_type={known_incident}")
 
         # Фильтруем кандидатов на основе известной информации
         filtered_candidates = candidates_with_attrs
@@ -1432,8 +1429,9 @@ class MainAgent:
             logger.info(f"Отфильтровано по incident_type={known_incident}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
         # ИСПРАВЛЕНО (2025-12-25): Ранжирование через LLM вместо хардкода keywords
-        if known_object and len(filtered_candidates) > 1:
-            logger.info(f"Ранжирование {len(filtered_candidates)} кандидатов по object_description='{known_object}' через LLM")
+        # ИСПРАВЛЕНО (2026-01-15): Убрана проверка known_object (ранжируем если >1 кандидата)
+        if len(filtered_candidates) > 1:
+            logger.info(f"Ранжирование {len(filtered_candidates)} кандидатов через LLM")
 
             if self.filter_detection:
                 try:
@@ -2545,34 +2543,19 @@ class MainAgent:
                         logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
                         forbidden_questions.append('location')
 
-            # Проверяем object_description (КРИТИЧНО: не спрашивать объект если известен!)
-            if established_filters and established_filters.get('object_description'):
-                obj_data = established_filters['object_description']
-                obj_value = obj_data.get('value') if isinstance(obj_data, dict) else obj_data
-                obj_conf = obj_data.get('confidence') if isinstance(obj_data, dict) else 0.9
-
-                # Если объект уже известен (не абстрактный), не спрашиваем "что именно?"
-                if obj_conf >= 0.8 and obj_value and obj_value not in ['течёт', 'прорыв', 'капает', 'проблема']:
-                    if re.search(r'(что именно|какой объект|что прорвало|что течет)', question_lower):
-                        logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN OBJECT: object уже '{obj_value}' (confidence: {obj_conf:.0%})")
-                        forbidden_questions.append('object')
+            # ИСПРАВЛЕНО (2026-01-15): Убрана проверка object_description (используется txtPrb)
+            # Если txtPrb не пустой → уже известна проблема, не спрашиваем "что именно?"
 
             # Если есть запрещенные вопросы - заменяем
             if forbidden_questions:
                 logger.info(f"Заменяем вопрос из-за известных фактов: {forbidden_questions}")
                 # Генерируем вопрос на основе того, что НЕ известно
-                if 'location' not in forbidden_questions and 'object' not in forbidden_questions:
-                    # Известны и объект, и локация - спрашиваем детали
-                    return "Опишите подробнее что именно происходит."
-                elif 'location' in forbidden_questions and 'object' not in forbidden_questions:
-                    # Локация известна, объект нет - спрашиваем про детали объекта
-                    return "Уточните детали проблемы."
-                elif 'location' not in forbidden_questions and 'object' in forbidden_questions:
-                    # Объект известен, локация нет - спрашиваем про локацию
+                if 'location' not in forbidden_questions:
+                    # Локация неизвестна - спрашиваем
                     return "Где именно это произошло?"
                 else:
-                    # Ничего не известно
-                    return "Опишите подробнее, что именно произошло."
+                    # Локация известна - спрашиваем детали
+                    return "Уточните детали проблемы."
 
         # Формируем абсолютные факты для промпта
         absolute_facts = []
@@ -2887,9 +2870,9 @@ JSON:"""
         """
         # Проверяем какие фильтры не установлены
         # ИСПРАВЛЕНО (2026-01-05): Используем правильные ключи из established_filters
+        # ИСПРАВЛЕНО (2026-01-15): Убрано object_description (используется txtPrb)
         has_location = established_filters.get('location_type')
         has_category = established_filters.get('category')
-        has_object = established_filters.get('object_description')
         has_incident = established_filters.get('incident_type')
 
         # Анализируем кандидатов чтобы понять что varies больше всего
@@ -2897,7 +2880,6 @@ JSON:"""
             # Собираем уникальные значения
             locations = set(c.get('location_type') for c in candidates if c.get('location_type'))
             categories = set(c.get('category') for c in candidates if c.get('category'))
-            objects = set(c.get('object_type') for c in candidates if c.get('object_type'))
             incidents = set(c.get('incident_type') for c in candidates if c.get('incident_type'))
 
             # Находим параметр с наибольшим разнообразием
@@ -2910,9 +2892,6 @@ JSON:"""
             if not has_category and len(categories) > max_var:
                 max_var = len(categories)
                 missing = 'КАТЕГОРИЯ'
-            if not has_object and len(objects) > max_var:
-                max_var = len(objects)
-                missing = 'ОБЪЕКТ'
             if not has_incident and len(incidents) > max_var:
                 max_var = len(incidents)
                 missing = 'ТИП'
@@ -2924,8 +2903,6 @@ JSON:"""
             return 'ЛОКАЦИЯ'
         if not has_category:
             return 'КАТЕГОРИЯ'
-        if not has_object:
-            return 'ОБЪЕКТ'
         return 'ТИП'
 
     def _extract_asked_questions(self, dialog_history: List[Dict]) -> List[str]:
