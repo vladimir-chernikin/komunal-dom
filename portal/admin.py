@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.urls import reverse
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
@@ -12,11 +12,21 @@ from .models import UserProfile, AIPrompt, SemanticPattern, ServicesCatalog
 admin.site.unregister(User)
 
 
+class UserProfileInline(admin.TabularInline):
+    """Inline для редактирования профиля пользователя на странице User"""
+    model = UserProfile
+    can_delete = False
+    verbose_name_plural = 'Профиль пользователя'
+    fields = ('role', 'phone', 'address')
+    extra = 0
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """Красивый интерфейс редактирования пользователя"""
 
     list_display = ('username', 'email', 'first_name', 'last_name', 'get_role', 'is_active', 'date_joined')
+    inlines = [UserProfileInline]
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
@@ -46,15 +56,15 @@ class UserAdmin(BaseUserAdmin):
         try:
             profile = obj.userprofile
             if profile.role == 'django_admin':
-                return format_html('<span class="badge bg-danger">Администратор Django</span>')
+                return mark_safe('<span class="badge bg-danger">Администратор Django</span>')
             elif profile.role == 'dba':
-                return format_html('<span class="badge bg-warning">DBA</span>')
+                return mark_safe('<span class="badge bg-warning">DBA</span>')
             elif profile.role == 'uk_user':
-                return format_html('<span class="badge bg-info">Пользователь УК</span>')
+                return mark_safe('<span class="badge bg-info">Пользователь УК</span>')
             else:
-                return format_html('<span class="badge bg-secondary">Житель</span>')
+                return mark_safe('<span class="badge bg-secondary">Житель</span>')
         except UserProfile.DoesNotExist:
-            return format_html('<span class="badge bg-secondary">Без роли</span>')
+            return mark_safe('<span class="badge bg-secondary">Без роли</span>')
     get_role.short_description = 'Роль'
 
     def change_view(self, request, object_id, form_url='', extra_context=None):
@@ -68,44 +78,8 @@ class UserAdmin(BaseUserAdmin):
         }
 
 
-@admin.register(UserProfile)
-class UserProfileAdmin(admin.ModelAdmin):
-    """Администрирование профилей пользователей"""
-
-    list_display = ('user', 'role', 'phone', 'get_building_count')
-    list_filter = ('role', 'created_at')
-    search_fields = ('user__username', 'user__email', 'phone')
-    raw_id_fields = ('user',)
-
-    fieldsets = (
-        (None, {
-            'fields': ('user', 'role'),
-            'description': 'Связь с пользователем системы и его роль'
-        }),
-        ('Контактная информация', {
-            'fields': ('phone', 'address'),
-            'description': 'Дополнительная контактная информация'
-        }),
-        ('Служебная информация', {
-            'fields': ('created_at',),
-            'description': 'Дата создания профиля'
-        }),
-    )
-
-    readonly_fields = ('created_at',)
-
-    def get_building_count(self, obj):
-        """Получить количество связанных зданий"""
-        # Здесь можно добавить логику подсчета зданий, если есть связь
-        return '-'
-
-    get_building_count.short_description = 'Здания'
-
-    class Media:
-        css = {
-            'all': ('/static/css/admin_custom.css',)
-        }
-
+# UserProfileAdmin удален - теперь профиль редактируется через UserAdmin с помощью UserProfileInline
+# Это устраняет дублирование в админке: User + Profile теперь в одном месте (/admin/auth/user/)
 
 @admin.register(AIPrompt)
 class AIPromptAdmin(admin.ModelAdmin):
@@ -198,12 +172,11 @@ class ServicesCatalogAdmin(admin.ModelAdmin):
         'type_display',
         'object_display',
         'is_active',
-        'tags_preview',
-        'keywords_preview'
+        'tags_preview'
     ]
 
     list_filter = ['is_active', 'category_id', 'type_id', 'localization_id', 'object_id']
-    search_fields = ['scenario_name', 'scenario_id', 'description_for_search', 'tags', 'keywords']
+    search_fields = ['scenario_name', 'scenario_id', 'description_for_search', 'tags']
     list_editable = ['is_active']
     ordering = ['category_id', 'scenario_name']
 
@@ -217,9 +190,9 @@ class ServicesCatalogAdmin(admin.ModelAdmin):
         ('Дополнительно', {
             'fields': ('kind_id', 'payment_id', 'route_id', 'urgency_id', 'description_for_search')
         }),
-        ('Поиск (тags/keywords)', {
-            'fields': ('tags', 'keywords'),
-            'description': 'Теги и ключевые слова для улучшения поиска (через запятую)'
+        ('Теги', {
+            'fields': ('tags',),
+            'description': 'Теги услуги для улучшения поиска (заполняются из service_tags)'
         }),
         ('Embedding', {
             'fields': ('embedding_text', 'embedding_service'),
@@ -232,7 +205,7 @@ class ServicesCatalogAdmin(admin.ModelAdmin):
         }),
     )
 
-    readonly_fields = ['service_id', 'created_at', 'updated_at', 'embedding_service']
+    readonly_fields = ['service_id', 'kind_id', 'payment_id', 'route_id', 'urgency_id', 'created_at', 'updated_at', 'embedding_service']
 
     def category_display(self, obj):
         """Показать категорию"""
@@ -271,12 +244,14 @@ class ServicesCatalogAdmin(admin.ModelAdmin):
     object_display.short_description = 'Объект'
 
     def tags_preview(self, obj):
-        """Предпросмотр тегов"""
-        return obj.tags[:50] + '...' if obj.tags and len(obj.tags) > 50 else obj.tags or ''
+        """Предпросмотр тегов (полностью)"""
+        from django.utils.safestring import mark_safe
+        from django.utils.html import escape
+        if obj.tags:
+            # Показываем все теги с переносом строк для удобства
+            escaped_tags = escape(obj.tags)
+            return mark_safe(f'<span style="white-space: pre-wrap; word-break: break-word; max-width: 500px; display: inline-block;">{escaped_tags}</span>')
+        return mark_safe('<span style="color: #999;">-</span>')
     tags_preview.short_description = 'Теги'
-
-    def keywords_preview(self, obj):
-        """Предпросмотр keywords"""
-        return obj.keywords[:50] + '...' if obj.keywords and len(obj.keywords) > 50 else obj.keywords or ''
-    keywords_preview.short_description = 'Keywords'
+    tags_preview.allow_tags = True
 

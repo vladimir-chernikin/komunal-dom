@@ -24,8 +24,11 @@ class MessageLogAdmin(admin.ModelAdmin):
     def text_preview(self, obj):
         """Предпросмотр текста (обрезанный)"""
         content = obj.message_content if hasattr(obj, 'message_content') else ''
-        return content[:100] + '...' if len(content) > 100 else content
+        if content:
+            return content[:100] + '...' if len(content) > 100 else content
+        return '-'
     text_preview.short_description = 'Текст'
+    text_preview.allow_tags = True
 
     def has_add_permission(self, request):
         """Запрет добавления через админку"""
@@ -75,5 +78,8 @@ class CommunicativeScriptAdmin(admin.ModelAdmin):
 
     def text_preview(self, obj):
         """Предпросмотр текста скрипта"""
-        return obj.text[:80] + '...' if len(obj.text) > 80 else obj.text
+        if obj.text:
+            return obj.text[:80] + '...' if len(obj.text) > 80 else obj.text
+        return '-'
     text_preview.short_description = 'Текст скрипта'
+    text_preview.allow_tags = True

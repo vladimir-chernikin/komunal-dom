@@ -398,9 +398,10 @@ class MainAgent:
         semantic_check_result = {}
         if self.filter_detection and self.ai_agent and txtPrb:
             try:
-                logger.info("Запускаем SemanticPreCheck для извлечения абсолютных фактов...")
+                logger.info("Запускаем SemanticPreCheck для извлечения фильтров...")
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
                 # ИСПРАВЛЕНО (2026-01-10): Используем txtPrb вместо search_text (полный контекст!)
+                # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb + established_filters)
                 semantic_check_result = await self._semantic_pre_check(
                     message_text=txtPrb,  # ИСПРАВЛЕНО (2026-01-10): было search_text, стало txtPrb
                     dialog_history=dialog_history,
@@ -409,38 +410,30 @@ class MainAgent:
                     message_id=message_id
                 )
 
-                if semantic_check_result.get('absolute_facts'):
-                    logger.info(f"SemanticPreCheck найден {len(semantic_check_result['absolute_facts'])} фактов:")
-                    for fact in semantic_check_result['absolute_facts']:
-                        logger.info(f"  ✓ {fact}")
+                if semantic_check_result.get('filters'):
+                    logger.info(f"SemanticPreCheck найден {len(semantic_check_result['filters'])} фильтров:")
 
                     # ИСПРАВЛЕНО (2026-01-10): Защита от переопределения фильтров с высокой уверенностью
                     # Объединяем с established_filters от ProblemAccumulationService
-                    if semantic_check_result.get('filters'):
-                        for filter_name, filter_data in semantic_check_result['filters'].items():
-                            # ИСПРАВЛЕНО (2026-01-10): НЕ переопределяем фильтры с высокой уверенностью
-                            if filter_name in established_filters:
-                                existing_confidence = established_filters[filter_name].get('confidence', 0.0)
-                                new_confidence = filter_data.get('confidence', 0.0)
-                                # Если существующий фильтр имеет уверенность >=75% → НЕ переопределяем!
-                                if existing_confidence >= 0.75:
-                                    logger.info(f"  ⚠️ Фильтр {filter_name} СУЩЕСТВУЕТ с уверенностью {existing_confidence:.0%} - ПРЕНОПРЕДЕЛЯЕМSemanticPreCheck!")
-                                    continue  # Пропускаем этот фильтр
-                                # Иначе добавляем/обновляем
-                                established_filters[filter_name] = filter_data
-                                logger.info(f"  Добавлен фильтр из PreCheck: {filter_name}={filter_data['value']} (confidence: {new_confidence:.0%})")
-                            else:
-                                # Фильтра еще нет - добавляем
-                                established_filters[filter_name] = filter_data
-                                logger.info(f"  Добавлен фильтр из PreCheck: {filter_name}={filter_data['value']}")
-
-                    # ИСПРАВЛЕНО (2026-01-05): КРИТИЧЕСКИ ВАЖНО! Добавляем semantic_check в established_filters
-                    # Это нужно чтобы _generate_ai_question мог использовать absolute_facts для запрета вопросов
-                    established_filters['semantic_check'] = semantic_check_result
-                    logger.info("✅ semantic_check добавлен в established_filters для absolute_facts")
+                    for filter_name, filter_data in semantic_check_result['filters'].items():
+                        # ИСПРАВЛЕНО (2026-01-10): НЕ переопределяем фильтры с высокой уверенностью
+                        if filter_name in established_filters:
+                            existing_confidence = established_filters[filter_name].get('confidence', 0.0)
+                            new_confidence = filter_data.get('confidence', 0.0)
+                            # Если существующий фильтр имеет уверенность >=75% → НЕ переопределяем!
+                            if existing_confidence >= 0.75:
+                                logger.info(f"  ⚠️ Фильтр {filter_name} СУЩЕСТВУЕТ с уверенностью {existing_confidence:.0%} - ПРЕНОПРЕДЕЛЯЕМSemanticPreCheck!")
+                                continue  # Пропускаем этот фильтр
+                            # Иначе добавляем/обновляем
+                            established_filters[filter_name] = filter_data
+                            logger.info(f"  Добавлен фильтр из PreCheck: {filter_name}={filter_data['value']} (confidence: {new_confidence:.0%})")
+                        else:
+                            # Фильтра еще нет - добавляем
+                            established_filters[filter_name] = filter_data
+                            logger.info(f"  Добавлен фильтр из PreCheck: {filter_name}={filter_data['value']}")
 
                 else:
-                    logger.info("SemanticPreCheck не нашел значимых фактов")
+                    logger.info("SemanticPreCheck не нашел фильтров")
 
             except Exception as e:
                 logger.warning(f"Ошибка SemanticPreCheck: {e}")
@@ -2377,7 +2370,7 @@ class MainAgent:
         ИСПРАВЛЕНО (2026-01-03): LLM-валидация вопроса вместо Regex
         ИСПРАВЛЕНО (2026-01-10): Добавлена regex-проверка двойных вопросов
         ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
-        ИСПРАВЛЕНО (2026-01-14): Добавлена проверка absolute_facts для блокировки универсальных вопросов
+        ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb + established_filters)
 
         Проверяет через YandexGPT Lite:
         1. Не спрашивает ли бот о том, что уже известно
@@ -2397,14 +2390,9 @@ class MainAgent:
         if not question or not self.ai_agent:
             return question
 
-        # ИСПРАВЛЕНИЕ (2026-01-14): Блокируем универсальные вопросы при наличии известных фактов
-        if established_filters:
-            semantic_check = established_filters.get('semantic_check', {})
-            absolute_facts = semantic_check.get('absolute_facts', [])
-
-            # Проверяем, есть ли факт "Уже известна проблема"
-            has_known_problem = any('уже известна проблема' in fact.lower() or 'Уже известна проблема' in fact for fact in absolute_facts)
-
+        # ИСПРАВЛЕНИЕ (2026-01-15): Блокируем универсальные вопросы при наличии txtPrb
+        # Если txtPrb не пустой → значит уже известна проблема
+        if txtPrb and len(txtPrb.strip()) > 0:
             # Универсальные вопросы, которые нужно блокировать при известных фактах
             generic_questions = [
                 'опишите подробнее',
@@ -2416,29 +2404,28 @@ class MainAgent:
 
             question_lower = question.lower().strip()
 
-            if has_known_problem and any(phrase in question_lower for phrase in generic_questions):
+            if any(phrase in question_lower for phrase in generic_questions):
                 logger.warning(f"⚠️ DETECTED GENERIC QUESTION WITH KNOWN FACTS!")
                 logger.warning(f"⚠️ Question: '{question}'")
-                logger.warning(f"⚠️ Absolute facts: {absolute_facts}")
+                logger.warning(f"⚠️ txtPrb: '{txtPrb}'")
 
                 # Генерируем контекстный вопрос с учетом txtPrb
-                if txtPrb:
-                    txtPrb_lower = txtPrb.lower()
+                txtPrb_lower = txtPrb.lower()
 
-                    if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
-                        question = 'Что именно течет или капает?'
-                    elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
-                        question = 'Откуда именно запах?'
-                    elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
-                        question = 'Что именно сломалось?'
-                    elif any(word in txtPrb_lower for word in ['шум', 'гремит', 'стучит']):
-                        question = 'Что именно шумит?'
-                    else:
-                        # Если нет паттерна - спрашиваем что-то конкретное
-                        question = 'Уточните детали: что именно?'
+                if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
+                    question = 'Что именно течет или капает?'
+                elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
+                    question = 'Откуда именно запах?'
+                elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
+                    question = 'Что именно сломалось?'
+                elif any(word in txtPrb_lower for word in ['шум', 'гремит', 'стучит']):
+                    question = 'Что именно шумит?'
+                else:
+                    # Если нет паттерна - спрашиваем что-то конкретное
+                    question = 'Уточните детали: что именно?'
 
-                    logger.warning(f"✅ REPLACED WITH: '{question}'")
-                    return question
+                logger.warning(f"✅ REPLACED WITH: '{question}'")
+                return question
 
         # ИСПРАВЛЕНО (2026-01-10): Regex-проверка двойных вопросов (БЕЗ LLM)
         import re
@@ -2713,15 +2700,15 @@ JSON:"""
         """
         ИСПРАВЛЕНО (2026-01-03): Семантический Pre-Check через FilterDetectionService
 
-        Извлекает "абсолютные факты" из текста через YandexGPT Lite:
-        - Проблема (течет, сломалось, засор и т.д.)
-        - Локация (зал -> Индивидуальное, подъезд -> Общедомовое)
-        - Категория (батарея -> Отопление)
-        - Объект (труба, кран, батарея)
+        Извлекает фильтры из текста через YandexGPT Lite:
+        - incident_type: Инцидент или Запрос
+        - location_type: Индивидуальное или Общедомовое
+        - category: Категория услуги
 
         ИСПРАВЛЕНО (2026-01-03): Добавлено кеширование результатов
         ИСПРАВЛЕНО (2026-01-06): Добавлен message_id для логирования
         ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
+        ИСПРАВЛЕНО (2026-01-15): Убран absolute_facts (используется txtPrb + established_filters)
 
         Args:
             message_text: Текст сообщения
@@ -2732,14 +2719,12 @@ JSON:"""
 
         Returns:
             Dict: {
-                'absolute_facts': List[str],  # Список фактов
                 'filters': Dict,               # Фильтры с confidence
                 'normalized_fields': Dict      # Нормализованные поля
             }
         """
         if not self.filter_detection or not self.ai_agent:
             return {
-                'absolute_facts': [],
                 'filters': {},
                 'normalized_fields': {}
             }
@@ -2771,7 +2756,6 @@ JSON:"""
 
             if filter_result.get('status') != 'success':
                 return {
-                    'absolute_facts': [],
                     'filters': {},
                     'normalized_fields': {}
                 }
@@ -2779,41 +2763,30 @@ JSON:"""
             filters = filter_result.get('filters', {})
             confidence = filter_result.get('confidence', 0.0)
 
-            # Формируем абсолютные факты
-            absolute_facts = []
+            # Формируем нормализованные поля
             normalized_fields = {}
-
-            # Проблема (из object_description)
-            if filters.get('object_description'):
-                problem_desc = filters['object_description']
-                absolute_facts.append(f"Проблема: {problem_desc}")
-                normalized_fields['problem'] = problem_desc
 
             # Локация (нормализация: зал/кухня/ванная -> Индивидуальное)
             if filters.get('location_type'):
                 location = filters['location_type']
-                absolute_facts.append(f"Локация: {location}")
                 normalized_fields['location'] = location
 
             # Категория
             if filters.get('category'):
                 category = filters['category']
-                absolute_facts.append(f"Категория: {category}")
                 normalized_fields['category'] = category
 
             # Тип инцидента
             if filters.get('incident_type'):
                 incident = filters['incident_type']
-                absolute_facts.append(f"Тип: {incident}")
                 normalized_fields['incident'] = incident
 
             # Логируем результаты
-            logger.info(f"SemanticPreCheck: извлечено {len(absolute_facts)} фактов")
-            for fact in absolute_facts:
-                logger.info(f"  - {fact}")
+            logger.info(f"SemanticPreCheck: извлечено {len(normalized_fields)} фильтров")
+            for field, value in normalized_fields.items():
+                logger.info(f"  - {field}: {value}")
 
             result = {
-                'absolute_facts': absolute_facts,
                 'filters': {
                     k: {'value': v, 'confidence': confidence}
                     for k, v in filters.items() if v
@@ -2837,7 +2810,6 @@ JSON:"""
         except Exception as e:
             logger.error(f"Ошибка в _semantic_pre_check: {e}")
             return {
-                'absolute_facts': [],
                 'filters': {},
                 'normalized_fields': {}
             }
@@ -3009,7 +2981,6 @@ JSON:"""
         self,
         strategy: str,
         context: str,
-        absolute_facts: List[str] = None,
         candidates: List[Dict] = None,
         missing_filter: str = None,
         txtPrb: str = None,
@@ -3021,6 +2992,7 @@ JSON:"""
         ИСПРАВЛЕНО (2026-01-05): Добавлен параметр asked_questions для исключения повторов
         ИСПРАВЛЕНО (2026-01-06): Добавлена стратегия NONE для случая без кандидатов
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля
+        ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
 
         Стратегии:
         - A (1 кандидат, >90%): Подтверждение
@@ -3031,10 +3003,9 @@ JSON:"""
         Args:
             strategy: Тип стратегии (A, B, C, NONE)
             context: Контекст ситуации
-            absolute_facts: Абсолютные факты (из SemanticPreCheck)
             candidates: Список кандидатов (для стратегий B и C)
             missing_filter: Недостающий фильтр (для стратегии C)
-            txtPrb: Описание проблемы
+            txtPrb: Накопленное описание проблемы (ProblemAccumulationService)
             asked_questions: Список уже заданных вопросов (ИСПРАВЛЕНО 2026-01-05)
             intro_phrase: Вводная фраза с фактами и отвергнутой услугой (ИСПРАВЛЕНО 2026-01-13)
 
@@ -3078,27 +3049,6 @@ JSON:"""
 Вопрос должен использовать информацию из txtPrb и помогать различить кандидатов по их параметрам.
 
 Стиль: Краткий, деловой, без приветствий. Максимум 15 слов.
-"""
-
-        # Блок абсолютных фактов
-        # ИСПРАВЛЕНО (2026-01-10): Усилена формулировка с конкретными примерами
-        facts_block = ""
-        if absolute_facts:
-            facts_list = "\n".join([f"- {fact}" for fact in absolute_facts])
-            facts_block = f"""
-⛔⛔⛔ КРИТИЧЕСКИ ВАЖНО: АБСОЛЮТНЫЕ ФАКТЫ (ЗАПРЕТ НА ВОПРОСЫ) ⛔⛔⛔
-
-Ниже перечислены факты, которые УЖЕ установлены с высокой уверенностью (>80%).
-
-{facts_list}
-
-🚨 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом:
-- Если "Уже известна проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?", "Что случилось?", "В чем проблема?"
-- Если "Уже известна локация: зале" → НЕЛЬЗЯ спрашивать "Где именно?", "В каком месте?"
-- Если "Уже известна категория: Водоснабжение" → НЕЛЬЗЯ спрашивать "Это водоснабжение?"
-
-ТЕБЕ ЗАПРЕЩЕНО ЗАДАВАТЬ ВОПРОСЫ О ТОМ, ЧТО УЖЕ ИЗВЕСТНО!
-Задавай ТОЛЬКО вопросы о НЕИЗВЕСТНЫХ деталях.
 """
 
         # ИСПРАВЛЕНО (2026-01-05): Блок уже заданных вопросов
@@ -3164,8 +3114,9 @@ JSON:"""
    ❌ "Что: труба, кран, батарея?"
    ✅ "Опишите характер проблемы подробнее"
 
-3. ЗАПРЕЩЕНО спрашивать о том, что УЖЕ есть в блоке "АБСОЛЮТНЫЕ ФАКТЫ (ЗАПРЕТ НА ВОПРОСЫ)":
-   Если факт: "location=ванная", вопрос "Где именно?" → ИЗБЫТОЧЕН!
+3. ЗАПРЕЩЕНО спрашивать о том, что УЖЕ есть в "Накопленное описание (txtPrb)":
+   Если txtPrb содержит "в зале течет", вопрос "Что происходит?" → ИЗБЫТОЧЕН!
+   ИСПОЛЬЗУЙ txtPrb для формирования контекстных вопросов!
 
 4. Максимум ОДИН вопрос, не более 10 слов, без вводных фраз
 
@@ -3400,42 +3351,8 @@ JSON:"""
             if strategy == 'C':
                 missing_filter = self._determine_missing_filter(candidates or [], established_filters or {})
 
-            # Формируем абсолютные факты из semantic_check если есть
-            absolute_facts = []
-            if established_filters:
-                semantic_check = established_filters.get('semantic_check', {})
-                if semantic_check.get('absolute_facts'):
-                    absolute_facts = semantic_check['absolute_facts']
-            
-            # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
-            # КРИТИЧЕСКИ ВАЖНО: extracted фильтры должны попадать в absolute_facts!
-            if established_filters:
-                # object_description - если известен с высокой уверенностью
-                obj_desc = established_filters.get('object_description')
-                if obj_desc and obj_desc.get('confidence', 0) >= 0.8:
-                    obj_value = obj_desc.get('value')
-                    if obj_value:
-                        absolute_facts.append(f"Уже известна проблема: {obj_value}")
-                        logger.info(f"[!] Absolute fact: object_description={obj_value} (confidence: {obj_desc.get('confidence', 0)})")
-                
-                # location_type - если известна с высокой уверенностью
-                location = established_filters.get('location_type')
-                if location and location.get('confidence', 0) >= 0.8:
-                    loc_value = location.get('value')
-                    if loc_value:
-                        absolute_facts.append(f"Уже известна локация: {loc_value}")
-                        logger.info(f"[!] Absolute fact: location_type={loc_value} (confidence: {location.get('confidence', 0)})")
-                
-                # category - если известна с высокой уверенностью
-                category = established_filters.get('category')
-                if category and category.get('confidence', 0) >= 0.8:
-                    cat_value = category.get('value')
-                    if cat_value:
-                        absolute_facts.append(f"Уже известна категория: {cat_value}")
-                        logger.info(f"[!] Absolute fact: category={cat_value} (confidence: {category.get('confidence', 0)})")
-            
-
-
+            # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
+            # txtPrb уже содержит всю накопленную информацию о проблеме
 
             # ИСПРАВЛЕНО (2026-01-05): Извлекаем уже заданные вопросы из истории
             asked_questions = []
@@ -3444,12 +3361,12 @@ JSON:"""
                 logger.info(f"[!] Уже задано вопросов: {len(asked_questions)}")
 
             # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
+            # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
             if question_type == 'clarification' and candidates is not None:
                 # Используем новый метод с динамическими промптами по стратегиям
                 prompt = self._build_dynamic_prompt(
                     strategy=strategy,
                     context=context,
-                    absolute_facts=absolute_facts if absolute_facts else None,
                     candidates=candidates,
                     missing_filter=missing_filter,
                     txtPrb=txtPrb,

@@ -9,7 +9,6 @@ FilterDetectionService - микросервис определения филь�
 - incident_type: Инцидент или Запрос
 - location_type: Индивидуальное или Общедомовое
 - category: категория проблемы
-- object_description: описание объекта
 
 ИСПРАВЛЕНО: Использует AIAgentService для всех вызовов LLM
 ИСПРАВЛЕНО (2025-12-25): Загружает категории и объекты из БД вместо хардкода
@@ -154,7 +153,6 @@ class FilterDetectionService:
   "incident_type": "Инцидент" или "Запрос",
   "location_type": "Индивидуальное" или "Общедомовое" или null,
   "category": категория услуги или null,
-  "object_description": "краткое описание проблемы",
   "confidence": 0.5-1.0,
   "reason": "обоснование выбора (обязательное поле!)"
 }}
@@ -306,16 +304,12 @@ class FilterDetectionService:
    → Водоснабжение: 35%, Отопление: 35%, Канализация: 30%
    → Макс: 35% < 80% → category=null (трубы бывают разные!)
 
-4. object_description:
-   - Краткое описание проблемы: что случилось, где, какой объект
-   - Максимальная длина: 5 слов
-
-5. confidence:
+4. confidence:
    - 0.5-0.7 = низкая уверенность
    - 0.7-0.9 = средняя уверенность
    - 0.9-1.0 = высокая уверенность
 
-6. reason:
+5. reason:
    - Обоснуй почему выбраны именно эти фильтры
 
 ⛔ КРИТИЧЕСКИ ВАЖНО:
@@ -361,6 +355,7 @@ JSON:"""
 
         ИСПРАВЛЕНО: Использует AIAgentService вместо прямых запросов к API
         ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
+        ИСПРАВЛЕНО (2026-01-15): Убран object_description (используется txtPrb)
 
         Args:
             message_text: Текущее сообщение пользователя
@@ -374,8 +369,7 @@ JSON:"""
                     'filters': {
                         'incident_type': str,
                         'location_type': str,
-                        'category': str,
-                        'object_description': str
+                        'category': str
                     },
                     'confidence': float,
                     'reason': str
@@ -443,8 +437,7 @@ JSON:"""
             filters = {
                 'incident_type': parsed.get('incident_type', ''),
                 'location_type': parsed.get('location_type', ''),
-                'category': parsed.get('category', ''),
-                'object_description': parsed.get('object_description', '')
+                'category': parsed.get('category', '')
             }
 
             confidence = parsed.get('confidence', 0.0)

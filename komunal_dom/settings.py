@@ -45,10 +45,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crispy_forms',
     'crispy_bootstrap5',
-    'file_manager',
-    'portal',
-    'kladr',
-    'message_handler',  # Логирование сообщений из всех каналов
+    'file_manager.apps.FileManagerConfig',
+    'portal.apps.PortalConfig',
+    'kladr.apps.KladrConfig',
+    'message_handler.apps.MessageHandlerConfig',  # Логирование сообщений из всех каналов
 ]
 
 MIDDLEWARE = [
@@ -173,7 +173,7 @@ JAZZMIN_SETTINGS = {
 
     # Цветовая тема
     'theme': 'light',
-    'welcome_sign': 'Главная',
+    'welcome_sign': '',  # Скрыть username в верхнем меню
 
     # Кнопки
     'button_classes': {

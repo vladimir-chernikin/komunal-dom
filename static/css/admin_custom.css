@@ -105,6 +105,26 @@ select:focus, input:focus, textarea:focus {
     display: none !important;
 }
 
+/* Скрываем username в sidebar (левое меню) */
+.user-panel .info a,
+.user-panel .info span {
+    display: none !important;
+}
+
+/* Скрываем username в dropdown меню пользователя */
+.navbar-right .dropdown-toggle span,
+.user-menu .username,
+.dropdown-toggle .user-name {
+    display: none !important;
+}
+
+/* Показываем только иконку пользователя */
+.navbar-right .dropdown-toggle,
+.user-menu .dropdown-toggle {
+    display: flex !important;
+    align-items: center !important;
+}
+
 /* Улучшаем отображение логотипа */
 #site-name a {
     text-decoration: none !important;
