@@ -494,31 +494,37 @@ class MessageCleanerService:
 
 # Для тестирования
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
+    import asyncio
+    import logging
 
-    cleaner = MessageCleanerService()
+    async def test_cleaner():
+        logging.basicConfig(level=logging.INFO)
 
-    test_messages = [
-        "Привет! У меня течет кран на кухне",
-        "Здравствуйте, добрый день, у меня проблема с отоплением",
-        "Короче, у меня в ванной засор",
-        "Просто вообще-то как бы у меня сломался лифт",
-        "Ну вообще в подъезде нет света",
-        "Добрый вечер. Извините, у меня течет труба в квартире",
-        "привет",
-        "Здравствуйте, подскажите пожалуйста",
-    ]
+        cleaner = MessageCleanerService()
 
-    print("=" * 60)
-    print("ТЕСТИРОВАНИЕ ОЧИСТКИ СООБЩЕНИЙ")
-    print("=" * 60)
+        test_messages = [
+            "Привет! У меня течет кран на кухне",
+            "Здравствуйте, добрый день, у меня проблема с отоплением",
+            "Короче, у меня в ванной засор",
+            "Просто вообще-то как бы у меня сломался лифт",
+            "Ну вообще в подъезде нет света",
+            "Добрый вечер. Извините, у меня течет труба в квартире",
+            "привет",
+            "Здравствуйте, подскажите пожалуйста",
+        ]
 
-    for msg in test_messages:
-        cleaned, meta = await cleaner.clean_message(msg)
+        print("=" * 60)
+        print("ТЕСТИРОВАНИЕ ОЧИСТКИ СООБЩЕНИЙ")
+        print("=" * 60)
 
-        print(f"\nИсходное:  '{msg}'")
-        print(f"Очищенное: '{cleaned}'")
-        print(f"Метаданные: {meta}")
+        for msg in test_messages:
+            cleaned, meta = await cleaner.clean_message(msg)
 
-        if cleaner.is_greeting_only(msg):
-            print(">>> ТОЛЬКО ПРИВЕТСТВИЕ")
+            print(f"\nИсходное:  '{msg}'")
+            print(f"Очищенное: '{cleaned}'")
+            print(f"Метаданные: {meta}")
+
+            if cleaner.is_greeting_only(msg):
+                print(">>> ТОЛЬКО ПРИВЕТСТВИЕ")
+
+    asyncio.run(test_cleaner())
