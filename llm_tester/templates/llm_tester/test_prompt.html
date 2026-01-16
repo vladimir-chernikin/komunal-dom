@@ -1,0 +1,309 @@
+{% extends "llm_tester/base.html" %}
+
+{% block content_inner %}
+<div class="llm-tester-container">
+    <h1 style="margin-bottom: 20px;">
+        <a href="{% url 'llm_tester:dashboard' %}" style="text-decoration: none; color: #417690;">&larr; LLM Tester</a>
+        - Тестирование: {{ template.name }}
+    </h1>
+
+    <!-- Описание шаблона -->
+    {% if template.description %}
+    <div class="llm-tester-card">
+        <h3>Описание</h3>
+        <p>{{ template.description }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Шаблон промпта -->
+    <div class="llm-tester-card">
+        <h3>1. Текст промпта (с переменными)</h3>
+        <textarea id="prompt-template" class="form-control" rows="10" readonly>{{ template.template }}</textarea>
+        <p style="margin-top: 10px; color: #666; font-size: 13px;">
+            <strong>Переменные в шаблоне:</strong>
+            {% if variables %}
+                {% for var in variables %}<code>{{ '{' }}{{ var }}{{ '}' }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+            {% else %}
+                Нет переменных
+            {% endif %}
+        </p>
+    </div>
+
+    <!-- Переменные -->
+    <div class="llm-tester-card">
+        <h3>2. Значения переменных</h3>
+
+        <!-- Выбор пресета -->
+        {% if presets %}
+        <div class="form-group">
+            <label>Загрузить пресет:</label>
+            <select id="preset-select" class="form-control" style="max-width: 300px;">
+                <option value="">-- Выберите пресет --</option>
+                {% for preset in presets %}
+                <option value="{{ preset.id }}">{{ preset.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <!-- Поля ввода переменных -->
+        <div id="variables-container" class="variable-inputs">
+            {% for var in variables %}
+            <div class="form-group">
+                <label for="var-{{ var }}">{{ var }}:</label>
+                <input type="text" id="var-{{ var }}" class="form-control variable-input" data-variable="{{ var }}" placeholder="Введите значение">
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Кнопка сохранения пресета -->
+        <button id="save-preset-btn" class="btn btn-secondary" style="margin-top: 10px;">
+            Сохранить как пресет
+        </button>
+    </div>
+
+    <!-- Выбор модели -->
+    <div class="llm-tester-card">
+        <h3>3. Выбор модели</h3>
+        <div class="form-group">
+            <label for="provider-select">Провайдер:</label>
+            <select id="provider-select" class="form-control" style="max-width: 300px;">
+                <option value="yandexgpt">YandexGPT</option>
+                <option value="gigachat">GigaChat</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="model-select">Модель:</label>
+            <select id="model-select" class="form-control" style="max-width: 300px;">
+                {% for model in models.yandexgpt %}
+                <option value="{{ model.value }}" data-provider="yandexgpt">{{ model.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- Кнопка отправки -->
+    <div class="llm-tester-card">
+        <button id="send-request-btn" class="btn btn-primary" style="font-size: 16px; padding: 12px 24px;">
+            <span id="send-btn-text">4. Отправить запрос в LLM</span>
+            <span id="send-btn-loading" class="loading" style="display: none; margin-left: 10px;"></span>
+        </button>
+    </div>
+
+    <!-- Ответ LLM -->
+    <div class="llm-tester-card">
+        <h3>5. Ответ LLM</h3>
+        <div id="response-area" class="response-area">Здесь появится ответ от LLM...</div>
+
+        <!-- Информация об использовании -->
+        <div id="usage-info" class="usage-info" style="display: none;">
+            <strong>Информация о запросе:</strong>
+            <div id="usage-details"></div>
+        </div>
+
+        <!-- Превью отправленного промпта -->
+        <div id="prompt-preview-container" style="margin-top: 15px; display: none;">
+            <details>
+                <summary style="cursor: pointer; font-weight: bold;">Показать отправленный промпт</summary>
+                <div id="prompt-preview" class="response-area" style="margin-top: 10px; max-height: 400px; overflow-y: auto;"></div>
+            </details>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно сохранения пресета -->
+<div id="save-preset-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; min-width: 400px;">
+        <h3 style="margin-top: 0;">Сохранить пресет</h3>
+        <div class="form-group">
+            <label for="preset-name">Название пресета:</label>
+            <input type="text" id="preset-name" class="form-control" placeholder="Введите название">
+        </div>
+        <div style="text-align: right; margin-top: 15px;">
+            <button id="cancel-preset-btn" class="btn btn-secondary">Отмена</button>
+            <button id="confirm-save-preset-btn" class="btn btn-success">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const templateId = {{ template.id }};
+
+// Обновление списка моделей при смене провайдера
+document.getElementById('provider-select').addEventListener('change', function() {
+    const provider = this.value;
+    const modelSelect = document.getElementById('model-select');
+
+    const models = {
+        'yandexgpt': [
+            {value: 'lite', label: 'YandexGPT Lite'},
+            {value: 'pro', label: 'YandexGPT Pro'}
+        ],
+        'gigachat': [
+            {value: 'GigaChat', label: 'GigaChat'},
+            {value: 'GigaChat-2', label: 'GigaChat-2'},
+            {value: 'GigaChat-Plus', label: 'GigaChat-Plus'},
+            {value: 'GigaChat-2.1', label: 'GigaChat-2.1'}
+        ]
+    };
+
+    modelSelect.innerHTML = '';
+    models[provider].forEach(model => {
+        const option = document.createElement('option');
+        option.value = model.value;
+        option.textContent = model.label;
+        option.dataset.provider = provider;
+        modelSelect.appendChild(option);
+    });
+});
+
+// Загрузка пресета
+document.getElementById('preset-select')?.addEventListener('change', function() {
+    const presetId = this.value;
+    if (!presetId) return;
+
+    fetch("{% url 'llm_tester:load_preset' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({preset_id: presetId})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Заполняем поля переменных
+            Object.keys(data.variables).forEach(varName => {
+                const input = document.getElementById(`var-${varName}`);
+                if (input) {
+                    input.value = data.variables[varName];
+                }
+            });
+        } else {
+            alert('Ошибка загрузки пресета: ' + data.error);
+        }
+    })
+    .catch(error => alert('Ошибка: ' + error));
+});
+
+// Сохранение пресета
+document.getElementById('save-preset-btn').addEventListener('click', function() {
+    document.getElementById('save-preset-modal').style.display = 'block';
+});
+
+document.getElementById('cancel-preset-btn').addEventListener('click', function() {
+    document.getElementById('save-preset-modal').style.display = 'none';
+});
+
+document.getElementById('confirm-save-preset-btn').addEventListener('click', function() {
+    const name = document.getElementById('preset-name').value.trim();
+    if (!name) {
+        alert('Введите название пресета');
+        return;
+    }
+
+    // Собираем значения переменных
+    const variables = {};
+    document.querySelectorAll('.variable-input').forEach(input => {
+        const varName = input.dataset.variable;
+        variables[varName] = input.value;
+    });
+
+    fetch("{% url 'llm_tester:save_preset' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            template_id: templateId,
+            name: name,
+            variables: variables
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Пресет сохранен!');
+            document.getElementById('save-preset-modal').style.display = 'none';
+            location.reload();
+        } else {
+            alert('Ошибка сохранения: ' + data.error);
+        }
+    })
+    .catch(error => alert('Ошибка: ' + error));
+});
+
+// Отправка запроса в LLM
+document.getElementById('send-request-btn').addEventListener('click', function() {
+    const provider = document.getElementById('provider-select').value;
+    const model = document.getElementById('model-select').value;
+
+    // Собираем значения переменных
+    const variables = {};
+    document.querySelectorAll('.variable-input').forEach(input => {
+        const varName = input.dataset.variable;
+        variables[varName] = input.value;
+    });
+
+    // Показываем загрузку
+    document.getElementById('send-btn-text').textContent = 'Отправка запроса...';
+    document.getElementById('send-btn-loading').style.display = 'inline-block';
+    document.getElementById('send-request-btn').disabled = true;
+
+    fetch("{% url 'llm_tester:send_request' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            template_id: templateId,
+            provider: provider,
+            model: model,
+            variables: variables
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Скрываем загрузку
+        document.getElementById('send-btn-text').textContent = '4. Отправить запрос в LLM';
+        document.getElementById('send-btn-loading').style.display = 'none';
+        document.getElementById('send-request-btn').disabled = false;
+
+        if (data.status === 'success') {
+            // Показываем ответ
+            document.getElementById('response-area').textContent = data.response;
+
+            // Показываем информацию об использовании
+            const usageInfo = data.usage_info;
+            let usageHtml = `
+                <p><strong>Провайдер:</strong> ${usageInfo.provider}</p>
+                <p><strong>Модель:</strong> ${usageInfo.model}</p>
+                <p><strong>Токенов (вход):</strong> ${usageInfo.prompt_tokens || 0}</p>
+                <p><strong>Токенов (выход):</strong> ${usageInfo.completion_tokens || 0}</p>
+                <p><strong>Всего токенов:</strong> ${usageInfo.total_tokens || 0}</p>
+                <p><strong>Стоимость:</strong> ${usageInfo.cost_rub || 0} руб.</p>
+            `;
+            document.getElementById('usage-details').innerHTML = usageHtml;
+            document.getElementById('usage-info').style.display = 'block';
+
+            // Показываем отправленный промпт
+            document.getElementById('prompt-preview').textContent = data.prompt_text;
+            document.getElementById('prompt-preview-container').style.display = 'block';
+        } else {
+            document.getElementById('response-area').textContent = 'Ошибка: ' + data.error;
+            document.getElementById('usage-info').style.display = 'none';
+        }
+    })
+    .catch(error => {
+        document.getElementById('send-btn-text').textContent = '4. Отправить запрос в LLM';
+        document.getElementById('send-btn-loading').style.display = 'none';
+        document.getElementById('send-request-btn').disabled = false;
+        document.getElementById('response-area').textContent = 'Ошибка: ' + error;
+        document.getElementById('usage-info').style.display = 'none';
+    });
+});
+</script>
+{% endblock %}

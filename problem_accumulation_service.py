@@ -17,6 +17,7 @@ ProblemAccumulationService - Микросервис для итеративно�
 
 import logging
 import json
+import re
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -409,8 +410,19 @@ JSON:"""
 
         return prompt
 
-    def _parse_llm_response(self, response_text: str, current_problem: str) -> Dict[str, Any]:
-        """Парсит ответ LLM и возвращает структурированный результат."""
+    def _parse_llm_response(self, response_text: str, current_problem: str = None) -> Dict[str, Any]:
+        """
+        Парсит ответ LLM и возвращает структурированный результат.
+
+        ИСПРАВЛЕНО (2026-01-15): current_problem опционален для _is_refusal
+
+        Args:
+            response_text: Ответ от LLM
+            current_problem: Текущее описание проблемы (опционально)
+
+        Returns:
+            Dict с распарсенными данными
+        """
         try:
             # Убираем markdown если есть
             response_text = response_text.strip()
@@ -536,7 +548,8 @@ JSON:"""
                 model='lite'
             )
 
-            result = self._parse_llm_response(response)
+            # ИСПРАВЛЕНО (2026-01-15): Передаем current_problem=None (нет в контексте _is_refusal)
+            result = self._parse_llm_response(response, current_problem=None)
 
             is_refusal = result.get('is_refusal', False)
             reasoning = result.get('reasoning', '')

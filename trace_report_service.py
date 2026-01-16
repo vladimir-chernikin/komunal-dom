@@ -516,10 +516,11 @@ Session ID: {session_id}
                     llm_calls_found = True
 
                 # ИСПРАВЛЕНО (2026-01-10): Определяем сервис по промпту (задача 10)
+                # ИСПРАВЛЕНО (2026-01-16): Добавлена проверка "# Классификатор обращений УК"
                 service_name = "Unknown"
                 if 'ProblemAccumulationService' in prompt_text or 'аналитик, извлекающий' in prompt_text:
                     service_name = "ProblemAccumulationService"
-                elif 'FilterDetectionService' in prompt_text or 'Анализируй обращение и верни JSON фильтров' in prompt_text:
+                elif '# Классификатор обращений УК' in prompt_text or 'FilterDetectionService' in prompt_text or 'Анализируй обращение и верни JSON фильтров' in prompt_text:
                     service_name = "FilterDetectionService"
                 elif 'AI-диспетчер управляющей компании' in prompt_text:
                     service_name = "MainAgent (AI Question Generator)"

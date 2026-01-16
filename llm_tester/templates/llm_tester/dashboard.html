@@ -1,0 +1,82 @@
+{% extends "llm_tester/base.html" %}
+
+{% block content_inner %}
+<div class="llm-tester-container">
+    <h1 style="margin-bottom: 20px;">LLM Tester - Тестирование промптов</h1>
+
+    <!-- Шаблоны промптов -->
+    <div class="llm-tester-card">
+        <h3>Доступные шаблоны промптов</h3>
+        <div class="template-grid">
+            {% for template in templates %}
+            <div class="template-card">
+                <h4>
+                    <a href="{% url 'llm_tester:test_prompt' template.id %}" style="text-decoration: none; color: #333;">
+                        {{ template.name }}
+                    </a>
+                </h4>
+                <p><strong>Тип:</strong>
+                    <span class="badge {% if template.prompt_type == 'filter_detection' %}badge-filter{% elif template.prompt_type == 'main_agent' %}badge-main{% else %}badge-custom{% endif %}">
+                        {{ template.get_prompt_type_display }}
+                    </span>
+                </p>
+                <p style="margin: 10px 0;">{{ template.description|truncatewords:20 }}</p>
+                <a href="{% url 'llm_tester:test_prompt' template.id %}" class="btn btn-primary">
+                    Тестировать
+                </a>
+            </div>
+            {% empty %}
+            <p>Нет активных шаблонов промптов.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Последние результаты -->
+    <div class="llm-tester-card">
+        <h3>Последние результаты тестов</h3>
+        {% if recent_results %}
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Провайдер</th>
+                    <th>Модель</th>
+                    <th>Статус</th>
+                    <th>Стоимость</th>
+                    <th>Создан</th>
+                    <th>Создал</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in recent_results %}
+                <tr>
+                    <td>#{{ result.id }}</td>
+                    <td>{{ result.get_provider_display }}</td>
+                    <td>{{ result.model }}</td>
+                    <td>
+                        <span class="badge {% if result.status == 'success' %}badge-main{% else %}badge-custom{% endif %}">
+                            {{ result.get_status_display }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if result.usage_info.cost_rub %}
+                            {{ result.usage_info.cost_rub }} руб.
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ result.created_at|date:"d.m.Y H:i" }}</td>
+                    <td>{{ result.created_by.username|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p style="margin-top: 15px;">
+            <a href="{% url 'llm_tester:test_results' %}" class="btn btn-secondary">Показать все результаты</a>
+        </p>
+        {% else %}
+        <p>Нет результатов тестов.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

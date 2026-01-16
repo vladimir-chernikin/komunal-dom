@@ -27,6 +27,7 @@ urlpatterns = [
     path('logout/', auth_views.LogoutView.as_view(next_page='/'), name='logout'),
     path('files/', include('file_manager.urls')),
     path('chat/', include('message_handler.urls')),  # Веб-чат с AI
+    path('llm-tester/', include('llm_tester.urls')),  # LLM Tester
 ]
 
 # Обслуживание медиа-файлов в режиме разработки

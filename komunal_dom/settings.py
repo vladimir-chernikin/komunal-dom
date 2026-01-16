@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'portal.apps.PortalConfig',
     'kladr.apps.KladrConfig',
     'message_handler.apps.MessageHandlerConfig',  # Логирование сообщений из всех каналов
+    'llm_tester.apps.LlmTesterConfig',  # LLM Tester - тестирование промптов
 ]
 
 MIDDLEWARE = [
