@@ -1548,16 +1548,18 @@ class MainAgent:
                     established_filters=established_filters
                 )
 
-            # ИСПРАВЛЕНИЕ (2026-01-16): ИСПОЛЬЗУЕМ CANDIDATE CONFIDENCE вместо filter_confidence!
-            # candidate_confidence - насколько услуга СООТВЕТСТВУЕТ запросу (из микросервисов)
-            # filter_confidence - насколько ПРАВИЛЬНО определены фильтры (из LLM)
-            # Это РАЗНЫЕ характеристики! Используем candidate_confidence.
+            # ИСПРАВЛЕНО (2025-12-25): Добавляем needs_confirmation для низкого confidence
+            # Получаем confidence из LLM ранжирования если было
+            llm_confidence = ranking_result.get('confidence', 0.0) if 'ranking_result' in locals() else 0.0
 
-            # Получаем confidence кандидата (из микросервисов)
-            candidate_confidence = candidate.get('confidence', 0.0)
-            logger.info(f"[CANDIDATE] Conf={candidate_confidence:.2%}, service={candidate['service_name']}")
+            # ИСПРАВЛЕНИЕ (2026-01-12): Проверяем confidence от FilterDetectionService
+            # Если фильтры установлены с высокой уверенностью - считаем как высокую уверенность
+            filter_confidence = 0.0
+            if established_filters.get('semantic_check'):
+                semantic_conf = established_filters['semantic_check'].get('confidence', 0.0)
+                filter_confidence = max(filter_confidence, semantic_conf)
 
-            # Проверяем - был ли уже уточняющий вопрос
+            # ИСПРАВЛЕНО (2026-01-05): Проверяем - был ли уже уточняющий вопрос
             already_asked_confirmation = False
             if dialog_history:
                 for msg in dialog_history:
@@ -1569,23 +1571,26 @@ class MainAgent:
                             logger.info(f"[!] УЖЕ был уточняющий вопрос: '{text[:60]}...'")
                             break
 
-            # ИСПРАВЛЕНИЕ (2026-01-16):
-            # - candidate_confidence >= 0.7: услуга определена достаточно точно
-            # - candidate_confidence < 0.7: нужна LLM-генерация вопроса (НЕ fallback!)
-            needs_clarification = candidate_confidence < 0.7 and not already_asked_confirmation
+            # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - ЗАПРЕЩЕНЫ закрытые вопросы!
+            # Логика:
+            # - confidence >= 0.9 (LLM ИЛИ фильтры): просто сообщаем что услуга определена
+            # - confidence < 0.9: задаем открытый вопрос БЕЗ названия услуги (иначе сбивает)
+            # ИСПРАВЛЕНО (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK ВОПРОСОВ!
+            actual_confidence = max(llm_confidence, filter_confidence)
+            needs_clarification = actual_confidence < 0.9 and not already_asked_confirmation
 
-            logger.info(f"[DECISION] candidate_confidence={candidate_confidence:.2%}, needs_clarification={needs_clarification}")
+            logger.info(f"[DECISION] llm_conf={llm_confidence:.2%}, filter_conf={filter_confidence:.2%}, actual_conf={actual_confidence:.2%}, needs_clar={needs_clarification}")
 
-            # Формируем сообщение (используем LLM вместо fallback!)
+            # Формируем сообщение (ИСПРАВЛЕНО: используем LLM вместо fallback!)
             if needs_clarification:
-                # ИСПРАВЛЕНИЕ (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK!
-                logger.warning(f"[LOW CONFIDENCE] Candidate conf={candidate_confidence:.2%} < 70% → используем LLM для генерации вопроса")
+                # ИСПРАВЛЕНО (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK!
+                logger.warning(f"[LOW CONFIDENCE] actual_conf={actual_confidence:.2%} < 90% → используем LLM для генерации вопроса")
 
-                # Вызываем _generate_ai_question с новым промптом
+                # Вызываем _generate_ai_question с новым промптом (НЕ fallback!)
                 ai_result = await self._generate_ai_question(
                     context=original_message,
                     dialog_history=dialog_history,
-                    candidates=[candidate],  # 1 кандидат с низкой уверенностью
+                    candidates=[candidate],  # 1 кандидат
                     established_filters=established_filters,
                     txtPrb=txtPrb,
                     question_type='clarification',
@@ -1594,14 +1599,14 @@ class MainAgent:
                 message = ai_result['question']
                 logger.info(f"[LLM QUESTION] Сгенерирован вопрос: {message}")
             else:
-                # Высокая уверенность (candidate_confidence >= 0.7) → создаем заявку
+                # Если уже спрашивали уточнение ИЛИ высокая уверенность - создаем заявку
                 message = f"Понял, у вас: {candidate['service_name']}. Создаю заявку."
 
             return {
                 'status': 'SUCCESS',
                 'service_id': candidate['service_id'],
                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
-                'confidence': candidate_confidence if candidate_confidence > 0 else 1.0,  # ИСПРАВЛЕНО (2026-01-16)
+                'confidence': actual_confidence if actual_confidence > 0 else 1.0,
                 'source': 'filtered_search_with_llm',
                 'message': message,
                 'single_candidate': candidate,

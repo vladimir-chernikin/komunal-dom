@@ -528,12 +528,16 @@ Session ID: {session_id}
 
                 details += f"\n{'=' * 20} {service_name} ({provider} - {model}) {'=' * 20}\n"
                 if prompt_text:
-                    # Ограничиваем длину промпта для читаемости
-                    prompt_preview = prompt_text[:1000] + "..." if len(prompt_text) > 1000 else prompt_text
+                    # ИСПРАВЛЕНО (2026-01-16): Показываем полный промпт для FilterDetectionService
+                    # Для остальных сервисов ограничиваем до 5000 символов
+                    if service_name == "FilterDetectionService":
+                        prompt_preview = prompt_text  # Полный промпт
+                    else:
+                        prompt_preview = prompt_text[:5000] + "...\n(ПРОМПТ ОБРЕЗАН - полный текст в БД)" if len(prompt_text) > 5000 else prompt_text
                     details += f"ПРОМПТ:\n{prompt_preview}\n"
                 if response_text:
                     # Ограничиваем длину ответа для читаемости
-                    response_preview = response_text[:500] + "..." if len(response_text) > 500 else response_text
+                    response_preview = response_text[:1000] + "..." if len(response_text) > 1000 else response_text
                     details += f"------------ ОТВЕТ LLM -----\nОТВЕТ LLM:\n{response_preview}\n"
 
         if not llm_calls_found:
