@@ -62,21 +62,26 @@ class FilterDetectionService:
 
             try:
                 with conn.cursor() as cursor:
-                    # Загружаем уникальные категории
+                    # ИСПРАВЛЕНО (2026-01-16): Загружаем уникальные категории через JOIN с ref_categories
                     cursor.execute("""
-                        SELECT DISTINCT category
-                        FROM services_catalog
-                        WHERE category IS NOT NULL AND category != ''
-                        ORDER BY category
+                        SELECT DISTINCT rc.category_name
+                        FROM services_catalog sc
+                        JOIN ref_categories rc ON sc.category_id = rc.category_id
+                        WHERE rc.category_name IS NOT NULL AND rc.category_name != ''
+                        ORDER BY rc.category_name
                     """)
                     self.categories_list = [row[0] for row in cursor.fetchall()]
 
-                    # Загружаем примеры объектов (scenario_name)
+                    # ИСПРАВЛЕНО (2026-01-16): Загружаем примеры объектов через JOIN с ref_* таблицами
                     cursor.execute("""
-                        SELECT scenario_name, category, incident_type
-                        FROM services_catalog
-                        WHERE is_active = TRUE
-                        ORDER BY service_id
+                        SELECT sc.scenario_name,
+                               COALESCE(rc.category_name, '') as category,
+                               COALESCE(rst.type_name, '') as incident_type
+                        FROM services_catalog sc
+                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
+                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
+                        WHERE sc.is_active = TRUE
+                        ORDER BY sc.service_id
                         LIMIT 30
                     """)
                     self.objects_examples = [
