@@ -1548,18 +1548,16 @@ class MainAgent:
                     established_filters=established_filters
                 )
 
-            # ИСПРАВЛЕНО (2025-12-25): Добавляем needs_confirmation для низкого confidence
-            # Получаем confidence из LLM ранжирования если было
-            llm_confidence = ranking_result.get('confidence', 0.0) if 'ranking_result' in locals() else 0.0
+            # ИСПРАВЛЕНИЕ (2026-01-16): ИСПОЛЬЗУЕМ CANDIDATE CONFIDENCE вместо filter_confidence!
+            # candidate_confidence - насколько услуга СООТВЕТСТВУЕТ запросу (из микросервисов)
+            # filter_confidence - насколько ПРАВИЛЬНО определены фильтры (из LLM)
+            # Это РАЗНЫЕ характеристики! Используем candidate_confidence.
 
-            # ИСПРАВЛЕНИЕ (2026-01-12): Проверяем confidence от FilterDetectionService
-            # Если фильтры установлены с высокой уверенностью - считаем как высокую уверенность
-            filter_confidence = 0.0
-            if established_filters.get('semantic_check'):
-                semantic_conf = established_filters['semantic_check'].get('confidence', 0.0)
-                filter_confidence = max(filter_confidence, semantic_conf)
+            # Получаем confidence кандидата (из микросервисов)
+            candidate_confidence = candidate.get('confidence', 0.0)
+            logger.info(f"[CANDIDATE] Conf={candidate_confidence:.2%}, service={candidate['service_name']}")
 
-            # ИСПРАВЛЕНО (2026-01-05): Проверяем - был ли уже уточняющий вопрос
+            # Проверяем - был ли уже уточняющий вопрос
             already_asked_confirmation = False
             if dialog_history:
                 for msg in dialog_history:
@@ -1571,55 +1569,44 @@ class MainAgent:
                             logger.info(f"[!] УЖЕ был уточняющий вопрос: '{text[:60]}...'")
                             break
 
-            # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - ЗАПРЕЩЕНЫ закрытые вопросы!
-            # Логика:
-            # - confidence >= 0.9 (LLM ИЛИ фильтры): просто сообщаем что услуга определена
-            # - confidence < 0.9: задаем открытый вопрос БЕЗ названия услуги (иначе сбивает)
-            actual_confidence = max(llm_confidence, filter_confidence)
-            needs_clarification = actual_confidence < 0.9 and not already_asked_confirmation
+            # ИСПРАВЛЕНИЕ (2026-01-16):
+            # - candidate_confidence >= 0.7: услуга определена достаточно точно
+            # - candidate_confidence < 0.7: нужна LLM-генерация вопроса (НЕ fallback!)
+            needs_clarification = candidate_confidence < 0.7 and not already_asked_confirmation
 
-            # Формируем сообщение (открытые вопросы только!)
+            logger.info(f"[DECISION] candidate_confidence={candidate_confidence:.2%}, needs_clarification={needs_clarification}")
+
+            # Формируем сообщение (используем LLM вместо fallback!)
             if needs_clarification:
-                # ИСПРАВЛЕНИЕ (2026-01-14): Генерируем контекстный вопрос с учетом txtPrb
-                if txtPrb:
-                    txtPrb_lower = txtPrb.lower()
+                # ИСПРАВЛЕНИЕ (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK!
+                logger.warning(f"[LOW CONFIDENCE] Candidate conf={candidate_confidence:.2%} < 70% → используем LLM для генерации вопроса")
 
-                    # Анализируем ключевые слова для генерации контекстного вопроса
-                    if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр', 'протека']):
-                        message = 'Что именно течет или капает?'
-                    elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет', 'дурнопахн']):
-                        message = 'Откуда именно запах?'
-                    elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк', 'не включ', 'не включается']):
-                        message = 'Что именно сломалось или не работает?'
-                    elif any(word in txtPrb_lower for word in ['шум', 'гремит', 'стучит', 'гудит']):
-                        message = 'Что именно шумит или где именно звук?'
-                    elif any(word in txtPrb_lower for word in ['холодно', 'мерзн', 'нет тепла', 'батарея холод']):
-                        message = 'В каком помещении именно холодно?'
-                    elif any(word in txtPrb_lower for word in ['жарко', 'душно', 'нет кондиционер', 'жара']):
-                        message = 'В каком помещении именно жарко?'
-                    else:
-                        # Общий случай с учетом txtPrb
-                        message = 'Опишите подробнее, что именно происходит?'
-                else:
-                    # Если нет txtPrb - общий вопрос
-                    message = "Опишите подробнее, что именно происходит?"
+                # Вызываем _generate_ai_question с новым промптом
+                ai_result = await self._generate_ai_question(
+                    context=original_message,
+                    dialog_history=dialog_history,
+                    candidates=[candidate],  # 1 кандидат с низкой уверенностью
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type='clarification',
+                    session_id=session_id
+                )
+                message = ai_result['question']
+                logger.info(f"[LLM QUESTION] Сгенерирован вопрос: {message}")
             else:
-                # Если уже спрашивали уточнение ИЛИ высокая уверенность - создаем заявку
-                if already_asked_confirmation or actual_confidence >= 0.9:
-                    message = f"Понял, у вас: {candidate['service_name']}. Создаю заявку."
-                else:
-                    message = f"Понял, у вас: {candidate['service_name']}"
+                # Высокая уверенность (candidate_confidence >= 0.7) → создаем заявку
+                message = f"Понял, у вас: {candidate['service_name']}. Создаю заявку."
 
             return {
                 'status': 'SUCCESS',
                 'service_id': candidate['service_id'],
                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
-                'confidence': actual_confidence if actual_confidence > 0 else 1.0,  # ИСПРАВЛЕНО (2026-01-12): берем макс
+                'confidence': candidate_confidence if candidate_confidence > 0 else 1.0,  # ИСПРАВЛЕНО (2026-01-16)
                 'source': 'filtered_search_with_llm',
                 'message': message,
                 'single_candidate': candidate,
                 'filtered_candidates': filtered_candidates,
-                'needs_clarification': needs_clarification,  # ИСПРАВЛЕНО (2026-01-12): переименовано
+                'needs_clarification': needs_clarification,
                 'is_followup': is_followup
             }
 
