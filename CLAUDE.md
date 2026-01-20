@@ -196,6 +196,54 @@ os.chmod(output_path, 0o644)  # rw-r--r--
 
 ---
 
+## 7. ОБЯЗАТЕЛЬНОЕ ТЕСТИРОВАНИЕ ПОСЛЕ ПРАВОК
+
+### ⚠️ КРИТИЧЕСКИ ВАЖНО: После любых изменений файлов проверять работоспособность!
+
+**ПРАВИЛО:** После редактирования файлов, которые используются Django views или веб-сервером, ВСЕГДА выполнять проверку.
+
+**ОБЯЗАТЕЛЬНЫЕ ДЕЙСТВИЯ:**
+
+1. **Права доступа на новые файлы:**
+   ```bash
+   # Для Django шаблонов и статических файлов
+   chmod 755 /var/www/komunal-dom_ru/имя_приложения/templates/
+   chmod 644 /var/www/komunal-dom_ru/имя_приложения/templates/**/*.html
+   chown -R olga:www-data /var/www/komunal-dom_ru/имя_приложения/templates/
+   ```
+
+2. **Очистка кэша Python:**
+   ```bash
+   find /var/www/komunal-dom_ru/__pycache__ -name "*.pyc" -delete
+   find /var/www/komunal-dom_ru -type d -name "__pycache__" -exec chmod -R 755 {} \;
+   ```
+
+3. **Перезапуск gunicorn:**
+   ```bash
+   systemctl restart gunicorn-komunal-dom
+   systemctl status gunicorn-komunal-dom  # Проверить статус
+   ```
+
+4. **Проверка доступности страницы:**
+   ```bash
+   curl -I http://localhost:8000/путь/к/странице/
+   ```
+
+**КОГДА ВЫПОЛНЯТЬ:**
+- ✅ После создания/изменения Django шаблонов
+- ✅ После добавления новых Django приложений
+- ✅ После изменения views.py или urls.py
+- ✅ После добавления статических файлов
+- ✅ После изменения middleware или context processors
+
+**ПРОВЕРКА ПЕРЕД ЗАВЕРШЕНИЕМ:**
+- Я установил правильные права на файлы?
+- Я очистил кэш Python?
+- Я перезапустил gunicorn?
+- Я проверил, что страница доступна?
+
+---
+
 # ТЕСТИРОВАНИЕ СИСТЕМЫ
 
 ## TestBotSimulator - Имитатор пользователя

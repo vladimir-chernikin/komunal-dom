@@ -358,13 +358,17 @@
                 </div>
 
                 <div class="chat-input-container">
-                    <form class="chat-input-form" id="chatForm">
+                    <form class="chat-input-form" id="chatForm" autocomplete="off">
                         <input
                             type="text"
                             class="chat-input"
                             id="messageInput"
                             placeholder="Опишите вашу проблему..."
                             autocomplete="off"
+                            data-lpignore="true"
+                            data-form-type="other"
+                            spellcheck="false"
+                            value=""
                             required
                         >
                         <button type="submit" class="send-button" id="sendButton">
@@ -415,6 +419,9 @@
 </div>
 
 <script>
+    // Версия для cache-busting
+    const SCRIPT_VERSION = '202601160904';
+
     const CHAT_CONFIG = {
         sessionId: 'web_{{ user.id }}_{% if request.session.session_key %}{{ request.session.session_key }}{% else %}{{ user.id }}{% endif %}',
         apiSendUrl: '{% url "message_handler:send_message" %}',
@@ -439,6 +446,24 @@
         loadChatHistory();
         loadDialogsList();
         messageInput.focus();
+    });
+
+    // Очищаем поле ввода при восстановлении страницы из кэша (bfcache)
+    window.addEventListener('pageshow', function(event) {
+        console.log('[DEBUG] pageshow event, persisted:', event.persisted);
+        // Для Microsoft Edge и других Chromium браузеров
+        setTimeout(function() {
+            console.log('[DEBUG] Clearing input, current value:', messageInput.value);
+            messageInput.value = '';
+            messageInput.setAttribute('value', '');
+            messageInput.defaultValue = '';
+        }, 0);
+        messageInput.focus();
+    });
+
+    // Дополнительная очистка перед выгрузкой страницы
+    window.addEventListener('beforeunload', function() {
+        messageInput.value = '';
     });
 
     // Кнопка "Новый диалог"
