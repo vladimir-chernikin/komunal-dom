@@ -2449,6 +2449,49 @@ class MainAgent:
                 logger.warning(f"✅ REPLACED WITH: '{question}'")
                 return question
 
+            # ИСПРАВЛЕНИЕ (2026-01-21): Блокируем вопросы о локации, если она уже известна в txtPrb
+            location_questions = [
+                'в какой комнат',
+                'где именно',
+                'в каком мест',
+                'какое помещение',
+                'в каком помещении',
+                'где проблем',
+                'локаци',
+                'местонахождени'
+            ]
+
+            if any(phrase in question_lower for phrase in location_questions):
+                txtPrb_lower = txtPrb.lower()
+
+                # Проверяем, есть ли в txtPrb слова локации
+                location_words = [
+                    'кухн', 'зал', 'ванная', 'туалет', 'спальн', 'комнат',
+                    'прихож', 'коридор', 'балкон', 'лодж', 'подъезд', 'подвал',
+                    'чердак', 'кровл', 'фасад', 'двор', 'улиц', 'квартир',
+                    'дом', 'подъезд'
+                ]
+
+                if any(word in txtPrb_lower for word in location_words):
+                    logger.warning(f"⚠️ DETECTED LOCATION QUESTION BUT LOCATION ALREADY KNOWN!")
+                    logger.warning(f"⚠️ Question: '{question}'")
+                    logger.warning(f"⚠️ txtPrb: '{txtPrb}'")
+
+                    # Генерируем вопрос на основе того, что известно
+                    if any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет', 'газ']):
+                        question = 'Откуда именно запах или утечка?'
+                    elif any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'протека']):
+                        question = 'Что именно течет или откуда утечка?'
+                    elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил']):
+                        question = 'Что именно сломалось или не работает?'
+                    elif any(word in txtPrb_lower for word in ['шум', 'гремит', 'стучит']):
+                        question = 'Что именно шумит или где источник шума?'
+                    else:
+                        question = 'Уточните детали проблемы.'
+
+                    logger.warning(f"✅ REPLACED WITH: '{question}'")
+                    return question
+
         # ИСПРАВЛЕНО (2026-01-10): Regex-проверка двойных вопросов (БЕЗ LLM)
         import re
         question_lower = question.lower().strip()
