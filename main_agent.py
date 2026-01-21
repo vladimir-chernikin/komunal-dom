@@ -675,18 +675,35 @@ class MainAgent:
 
             # Формируем search_results для AI Orchestrator
             ai_search_results = {}
+            raw_microservices_results = {}  # ИСПРАВЛЕНО (2026-01-19): Сохраняем ВСЕ результаты для диагностики
 
             for i, result in enumerate(search_results):
                 if isinstance(result, Exception):
-                    continue
-                if not result or not result.get('candidates'):
+                    # Сохраняем ошибку как результат с пустыми candidates
+                    source_name = f'service_{i}_error'
+                    raw_microservices_results[source_name] = {
+                        'method': source_name,
+                        'error': str(result),
+                        'candidates': []
+                    }
                     continue
 
                 source_name = result.get('method', f'service_{i}')
-                ai_search_results[source_name] = result
 
-            # ДОБАВЛЕНО: Сохраняем результаты микросервисов в metadata для отчета
-            result_metadata['microservices_results'] = ai_search_results
+                # Сохраняем ВСЕ результаты (даже с пустыми candidates) для диагностики
+                raw_microservices_results[source_name] = result
+
+                # Для AI Orchestrator передаем только с candidates
+                if result and result.get('candidates'):
+                    ai_search_results[source_name] = result
+
+            # ИСПРАВЛЕНО (2026-01-19): Сохраняем ВСЕ результаты микросервисов для диагностики
+            result_metadata['microservices_results'] = raw_microservices_results
+            result_metadata['_debug'] = {
+                'total_services': len(search_results),
+                'with_candidates': len(ai_search_results),
+                'empty_results': len([r for r in raw_microservices_results.values() if not r.get('candidates')])
+            }
 
             # Вызываем AI Orchestrator
             logger.info(f"Запускаем AI Orchestrator (микросервисов: {len(ai_search_results)})")
@@ -3372,6 +3389,7 @@ JSON:"""
         ИСПРАВЛЕНО (2025-12-29): Возвращает Dict с вопросом И метаданными для трассировки
         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля вопроса
+        ИСПРАВЛЕНО (2026-01-21): Добавлена защита от зацикливания - после 6 ходов
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -3397,6 +3415,22 @@ JSON:"""
                 'usage': Dict     # Информация об использовании токенов
             }
         """
+        # ИСПРАВЛЕНИЕ (2026-01-21): Защита от зацикливания
+        dialog_turn = len(dialog_history) if dialog_history else 1
+        if dialog_turn >= 7:
+            logger.warning(
+                f"[ANTI-LOOP] Слишком много AI-вопросов (turn={dialog_turn}) -> "
+                f"возвращаем финальное сообщение о передаче оператору"
+            )
+            final_message = "К сожалению, я не смог определить вашу проблему. Пожалуйста, свяжитесь с оператором по телефону или опишите проблему другими словами."
+            return {
+                'question': final_message,
+                'prompt': '[ANTI-LOOP] Превышен лимит попыток',
+                'response': final_message,
+                'model': 'anti-loop',
+                'usage': {}
+            }
+
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
         logger.info("[SEARCH] _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
         logger.info(f"  [NOTE] context: '{context[:100]}'")
