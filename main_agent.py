@@ -1421,7 +1421,8 @@ class MainAgent:
                 txtPrb=txtPrb,  # ИСПРАВЛЕНО
                 question_type='clarification',
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-                intro_phrase=intro_phrase  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+                intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -1611,7 +1612,8 @@ class MainAgent:
                     established_filters=established_filters,
                     txtPrb=txtPrb,
                     question_type='clarification',
-                    session_id=session_id
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
                 )
                 message = ai_result['question']
                 logger.info(f"[LLM QUESTION] Сгенерирован вопрос: {message}")
@@ -1702,7 +1704,8 @@ class MainAgent:
             txtPrb=txtPrb,  # ИСПРАВЛЕНО
             question_type='clarification',
             session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-            intro_phrase=intro_phrase  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+            intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
         )
 
         return {
@@ -1796,7 +1799,8 @@ class MainAgent:
                 candidates=None,
                 established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
                 question_type='clarification',
-                session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
+                session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -2369,7 +2373,8 @@ class MainAgent:
             established_filters=established_filters,
             txtPrb=txtPrb,
             question_type='what_happened',
-            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
+            session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
         )
 
         question = ai_result['question']
@@ -3029,7 +3034,8 @@ JSON:"""
         missing_filter: str = None,
         txtPrb: str = None,
         asked_questions: List[str] = None,
-        intro_phrase: str = None  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+        intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): Динамическая сборка промпта по стратегии
@@ -3037,6 +3043,7 @@ JSON:"""
         ИСПРАВЛЕНО (2026-01-06): Добавлена стратегия NONE для случая без кандидатов
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля
         ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
 
         Стратегии:
         - A (1 кандидат, >90%): Подтверждение
@@ -3051,7 +3058,8 @@ JSON:"""
             missing_filter: Недостающий фильтр (для стратегии C)
             txtPrb: Накопленное описание проблемы (ProblemAccumulationService)
             asked_questions: Список уже заданных вопросов (ИСПРАВЛЕНО 2026-01-05)
-            intro_phrase: Вводная фраза с фактами и отвергнутой услугой (ИСПРАВЛЕНО 2026-01-13)
+            intro_phrase: Вводная фраза для комплементарного стиля (ИСПРАВЛЕНО 2026-01-13)
+            accumulated_fields: Извлеченные поля из ProblemAccumulationService (ИСПРАВЛЕНО 2026-01-21)
 
         Returns:
             str: Промпт для YandexGPT Pro
@@ -3423,7 +3431,8 @@ JSON:"""
         txtPrb: str = None,
         question_type: str = "clarification",
         session_id: str = None,
-        intro_phrase: str = None  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+        intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (чтобы избежать повторного LLM)
     ) -> Dict[str, str]:
         """
         Универсальный метод для генерации вопросов через AI
@@ -3433,6 +3442,7 @@ JSON:"""
         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля вопроса
         ИСПРАВЛЕНО (2026-01-21): Добавлена защита от зацикливания - после 6 ходов
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -3448,6 +3458,8 @@ JSON:"""
                 - 'details' - детали проблемы
             session_id: ID сессии для сохранения в llm_request_log
             intro_phrase: Вводная фраза для ИИ (факты + отвергнутая услуга) - ИСПРАВЛЕНО 2026-01-13
+            accumulated_fields: Извлеченные поля из ProblemAccumulationService - ИСПРАВЛЕНО 2026-01-21
+                (передается чтобы избежать повторного вызова LLM в _extract_known_info)
 
         Returns:
             Dict: {
@@ -3514,7 +3526,8 @@ JSON:"""
                     missing_filter=missing_filter,
                     txtPrb=txtPrb,
                     asked_questions=asked_questions if asked_questions else None,  # ИСПРАВЛЕНО 2026-01-05
-                    intro_phrase=intro_phrase  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+                    intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
                 )
                 logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
             else:
@@ -3525,7 +3538,8 @@ JSON:"""
                     candidates=candidates,
                     established_filters=established_filters,
                     txtPrb=txtPrb,
-                    question_type=question_type
+                    question_type=question_type,
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
                 )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
@@ -3617,7 +3631,8 @@ JSON:"""
         candidates: List[Dict] = None,
         established_filters: Dict = None,
         txtPrb: str = None,
-        question_type: str = "clarification"
+        question_type: str = "clarification",
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
     ) -> str:
         """Строит промт для генерации вопроса
 
@@ -3625,10 +3640,12 @@ JSON:"""
         - Добавлено объяснение про фильтры и услуги
         - Атомарные открытые вопросы
         - Запрет на двойные вопросы
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
         """
 
         # Анализируем что уже известно из истории
-        known_info = self._extract_known_info(dialog_history, txtPrb)
+        # ИСПРАВЛЕНО (2026-01-21): Передаем accumulated_fields чтобы избежать повторного LLM вызова
+        known_info = self._extract_known_info(dialog_history, txtPrb, accumulated_fields)
 
         # Собираем контекст из истории
         recent_dialog = ""
@@ -4067,12 +4084,18 @@ JSON:"""
 
         return '\n'.join(lines)
 
-    def _extract_known_info(self, dialog_history: List[Dict] = None, txtPrb: str = None) -> str:
+    def _extract_known_info(self, dialog_history: List[Dict] = None, txtPrb: str = None, accumulated_fields: Dict = None) -> str:
         """
         Извлекает уже известную информацию из диалога
 
         ИСПРАВЛЕНО (2025-12-28): Использует ProblemAccumulationService вместо хардкода
         ИСПРАВЛЕНО (2025-12-28): УБРАН хардкод keywords!
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
+
+        Args:
+            dialog_history: История диалога
+            txtPrb: Накопленное описание проблемы
+            accumulated_fields: ИЗВЛЕЧЕННЫЕ поля (чтобы избежать повторного вызова LLM) - ИСПРАВЛЕНО 2026-01-21
 
         Returns:
             str: Список известной информации
@@ -4082,38 +4105,43 @@ JSON:"""
 
         known = []
 
-        # Используем ProblemAccumulationService для анализа
-        if self.problem_accumulator and dialog_history:
-            # Собираем все сообщения пользователя
-            user_texts = [m.get('text', '') for m in dialog_history if m.get('role') == 'user']
+        # ИСПРАВЛЕНИЕ (2026-01-21): ПЕРВЫМ ДЕЛОМ используем accumulated_fields!
+        # Это ИЗБАВЛЯЕТ от повторного вызова LLM = экономит деньги и время!
+        if accumulated_fields:
+            # Формируем описание из накопленных полей (УЖЕ извлеченных через LLM выше)
+            parts = []
+            if accumulated_fields.get('problem'):
+                parts.append(f"Проблема: {accumulated_fields['problem']}")
+            if accumulated_fields.get('location'):
+                parts.append(f"Локация: {accumulated_fields['location']}")
+            if accumulated_fields.get('source'):
+                parts.append(f"Объект: {accumulated_fields['source']}")
+            if accumulated_fields.get('category'):
+                parts.append(f"Категория: {accumulated_fields['category']}")
+            if accumulated_fields.get('severity'):
+                parts.append(f"Серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                parts.append(f"Интенсивность: {accumulated_fields['intensity']}")
 
-            if user_texts:
-                # Вызываем ProblemAccumulationService для анализа
-                try:
-                    # ProblemAccumulationService уже извлекает все поля через AI
-                    accumulated = self.problem_accumulator.accumulate_problem(
-                        message_text=' '.join(user_texts),
-                        existing_fields={},
-                        dialog_history=dialog_history
-                    )
+            if parts:
+                known.append(' | '.join(parts))
+                logger.info(f"[PERF] ИСПОЛЬЗУЕМ accumulated_fields (избегли повторный LLM!)")
 
-                    if accumulated:
-                        # Формируем описание из накопленных полей
-                        parts = []
-                        if accumulated.get('problem'):
-                            parts.append(f"Проблема: {accumulated['problem']}")
-                        if accumulated.get('location'):
-                            parts.append(f"Локация: {accumulated['location']}")
-                        if accumulated.get('source'):
-                            parts.append(f"Объект: {accumulated['source']}")
-                        if accumulated.get('category'):
-                            parts.append(f"Категория: {accumulated['category']}")
-
-                        if parts:
-                            known.append(' | '.join(parts))
-
-                except Exception as e:
-                    logger.warning(f"Ошибка ProblemAccumulationService в _extract_known_info: {e}")
+        # ИСПРАВЛЕНО (2026-01-21): УБРАНО! Больше НЕ вызываем ProblemAccumulationService здесь!
+        # Логика:
+        # - accumulated_fields УЖЕ извлечены выше в extract_and_accumulate() через LLM
+        # - Повторный вызов accumulate_problem() здесь = ЛИШНИЙ LLM вызов = деньги + время
+        # - Вместо этого используем accumulated_fields, который передается как параметр
+        #
+        # Старый код (УДАЛЕН):
+        # if self.problem_accumulator and dialog_history:
+        #     accumulated = self.problem_accumulator.accumulate_problem(
+        #         message_text=' '.join(user_texts),
+        #         existing_fields={},  # ← ПУСТОЙ! Хотя accumulated_fields уже есть!
+        #         dialog_history=dialog_history
+        #     )
+        #
+        # Новый код: используем accumulated_fields, который ПЕРЕДАН как параметр
 
         # Fallback: используем txtPrb если есть
         if not known and txtPrb and txtPrb != "(нет значимой информации)":
@@ -4247,7 +4275,8 @@ JSON:"""
             established_filters=established_filters,
             txtPrb=extracted_txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
             question_type='clarification',
-            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
+            session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+            accumulated_fields=None  # ИСПРАВЛЕНО (2026-01-21): Нет accumulated_fields в этом контексте
         )
 
         ai_question = ai_result['question']
@@ -4304,7 +4333,8 @@ JSON:"""
             established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-05): передаем фильтры
             txtPrb=extracted_txtPrb,
             question_type='clarification',
-            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
+            session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+            accumulated_fields=None  # ИСПРАВЛЕНО (2026-01-21): Нет accumulated_fields в этом контексте
         )
 
         ai_question = ai_result['question']
