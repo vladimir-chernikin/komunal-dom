@@ -109,6 +109,15 @@ class FilterDetectionService:
 
     def _create_incident_type_prompt(self, txtPrb: str) -> str:
         """Создание промпта для определения incident_type"""
+        # Переменные для f-string (будут заполнены LLM по алгоритму в промпте)
+        OBJ = ""
+        EVENT = ""
+        PLACE = ""
+        reasoning_txt = ""
+        последствия = ""
+        incident_type = ""
+        incident_confidence = ""
+
         prompt = f"""## Роль
 Ты — строгий алгоритмический классификатор типа обращения. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
 
@@ -126,6 +135,7 @@ reasoning_txt = "Шаг1: OBJ=" + OBJ + "; EVENT=" + EVENT + "; PLACE=" + PLACE
 ### Шаг2. ИЕРАРХИЯ УГРОЗ
 **ПРИМЕР "течёт труба": угроза имуществу(вода) → Инцидент(0.8)**
 
+последствия = "[опиши последствия: угроза жизни/здоровью/имуществу или отсутствие угрозы]"
 incident_type = null
 incident_confidence = "0.5"
 
@@ -161,6 +171,15 @@ reasoning_txt += " | incident_type=" + incident_type + "(" + incident_confidence
 
     def _create_location_type_prompt(self, txtPrb: str) -> str:
         """Создание промпта для определения location_type"""
+        # Переменные для f-string (будут заполнены LLM по алгоритму в промпте)
+        OBJ = ""
+        EVENT = ""
+        PLACE = ""
+        reasoning_txt = ""
+        SCOPE = ""
+        location_type = ""
+        location_confidence = ""
+
         prompt = f"""## Роль
 Ты — строгий алгоритмический классификатор локации. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
 
@@ -232,6 +251,22 @@ location_confidence = "0.5"
         """Создание промпта для определения category"""
         # Формируем список категорий
         categories_str = ", ".join([f'"{cat}"' for cat in self.categories_list])
+
+        # Переменные для f-string (будут заполнены LLM по алгоритму в промпте)
+        OBJ = ""
+        EVENT = ""
+        PLACE = ""
+        reasoning_txt = ""
+        M_EVENT = {}
+        M_PLACE = {}
+        M_OBJ = {}
+        M_CANDIDATE = {}
+        Z1_cat = ""
+        Z1 = 0.0
+        total = 0.0
+        ostatok = 0.0
+        category = ""
+        category_confidence = ""
 
         prompt = f"""## Роль
 Ты — строгий алгоритмический классификатор категории. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
@@ -560,6 +595,28 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
                 text = msg.get('text', '')[:50]
                 history_text += f"{role}: {text}...\n"
 
+        # Переменные для f-string (будут заполнены LLM по алгоритму в промпте)
+        OBJ = ""
+        EVENT = ""
+        PLACE = ""
+        reasoning_txt = ""
+        последствия = ""
+        incident_type = ""
+        incident_confidence = ""
+        SCOPE = ""
+        location_type = ""
+        location_confidence = ""
+        M_EVENT = {}
+        M_PLACE = {}
+        M_OBJ = {}
+        M_CANDIDATE = {}
+        Z1_cat = ""
+        Z1 = 0.0
+        total = 0.0
+        ostatok = 0.0
+        category = ""
+        category_confidence = ""
+
         prompt = f"""## Роль
 Ты — строгий алгоритмический классификатор. Выполняй ТОЛЬКО алгоритм. НЕ придумывай факты. Выход ТОЛЬКО JSON.
 
@@ -578,6 +635,7 @@ reasoning_txt = "Шаг1: OBJ=" + OBJ + "; EVENT=" + EVENT + "; PLACE=" + PLACE
 ### Шаг2. incident_type (ИЕРАРХИЯ УГРОЗ)
 **ПРИМЕР "течёт труба": угроза имуществу(вода) → Инцидент(0.8)**
 
+последствия = "[опиши последствия: угроза жизни/здоровью/имуществу или отсутствие угрозы]"
 incident_type = null
 incident_confidence = "0.5"
 
