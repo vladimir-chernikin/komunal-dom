@@ -24,7 +24,34 @@ class TagSearchService:
     def __init__(self):
         # ИСПРАВЛЕНО (2026-01-13): УБРАНО кэширование для избежания проблем с памятью и параллельными запросами
         self.morph = None
+        self._stopwords = None  # Ленивая инициализация stopwords
+
         logger.info("TagSearchService инициализирован (поиск по ТЕГАМ с pg_trgm + pymorphy2 + rapidfuzz БЕЗ кэша)")
+
+    def _get_stopwords(self):
+        """
+        ИСПРАВЛЕНО (2026-01-23): Динамическая загрузка stopwords из NLTK
+
+        Returns:
+            Set: Множество русских stopwords
+        """
+        if self._stopwords is None:
+            try:
+                import nltk
+                from nltk.corpus import stopwords
+
+                # Загружаем русские stopwords
+                russian_stopwords = set(stopwords.words('russian'))
+
+                # ИСПРАВЛЕНО (2026-01-23): Используем только NLTK stopwords без доменных дополнений
+                # (domain_stopwords удалены для исключения хардкода)
+                self._stopwords = russian_stopwords
+                logger.info(f"TagSearchService: загружено {len(self._stopwords)} stopwords (только NLTK)")
+            except Exception as e:
+                logger.warning(f"Не удалось загрузить NLTK stopwords: {e}, используем пустой набор")
+                self._stopwords = set()
+
+        return self._stopwords
 
     def _get_morph(self):
         """Ленивая инициализация морфологического анализатора"""
@@ -63,8 +90,11 @@ class TagSearchService:
                         category_data = filters.get('category')
                         if category_data and isinstance(category_data, dict):
                             category_conf = category_data.get('confidence', 0)
+                            # СТАРЫЙ ВАРИАНТ (2026-01-22): Возвращен порог 0.9
+                            # ИСПРАВЛЕНО (2026-01-22): Case-insensitive поиск (LOWER)
+                            # СТАРЫЙ ВАРИАНТ: sql += " AND rc.category_name = %s"
                             if category_conf >= 0.9:
-                                sql += " AND rc.category_name = %s"
+                                sql += " AND LOWER(rc.category_name) = LOWER(%s)"
                                 params.append(category_data.get('value'))
 
                         # Предварительная фильтрация по incident_type (confidence >= 90%)
@@ -72,7 +102,9 @@ class TagSearchService:
                         if incident_data and isinstance(incident_data, dict):
                             incident_conf = incident_data.get('confidence', 0)
                             if incident_conf >= 0.9:
-                                sql += " AND rst.type_name = %s"
+                                # ИСПРАВЛЕНО (2026-01-22): Case-insensitive поиск (LOWER)
+                                # СТАРЫЙ ВАРИАНТ: sql += " AND rst.type_name = %s"
+                                sql += " AND LOWER(rst.type_name) = LOWER(%s)"
                                 params.append(incident_data.get('value'))
 
                         # Предварительная фильтрация по location_type (confidence >= 90%)
@@ -80,7 +112,9 @@ class TagSearchService:
                         if location_data and isinstance(location_data, dict):
                             location_conf = location_data.get('confidence', 0)
                             if location_conf >= 0.9:
-                                sql += " AND rl.localization_name = %s"
+                                # ИСПРАВЛЕНО (2026-01-22): Case-insensitive поиск (LOWER)
+                                # СТАРЫЙ ВАРИАНТ: sql += " AND rl.localization_name = %s"
+                                sql += " AND LOWER(rl.localization_name) = LOWER(%s)"
                                 params.append(location_data.get('value'))
 
                     sql += " ORDER BY sc.service_id"
@@ -159,7 +193,9 @@ class TagSearchService:
             logger.info(f"TagSearchService: pg_trgm отобрал {len(candidate_ids)} кандидатов")
 
             # ШАГ 2 + 3: Точное совпадение с pymorphy2 + rapidfuzz
+            # ИСПРАВЛЕНО (2026-01-22): Вычисляем score для каждого service_id
             matching_service_ids = set()
+            service_scores = {}  # Запоминаем score для каждого service_id
 
             # Получаем теги для кандидатов
             tags_for_candidates = await self._get_tags_for_candidates(candidate_ids)
@@ -167,14 +203,25 @@ class TagSearchService:
             for service_id in candidate_ids:
                 tags = tags_for_candidates.get(service_id, set())
 
-                # Проверяем совпадение с pymorphy2 + rapidfuzz
-                if self._has_match(words, tags):
+                # ИСПРАВЛЕНО (2026-01-22): Получаем score вместо True/False
+                score = self._get_match_score(words, tags)
+
+                # Порог совпадения - только если score >= 60%
+                if score >= 60:
                     matching_service_ids.add(service_id)
+                    service_scores[service_id] = score
 
             logger.info(f"TagSearchService: после точного совпадения: {len(matching_service_ids)} кандидатов")
 
             # Формируем результат
-            candidates = await self._format_candidates(matching_service_ids, service_cache)
+            # ИСПРАВЛЕНО (2026-01-22): Передаем words, tags и scores
+            candidates = await self._format_candidates(
+                matching_service_ids,
+                service_cache,
+                words,
+                tags_for_candidates,
+                service_scores
+            )
 
             if candidates:
                 return {
@@ -295,13 +342,22 @@ class TagSearchService:
             logger.error(f"Ошибка в _get_tags_for_candidates: {e}")
             return {}
 
-    async def _format_candidates(self, service_ids: Set[int], service_cache: Dict) -> List[Dict]:
+    async def _format_candidates(self, service_ids: Set[int], service_cache: Dict,
+                                  words: List[str], tags_for_candidates: Dict,
+                                  service_scores: Dict) -> List[Dict]:
         """
         Формирует кандидатов из ID услуг с вычислением confidence
 
+        ИСПРАВЛЕНО (2026-01-22):
+        - Использует реальный rapidfuzz score вместо деления 1.0 / n
+        - Принимает words, tags_for_candidates, service_scores как параметры
+
         Args:
             service_ids: Set ID услуг
-            service_cache: Словарь услуг (ИСПРАВЛЕНО 2026-01-13: передаем как параметр)
+            service_cache: Словарь услуг
+            words: Список слов из сообщения (для логирования)
+            tags_for_candidates: Словарь тегов для каждого service_id
+            service_scores: Словарь rapidfuzz scores для каждого service_id
 
         Returns:
             List of candidate dicts
@@ -311,19 +367,27 @@ class TagSearchService:
                 return []
 
             candidates = []
-            n = len(service_ids)
 
-            # Равномерное распределение confidence
-            base_confidence = 1.0 / n if n > 0 else 0.0
+            # ИСПРАВЛЕНО (2026-01-22): Используем реальный rapidfuzz score вместо деления на количество
+            # УБРАНО (2026-01-22): n = len(service_ids)
+            # УБРАНО (2026-01-22): base_confidence = 1.0 / n if n > 0 else 0.0
 
             for service_id in service_ids:
-                service_data = service_cache.get(service_id)  # ИСПРАВЛЕНО (2026-01-13): используем параметр
+                service_data = service_cache.get(service_id)
                 if service_data:
+                    # ИСПРАВЛЕНО (2026-01-22): Получаем реальный score из service_scores
+                    score = service_scores.get(service_id, 0)
+                    confidence = round(score / 100.0, 3)  # Преобразуем 0-100 в 0.0-1.0
+
+                    # Логируем для отладки
+                    tags = tags_for_candidates.get(service_id, set())
+                    logger.info(f"  TagSearch: service_id={service_id}, score={score}, confidence={confidence}, words={words}, tags={list(tags)[:3]}")
+
                     candidates.append({
                         "service_id": service_id,
                         "service_name": service_data['service_name'],
                         "description": "",  # Не используем description в TagSearchService
-                        "confidence": round(base_confidence, 3),
+                        "confidence": confidence,  # ИСПРАВЛЕНО (2026-01-22): Реальный confidence
                         "source": "tag_search",
                         "category": service_data.get('category', ''),
                         "object": service_data.get('object_name', ''),
@@ -404,3 +468,65 @@ class TagSearchService:
                         return True
 
         return False
+
+    # СТАРЫЙ ВАРИАНТ (2026-01-22): Закомментирован для сохранности
+    # Искал ЛУЧШЕЕ совпадение ОДНОГО слова - проблема: забывал про остальные слова
+    #
+    def _get_match_score(self, message_words: List[str], search_terms: Set[str]) -> int:
+        """
+        ИСПРАВЛЕНО (2026-01-22): Универсальный score на основе rapidfuzz
+        ИСПРАВЛЕНО (2026-01-23): Добавлен штраф за общие слова (NLTK stopwords)
+
+        Логика:
+        1. Прямое совпадение → 100
+        2. Нормальная форма (pymorphy2) → 95
+        3. Вхождение подстроки → 90
+        4. Нечеткое совпадение (rapidfuzz partial_ratio) → 0-100
+        5. Штраф за общие слова (stopwords) → score * 0.3
+
+        Returns:
+            int: Score от 0 до 100
+        """
+        morph = self._get_morph()
+        stopwords = self._get_stopwords()  # Динамическая загрузка!
+        best_score = 0
+
+        for word in message_words:
+            if len(word) < 3:
+                continue
+            word_lower = word.lower()
+
+            # ИСПРАВЛЕНО (2026-01-23): Проверяем stopwords динамически (NLTK + доменные)
+            is_stopword = word_lower in stopwords
+            weight = 0.3 if is_stopword else 1.0  # Штраф 70% для stopwords
+
+            for term in search_terms:
+                term_lower = term.lower()
+                if len(term_lower) < 4:
+                    continue
+
+                # 1. Прямое совпадение
+                if word_lower == term_lower:
+                    return int(100 * weight)
+
+                # 2. Совпадение по нормальной форме (морфология)
+                parsed = morph.parse(word)[0]
+                if parsed.normal_form == term_lower:
+                    score = int(95 * weight)
+                    if score > best_score:
+                        best_score = score
+
+                # 3. Вхождение слова в терм
+                if len(word) >= 5 and word_lower in term_lower:
+                    score = int(90 * weight)
+                    if score > best_score:
+                        best_score = score
+
+                # 4. Нечеткое совпадение (rapidfuzz partial_ratio)
+                if len(word) >= 4 and len(term_lower) >= 4:
+                    fuzz_score = fuzz.partial_ratio(word_lower, term_lower)
+                    fuzz_score_weighted = int(fuzz_score * weight)
+                    if fuzz_score_weighted > best_score:
+                        best_score = fuzz_score_weighted
+
+        return best_score

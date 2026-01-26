@@ -710,12 +710,15 @@ class MainAgent:
 
             # ИСПРАВЛЕНО (2025-12-27): Передаем ОБЪЕДИНЕННЫЙ КОНТЕКСТ + txtPrb + established_filters
             # Это критично для followup сообщений чтобы AI видел полный контекст разговора
+            # ИСПРАВЛЕНО (2026-01-21): Передаем session_id и accumulated_fields
             orch_result = await self._orchestrate_microservices(
                 message_text=search_text,  # Объединенный контекст (previous + current)
                 search_results=ai_search_results,
                 dialog_history=dialog_history,
                 txtPrb=txtPrb,  # Накопленное описание проблемы
-                established_filters=established_filters  # Установленные фильтры
+                established_filters=established_filters,  # Установленные фильтры
+                session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): ID сессии
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): извлеченные поля
             )
 
             # ДОБАВЛЕНО: Сохраняем AI Orchestrator результат в metadata для отчета
@@ -761,8 +764,9 @@ class MainAgent:
                 if orch_candidates:
                     # ИСПРАВЛЕНО (2026-01-10): Передаем session_id и established_filters
                     # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
+                    # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields чтобы избежать повторного LLM
                     result = await self._create_ambiguous_result_from_candidates(
-                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb
+                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb, accumulated_fields
                     )
                     # Сохраняем AI Orchestrator message
                     result['_ai_orchestrator_message'] = orch_result.get('message')
@@ -882,7 +886,8 @@ class MainAgent:
             # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
             # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для умных вопросов
             # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
-            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb)
+            # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields чтобы избежать повторного LLM
+            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb, accumulated_fields)
 
             # Добавляем metadata если его нет
             if '_metadata' not in result and 'result_metadata' in locals():
@@ -986,7 +991,10 @@ class MainAgent:
         ИСПРАВЛЕНО (2026-01-10): Добавлен параметр filters для фильтрации candidates
         """
         try:
-            return await self.vector_search.search(message_text, filters=filters)
+            logger.info(f"[VECTOR] message_text: '{message_text[:50]}...', filters: {filters}")
+            result = await self.vector_search.search(message_text, filters=filters)
+            logger.info(f"[VECTOR] result: {len(result.get('candidates', []))} candidates")
+            return result
         except Exception as e:
             logger.error(f"Ошибка VectorSearchService: {e}")
             return {}
@@ -1042,12 +1050,13 @@ class MainAgent:
         # AI не нужен
         return None
 
-    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, txtPrb: str = None) -> Dict:
+    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, txtPrb: str = None, accumulated_fields: Dict = None) -> Dict:
         """
         Создание результата из таблицы кандидатов по ТЗ 3.2.2
 
         ИСПРАВЛЕНО: Сделано async для загрузки атрибутов из БД
         ИСПРАВЛЕНО (2026-01-14): Добавлен параметр txtPrb для определения is_refusal
+        ИСПРАВЛЕНО (2026-01-22): Добавлен параметр accumulated_fields для передачи в _generate_smart_clarification
         """
         # ИСПРАВЛЕНО (2026-01-05): Отладочный лог
         logger.info(f"[DEBUG] _create_ambiguous_result_from_candidates ВХОД: {len(candidates_data)} кандидатов")
@@ -1078,7 +1087,8 @@ class MainAgent:
             txtPrb=txtPrb,  # ИСПРАВЛЕНО (2026-01-14): был None, теперь передаем txtPrb
             established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10)
             session_id=session_id,
-            is_refusal=is_refusal  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
+            is_refusal=is_refusal,  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
+            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields
         )
 
         # ИСПРАВЛЕНИЕ (2026-01-14): Логирование для отладки SUCCESS
@@ -1280,9 +1290,9 @@ class MainAgent:
             established_filters: Установленные фильтры (для fallback на semantic_check)
         """
         filters = {
-            'location': None,
+            'location_type': None,  # ИСПРАВЛЕНО (2026-01-21): unified naming (было 'location')
             'category': None,
-            'incident': None
+            'incident_type': None  # ИСПРАВЛЕНО (2026-01-21): unified naming (было 'incident')
         }
 
         # ИСПРАВЛЕНО (2026-01-15): Используем FilterDetectionService для location, category, incident_type
@@ -1323,8 +1333,9 @@ class MainAgent:
                 logger.warning(f"Ошибка вызова FilterDetectionService: {e}")
 
         # ИСПРАВЛЕНО (2026-01-10): Fallback на semantic_check если FilterDetection вернул None
-        # КРИТИЧНО: ProblemAccumulationService может извлечь location лучше чем FilterDetectionService!
-        if not filters.get('location') and established_filters:
+        # ИСПРАВЛЕНО (2026-01-21): Исправлено location -> location_type
+        # КРИТИЧНО: ProblemAccumulationService может извлечь location_type лучше чем FilterDetectionService!
+        if not filters.get('location_type') and established_filters:
             semantic_check = established_filters.get('semantic_check', {})
             if isinstance(semantic_check, dict):
                 normalized_fields = semantic_check.get('normalized_fields', {})
@@ -1337,15 +1348,15 @@ class MainAgent:
                         # Проверяем на "Индивидуальное" (квартира, ванная, кухня, зал, балкон и т.д.)
                         individual_places = ['квартир', 'ванная', 'ванн', 'кухн', 'зал', 'спальн', 'комнат', 'балкон', 'лоджий', 'туалет', 'санузел']
                         if any(place in location_lower for place in individual_places):
-                            filters['location'] = 'Индивидуальное'
-                            logger.info(f"Fallback: location=Индивидуальное (из semantic_check.location='{location_from_semantic}')")
+                            filters['location_type'] = 'Индивидуальное'  # ИСПРАВЛЕНО (2026-01-21): unified naming
+                            logger.info(f"Fallback: location_type=Индивидуальное (из semantic_check.location='{location_from_semantic}')")
 
                         # Проверяем на "Общедомовое" (подъезд, крыша, подвал, фасад, чердак и т.д.)
                         else:
                             common_places = ['подъезд', 'крыш', 'подвал', 'фасад', 'чердак', 'лестнич', 'обществ', 'подъездн']
                             if any(place in location_lower for place in common_places):
-                                filters['location'] = 'Общедомовое'
-                                logger.info(f"Fallback: location=Общедомовое (из semantic_check.location='{location_from_semantic}')")
+                                filters['location_type'] = 'Общедомовое'  # ИСПРАВЛЕНО (2026-01-21): unified naming
+                                logger.info(f"Fallback: location_type=Общедомовое (из semantic_check.location='{location_from_semantic}')")
 
         # УДАЛЕНО (2025-12-25): Весь fallback хардкод keywords удален
         # FilterDetectionService теперь является единственным источником фильтров
@@ -1353,7 +1364,7 @@ class MainAgent:
 
         return filters
 
-    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False) -> Dict:
+    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False, accumulated_fields: Dict = None) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -1366,6 +1377,7 @@ class MainAgent:
         ИСПРАВЛЕНО (2025-12-28): Добавлены параметры txtPrb и established_filters для передачи в LLM
         ИСПРАВЛЕНО (2025-12-28): Извлечение txtPrb и established_filters из dialog_history если не переданы
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для формирования intro_phrase
+        ИСПРАВЛЕНО (2026-01-22): Добавлен параметр accumulated_fields для избежания повторного LLM вызова
         """
         # ИСПРАВЛЕНО (2025-12-28): Если txtPrb и established_filters не переданы - извлекаем из истории
         if not txtPrb and dialog_history and self.problem_accumulator:
@@ -1441,16 +1453,23 @@ class MainAgent:
         # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
         # ИСПРАВЛЕНО (2026-01-15): Убрано object_description (используется txtPrb)
         extracted_filters = self._extract_filters_from_message(original_message, dialog_history, txtPrb, established_filters, session_id)
-        known_location = extracted_filters.get('location')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
-        known_category = extracted_filters.get('category')  # ИСПРАВЛЕНО (2026-01-10): использую .get()
-        known_incident = extracted_filters.get('incident_type')  # ИСПРАВЛЕНО (2026-01-10): БАГ! было 'incident'
+        known_location = extracted_filters.get('location_type')  # ИСПРАВЛЕНО (2026-01-21): unified naming (было 'location')
+        known_category = extracted_filters.get('category')
+        known_incident = extracted_filters.get('incident_type')
 
-        logger.info(f"Извлеченные фильтры: location={known_location}, category={known_category}, incident_type={known_incident}")
+        # ВРЕМЕННАЯ ДИАГНОСТИКА
+        logger.warning(f"[DEBUG] _generate_smart_clarification: кандидатов ДО фильтрации={len(candidates_with_attrs)}")
+        logger.warning(f"[DEBUG] Извлеченные фильтры: location={known_location}, category={known_category}, incident={known_incident}")
+        for i, c in enumerate(candidates_with_attrs[:5], 1):
+            logger.warning(f"[DEBUG]   {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}")
+
+        logger.info(f"Извлеченные фильтры: location_type={known_location}, category={known_category}, incident_type={known_incident}")
 
         # Фильтруем кандидатов на основе известной информации
         filtered_candidates = candidates_with_attrs
         if known_location:
             filtered_candidates = [c for c in filtered_candidates if known_location in c.get('location_type', '')]
+            logger.warning(f"[DEBUG] После location фильтра: {len(filtered_candidates)} кандидатов")
             logger.info(f"Отфильтровано по location_type={known_location}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
         # УДАЛЕНО (2026-01-10): Category bypass удален - теперь фильтрация работает в _apply_filters_to_candidates()
@@ -1459,7 +1478,10 @@ class MainAgent:
         if known_incident:
             # Фильтрация по типу инцидента
             filtered_candidates = [c for c in filtered_candidates if known_incident in c.get('incident_type', '')]
+            logger.warning(f"[DEBUG] После incident фильтра: {len(filtered_candidates)} кандидатов")
             logger.info(f"Отфильтровано по incident_type={known_incident}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
+
+        logger.warning(f"[DEBUG] ВСЕГО после фильтрации: {len(filtered_candidates)} кандидатов")
 
         # ИСПРАВЛЕНО (2025-12-25): Ранжирование через LLM вместо хардкода keywords
         # ИСПРАВЛЕНО (2026-01-15): Убрана проверка known_object (ранжируем если >1 кандидата)
@@ -1619,7 +1641,7 @@ class MainAgent:
                 logger.info(f"[LLM QUESTION] Сгенерирован вопрос: {message}")
             else:
                 # Если уже спрашивали уточнение ИЛИ высокая уверенность - создаем заявку
-                message = f"Понял, у вас: {candidate['service_name']}. Создаю заявку."
+                message = f"Поняла вас: {candidate['service_name']}. Создаю заявку."
 
             return {
                 'status': 'SUCCESS',
@@ -1778,11 +1800,12 @@ class MainAgent:
         logger.info(f"Дедуплицировано кандидатов: {len(merged)}")
         return merged
 
-    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None) -> Dict:
+    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, accumulated_fields: Dict = None) -> Dict:
         """
         Создание результата с неопределенностью
 
         ИСПРАВЛЕНО: Сделано async для загрузки атрибутов из БД
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields
         """
         if not candidates:
             # Нет кандидатов - задаем умные уточняющие вопросы
@@ -1815,7 +1838,7 @@ class MainAgent:
         candidates_with_attrs = await self._load_candidates_attributes(candidates[:3])
 
         # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
-        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id)
+        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id, accumulated_fields=accumulated_fields)
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
@@ -2116,7 +2139,7 @@ class MainAgent:
                     'status': 'AMBIGUOUS',
                     'candidates': [],
                     'candidate_names': [],
-                    'message': 'Понял, у вас течь. Где именно это произошло? Пожалуйста, опишите подробнее.',
+                    'message': 'Поняла вас: течь. Где именно это произошло? Пожалуйста, опишите подробнее.',
                     'needs_clarification': True,
                     'clarification_type': 'water'
                 }
@@ -2217,12 +2240,15 @@ class MainAgent:
         search_results: Dict,
         dialog_history: List[Dict] = None,
         txtPrb: str = None,
-        established_filters: Dict = None
+        established_filters: Dict = None,
+        session_id: str = None,
+        accumulated_fields: Dict = None
     ) -> Dict:
         """
         Главный АГЕНТ-ОРКЕСТРАТОР: принимает решения на основе результатов микросервисов
 
         ИСПРАВЛЕНО (2025-12-25): Полноценный оркестратор с умными решениями
+        ИСПРАВЛЕНО (2026-01-21): Добавлены параметры session_id и accumulated_fields
         Использует UNION вместо INTERSECTION для объединения результатов
         """
         # ИСПРАВЛЕНО (2025-12-27): Логирование для отладки фильтрации
@@ -2262,6 +2288,9 @@ class MainAgent:
         # Дедупликация и сортировка по приоритету
         unique_candidates = self._deduplicate_and_prioritize_candidates(all_candidates)
 
+        # ИСПРАВЛЕНО (2026-01-23): Бонус за точные совпадения УБРАН (содержал хардкод)
+        # TODO: В будущем загружать ключевые слова из БД (ref_tags) или использовать LLM
+
         logger.info(f"AI Orchestrator: UNION={len(all_candidates)}, уникальных={len(unique_candidates)}")
 
         if not unique_candidates:
@@ -2271,7 +2300,9 @@ class MainAgent:
                 'message': await self._ask_ai_what_happened(
                     message_text, dialog_history,
                     established_filters=established_filters,  # ИСПРАВЛЕНО: передаем фильтры
-                    txtPrb=txtPrb  # ИСПРАВЛЕНО: передаем txtPrb
+                    txtPrb=txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
+                    session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): передаем session_id
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): передаем accumulated_fields
                 ),
                 'candidates': [],
                 'metadata': {}
@@ -2290,7 +2321,7 @@ class MainAgent:
                     'service_id': candidate['service_id'],
                     'service_name': candidate['service_name'],
                     'confidence': confidence,
-                    'message': f"Понял, у вас: {candidate['service_name']}. Уточните детали если нужно.",
+                    'message': f"Поняла вас: {candidate['service_name']}. Уточните детали если нужно.",
                     'needs_clarification': False,
                     'source': 'orchestrator'
                 }
@@ -2301,21 +2332,53 @@ class MainAgent:
                     message_text, unique_candidates, dialog_history, established_filters
                 )
 
-        # Если несколько кандидатов (2-10) - используем AI для уточнения
+        # Если несколько кандидатов (2-10) - проверяем есть ли явный лидер
         elif len(unique_candidates) <= 10:
-            # ИСПРАВЛЕНО (2025-12-27): Используем AI для анализа кандидатов
-            # вместо CommunicativeScriptsService
-            # ИСПРАВЛЕНО (2025-12-27): Передаем established_filters для сужения кандидатов
-            return await self._ask_ai_clarification_with_candidates(
-                message_text, unique_candidates, dialog_history, established_filters
-            )
+            # ИСПРАВЛЕНО (2026-01-22): Если есть явный лидер (conf > 0.9 и > второго на 20%), выбираем автоматически
+            sorted_candidates = sorted(unique_candidates, key=lambda x: x.get('confidence', 0), reverse=True)
+            leader = sorted_candidates[0]
+            leader_conf = leader.get('confidence', 0.0)
+            second_conf = sorted_candidates[1].get('confidence', 0.0) if len(sorted_candidates) > 1 else 0.0
+
+            # ВРЕМЕННАЯ ДИАГНОСТИКА
+            logger.warning(f"[DEBUG] Кандидатов: {len(unique_candidates)}")
+            logger.warning(f"[DEBUG] Лидер: ID={leader['service_id']}, conf={leader_conf:.3f}, name={leader['service_name'][:40]}")
+            for i, c in enumerate(sorted_candidates[:5], 1):
+                logger.warning(f"[DEBUG]   {i}. ID={c['service_id']}, conf={c.get('confidence', 0):.3f}, name={c['service_name'][:40]}")
+
+            # Условия явного лидера:
+            # СТАРЫЙ ПОРОГ (2026-01-23): confidence > 0.9 AND (diff > 0.2)
+            # НОВЫЙ ПОРОГ (2026-01-23): confidence > 0.80 (упрощен после удаления штрафов/бонусов)
+            if leader_conf > 0.80:
+                logger.info(f"ЯВНЫЙ ЛИДЕР: service_id={leader['service_id']}, conf={leader_conf:.3f}, второй={second_conf:.3f}, разница={leader_conf - second_conf:.3f}")
+                return {
+                    'status': 'SUCCESS',
+                    'service_id': leader['service_id'],
+                    'service_name': leader['service_name'],
+                    'confidence': leader_conf,
+                    'message': f"Поняла вас: {leader['service_name']}. Уточните детали если нужно.",
+                    'needs_clarification': False,
+                    'source': 'orchestrator'
+                }
+            else:
+                # Нет явного лидера - используем AI для уточнения
+                logger.warning(f"[DEBUG] НЕТ явного лидера: conf={leader_conf:.3f}, нужен >0.9, разница={leader_conf - second_conf:.3f}, нужна >0.2")
+                logger.info(f"НЕТ явного лидера: лучший={leader['service_id']} conf={leader_conf:.3f}, второй={sorted_candidates[1]['service_id'] if len(sorted_candidates) > 1 else 'N/A'} conf={second_conf:.3f}")
+                # СТАРЫЙ ВАРИАНТ (2025-12-27): Используем AI для анализа кандидатов
+                # вместо CommunicativeScriptsService
+                # ИСПРАВЛЕНО (2025-12-27): Передаем established_filters для сужения кандидатов
+                return await self._ask_ai_clarification_with_candidates(
+                    message_text, unique_candidates, dialog_history, established_filters
+                )
 
         # Много кандидатов (>10) - нужно задать уточняющий вопрос
         else:
             question = await self._ask_ai_what_happened(
                 message_text, dialog_history,
                 established_filters=established_filters,
-                txtPrb=txtPrb
+                txtPrb=txtPrb,
+                session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): передаем session_id
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): передаем accumulated_fields
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -2326,17 +2389,21 @@ class MainAgent:
     
     
     async def _ask_ai_what_happened(self, message_text: str, dialog_history: List[Dict],
-                                    established_filters: Dict = None, txtPrb: str = None, session_id: str = None) -> str:
+                                    established_filters: Dict = None, txtPrb: str = None,
+                                    session_id: str = None, accumulated_fields: Dict = None) -> str:
         """Спрашивает у AI что случилось и где
 
         ИСПРАВЛЕНО (2025-12-26): Использует CommunicativeScriptsService вместо AI генерации
         ИСПРАВЛЕНО (2025-12-25): Учитывает историю диалога чтобы не повторять вопросы
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields
 
         Args:
             message_text: Текст сообщения пользователя
             dialog_history: История диалога
             established_filters: Установленные фильтры с весами
             txtPrb: Накопленное описание проблемы (из ProblemAccumulationService)
+            session_id: ID сессии для логирования
+            accumulated_fields: Извлеченные поля из ProblemAccumulationService
         """
         # Вычисляем dialog_turn
         dialog_turn = len(dialog_history) if dialog_history else 1
@@ -2841,13 +2908,37 @@ JSON:"""
             for field, value in normalized_fields.items():
                 logger.info(f"  - {field}: {value}")
 
+            # ИСПРАВЛЕНО (2026-01-22): Используем индивидуальный confidence из details для каждого фильтра
+            # Раньше брался минимум (confidence) и применялся ко всем фильтрам → терялась точность!
+            #
+            # СТАРЫЙ ВАРИАНТ (до 2026-01-22):
+            # result = {
+            #     'filters': {
+            #         k: {'value': v, 'confidence': confidence}
+            #         for k, v in filters.items() if v
+            #     },
+            #     'normalized_fields': normalized_fields,
+            #     'confidence': confidence,
+            #     'raw_response': filter_result
+            # }
+            # ПРОБЛЕМА: location_type с 95% превращался в 70% (минимум из всех трех)
+
+            details = filter_result.get('details', {})
+            filters_with_conf = {}
+            for filter_name, filter_value in filters.items():
+                if filter_value:
+                    # Берем индивидуальный confidence из details
+                    filter_details = details.get(filter_name, {})
+                    individual_conf = filter_details.get('confidence', 0.8)  # fallback 0.8
+                    filters_with_conf[filter_name] = {
+                        'value': filter_value,
+                        'confidence': individual_conf
+                    }
+
             result = {
-                'filters': {
-                    k: {'value': v, 'confidence': confidence}
-                    for k, v in filters.items() if v
-                },
+                'filters': filters_with_conf,
                 'normalized_fields': normalized_fields,
-                'confidence': confidence,
+                'confidence': confidence,  # Общая confidence (минимум) для обратной совместимости
                 'raw_response': filter_result
             }
 
@@ -4469,6 +4560,18 @@ JSON:"""
             )
 
         return unique_candidates
+
+    # ИСПРАВЛЕНО (2026-01-23): Метод _apply_exact_match_bonus УДАЛЕН (содержал хардкод)
+    #
+    # TODO: В будущем реализовать динамический подход:
+    # Вариант 1: Загружать ключевые слова из БД (ref_tags с полем is_key_word)
+    # Вариант 2: Использовать LLM (AIAgentService) для извлечения ключевых слов
+    #
+    # Пример желаемой логики:
+    # - Если в сообщении "горячая" → услуги с "горячая" в названии получают +10%
+    # - Если в сообщении "холодная" → услуги с "холодная" в названии получают +10%
+    #
+    # Но БЕЗ хардкода списков слов и весов!
 
     def _apply_filters_to_candidates(self, candidates: List[Dict], established_filters: Dict) -> List[Dict]:
         """
