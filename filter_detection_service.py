@@ -7,7 +7,7 @@ FilterDetectionService - микросервис определения филь�
 ИСПРАВЛЕНО (2026-01-20): Разбит на 3 отдельных промпта:
 - incident_type (Инцидент/Запрос)
 - location_type (Индивидуальное/Общедомовое)
-- category (категория проблемы)
+- category (категория проблемы) - ОТКЛЮЧЕН с 2026-01-27
 
 Каждый промпт возвращает упрощенный JSON: {[filter], [confidence], [reasoning]}
 Итоговый JSON собирается внутри Python кода.
@@ -150,6 +150,14 @@ TXT_PRB = "{txtPrb}"
 - "Пожар/возгорание общедомовой" → Инцидент
 - "Лифт не работает, люди внутри" → Инцидент
 - "Затопление от соседей" → Инцидент
+- "Нет огнетушителя" → Инцидент (пожарная безопасность!)
+- "Не работает эвакуационная лампа" → Инцидент (пожарная безопасность!)
+- "Не горит эвакуационная лампа" → Инцидент (пожарная безопасность!)
+- "Нет огнетушителя в холле" → Инцидент (пожарная безопасность!)
+- "Отсутствует огнетушитель" → Инцидент (пожарная безопасность!)
+- "Заклеен пожарный выход" → Инцидент (пожарная безопасность!)
+- "Заблокирован пожарный выход" → Инцидент (пожарная безопасность!)
+- "Пожарный кран не работает" → Инцидент (пожарная безопасность!)
 
 Запрос (21 услуга):
 - "Замена/поверка водомерных счётчиков" → Запрос
@@ -169,13 +177,33 @@ reasoning_txt = "Шаг1: OBJ=" + OBJ + "; EVENT=" + EVENT + "; PLACE=" + PLACE
 
 ### Шаг2. ИЕРАРХИЯ УГРОЗ
 **ПРИМЕР "течёт труба": угроза имуществу(вода) → Инцидент(0.8)**
+**ПРИМЕР "нет огнетушителя": при пожаре угроза жизни → Инцидент(1.0)**
 
 последствия = "[опиши последствия: угроза жизни/здоровью/имуществу или отсутствие угрозы]"
 incident_type = null
 incident_confidence = "0.5"
 
+# ========================================================================
+# 2.0 ПОЖАРНАЯ БЕЗОПАСНОСТЬ - ПРОВЕРЯТЬ ПЕРВЫМ!
+# ========================================================================
+# КРИТИЧЕСКОЕ ПРАВИЛО: ВСЕ обращения по пожарной безопасности = Инцидент(1.0)
+# Даже если нет явной угрозы сейчас - при пожаре будет угроза жизни!
+# ПРИМЕРЫ: "нет огнетушителя", "не работает эвакуационная лампа", "заклеен пожарный выход"
+если TXT_PRB содержит (
+    "огнетуш" или
+    "эвакуац" или "эвакуационн" или
+    "пожарный выход" или "пожарная сигнализац" или "пожарной" или "пожарн" или
+    "пожарный кран" или "пожарный щит" или
+    "систем пожаротушен" или "пожаротушен" или
+    "дымокур" или "дымоудален" или
+    "противопожарн" или
+    "сигнализ" или "пожароопас"
+):
+    incident_type="Инцидент"; incident_confidence="1.0"
+    reasoning_txt += " | 2.0: пожарная безопасность → Инцидент(1.0)"
+
 # 2.1 Угроза жизни? (потоп/обрушение/пожар/газ/обрушение)
-если последствия содержит ("потоп"/"обрушение"/"пожар"/"газ"/"взрыв"/"заваливание"):
+если incident_confidence=="0.5" и последствия содержит ("потоп"/"обрушение"/"пожар"/"газ"/"взрыв"/"заваливание"):
     incident_type="Инцидент"; incident_confidence="1.0"
     reasoning_txt += " | 2.1: [" + последствия + "] → Инцидент(1.0)"
 
@@ -644,9 +672,10 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
         message_id: int = None
     ) -> Dict:
         """
-        Определяет все фильтры через 3 отдельных промпта
+        Определяет все фильтры через 2 отдельных промпта
 
         ИСПРАВЛЕНО (2026-01-20): Разбит на 3 промпта (incident_type, location_type, category)
+        ИСПРАВЛЕНО (2026-01-27): Category ОТКЛЮЧЕН, используется только 2 промпта
 
         Args:
             message_text: Текущее сообщение пользователя
@@ -662,14 +691,14 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
                     'filters': {
                         'incident_type': str,
                         'location_type': str,
-                        'category': str
+                        'category': None  # ОТКЛЮЧЕН
                     },
                     'confidence': float,
                     'reason': str,
                     'details': {
                         'incident_type': {...},
                         'location_type': {...},
-                        'category': {...}
+                        'category': {...}  # Всегда None
                     }
                 }
         """
@@ -690,21 +719,28 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
             problem_description = txtPrb if txtPrb else message_text
 
             # ====================================================================
-            # ВЫЗЫВАЕМ 3 ПРОМПТА ПАРАЛЛЕЛЬНО
+            # ВЫЗЫВАЕМ 2 ПРОМПТА ПАРАЛЛЕЛЬНО (category ОТКЛЮЧЕН)
             # ====================================================================
-            logger.info(f"FilterDetectionService: запускаем 3 промпта параллельно...")
+            logger.info(f"FilterDetectionService: запускаем 2 промпта параллельно (category ОТКЛЮЧЕН)...")
 
             # Создаем промпты
             prompt_incident = self._create_incident_type_prompt(problem_description)
             prompt_location = self._create_location_type_prompt(problem_description)
-            prompt_category = self._create_category_prompt(problem_description)
+            # prompt_category = self._create_category_prompt(problem_description)  # ОТКЛЮЧЕНО
 
             # Вызываем LLM для каждого фильтра
-            incident_result, location_result, category_result = await asyncio.gather(
+            incident_result, location_result = await asyncio.gather(
                 self._call_llm_for_filter(prompt_incident, 'incident_type', session_id, message_id),
-                self._call_llm_for_filter(prompt_location, 'location_type', session_id, message_id),
-                self._call_llm_for_filter(prompt_category, 'category', session_id, message_id)
+                self._call_llm_for_filter(prompt_location, 'location_type', session_id, message_id)
+                # category ОТКЛЮЧЕН
             )
+
+            # Фиктивный результат для category (чтобы не ломать код)
+            category_result = {
+                'value': None,
+                'confidence': 0.0,
+                'reasoning': 'Category detection ОТКЛЮЧЕН'
+            }
 
             # ====================================================================
             # СОБИРАЕМ ИТОГОВЫЙ JSON
@@ -715,21 +751,21 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
                 'category': category_result['value']
             }
 
-            # Общая уверенность = минимум из трех
+            # Общая уверенность = минимум из двух (category ОТКЛЮЧЕН)
             confidence = min(
                 incident_result['confidence'],
-                location_result['confidence'],
-                category_result['confidence']
+                location_result['confidence']
+                # category_result['confidence']  # ОТКЛЮЧЕНО
             )
 
-            # Объединяем reasoning
-            reasoning = f"incident_type: {incident_result['reasoning']} | location_type: {location_result['reasoning']} | category: {category_result['reasoning']}"
+            # Объединяем reasoning (category ОТКЛЮЧЕН)
+            reasoning = f"incident_type: {incident_result['reasoning']} | location_type: {location_result['reasoning']} | category: ОТКЛЮЧЕН"
 
             logger.info(
                 f"FilterDetectionService: определены фильтры: "
                 f"incident_type={filters['incident_type']} (conf={incident_result['confidence']}), "
                 f"location_type={filters['location_type']} (conf={location_result['confidence']}), "
-                f"category={filters['category']} (conf={category_result['confidence']}), "
+                f"category={filters['category']} (ОТКЛЮЧЕН), "
                 f"overall_confidence={confidence}"
             )
 
