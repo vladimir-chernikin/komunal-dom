@@ -132,7 +132,7 @@ class FilterDetectionService:
         # """
 
         # ========================================================================
-        # НОВЫЙ ПРОМПТ (с 2026-01-23, добавлены few-shot примеры из БД)
+        # НОВЫЙ ПРОМПТ (с 2026-01-30, функциональный анализ объекта)
         # ========================================================================
         prompt = f"""## Роль
 Ты — строгий алгоритмический классификатор типа обращения. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
@@ -148,33 +148,45 @@ EVENT = "[событие]"
 PLACE = "[место]"
 reasoning_txt = "Шаг1: OBJ=" + OBJ + "; EVENT=" + EVENT + "; PLACE=" + PLACE
 
-### Шаг2. ИЕРАРХИЯ УГРОЗ
+### Шаг2. ФУНКЦИОНАЛЬНЫЙ АНАЛИЗ И КЛАССИФИКАЦИЯ
+
 **ПРИМЕР "течёт труба": угроза имуществу(вода) → Инцидент(0.8)**
+**ПРИМЕР "не горит эвакуационная лампа": отказ системы эвакуации при пожаре → Инцидент(1.0)**
 
 последствия = "[опиши последствия: угроза жизни/здоровью/имуществу или отсутствие угрозы]"
 incident_type = null
 incident_confidence = "0.5"
 
-# 2.0 Пожарная безопасность? (огнетушитель/эвакуация/пожарный выход/сигнализация/пожарный кран)
-# КРИТИЧЕСКОЕ ПРАВИЛО: ВСЕ обращения по пожарной безопасности = Инцидент(1.0)
-если TXT_PRB содержит ("огнетуш" или "эвакуац" или "эвакуационн" или "пожарный выход" или "пожарная сигнализац" или "пожарн" или "пожарной" или "пожарный кран" или "пожарный щит" или "систем пожаротушен" или "дымокур" или "дымоудален" или "противопожарн" или "сигнализ" или "пожароопас"):
+# 2.0 Анализ функции объекта - ПРОВЕРИТЬ ПЕРВЫМ!
+# Определи: для чего нужен OBJ при пожаре или аварии?
+
+obj_function = "[определи функция: спасение при пожаре/эвакуация/обнаружение опасности или бытовая нужда]"
+
+# Логика: если OBJ нужен для спасения людей при пожаре → при отказе создаётся угроза жизни
+если obj_function содержит ("спасение" или "эвакуация" или "обнаружение" или "защита"):
     incident_type="Инцидент"; incident_confidence="1.0"
-    reasoning_txt += " | 2.0: пожарная безопасность → Инцидент(1.0)"
+    reasoning_txt += " | 2.0: " + obj_function + " → отказ создаёт угрозу жизни при ЧС → Инцидент(1.0)"
 
-# 2.1 Угроза жизни? (потоп/обрушение/пожар/газ)
-если incident_confidence=="0.5" и последствия содержит ("потоп" или "обрушение" или "пожар" или "газ" или "взрыв" или "заваливание"):
-    incident_type="Инцидент"; incident_confidence="1.0"
-    reasoning_txt += " | 2.1: [" + последствия + "] → Инцидент"
+# 2.1 Прямая угроза жизни?
+# ПРОВЕРЯЕМ ТОЛЬКО ЕСЛИ правило 2.0 НЕ сработало
+если incident_confidence=="0.5":
+    worst_case = "[представь худший сценарий: что случится если OBJ не работает?]"
 
-# 2.2 Угроза здоровью? (плесень/травма/электричество)
-если incident_confidence=="0.5" и последствия содержит ("плесень" или "травма" или "электричество" или "озон" или "угарный"):
-    incident_type="Инцидент"; incident_confidence="0.9"
-    reasoning_txt += " | 2.2: [" + последствия + "] → Инцидент"
+    если worst_case содержит ("смерть" или "погибнут" или "не смогут спастись" или "не смогут эвакуироваться" или "заваливание" или "обрушение"):
+        incident_type="Инцидент"; incident_confidence="1.0"
+        reasoning_txt += " | 2.1: [" + worst_case + "] → прямая угроза жизни → Инцидент"
 
-# 2.3 Угроза имуществу? (повреждение квартиры/затопление)
-если incident_confidence=="0.5" и последствия содержит ("затоплен" или "поврежден" или "отсутств" или "нет свет" или "нет вод" или "нет тепл" или "нет газ"):
-    incident_type="Инцидент"; incident_confidence="0.8"
-    reasoning_txt += " | 2.3: [" + последствия + "] → Инцидент"
+# 2.2 Угроза здоровью?
+если incident_confidence=="0.5":
+    если последствия содержит ("плесень" или "травма" или "электричество" или "озон" или "угарный" или "газ"):
+        incident_type="Инцидент"; incident_confidence="0.9"
+        reasoning_txt += " | 2.2: [" + последствия + "] → угроза здоровью → Инцидент"
+
+# 2.3 Угроза имуществу?
+если incident_confidence=="0.5":
+    если последствия содержит ("затоплен" или "поврежден" или "уничтожен" или "отсутств"):
+        incident_type="Инцидент"; incident_confidence="0.8"
+        reasoning_txt += " | 2.3: [" + последствия + "] → угроза имуществу → Инцидент"
 
 # 2.4 Запрос без срочности?
 если incident_confidence=="0.5":
@@ -627,10 +639,11 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
         message_id: int = None
     ) -> Dict:
         """
-        Определяет все фильтры через 2 отдельных промпта
+        Определяет все фильтры через 3 отдельных промпта
 
         ИСПРАВЛЕНО (2026-01-20): Разбит на 3 промпта (incident_type, location_type, category)
         ИСПРАВЛЕНО (2026-01-27): Category ОТКЛЮЧЕН, используется только 2 промпта
+        ИСПРАВЛЕНО (2026-01-30): Category ПЕРЕВКЛЮЧЕН, используется 3 промпта
 
         Args:
             message_text: Текущее сообщение пользователя
@@ -646,14 +659,14 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
                     'filters': {
                         'incident_type': str,
                         'location_type': str,
-                        'category': None  # ОТКЛЮЧЕН
+                        'category': str
                     },
                     'confidence': float,
                     'reason': str,
                     'details': {
                         'incident_type': {...},
                         'location_type': {...},
-                        'category': {...}  # Всегда None
+                        'category': {...}
                     }
                 }
         """
@@ -674,28 +687,21 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
             problem_description = txtPrb if txtPrb else message_text
 
             # ====================================================================
-            # ВЫЗЫВАЕМ 2 ПРОМПТА ПАРАЛЛЕЛЬНО (category ОТКЛЮЧЕН)
+            # ВЫЗЫВАЕМ 3 ПРОМПТА ПАРАЛЛЕЛЬНО
             # ====================================================================
-            logger.info(f"FilterDetectionService: запускаем 2 промпта параллельно (category ОТКЛЮЧЕН)...")
+            logger.info(f"FilterDetectionService: запускаем 3 промпта параллельно...")
 
             # Создаем промпты
             prompt_incident = self._create_incident_type_prompt(problem_description)
             prompt_location = self._create_location_type_prompt(problem_description)
-            # prompt_category = self._create_category_prompt(problem_description)  # ОТКЛЮЧЕНО
+            prompt_category = self._create_category_prompt(problem_description)
 
             # Вызываем LLM для каждого фильтра
-            incident_result, location_result = await asyncio.gather(
+            incident_result, location_result, category_result = await asyncio.gather(
                 self._call_llm_for_filter(prompt_incident, 'incident_type', session_id, message_id),
-                self._call_llm_for_filter(prompt_location, 'location_type', session_id, message_id)
-                # category ОТКЛЮЧЕН
+                self._call_llm_for_filter(prompt_location, 'location_type', session_id, message_id),
+                self._call_llm_for_filter(prompt_category, 'category', session_id, message_id)
             )
-
-            # Фиктивный результат для category (чтобы не ломать код)
-            category_result = {
-                'value': None,
-                'confidence': 0.0,
-                'reasoning': 'Category detection ОТКЛЮЧЕН'
-            }
 
             # ====================================================================
             # СОБИРАЕМ ИТОГОВЫЙ JSON
@@ -706,21 +712,21 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
                 'category': category_result['value']
             }
 
-            # Общая уверенность = минимум из двух (category ОТКЛЮЧЕН)
+            # Общая уверенность = минимум из трёх
             confidence = min(
                 incident_result['confidence'],
-                location_result['confidence']
-                # category_result['confidence']  # ОТКЛЮЧЕНО
+                location_result['confidence'],
+                category_result['confidence']
             )
 
-            # Объединяем reasoning (category ОТКЛЮЧЕН)
-            reasoning = f"incident_type: {incident_result['reasoning']} | location_type: {location_result['reasoning']} | category: ОТКЛЮЧЕН"
+            # Объединяем reasoning
+            reasoning = f"incident_type: {incident_result['reasoning']} | location_type: {location_result['reasoning']} | category: {category_result['reasoning']}"
 
             logger.info(
                 f"FilterDetectionService: определены фильтры: "
                 f"incident_type={filters['incident_type']} (conf={incident_result['confidence']}), "
                 f"location_type={filters['location_type']} (conf={location_result['confidence']}), "
-                f"category={filters['category']} (ОТКЛЮЧЕН), "
+                f"category={filters['category']} (conf={category_result['confidence']}), "
                 f"overall_confidence={confidence}"
             )
 
