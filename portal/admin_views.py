@@ -105,29 +105,8 @@ def get_kladr_statistics():
     return stats
 
 
-@login_required
-def user_management(request):
-    """
-    Управление пользователями (только для админов)
-    """
-    if not request.user.userprofile.has_admin_access():
-        messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:admin_page')
-
-    users = User.objects.select_related('userprofile').all().order_by('-date_joined')
-
-    # Фильтрация
-    role_filter = request.GET.get('role')
-    if role_filter:
-        users = users.filter(userprofile__role=role_filter)
-
-    context = {
-        'users': users,
-        'role_choices': UserProfile.ROLE_CHOICES,
-        'current_role': role_filter,
-    }
-
-    return render(request, 'portal/user_management.html', context)
+# ИСПРАВЛЕНИЕ (2026-02-03): Удалена функция user_management - дубликат /admin/auth/user/
+# Полная функциональность доступна в Django Admin
 
 
 @login_required

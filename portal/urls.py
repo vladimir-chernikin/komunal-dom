@@ -14,7 +14,7 @@ urlpatterns = [
     path('regulatory-chat/', views.regulatory_chat, name='regulatory_chat'),
     path('executor/', views.executor_dashboard, name='executor_dashboard'),
     path('dba/', admin_views.dba_page, name='dba_page'),
-    path('admin-uk/users/', admin_views.user_management, name='user_management'),
+    # ИСПРАВЛЕНИЕ (2026-02-03): Удален дубликат /admin-uk/users/ - используется /admin/auth/user/
     path('admin-uk/prompts/', admin_views.prompt_management, name='prompt_management'),
 
     # КЛАДР управление
