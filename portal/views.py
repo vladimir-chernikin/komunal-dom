@@ -154,6 +154,7 @@ def api_dialog_sessions(request):
         return JsonResponse({'error': 'Доступ запрещен'}, status=403)
 
     # ИСПРАВЛЕНО (2026-01-05): Используем dialog_logs вместо message_handler_messagelog
+    # ИСПРАВЛЕНО (2026-02-04): Добавлен django_user_id для показа пользователя
     # Запрос к БД - получаем уникальные сессии с информацией о последнем сообщении
     with connection.cursor() as cursor:
         cursor.execute("""
@@ -161,7 +162,8 @@ def api_dialog_sessions(request):
                 session_id,
                 channel,
                 COUNT(*) as message_count,
-                MAX(timestamp) as last_message
+                MAX(timestamp) as last_message,
+                MAX(django_user_id) as django_user_id
             FROM dialog_logs
             GROUP BY session_id, channel
             ORDER BY last_message DESC
