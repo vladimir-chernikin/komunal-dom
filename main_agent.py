@@ -614,6 +614,7 @@ class MainAgent:
             'txtPrb': txtPrb,
             'accumulated_fields': accumulated_fields,
             'established_filters': established_filters,
+            'txtStopQ': txt_stop_questions or [],  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы
             'semantic_check': semantic_check_result,  # ИСПРАВЛЕНО (2026-01-03)
             # ДОБАВЛЕНО: Будем добавлять результаты микросервисов позже
             'microservices_results': {}  # {tag_search: {...}, vector_search: {...}, etc}
@@ -1038,7 +1039,8 @@ class MainAgent:
             established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10)
             session_id=session_id,
             is_refusal=is_refusal,  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
-            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields
+            accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields
+            txtStopQ=txt_stop_questions  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
         )
 
         # ИСПРАВЛЕНИЕ (2026-01-14): Логирование для отладки SUCCESS
@@ -1070,6 +1072,11 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-25): Используем отфильтрованных кандидатов
         filtered_candidates = clarification_result.get('filtered_candidates', candidates_with_attrs)
 
+        # ИСПРАВЛЕНО (2026-02-04): Обновляем txtStopQ в metadata
+        if '_metadata' in clarification_result and 'txtStopQ' in clarification_result['_metadata']:
+            result_metadata['txtStopQ'] = clarification_result['_metadata']['txtStopQ']
+            logger.info(f"[DEBUG] txtStopQ обновлен в result_metadata: {len(result_metadata['txtStopQ'])} вопросов")
+
         result = {
             'status': 'AMBIGUOUS',
             'candidates': filtered_candidates,  # ИСПРАВЛЕНО: отфильтрованные кандидаты
@@ -1082,6 +1089,9 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-29): Добавляем _ai_metadata если есть
         if '_ai_metadata' in clarification_result:
             result['_ai_metadata'] = clarification_result['_ai_metadata']
+        # ИСПРАВЛЕНО (2026-02-04): Добавляем _metadata если есть (включая txtStopQ)
+        if '_metadata' in clarification_result:
+            result['_metadata'] = clarification_result['_metadata']
         return result
 
     async def _load_candidates_attributes(self, candidates_data: List[Dict]) -> List[Dict]:
@@ -1280,7 +1290,7 @@ class MainAgent:
 
         return filters
 
-    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False, accumulated_fields: Dict = None) -> Dict:
+    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False, accumulated_fields: Dict = None, txtStopQ: List[str] = None) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -1294,6 +1304,7 @@ class MainAgent:
         ИСПРАВЛЕНО (2025-12-28): Извлечение txtPrb и established_filters из dialog_history если не переданы
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для формирования intro_phrase
         ИСПРАВЛЕНО (2026-01-22): Добавлен параметр accumulated_fields для избежания повторного LLM вызова
+        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
         """
         # ИСПРАВЛЕНО (2025-12-28): Если txtPrb и established_filters не переданы - извлекаем из истории
         if not txtPrb and dialog_history and self.problem_accumulator:
@@ -1302,6 +1313,21 @@ class MainAgent:
                 logger.info(f"_generate_smart_clarification: извлечен txtPrb из истории: '{txtPrb[:60] if txtPrb else '(пусто)'}...'")
             except Exception as e:
                 logger.warning(f"_generate_smart_clarification: ошибка извлечения txtPrb: {e}")
+
+        # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ из истории если не передан
+        if txtStopQ is None and dialog_history:
+            try:
+                # Ищем последнее сообщение бота
+                for msg in reversed(dialog_history):
+                    if msg.get('role') == 'bot':
+                        metadata = msg.get('metadata', {})
+                        if isinstance(metadata, dict) and 'txtStopQ' in metadata:
+                            txtStopQ = metadata['txtStopQ']
+                            logger.info(f"_generate_smart_clarification: извлечен txtStopQ из истории: {len(txtStopQ)} вопросов")
+                            break
+            except Exception as e:
+                logger.warning(f"_generate_smart_clarification: ошибка извлечения txtStopQ: {e}")
+                txtStopQ = []
 
         # ИСПРАВЛЕНО (2026-01-10): Убеждаемся, что established_filters - это dict (не None)
         if established_filters is None:
@@ -1643,7 +1669,8 @@ class MainAgent:
             question_type='clarification',
             session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
             intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+            accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+            txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
         )
 
         return {
@@ -1659,7 +1686,8 @@ class MainAgent:
             },
             '_metadata': {  # ИСПРАВЛЕНО (2026-01-10): Добавляем established_filters для сохранения в БД
                 'established_filters': established_filters,
-                'txtPrb': txtPrb
+                'txtPrb': txtPrb,
+                'txtStopQ': ai_result.get('txtStopQ', [])  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы
             }
         }
 
@@ -2374,25 +2402,29 @@ class MainAgent:
         question: str,
         txtPrb: str = None,
         established_filters: Dict = None,
-        asked_questions: List[str] = None
+        asked_questions: List[str] = None,
+        txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные)
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): LLM-валидация вопроса вместо Regex
         ИСПРАВЛЕНО (2026-01-10): Добавлена regex-проверка двойных вопросов
         ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
         ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb + established_filters)
+        ИСПРАВЛЕНО (2026-02-04): Добавлен механизм накопления txtStopQ
 
         Проверяет через YandexGPT Lite:
         1. Не спрашивает ли бот о том, что уже известно
         2. Не является ли вопрос двойным
         3. Не повторяет ли уже заданные вопросы
         4. Не является ли вопрос универсальным при наличии известных фактов
+        5. Добавляет глупые вопросы в txtStopQ
 
         Args:
             question: Сгенерированный вопрос
             txtPrb: Накопленное описание проблемы
             established_filters: Установленные фильтры
             asked_questions: Список уже заданных вопросов
+            txtStopQ: Список запрещенных вопросов (накопленных глупых вопросов) - изменяется in-place!
 
         Returns:
             str: Валидированный вопрос
@@ -2450,14 +2482,15 @@ class MainAgent:
         if re.search(r'\s+или\s+', question_lower):
             # Проверяем что это не слово "оправить" или "измерить"
             if not re.search(r'(оправить|измерить|прось|близ)', question_lower):
-                logger.warning(f"⚠️ DETECTED DOUBLE QUESTION (regex): вопрос содержит 'или': '{question[:50]}...'")
+                logger.warning(f"⚠️ DETECTED DOUBLE QUESTION (regex): вопрос содержит 'или': '{question[:50]}'")
 
-                # ИСПРАВЛЕНО (2026-02-04): Вместо хардкода - добавляем вопрос в txtStopQ
-                # и просим LLM сгенерировать альтернативу
-                # КРИТИЧЕСКИ ВАЖНО: txtStopQ накапливается в metadata и передается в следующем вызове
-                logger.warning(f"❌ HARDCODE REMOVED - question contains 'или', passing to alternative generation")
-                # TODO: Добавить вопрос в txtStopQ и запросить альтернативу у LLM
-                # Сейчас просто возвращаем вопрос как есть - LLM сам справится
+                # ИСПРАВЛЕНО (2026-02-04): Добавляем вопрос в txtStopQ
+                if txtStopQ is not None:
+                    txtStopQ.append(question)
+                    logger.warning(f"❌ ДОБАВЛЕНО В txtStopQ: '{question[:50]}...'")
+                    logger.warning(f"❌ Размер txtStopQ: {len(txtStopQ)} вопросов")
+
+                # LLM сам справится без хардкода
                 return question
 
         # 2. Косвенный вопрос "Является ли...?" → 隐式双重问题
@@ -2502,13 +2535,16 @@ class MainAgent:
                     has_question_words = any(word in new_question_normalized for word in question_words_check)
 
                     if similarity > 0.7 and has_question_words:
-                        logger.warning(f"⚠️ DETECTED REPEATED QUESTION (regex): похож на заданный вопрос: '{asked[:50]}...'")
-                        logger.info(f"  Сходство: {similarity:.0%}, новый: '{question[:50]}...'")
-                        # ИСПРАВЛЕНО (2026-02-04): Вместо хардкода - добавляем вопрос в txtStopQ
-                        # КРИТИЧЕСКИ ВАЖНО: txtStopQ накапливается в metadata и передается в следующем вызове
-                        logger.warning(f"❌ HARDCODE REMOVED - detected repeated question, should add to txtStopQ")
-                        # TODO: Добавить вопрос в txtStopQ и запросить альтернативу у LLM
-                        # Сейчас просто возвращаем вопрос как есть - LLM сам справится
+                        logger.warning(f"⚠️ DETECTED REPEATED QUESTION (regex): похож на заданный вопрос: '{asked[:50]}'")
+                        logger.info(f"  Сходство: {similarity:.0%}, новый: '{question[:50]}'")
+
+                        # ИСПРАВЛЕНО (2026-02-04): Добавляем вопрос в txtStopQ
+                        if txtStopQ is not None:
+                            txtStopQ.append(question)
+                            logger.warning(f"❌ ДОБАВЛЕНО В txtStopQ (повтор): '{question[:50]}'")
+                            logger.warning(f"❌ Размер txtStopQ: {len(txtStopQ)} вопросов")
+
+                        # LLM сам справится без хардкода
                         return question
 
         # ИСПРАВЛЕНО (2026-01-10): Проверка абсолютных фактов ДО LLM вызова (критично!)
@@ -3477,7 +3513,8 @@ JSON:"""
                     established_filters=established_filters,
                     txtPrb=txtPrb,
                     question_type=question_type,
-                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+                    txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
                 )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
@@ -3519,11 +3556,13 @@ JSON:"""
 
                 # ИСПРАВЛЕНО (2026-01-03): Regex-валидаторы удалены, используем LLM-валидацию
                 # ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
+                # ИСПРАВЛЕНО (2026-02-04): Передаем txtStopQ для накопления глупых вопросов
                 question = await self._llm_validate_question(
                     question=question,
                     txtPrb=txtPrb,
                     established_filters=established_filters,
-                    asked_questions=asked_questions  # ИСПРАВЛЕНО (2026-01-10)
+                    asked_questions=asked_questions,  # ИСПРАВЛЕНО (2026-01-10)
+                    txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Накопление запрещенных вопросов
                 )
 
                 # ИСПРАВЛЕНО (2025-12-29): Отладочный режим - добавляем объяснение к вопросу
@@ -3533,12 +3572,14 @@ JSON:"""
                 logger.info(f"[OK] AI сгенерировал вопрос ({question_type}): {question}")
 
                 # ИСПРАВЛЕНО (2025-12-29): Возвращаем Dict с вопросом И метаданными для трассировки
+                # ИСПРАВЛЕНО (2026-02-04): Добавляем txtStopQ для сохранения в metadata
                 return {
                     'question': question,
                     'prompt': prompt,
                     'response': response,
                     'model': usage.get('model', 'unknown'),
-                    'usage': usage
+                    'usage': usage,
+                    'txtStopQ': txtStopQ or []  # ИСПРАВЛЕНО (2026-02-04): Возвращаем обновленный список
                 }
             else:
                 logger.warning("AIAgentService недоступен, используем fallback")
@@ -3570,7 +3611,8 @@ JSON:"""
         established_filters: Dict = None,
         txtPrb: str = None,
         question_type: str = "clarification",
-        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
     ) -> str:
         """Строит промт для генерации вопроса
 
@@ -3579,6 +3621,7 @@ JSON:"""
         - Атомарные открытые вопросы
         - Запрет на двойные вопросы
         ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
+        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
         """
 
         # Анализируем что уже известно из истории
@@ -3748,6 +3791,20 @@ JSON:"""
             prompt += f"""
 УЖЕ ИЗВЕСТНО (не спрашивай повторно):
 {known_info}
+"""
+
+        # ИСПРАВЛЕНО (2026-02-04): Добавляем txtStopQ - запрещенные вопросы
+        if txtStopQ and len(txtStopQ) > 0:
+            import json
+            txtstopq_json = json.dumps(txtStopQ, ensure_ascii=False)
+            prompt += f"""
+⛔⛔⛔ ЗАПРЕЩЕННЫЕ ВОПРОСЫ (txtStopQ) ⛔⛔⛔
+Эти вопросы были УЖЕ заданы и оказались НЕЭФФЕКТИВНЫМИ или ГЛУПЫМИ.
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО задавать похожие вопросы!
+
+{txtstopq_json}
+
+Если LLM сгенерирует похожий вопрос - он будет добавлен в txtStopQ и ОТКЛОНЕН!
 """
 
         if txtPrb:
