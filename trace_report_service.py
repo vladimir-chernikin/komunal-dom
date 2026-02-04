@@ -21,8 +21,19 @@ import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 from pathlib import Path
+import os
+import pytz
 
 logger = logging.getLogger(__name__)
+
+# ИСПРАВЛЕНО (2026-01-19): Добавлена конвертация timezone для отображения времени
+# Настраиваем Django ДО импорта timezone
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'komunal_dom.settings')
+
+import django
+django.setup()
+
+from django.utils import timezone
 
 
 class TraceReportService:
@@ -41,6 +52,144 @@ class TraceReportService:
         """Переводит статус на русский язык."""
         return self.STATUS_TRANSLATIONS.get(status, status)
 
+    # ИСПРАВЛЕНО (2026-01-19): Метод для получения timezone пользователя из session_id
+    def _get_user_timezone_from_session(self, session_id: str, messages: List[Dict] = None) -> str:
+        """
+        Получает часовой пояс пользователя по session_id.
+
+        Args:
+            session_id: ID сессии (например, 'web_1_...' или 'telegram_12345_...')
+            messages: Список сообщений (опционально, для оптимизации)
+
+        Returns:
+            str: Часовой пояс (например, 'Europe/Moscow')
+        """
+        # ИСПРАВЛЕНО (2026-01-19): Импортируем sync_to_async для работы с Django ORM в async контексте
+        from asgiref.sync import sync_to_async
+
+        async def get_tz_async():
+            try:
+                # ИСПРАВЛЕНО (2026-01-19): Используем messages для получения django_user_id
+                if messages and len(messages) > 0:
+                    django_user_id = messages[0].get('django_user_id')
+                    if django_user_id:
+                        from portal.models import UserProfile
+                        profile = await sync_to_async(UserProfile.objects.filter)(user__id=django_user_id).afirst()
+                        if profile and profile.timezone:
+                            return profile.timezone
+
+                # Fallback на парсинг session_id
+                if session_id.startswith('web_'):
+                    parts = session_id.split('_')
+                    if len(parts) >= 2:
+                        try:
+                            django_user_id = int(parts[1])
+                            from portal.models import UserProfile
+                            profile = await sync_to_async(UserProfile.objects.filter)(user__id=django_user_id).afirst()
+                            if profile and profile.timezone:
+                                return profile.timezone
+                        except:
+                            pass
+
+            except Exception as e:
+                logger.warning(f"Не удалось получить timezone пользователя: {e}")
+
+            # Fallback на Moscow Time
+            return 'Europe/Moscow'
+
+        # Запускаем async функцию и получаем результат
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Если цикл уже запущен, создаем задачу
+                future = asyncio.ensure_future(get_tz_async())
+                return asyncio.run_coroutine_threadsafe(future, loop).result(timeout=5)
+            else:
+                return asyncio.run(get_tz_async())
+        except:
+            return 'Europe/Moscow'
+
+    # ИСПРАВЛЕНО (2026-01-19): Синхронная версия для получения timezone
+    def _get_user_timezone_sync(self, session_id: str, messages: List[Dict] = None) -> str:
+        """
+        Синхронно получает часовой пояс пользователя по session_id.
+
+        Args:
+            session_id: ID сессии
+            messages: Список сообщений (опционально)
+
+        Returns:
+            str: Часовой пояс (например, 'Europe/Moscow')
+        """
+        try:
+            # ИСПРАВЛЕНО (2026-01-19): Используем messages для получения django_user_id
+            if messages and len(messages) > 0:
+                django_user_id = messages[0].get('django_user_id')
+                if django_user_id:
+                    from portal.models import UserProfile
+                    profile = UserProfile.objects.filter(user__id=django_user_id).first()
+                    if profile and profile.timezone:
+                        return profile.timezone
+
+            # Fallback на парсинг session_id
+            if session_id.startswith('web_'):
+                parts = session_id.split('_')
+                if len(parts) >= 2:
+                    try:
+                        django_user_id = int(parts[1])
+                        from portal.models import UserProfile
+                        profile = UserProfile.objects.filter(user__id=django_user_id).first()
+                        if profile and profile.timezone:
+                            return profile.timezone
+                    except:
+                        pass
+
+        except Exception as e:
+            logger.warning(f"Не удалось получить timezone пользователя: {e}")
+
+        # Fallback на Moscow Time
+        return 'Europe/Moscow'
+
+    # ИСПРАВЛЕНО (2026-01-19): Метод для конвертации UTC в часовой пояс пользователя
+    def _format_datetime(self, dt: Any, user_timezone: str = None) -> str:
+        """
+        Конвертирует datetime из UTC в часовой пояс пользователя.
+
+        Args:
+            dt: datetime объект (может быть строкой или datetime)
+            user_timezone: Часовой пояс пользователя (опционально)
+
+        Returns:
+            str: Отформатированная строка в часовом поясе пользователя
+        """
+        if dt is None:
+            return '(нет времени)'
+
+        # Если строка - парсим в datetime
+        if isinstance(dt, str):
+            try:
+                dt = datetime.fromisoformat(dt.replace('+00:00', ''))
+            except:
+                return str(dt)
+
+        try:
+            # Если timezone не передан, используем серверный
+            if user_timezone is None:
+                local_dt = timezone.localtime(dt)
+            else:
+                # Конвертируем в timezone пользователя
+                user_tz = pytz.timezone(user_timezone)
+                if dt.tzinfo is None:
+                    utc_dt = pytz.utc.localize(dt)
+                else:
+                    utc_dt = dt
+                local_dt = utc_dt.astimezone(user_tz)
+
+            return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+        except:
+            return str(dt)
+
     def __init__(self):
         self.tmp_dir = Path('/tmp')
 
@@ -48,9 +197,20 @@ class TraceReportService:
         self,
         session_id: str,
         messages: List[Dict] = None,
-        output_path: str = None
+        output_path: str = None,
+        user_timezone: str = None
     ) -> str:
-        """Генерирует улучшенный отчет трассировки диалога."""
+        """
+        Генерирует улучшенный отчет трассировки диалога.
+
+        ИСПРАВЛЕНО (2026-01-19): Добавлен параметр user_timezone для указания часового пояса.
+
+        Args:
+            session_id: ID сессии
+            messages: Список сообщений (опционально)
+            output_path: Путь для сохранения отчета (опционально)
+            user_timezone: Часовой пояс пользователя (опционально, если None - определится автоматически)
+        """
 
         # Загружаем сообщения если не переданы
         if messages is None:
@@ -63,8 +223,13 @@ class TraceReportService:
         # ИСПРАВЛЕНО (2026-01-06): Загружаем LLM запросы из таблицы llm_request_log
         llm_logs_map = await self._load_llm_logs_for_session(session_id, messages)
 
+        # ИСПРАВЛЕНО (2026-01-19): Определяем timezone пользователя
+        if user_timezone is None:
+            # Пробуем определить автоматически из session_id
+            user_timezone = self._get_user_timezone_sync(session_id, messages)
+
         # Генерируем отчет
-        report_content = self._generate_full_report(session_id, messages, llm_logs_map)
+        report_content = self._generate_full_report(session_id, messages, llm_logs_map, user_timezone)
 
         # Определяем путь к файлу
         if output_path is None:
@@ -100,6 +265,7 @@ class TraceReportService:
                 try:
                     with conn.cursor() as cursor:
                         # ИСПРАВЛЕНО (2026-01-06): Используем dialog_logs вместо message_handler_messagelog
+                        # ИСПРАВЛЕНО (2026-01-19): Добавлен django_user_id для определения timezone
                         # Алиасы для совместимости с существующим кодом
                         cursor.execute("""
                             SELECT
@@ -110,13 +276,14 @@ class TraceReportService:
                                 channel,
                                 session_id,
                                 timestamp as created_at,
-                                metadata
+                                metadata,
+                                django_user_id
                             FROM dialog_logs
                             WHERE session_id LIKE %s
                             ORDER BY timestamp ASC
                         """, (f"{session_id}%",))
 
-                        columns = ['id', 'message_id', 'text', 'direction', 'channel', 'session_id', 'created_at', 'metadata']
+                        columns = ['id', 'message_id', 'text', 'direction', 'channel', 'session_id', 'created_at', 'metadata', 'django_user_id']
                         messages = []
                         for row in cursor.fetchall():
                             msg = dict(zip(columns, row))
@@ -236,10 +403,12 @@ class TraceReportService:
             logger.error(f"Ошибка загрузки LLM логов: {e}")
             return {}
 
-    def _generate_full_report(self, session_id: str, messages: List[Dict], llm_logs_map: Dict[int, List[Dict]] = None) -> str:
-        """Генерирует полный отчет по шаблону ТЗ (2026-01-06).
+    def _generate_full_report(self, session_id: str, messages: List[Dict], llm_logs_map: Dict[int, List[Dict]] = None, user_timezone: str = None) -> str:
+        """
+        Генерирует полный отчет по шаблону ТЗ (2026-01-06).
 
         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр llm_logs_map для LLM запросов из таблицы
+        ИСПРАВЛЕНО (2026-01-19): Добавлен параметр user_timezone для часового пояса пользователя
         """
 
         channel = messages[0].get('channel', 'unknown') if messages else 'unknown'
@@ -254,6 +423,13 @@ class TraceReportService:
         }
         channel_ru = channel_map.get(channel, channel)
 
+        # ИСПРАВЛЕНО (2026-01-19): Используем переданный timezone или определяем автоматически
+        if user_timezone is None:
+            user_timezone = self._get_user_timezone_sync(session_id, messages)
+
+        first_msg_time_formatted = self._format_datetime(first_msg_time, user_timezone)
+        last_msg_time_formatted = self._format_datetime(last_msg_time, user_timezone)
+
         # Заголовок отчета
         report = f"""================================================================================
 ОТЧЕТ ТРАССИРОВКИ ДИАЛОГА (по шаблону ТЗ v3.0 - 2026-01-06)
@@ -261,7 +437,8 @@ class TraceReportService:
 Session ID: {session_id}
 Канал: {channel_ru}
 Всего сообщений: {len(messages)}
-Период: {first_msg_time} - {last_msg_time}
+Период: {first_msg_time_formatted} - {last_msg_time_formatted}
+Часовой пояс: {user_timezone}
 
 ================================================================================
 ДЕТАЛЬНАЯ ТРАССИРОВКА ПО ШАГАМ
@@ -351,66 +528,12 @@ Session ID: {session_id}
         if direction == 'inbound':
             return details
 
-        # Для Bot -> User - все 9 пунктов
+        # Для Bot -> User - все пункты
         service_result = metadata.get('service_result', {})
         service_metadata = service_result.get('_metadata', {}) if isinstance(service_result, dict) else {}
 
-        # 4. TagSearchService
-        details += "\n4. TagSearchService\n"
-        microservices_results = service_metadata.get('microservices_results', {})
-        tag_search = microservices_results.get('tag_search', {}) if isinstance(microservices_results, dict) else {}
-        if isinstance(tag_search, dict) and tag_search.get('candidates'):
-            for cand in tag_search['candidates']:
-                service_name = cand.get('service_name', 'Unknown')
-                conf_raw = cand.get('confidence', 0.0) or 0.0
-                confidence = float(conf_raw) * 100
-                details += f" {{{service_name}, {confidence:.1f}%}}\n"
-        else:
-            details += " {(нет кандидатов)}\n"
-
-        # 5. SemanticSearchService
-        details += "\n5. SemanticSearchService\n"
-        semantic_search = microservices_results.get('semantic_search', {}) if isinstance(microservices_results, dict) else {}
-        if isinstance(semantic_search, dict) and semantic_search.get('candidates'):
-            for cand in semantic_search['candidates']:
-                service_name = cand.get('service_name', 'Unknown')
-                conf_raw = cand.get('confidence', 0.0) or 0.0
-                confidence = float(conf_raw) * 100
-                details += f" {{{service_name}, {confidence:.1f}%}}\n"
-        else:
-            details += " {(нет кандидатов)}\n"
-
-        # 6. VectorSearchService
-        details += "\n6. VectorSearchService\n"
-        vector_search = microservices_results.get('vector_search', {}) if isinstance(microservices_results, dict) else {}
-        if isinstance(vector_search, dict) and vector_search.get('candidates'):
-            for cand in vector_search['candidates']:
-                service_name = cand.get('service_name', 'Unknown')
-                conf_raw = cand.get('confidence', 0.0) or 0.0
-                confidence = float(conf_raw) * 100
-                details += f" {{{service_name}, {confidence:.1f}%}}\n"
-        else:
-            details += " {(нет кандидатов)}\n"
-
-        # 7. Итоговое объединение сервисов (MainAgent)
-        details += "\n7. Итоговое объединение сервисов (MainAgent):\n"
-
-        # Берем кандидатов из service_result (уже объединенные MainAgent)
-        candidates = service_result.get('candidates', []) if isinstance(service_result, dict) else []
-        if candidates:
-            for cand in candidates:
-                service_name = cand.get('service_name', 'Unknown')
-                conf_raw = cand.get('confidence', 0.0) or 0.0
-                confidence = float(conf_raw) * 100
-                sources = cand.get('sources', ['unknown'])
-                sources_str = ', '.join(sources)
-                details += f" {{{service_name}, {confidence:.1f}%}} (источники: {sources_str})\n"
-        else:
-            details += " {(нет кандидатов)}\n"
-
-        # 8. Таблица установленных фильтров
-        # ИСПРАВЛЕНО (2026-01-10): Показывать ВСЕ фильтры включая null (задача 8)
-        details += "\n8. Таблица установленных фильтров:\n"
+        # 4. Таблица установленных фильтров (перенесено из пункта 8)
+        details += "\n4. Таблица установленных фильтров:\n"
         established_filters = service_metadata.get('established_filters', {})
         if isinstance(established_filters, dict) and established_filters:
             # Сортировка фильтров: location_type, category, incident_type, object_description
@@ -436,7 +559,60 @@ Session ID: {session_id}
         else:
             details += " {(нет фильтров)}\n"
 
-        # AI Orchestrator
+        # 5. TagSearchService
+        details += "\n5. TagSearchService\n"
+        microservices_results = service_metadata.get('microservices_results', {})
+        tag_search = microservices_results.get('tag_search', {}) if isinstance(microservices_results, dict) else {}
+        if isinstance(tag_search, dict) and tag_search.get('candidates'):
+            for cand in tag_search['candidates']:
+                service_name = cand.get('service_name', 'Unknown')
+                conf_raw = cand.get('confidence', 0.0) or 0.0
+                confidence = float(conf_raw) * 100
+                details += f" {{{service_name}, {confidence:.1f}%}}\n"
+        else:
+            details += " {(нет кандидатов)}\n"
+
+        # 6. SemanticSearchService
+        details += "\n6. SemanticSearchService\n"
+        semantic_search = microservices_results.get('semantic_search', {}) if isinstance(microservices_results, dict) else {}
+        if isinstance(semantic_search, dict) and semantic_search.get('candidates'):
+            for cand in semantic_search['candidates']:
+                service_name = cand.get('service_name', 'Unknown')
+                conf_raw = cand.get('confidence', 0.0) or 0.0
+                confidence = float(conf_raw) * 100
+                details += f" {{{service_name}, {confidence:.1f}%}}\n"
+        else:
+            details += " {(нет кандидатов)}\n"
+
+        # 7. VectorSearchService
+        details += "\n7. VectorSearchService\n"
+        vector_search = microservices_results.get('vector_search', {}) if isinstance(microservices_results, dict) else {}
+        if isinstance(vector_search, dict) and vector_search.get('candidates'):
+            for cand in vector_search['candidates']:
+                service_name = cand.get('service_name', 'Unknown')
+                conf_raw = cand.get('confidence', 0.0) or 0.0
+                confidence = float(conf_raw) * 100
+                details += f" {{{service_name}, {confidence:.1f}%}}\n"
+        else:
+            details += " {(нет кандидатов)}\n"
+
+        # 8. Итоговое объединение сервисов (MainAgent)
+        details += "\n8. Итоговое объединение сервисов (MainAgent):\n"
+
+        # Берем кандидатов из service_result (уже объединенные MainAgent)
+        candidates = service_result.get('candidates', []) if isinstance(service_result, dict) else []
+        if candidates:
+            for cand in candidates:
+                service_name = cand.get('service_name', 'Unknown')
+                conf_raw = cand.get('confidence', 0.0) or 0.0
+                confidence = float(conf_raw) * 100
+                sources = cand.get('sources', ['unknown'])
+                sources_str = ', '.join(sources)
+                details += f" {{{service_name}, {confidence:.1f}%}} (источники: {sources_str})\n"
+        else:
+            details += " {(нет кандидатов)}\n"
+
+        # 9. Прочая отладочная информация
         # ИСПРАВЛЕНО (2026-01-10): Добавлен заголовок блока (задача 9)
         details += "\n9. Прочая отладочная информация:\n"
 
@@ -515,11 +691,16 @@ Session ID: {session_id}
                     details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
                     llm_calls_found = True
 
-                # ИСПРАВЛЕНО (2026-01-10): Определяем сервис по промпту (задача 10)
-                # ИСПРАВЛЕНО (2026-01-16): Добавлена проверка "# Классификатор обращений УК"
+                # ИСПРАВЛЕНО (2026-02-04): Улучшенное определение сервиса по промпту
                 service_name = "Unknown"
                 if 'ProblemAccumulationService' in prompt_text or 'аналитик, извлекающий' in prompt_text:
                     service_name = "ProblemAccumulationService"
+                elif '## Роль\nТы — строгий алгоритмический классификатор типа обращения' in prompt_text:
+                    service_name = "FilterDetectionService (incident_type)"
+                elif '## Роль\nТы — строгий алгоритмический классификатор локации' in prompt_text:
+                    service_name = "FilterDetectionService (location_type)"
+                elif '## Роль\nТы — строгий алгоритмический классификатор категории' in prompt_text:
+                    service_name = "FilterDetectionService (category)"
                 elif '# Классификатор обращений УК' in prompt_text or 'FilterDetectionService' in prompt_text or 'Анализируй обращение и верни JSON фильтров' in prompt_text:
                     service_name = "FilterDetectionService"
                 elif 'AI-диспетчер управляющей компании' in prompt_text:
@@ -527,19 +708,24 @@ Session ID: {session_id}
                 elif 'строгий логический валидатор' in prompt_text:
                     service_name = "QuestionValidatorService"
 
-                details += f"\n{'=' * 20} {service_name} ({provider} - {model}) {'=' * 20}\n"
+                # ИСПРАВЛЕНО (2026-02-04): Коробочка с правильным форматированием
+                service_label = f" Ответ LLM для {service_name} ({provider} - {model}) "
+                border_length = len(service_label)
+                details += f"\n{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
+
                 if prompt_text:
                     # ИСПРАВЛЕНО (2026-01-16): Показываем полный промпт для FilterDetectionService
                     # Для остальных сервисов ограничиваем до 5000 символов
-                    if service_name == "FilterDetectionService":
+                    if "FilterDetectionService" in service_name:
                         prompt_preview = prompt_text  # Полный промпт
                     else:
                         prompt_preview = prompt_text[:5000] + "...\n(ПРОМПТ ОБРЕЗАН - полный текст в БД)" if len(prompt_text) > 5000 else prompt_text
                     details += f"ПРОМПТ:\n{prompt_preview}\n"
+
                 if response_text:
                     # Ограничиваем длину ответа для читаемости
                     response_preview = response_text[:1000] + "..." if len(response_text) > 1000 else response_text
-                    details += f"------------ ОТВЕТ LLM -----\nОТВЕТ LLM:\n{response_preview}\n"
+                    details += f"ОТВЕТ LLM:\n{response_preview}\n"
 
         if not llm_calls_found:
             details += "\n9.1. LLM ВЫЗОВЫ:\n {(нет данных из llm_request_log)}\n"
