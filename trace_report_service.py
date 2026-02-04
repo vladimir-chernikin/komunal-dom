@@ -708,11 +708,6 @@ Session ID: {session_id}
                 elif 'строгий логический валидатор' in prompt_text:
                     service_name = "QuestionValidatorService"
 
-                # ИСПРАВЛЕНО (2026-02-04): Коробочка с правильным форматированием
-                service_label = f" Ответ LLM для {service_name} ({provider} - {model}) "
-                border_length = len(service_label)
-                details += f"\n{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
-
                 if prompt_text:
                     # ИСПРАВЛЕНО (2026-01-16): Показываем полный промпт для FilterDetectionService
                     # Для остальных сервисов ограничиваем до 5000 символов
@@ -721,6 +716,11 @@ Session ID: {session_id}
                     else:
                         prompt_preview = prompt_text[:5000] + "...\n(ПРОМПТ ОБРЕЗАН - полный текст в БД)" if len(prompt_text) > 5000 else prompt_text
                     details += f"ПРОМПТ:\n{prompt_preview}\n"
+
+                # ИСПРАВЛЕНО (2026-02-04): Коробочка РАЗДЕЛЯЕТ промпт и ответ
+                service_label = f" Ответ LLM для {service_name} ({provider} - {model}) "
+                border_length = len(service_label)
+                details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
 
                 if response_text:
                     # Ограничиваем длину ответа для читаемости
