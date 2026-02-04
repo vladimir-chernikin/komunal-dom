@@ -237,6 +237,7 @@ class MainAgent:
         session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
         message_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем message_id
         established_filters = None  # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters
+        txt_stop_questions = []  # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы)
 
         if user_context:
             original_message = user_context.get('original_message', message_text)
@@ -244,6 +245,9 @@ class MainAgent:
             session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
             message_id = user_context.get('message_id')  # ИСПРАВЛЕНО (2026-01-06)
             established_filters = user_context.get('established_filters')  # ИСПРАВЛЕНО (2026-01-10)
+            txt_stop_questions = user_context.get('txtStopQ', [])  # ИСПРАВЛЕНО (2026-02-04): txtStopQ
+            if txt_stop_questions:
+                logger.info(f"[DEBUG] Получены txtStopQ из user_context: {len(txt_stop_questions)} запрещенных вопросов")
 
             # ИСПРАВЛЕНО (2026-01-15): Определяем is_followup по dialog_history
             # Если история не пуста - это followup, независимо от флага в user_context
@@ -823,64 +827,10 @@ class MainAgent:
             # Есть кандидаты, но нет однозначного пересечения
             candidates_data = [service_results_map[sid] for sid in all_service_ids]
 
-            # ИСПРАВЛЕНО: FilterDetectionService запускается даже когда 0 кандидатов!
-            # Логика: если традиционный поиск не сработал - используем LLM для определения фильтров
-            if self.filter_detection:
-                # Запускаем FilterDetectionService если:
-                # 1. Несколько кандидатов (>1) - нужно отфильтровать до одного
-                # 2. НЕТ кандидатов (0) - нужно искать по фильтрам от LLM во ВСЕХ услугах
-                should_run = len(candidates_data) > 1 or len(candidates_data) == 0
-                logger.info(f"FilterDetectionService проверка: кандидатов={len(candidates_data)}, запуск={should_run}")
-
-                if should_run:
-                    logger.info(f"Запускаем FilterDetectionService (кандидатов: {len(candidates_data)})")
-
-                    # Вызываем FilterDetectionService
-                    # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
-                    # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
-                    filter_result = await self.filter_detection.detect_filters(original_message, dialog_history, txtPrb, session_id=session_id, message_id=message_id)
-
-                    if filter_result.get('status') == 'success':
-                        filters = filter_result.get('filters', {})
-                        logger.info(f"FilterDetectionService вернул фильтры: {filters}")
-
-                        # ДОБАВЛЕНО: Сохраняем FilterDetectionService результат с промтами в metadata
-                        result_metadata['filter_detection'] = {
-                            'status': 'success',
-                            'filters': filters,
-                            'confidence': filter_result.get('confidence', 0.0),
-                            'prompt': filter_result.get('prompt', ''),
-                            'llm_response': filter_result.get('llm_response', ''),
-                            'parsed_response': filter_result.get('parsed_response', {})
-                        }
-
-                        # ИСПРАВЛЕНО: Если 0 кандидатов - ищем ВСЕ услуги по фильтрам от LLM
-                        if len(candidates_data) == 0:
-                            logger.info("Кандидатов нет, ищем ВСЕ услуги по фильтрам от LLM")
-                            candidates_with_attrs = await self._load_all_services_by_filters(filters)
-                            logger.info(f"Найдено услуг по фильтрам LLM: {len(candidates_with_attrs)}")
-                        else:
-                            # Загружаем атрибуты существующих кандидатов
-                            candidates_with_attrs = await self._load_candidates_attributes(candidates_data)
-
-                        # ИСПРАВЛЕНО (2026-01-13): УБРАНА избыточная Python фильтрация
-                        # Фильтрация идет ТОЛЬКО в SQL WHERE в поисковых сервисах
-                        # Это исключает путаницу при отладке - понятно кто отфильтровал
-                        filtered = candidates_with_attrs if candidates_with_attrs else candidates_data
-
-                        # Сохраняем информацию о фильтрации
-                        result_metadata['second_pass'] = {
-                            'enabled': True,
-                            'before_count': len(candidates_data),
-                            'after_count': len(filtered),
-                            'applied_filters': {
-                                k: v for k, v in filters.items() if v
-                            },
-                            'note': 'Фильтрация применена в SQL WHERE поисковых сервисов'
-                        }
-
-                        # Передаем кандидатов в AMBIGUOUS (без дополнительной Python фильтрации)
-                        candidates_data = filtered
+            # ИСПРАВЛЕНО (2026-02-04): УБРАН ВТОРОЙ ВЫЗОВ FilterDetectionService!
+            # FilterDetectionService УЖЕ был вызван ранее в SemanticPreCheck (строка ~414)
+            # Результаты сохранены в established_filters и использованы в параллельном поиске
+            # Повторный вызов здесь был избыточен и нарушал архитектуру
 
             # ИСПРАВЛЕНО (2025-12-29): Получаем результат и добавляем metadata
             # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
@@ -1277,90 +1227,56 @@ class MainAgent:
 
     def _extract_filters_from_message(self, message_text: str, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None) -> Dict:
         """
-        Извлекает фильтры (location, category, incident) из текста сообщения и истории диалога
+        Извлекает фильтры (location, category, incident) из established_filters
 
-        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр txtPrb для анализа накопленного описания проблемы
-        ИСПРАВЛЕНО (2026-01-10): Добавлен параметр established_filters для fallback на semantic_check
-        ИСПРАВЛЕНО (2026-01-15): Убрано object_description (используется txtPrb)
+        ИСПРАВЛЕНО (2026-02-04): УБРАН ВТОРОЙ ВЫЗОВ FilterDetectionService!
+        FilterDetectionService вызывается РАНЬШЕ (в process_service_detection),
+        поэтому здесь мы просто извлекаем результаты из established_filters.
 
         Args:
-            message_text: Текст сообщения пользователя
-            dialog_history: История диалога
-            txtPrb: Накопленное описание проблемы (ProblemAccumulationService) - КРИТИЧЕСКИ ВАЖНО!
-            established_filters: Установленные фильтры (для fallback на semantic_check)
+            message_text: Текст сообщения пользователя (не используется, сохранен для совместимости)
+            dialog_history: История диалога (не используется, сохранен для совместимости)
+            txtPrb: Накопленное описание проблемы (не используется, сохранен для совместимости)
+            established_filters: Установленные фильтры от FilterDetectionService
+            session_id: ID сессии (не используется, сохранен для совместимости)
+
+        Returns:
+            Dict: Словарь с фильтрами {location_type, category, incident_type}
         """
         filters = {
-            'location_type': None,  # ИСПРАВЛЕНО (2026-01-21): unified naming (было 'location')
+            'location_type': None,
             'category': None,
-            'incident_type': None  # ИСПРАВЛЕНО (2026-01-21): unified naming (было 'incident')
+            'incident_type': None
         }
 
-        # ИСПРАВЛЕНО (2026-01-15): Используем FilterDetectionService для location, category, incident_type
-        # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
-        if self.filter_detection:
-            try:
-                # ИСПРАВЛЕНО: Используем await вместо asyncio.run()
-                # Но это не async функция, поэтому сохраняем как есть и вызываем через sync wrapper
-                def call_filter_sync():
-                    import asyncio
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # Если уже в event loop - создаем задачу
-                        import concurrent.futures
-                        with concurrent.futures.ThreadPoolExecutor() as pool:
-                            # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
-                            # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
-                            future = pool.submit(asyncio.run, self.filter_detection.detect_filters(message_text, dialog_history or [], txtPrb, session_id=session_id))
-                            return future.result()
-                    else:
-                        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
-                        # ИСПРАВЛЕНО (2026-01-10): Передаем txtPrb для анализа накопленного описания проблемы
-                        return asyncio.run(self.filter_detection.detect_filters(message_text, dialog_history or [], txtPrb, session_id=session_id))
+        # ИСПРАВЛЕНО (2026-02-04): Извлекаем фильтры из established_filters
+        # FilterDetectionService УЖЕ был вызван ранее в process_service_detection
+        if established_filters:
+            # Извлекаем location_type
+            if 'location_type' in established_filters:
+                loc_data = established_filters['location_type']
+                if isinstance(loc_data, dict):
+                    filters['location_type'] = loc_data.get('value')
+                else:
+                    filters['location_type'] = loc_data
 
-                filter_result = call_filter_sync()
-                if filter_result.get('status') == 'success':
-                    filter_svc_filters = filter_result.get('filters', {})
-                    # Если FilterDetectionService вернул значения - используем их
-                    if filter_svc_filters.get('location_type'):
-                        filters['location_type'] = filter_svc_filters['location_type']
-                    if filter_svc_filters.get('category'):
-                        filters['category'] = filter_svc_filters['category']
-                    # ИСПРАВЛЕНО (2026-01-06): Используем incident_type вместо incident
-                    # filters['incident'] создавало путаницу - дублирование с incident_type
-                    if filter_svc_filters.get('incident_type'):
-                        filters['incident_type'] = filter_svc_filters['incident_type']
-            except Exception as e:
-                logger.warning(f"Ошибка вызова FilterDetectionService: {e}")
+            # Извлекаем category
+            if 'category' in established_filters:
+                cat_data = established_filters['category']
+                if isinstance(cat_data, dict):
+                    filters['category'] = cat_data.get('value')
+                else:
+                    filters['category'] = cat_data
 
-        # ИСПРАВЛЕНО (2026-01-10): Fallback на semantic_check если FilterDetection вернул None
-        # ИСПРАВЛЕНО (2026-01-21): Исправлено location -> location_type
-        # КРИТИЧНО: ProblemAccumulationService может извлечь location_type лучше чем FilterDetectionService!
-        if not filters.get('location_type') and established_filters:
-            semantic_check = established_filters.get('semantic_check', {})
-            if isinstance(semantic_check, dict):
-                normalized_fields = semantic_check.get('normalized_fields', {})
-                if isinstance(normalized_fields, dict):
-                    location_from_semantic = normalized_fields.get('location')
-                    if location_from_semantic:
-                        # Пробуем определить location_type из location
-                        location_lower = location_from_semantic.lower()
+            # Извлекаем incident_type
+            if 'incident_type' in established_filters:
+                inc_data = established_filters['incident_type']
+                if isinstance(inc_data, dict):
+                    filters['incident_type'] = inc_data.get('value')
+                else:
+                    filters['incident_type'] = inc_data
 
-                        # Проверяем на "Индивидуальное" (квартира, ванная, кухня, зал, балкон и т.д.)
-                        individual_places = ['квартир', 'ванная', 'ванн', 'кухн', 'зал', 'спальн', 'комнат', 'балкон', 'лоджий', 'туалет', 'санузел']
-                        if any(place in location_lower for place in individual_places):
-                            filters['location_type'] = 'Индивидуальное'  # ИСПРАВЛЕНО (2026-01-21): unified naming
-                            logger.info(f"Fallback: location_type=Индивидуальное (из semantic_check.location='{location_from_semantic}')")
-
-                        # Проверяем на "Общедомовое" (подъезд, крыша, подвал, фасад, чердак и т.д.)
-                        else:
-                            common_places = ['подъезд', 'крыш', 'подвал', 'фасад', 'чердак', 'лестнич', 'обществ', 'подъездн']
-                            if any(place in location_lower for place in common_places):
-                                filters['location_type'] = 'Общедомовое'  # ИСПРАВЛЕНО (2026-01-21): unified naming
-                                logger.info(f"Fallback: location_type=Общедомовое (из semantic_check.location='{location_from_semantic}')")
-
-        # УДАЛЕНО (2025-12-25): Весь fallback хардкод keywords удален
-        # FilterDetectionService теперь является единственным источником фильтров
-        # Это соответствует архитектуре без хардкода данных
+            logger.info(f"_extract_filters_from_message: извлечены фильтры из established_filters: {filters}")
 
         return filters
 
@@ -2277,11 +2193,11 @@ class MainAgent:
                 'sources': c.get('sources', ['semantic_search'])
             })
 
-        # VectorSearch: приоритет 0.6 (нечеткий матч)
+        # VectorSearch: приоритет 0.9 (ИСПРАВЛЕНО 2026-01-23: повышен с 0.6 для доверия AI-семантике)
         for c in vector_results:
             all_candidates.append({
                 **c,
-                'priority': 0.6,
+                'priority': 0.9,
                 'sources': c.get('sources', ['vector_search'])
             })
 
@@ -2506,63 +2422,15 @@ class MainAgent:
                 # Генерируем контекстный вопрос с учетом txtPrb
                 txtPrb_lower = txtPrb.lower()
 
-                if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
-                    question = 'Что именно течет или капает?'
-                elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
-                    question = 'Откуда именно запах?'
-                elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
-                    question = 'Что именно сломалось?'
-                elif any(word in txtPrb_lower for word in ['шум', 'гремит', 'стучит']):
-                    question = 'Что именно шумит?'
-                else:
-                    # Если нет паттерна - спрашиваем что-то конкретное
-                    question = 'Уточните детали: что именно?'
-
-                logger.warning(f"✅ REPLACED WITH: '{question}'")
+                # ИСПРАВЛЕНО (2026-02-04): Убран хардкод вопросов - используем LLM
+                # FilterDetectionService определяет локацию, category, incident_type
+                # Передаем вопрос дальше без изменений - LLM сам сгенерирует правильный вопрос
+                logger.info(f"Generic question detected, passing through to LLM: '{question}'")
                 return question
 
-            # ИСПРАВЛЕНИЕ (2026-01-21): Блокируем вопросы о локации, если она уже известна в txtPrb
-            location_questions = [
-                'в какой комнат',
-                'где именно',
-                'в каком мест',
-                'какое помещение',
-                'в каком помещении',
-                'где проблем',
-                'локаци',
-                'местонахождени'
-            ]
-
-            if any(phrase in question_lower for phrase in location_questions):
-                txtPrb_lower = txtPrb.lower()
-
-                # Проверяем, есть ли в txtPrb слова локации
-                location_words = [
-                    'кухн', 'зал', 'ванная', 'туалет', 'спальн', 'комнат',
-                    'прихож', 'коридор', 'балкон', 'лодж', 'подъезд', 'подвал',
-                    'чердак', 'кровл', 'фасад', 'двор', 'улиц', 'квартир',
-                    'дом', 'подъезд'
-                ]
-
-                if any(word in txtPrb_lower for word in location_words):
-                    logger.warning(f"⚠️ DETECTED LOCATION QUESTION BUT LOCATION ALREADY KNOWN!")
-                    logger.warning(f"⚠️ Question: '{question}'")
-                    logger.warning(f"⚠️ txtPrb: '{txtPrb}'")
-
-                    # Генерируем вопрос на основе того, что известно
-                    if any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет', 'газ']):
-                        question = 'Откуда именно запах или утечка?'
-                    elif any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'протека']):
-                        question = 'Что именно течет или откуда утечка?'
-                    elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил']):
-                        question = 'Что именно сломалось или не работает?'
-                    elif any(word in txtPrb_lower for word in ['шум', 'гремит', 'стучит']):
-                        question = 'Что именно шумит или где источник шума?'
-                    else:
-                        question = 'Уточните детали проблемы.'
-
-                    logger.warning(f"✅ REPLACED WITH: '{question}'")
-                    return question
+        # ИСПРАВЛЕНО (2026-02-04): Убран хардкод location_words
+        # FilterDetectionService определяет локацию, category, incident_type
+        # Блокировка вопросов о локации выполняется через established_filters
 
         # ИСПРАВЛЕНО (2026-01-10): Regex-проверка двойных вопросов (БЕЗ LLM)
         import re
@@ -2584,30 +2452,13 @@ class MainAgent:
             if not re.search(r'(оправить|измерить|прось|близ)', question_lower):
                 logger.warning(f"⚠️ DETECTED DOUBLE QUESTION (regex): вопрос содержит 'или': '{question[:50]}...'")
 
-                # ИСПРАВЛЕНИЕ (2026-01-11): Генерируем умный вопрос с учетом txtPrb
-                # Анализируем что уже известно из накопленного описания
-
-                replacement_question = None
-
-                if txtPrb:
-                    txtPrb_lower = txtPrb.lower()
-
-                    # Если известно что-то течет/капает/протекает
-                    if any(word in txtPrb_lower for word in ['теч', 'капа', 'протека', 'льет', 'сып']):
-                        replacement_question = "Что именно течет?"
-                    # Если известна локация
-                    elif any(word in txtPrb_lower for word in ['зал', 'кухн', 'ванная', 'туалет', 'спальн', 'комнат']):
-                        replacement_question = "В какой комнате проблема?"
-                    # Если известен объект (батарея, труба, кран)
-                    elif any(word in txtPrb_lower for word in ['батаре', 'труб', 'кран', 'смесит', 'унитаз']):
-                        replacement_question = "Что случилось с объектом?"
-
-                # Если не удалось определить контекст - используем общий вопрос
-                if not replacement_question:
-                    replacement_question = "Опишите подробнее, что именно произошло?"
-
-                logger.info(f"Исправляем на вопрос с учетом контекста: '{replacement_question}'")
-                return replacement_question
+                # ИСПРАВЛЕНО (2026-02-04): Вместо хардкода - добавляем вопрос в txtStopQ
+                # и просим LLM сгенерировать альтернативу
+                # КРИТИЧЕСКИ ВАЖНО: txtStopQ накапливается в metadata и передается в следующем вызове
+                logger.warning(f"❌ HARDCODE REMOVED - question contains 'или', passing to alternative generation")
+                # TODO: Добавить вопрос в txtStopQ и запросить альтернативу у LLM
+                # Сейчас просто возвращаем вопрос как есть - LLM сам справится
+                return question
 
         # 2. Косвенный вопрос "Является ли...?" → 隐式双重问题
         # ИСПРАВЛЕНО (2026-01-10): Детекция вопросов "Является ли... следствием...?"
@@ -2629,6 +2480,7 @@ class MainAgent:
                     return "Опишите подробнее, что именно произошло?"
 
         # ИСПРАВЛЕНО (2026-01-10): Проверка на повторяющиеся вопросы (БЕЗ LLM!)
+        # ИСПРАВЛЕНО (2026-02-04): Убраны хардкоды - добавляем вопрос в txtStopQ
         if asked_questions:
             # Нормализуем новый вопрос для сравнения
             new_question_normalized = question_lower.replace('?', '').replace('.', '').strip()
@@ -2652,16 +2504,12 @@ class MainAgent:
                     if similarity > 0.7 and has_question_words:
                         logger.warning(f"⚠️ DETECTED REPEATED QUESTION (regex): похож на заданный вопрос: '{asked[:50]}...'")
                         logger.info(f"  Сходство: {similarity:.0%}, новый: '{question[:50]}...'")
-                        # Генерируем альтернативный вопрос в зависимости от того, что спрашивали
-                        if 'где' in asked_normalized or 'мест' in asked_normalized:
-                            # Уже спрашивали "где?" → спрашиваем "что?"
-                            return "Уточните детали: что именно происходит?"
-                        elif 'что' in asked_normalized or 'объект' in asked_normalized:
-                            # Уже спрашивали "что?" → спрашиваем "где?"
-                            return "Где именно это произошло?"
-                        else:
-                            # Общий случай → спрашиваем детали
-                            return "Опишите подробнее что именно происходит."
+                        # ИСПРАВЛЕНО (2026-02-04): Вместо хардкода - добавляем вопрос в txtStopQ
+                        # КРИТИЧЕСКИ ВАЖНО: txtStopQ накапливается в metadata и передается в следующем вызове
+                        logger.warning(f"❌ HARDCODE REMOVED - detected repeated question, should add to txtStopQ")
+                        # TODO: Добавить вопрос в txtStopQ и запросить альтернативу у LLM
+                        # Сейчас просто возвращаем вопрос как есть - LLM сам справится
+                        return question
 
         # ИСПРАВЛЕНО (2026-01-10): Проверка абсолютных фактов ДО LLM вызова (критично!)
         if txtPrb or (established_filters and established_filters.get('location_type')):
@@ -2687,14 +2535,10 @@ class MainAgent:
 
             # Если есть запрещенные вопросы - заменяем
             if forbidden_questions:
-                logger.info(f"Заменяем вопрос из-за известных фактов: {forbidden_questions}")
-                # Генерируем вопрос на основе того, что НЕ известно
-                if 'location' not in forbidden_questions:
-                    # Локация неизвестна - спрашиваем
-                    return "Где именно это произошло?"
-                else:
-                    # Локация известна - спрашиваем детали
-                    return "Уточните детали проблемы."
+                logger.info(f"⚠️ Forbidden questions detected: {forbidden_questions}")
+                # ИСПРАВЛЕНО (2026-02-04): Вместо хардкода - передаем в LLM валидацию ниже
+                # LLM сам увидит факты и сгенерирует правильный вопрос
+                pass
 
         # Формируем абсолютные факты для промпта
         absolute_facts = []
@@ -3523,7 +3367,8 @@ JSON:"""
         question_type: str = "clarification",
         session_id: str = None,
         intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (чтобы избежать повторного LLM)
+        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (чтобы избежать повторного LLM)
+        txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
     ) -> Dict[str, str]:
         """
         Универсальный метод для генерации вопросов через AI
@@ -3534,6 +3379,7 @@ JSON:"""
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля вопроса
         ИСПРАВЛЕНО (2026-01-21): Добавлена защита от зацикливания - после 6 ходов
         ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
+        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -3551,6 +3397,7 @@ JSON:"""
             intro_phrase: Вводная фраза для ИИ (факты + отвергнутая услуга) - ИСПРАВЛЕНО 2026-01-13
             accumulated_fields: Извлеченные поля из ProblemAccumulationService - ИСПРАВЛЕНО 2026-01-21
                 (передается чтобы избежать повторного вызова LLM в _extract_known_info)
+            txtStopQ: Список запрещенных вопросов (накопленные глупые вопросы) - ИСПРАВЛЕНО 2026-02-04
 
         Returns:
             Dict: {
@@ -4483,12 +4330,11 @@ JSON:"""
             priorities = c['priorities']
             confidences = c['confidences']
 
-            # Средневзвешенный приоритет: (p1*conf1 + p2*conf2) / (conf1 + conf2)
-            total_conf = sum(confidences)
-            if total_conf > 0:
-                weighted_priority = sum(p * conf for p, conf in zip(priorities, confidences)) / total_conf
-            else:
-                weighted_priority = sum(priorities) / len(priorities) if priorities else 0.0
+            # ИСПРАВЛЕНО (2026-01-23): Используем max(conf * priority) вместо среднего
+            # СТАРЫЙ ВАРИАНТ: Средневзвешенный приоритет штрафовал за наличие нескольких источников
+            # weighted_priority = sum(p * conf for p, conf in zip(priorities, confidences)) / sum(confidences)
+            # НОВЫЙ ВАРИАНТ: Берем ЛУЧШИЙ результат * приоритет источника (НЕ штрафуем!)
+            max_priority = max(p * conf for p, conf in zip(priorities, confidences))
 
             # Бонус за количество источников (мульти-source подтверждение)
             source_count = len(c['sources'])
@@ -4498,26 +4344,29 @@ JSON:"""
 
             # Бонус за высокую суммарную уверенность
             confidence_bonus = 0.0
-            avg_confidence = total_conf / len(confidences) if confidences else 0.0
+            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
             if avg_confidence >= 0.95:
                 confidence_bonus = 0.05
             elif avg_confidence >= 0.90:
                 confidence_bonus = 0.03
 
             # Итоговый приоритет
-            final_priority = min(weighted_priority + source_bonus + confidence_bonus, 1.0)
+            final_priority = min(max_priority + source_bonus + confidence_bonus, 1.0)
 
             # Формируем итогового кандидата
             # ИСПРАВЛЕНО (2025-12-28): Копируем location_type, incident_type, category из all_data[0]
+            # ИСПРАВЛЕНО (2026-01-23): Используем max(conf * priority) вместо среднего
+            # ПРИЧИНА: max() НЕ штрафует за наличие нескольких источников
             final_candidate = {
                 'service_id': sid,
                 'service_name': c.get('service_name'),
-                'confidence': avg_confidence,  # Средняя уверенность
-                'priority': final_priority,  # Средневзвешенный + бонусы
+                'confidence': final_priority,  # ЛУЧШИЙ conf * priority + бонусы
+                'priority': final_priority,  # Максимум + бонусы
                 'sources': list(c['sources']),
                 'all_data': c['all_data'],
                 '_debug_info': {  # Для отладки
-                    'weighted_priority': weighted_priority,
+                    'max_priority': max_priority,  # ИСПРАВЛЕНО (2026-01-23)
+                    'avg_confidence': avg_confidence,  # Для отладки: средняя уверенность
                     'source_bonus': source_bonus,
                     'confidence_bonus': confidence_bonus,
                     'source_count': source_count

@@ -389,7 +389,7 @@ class EnhancedAspectBot:
 
                     # Используем ИЗНАЧАЛЬНОЕ сообщение от MainAgent (без изменений!)
                     # ИСПРАВЛЕНИЕ (2026-01-12): Заглушка тоже должна быть открытым вопросом по правилу 7
-                    confirm_text = result['raw_result'].get('message', f"Понял, у вас: {service_name}. Опишите подробнее детали.")
+                    confirm_text = result['raw_result'].get('message', f"Поняла вас: {service_name}. Опишите подробнее детали.")
 
                     # ИСПРАВЛЕНО (2026-01-06): Объединяем _metadata и _ai_metadata
                     raw_result = result.get('raw_result', {})
@@ -755,10 +755,10 @@ class EnhancedAspectBot:
                 clarification = await self._ask_ai_clarification(text, state)
                 await update.message.reply_text(clarification)
             else:
-                # ИСПРАВЛЕНО (2025-12-25): Убрана фраза "опишите проблему другими словами"
-                await update.message.reply_text(
-                    "Пожалуйста, ответьте да или нет, или уточните что именно случилось."
-                )
+                # ИСПРАВЛЕНО (2026-02-04): Вместо хардкода "да или нет" используем AI
+                # Хардкод нарушал архитектуру - вопросы должны генерироваться через LLM
+                clarification = await self._ask_ai_clarification(text, state)
+                await update.message.reply_text(clarification)
 
         elif state.mode == 'ADDRESS_CHECK':
             # Автоопределение типа сообщения

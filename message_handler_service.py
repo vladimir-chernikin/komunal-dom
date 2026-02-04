@@ -186,15 +186,24 @@ class MessageHandlerService:
                 # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters из последнего bot сообщения
                 # КРИТИЧЕСКИ ВАЖНО: established_filters должны передаваться между вызовами MainAgent!
                 established_filters = None
+                # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы) из последнего bot сообщения
+                # КРИТИЧЕСКИ ВАЖНО: txtStopQ накапливает глупые вопросы чтобы не повторять их!
+                txt_stop_questions = []  # Список запрещенных вопросов
                 if dialog_history and len(dialog_history) > 0:
                     # Ищем последнее сообщение бота
                     for msg in reversed(dialog_history):
                         if msg.get('role') == 'bot':
                             metadata = msg.get('metadata', {})
-                            if isinstance(metadata, dict) and 'established_filters' in metadata:
-                                established_filters = metadata['established_filters']
-                                logger.info(f"[DEBUG] Извлечены established_filters из истории: {list(established_filters.keys()) if established_filters else 'None'}")
-                                break
+                            if isinstance(metadata, dict):
+                                # Извлекаем established_filters
+                                if 'established_filters' in metadata:
+                                    established_filters = metadata['established_filters']
+                                    logger.info(f"[DEBUG] Извлечены established_filters из истории: {list(established_filters.keys()) if established_filters else 'None'}")
+                                # Извлекаем txtStopQ (запрещенные вопросы)
+                                if 'txtStopQ' in metadata:
+                                    txt_stop_questions = metadata['txtStopQ']
+                                    logger.info(f"[DEBUG] Извлечены txtStopQ из истории: {len(txt_stop_questions)} вопросов")
+                                    break
 
                 # ИСПРАВЛЕНО (2026-01-05): Отладочный лог - проверяем dialog_history ПЕРЕД передачей в MainAgent
                 logger.info(f"[DEBUG] dialog_history ПЕРЕД передачей в MainAgent: {len(dialog_history)} сообщений")
@@ -213,7 +222,8 @@ class MessageHandlerService:
                         'dialog_history': dialog_history,  # История через user_context
                         'is_followup': is_followup,  # Флаг для объединения контекста
                         'cleaned_message': search_text,  # Добавляем очищенное сообщение
-                        'established_filters': established_filters  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
+                        'established_filters': established_filters,  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
+                        'txtStopQ': txt_stop_questions  # ИСПРАВЛЕНО (2026-02-04): ПЕРЕДАЕМ ЗАПРЕЩЕННЫЕ ВОПРОСЫ!
                     }
                 )
 
@@ -254,7 +264,10 @@ class MessageHandlerService:
                     outbound_metadata['txtPrb'] = result['_metadata']['txtPrb']
                     outbound_metadata['accumulated_fields'] = result['_metadata'].get('accumulated_fields', {})
                     outbound_metadata['established_filters'] = result['_metadata'].get('established_filters', {})
+                    # ИСПРАВЛЕНО (2026-02-04): Добавляем txtStopQ (запрещенные вопросы)
+                    outbound_metadata['txtStopQ'] = result['_metadata'].get('txtStopQ', [])
                     logger.info(f"[DEBUG] ✅ txtPrb ДОБАВЛЕН в outbound_metadata: '{outbound_metadata['txtPrb']}'")
+                    logger.info(f"[DEBUG] ✅ txtStopQ ДОБАВЛЕН в outbound_metadata: {len(outbound_metadata.get('txtStopQ', []))} вопросов")
                 else:
                     logger.warning(f"[WARNING] ⚠️ txtPrb НЕ ДОБАВЛЕН в outbound_metadata!")
 
@@ -589,7 +602,7 @@ class MessageHandlerService:
                 return message
             # ИСПРАВЛЕНИЕ (2026-01-12): По правилу 7 CLAUDE.md - только открытые вопросы!
             # ЗАПРЕЩЕНО: "Это правильно?" - закрытый вопрос
-            return f"Понял, у вас: {service_name}. Опишите подробнее детали, если нужно."
+            return f"Поняла вас: {service_name}. Опишите подробнее детали, если нужно."
 
         elif status == 'CONFIRMED':
             # ИСПРАВЛЕНО (2025-12-25): Пользователь подтвердил услугу
