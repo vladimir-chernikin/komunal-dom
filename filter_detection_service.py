@@ -74,19 +74,22 @@ class FilterDetectionService:
                     cursor.execute("""
                         SELECT sc.scenario_name,
                                COALESCE(rc.category_name, '') as category,
-                               COALESCE(rst.type_name, '') as incident_type
+                               COALESCE(rst.type_name, '') as incident_type,
+                               COALESCE(rl.localization_name, '') as localization
                         FROM services_catalog sc
                         LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
                         LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
+                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
                         WHERE sc.is_active = TRUE
                         ORDER BY sc.service_id
-                        LIMIT 30
+                        LIMIT 100
                     """)
                     self.objects_examples = [
                         {
                             'name': row[0],
                             'category': row[1],
-                            'incident': row[2]
+                            'incident': row[2],
+                            'localization': row[3]
                         }
                         for row in cursor.fetchall()
                     ]
@@ -107,387 +110,210 @@ class FilterDetectionService:
     # ПРОМПТ 1: incident_type (Инцидент/Запрос)
     # ========================================================================
 
-    def _create_incident_type_prompt(self, txtPrb: str) -> str:
-        """Создание промпта для определения incident_type"""
-        # Переменные для f-string (будут заполнены LLM по алгоритму в промпте)
-        OBJ = ""
-        EVENT = ""
-        PLACE = ""
-        reasoning_txt = ""
-        последствия = ""
-        incident_type = ""
-        incident_confidence = ""
+    async def _create_incident_type_prompt(self, txtPrb: str) -> str:
+        """
+        Создание промпта для определения incident_type
 
-        # ========================================================================
-        # СТАРЫЙ ПРОМПТ (до 2026-01-23, без few-shot примеров)
-        # ========================================================================
-        # prompt_old = f"""## Роль
-        # Ты — строгий алгоритмический классификатор типа обращения. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
-        #
-        # ## Входные данные
-        # TXT_PRB = "{txtPrb}"
-        #
-        # ## АЛГОРИТМ (СТРОГО ПО ШАГАМ, ПРИСВАИВАЙ ПЕРЕМЕННЫЕ!)
-        # (далее алгоритм без изменений...)
-        # """
+        ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
+        """
+        # Формируем примеры из БД (группируем по incident_type)
+        incident_examples = {"Инцидент": [], "Запрос": []}
+        for obj in self.objects_examples:
+            incident = obj.get('incident', 'Запрос')  # default - Запрос
+            if incident and obj['name']:
+                if len(incident_examples[incident]) < 5:  # max 5 примеров на тип
+                    incident_examples[incident].append(f'- "{obj["name"]}" → {incident}')
 
-        # ========================================================================
-        # НОВЫЙ ПРОМПТ (с 2026-01-30, функциональный анализ объекта)
-        # ========================================================================
-        prompt = f"""## Роль
-Ты — строгий алгоритмический классификатор типа обращения. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
+        examples_text = ""
+        if incident_examples["Инцидент"]:
+            examples_text += f"\nИнцидент (выборка из БД):\n" + "\n".join(incident_examples["Инцидент"][:5])
+        if incident_examples["Запрос"]:
+            examples_text += f"\n\nЗапрос (выборка из БД):\n" + "\n".join(incident_examples["Запрос"][:5])
 
-## Входные данные
+        # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+        try:
+            from llm_tester.models import PromptTemplate
+            from asgiref.sync import sync_to_async
+
+            @sync_to_async
+            def get_db_template():
+                return PromptTemplate.objects.filter(
+                    slug='filter-incident-type',
+                    is_active=True
+                ).first()
+
+            db_template = await get_db_template()
+
+            if db_template:
+                # Подставляем переменные в шаблон из БД
+                prompt = db_template.template.format(
+                    txtPrb=txtPrb,
+                    examples=examples_text
+                )
+
+                logger.debug(f"[DB] Промпт filter-incident-type загружен из БД (ID: {db_template.id})")
+                return prompt
+            else:
+                logger.error(f"[DB] Промпт 'filter-incident-type' не найден в БД!")
+
+        except Exception as e:
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+
+        # Fallback-промпт (если промпт не найден в БД)
+        logger.warning("[FALLBACK] Используется fallback-промпт для incident_type")
+
+        prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
+
 TXT_PRB = "{txtPrb}"
 
-## АЛГОРИТМ (СТРОГО ПО ШАГАМ, ПРИСВАИВАЙ ПЕРЕМЕННЫЕ!)
+ОПРЕДЕЛИ ТИП ОБРАЩЕНИЯ:
+- "Инцидент" - если есть угроза жизни/здоровью/имуществу
+- "Запрос" - если нет угрозы
 
-### Шаг1. Сущности
-OBJ = "[сущность-проблема]"
-EVENT = "[событие]"
-PLACE = "[место]"
-reasoning_txt = "Шаг1: OBJ=" + OBJ + "; EVENT=" + EVENT + "; PLACE=" + PLACE
-
-### Шаг2. ФУНКЦИОНАЛЬНЫЙ АНАЛИЗ И КЛАССИФИКАЦИЯ
-
-**ПРИМЕР "течёт труба": угроза имуществу(вода) → Инцидент(0.8)**
-**ПРИМЕР "не горит эвакуационная лампа": отказ системы эвакуации при пожаре → Инцидент(1.0)**
-
-последствия = "[опиши последствия: угроза жизни/здоровью/имуществу или отсутствие угрозы]"
-incident_type = null
-incident_confidence = "0.5"
-
-# 2.0 Анализ функции объекта - ПРОВЕРИТЬ ПЕРВЫМ!
-# Определи: для чего нужен OBJ при пожаре или аварии?
-
-obj_function = "[определи функция: спасение при пожаре/эвакуация/обнаружение опасности или бытовая нужда]"
-
-# Логика: если OBJ нужен для спасения людей при пожаре → при отказе создаётся угроза жизни
-если obj_function содержит ("спасение" или "эвакуация" или "обнаружение" или "защита"):
-    incident_type="Инцидент"; incident_confidence="1.0"
-    reasoning_txt += " | 2.0: " + obj_function + " → отказ создаёт угрозу жизни при ЧС → Инцидент(1.0)"
-
-# 2.1 Прямая угроза жизни?
-# ПРОВЕРЯЕМ ТОЛЬКО ЕСЛИ правило 2.0 НЕ сработало
-если incident_confidence=="0.5":
-    worst_case = "[представь худший сценарий: что случится если OBJ не работает?]"
-
-    если worst_case содержит ("смерть" или "погибнут" или "не смогут спастись" или "не смогут эвакуироваться" или "заваливание" или "обрушение"):
-        incident_type="Инцидент"; incident_confidence="1.0"
-        reasoning_txt += " | 2.1: [" + worst_case + "] → прямая угроза жизни → Инцидент"
-
-# 2.2 Угроза здоровью?
-если incident_confidence=="0.5":
-    если последствия содержит ("плесень" или "травма" или "электричество" или "озон" или "угарный" или "газ"):
-        incident_type="Инцидент"; incident_confidence="0.9"
-        reasoning_txt += " | 2.2: [" + последствия + "] → угроза здоровью → Инцидент"
-
-# 2.3 Угроза имуществу?
-если incident_confidence=="0.5":
-    если последствия содержит ("затоплен" или "поврежден" или "уничтожен" или "отсутств"):
-        incident_type="Инцидент"; incident_confidence="0.8"
-        reasoning_txt += " | 2.3: [" + последствия + "] → угроза имуществу → Инцидент"
-
-# 2.4 Запрос без срочности?
-если incident_confidence=="0.5":
-    incident_type="Запрос"; incident_confidence="0.7"
-    reasoning_txt += " | 2.4: Запрос без угроз"
-
-reasoning_txt += " | incident_type=" + incident_type + "(" + incident_confidence + ")"
-
-### Шаг3. JSON
-Верни JSON в формате:
-{{"incident_type": [значение incident_type], "confidence": [значение incident_confidence], "reasoning": [значение reasoning_txt]}}"""
+Верни JSON: {{"incident_type": "Инцидент/Запрос", "confidence": 0.7, "reasoning": "обоснование"}}"""
         return prompt
 
     # ========================================================================
     # ПРОМПТ 2: location_type (Индивидуальное/Общедомовое)
     # ========================================================================
 
-    def _create_location_type_prompt(self, txtPrb: str) -> str:
-        """Создание промпта для определения location_type"""
-        # Переменные для f-string (будут заполнены LLM по алгоритму в промпте)
-        OBJ = ""
-        EVENT = ""
-        PLACE = ""
-        reasoning_txt = ""
-        SCOPE = ""
-        location_type = ""
-        location_confidence = ""
+    async def _create_location_type_prompt(self, txtPrb: str) -> str:
+        """
+        Создание промпта для определения location_type
 
-        # ========================================================================
-        # СТАРЫЙ ПРОМПТ (до 2026-01-23, без few-shot примеров)
-        # ========================================================================
-        # prompt_old = f"""## Роль
-        # Ты — строгий алгоритмический классификатор локации. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
-        #
-        # ## Входные данные
-        # TXT_PRB = "{txtPrb}"
-        #
-        # ## АЛГОРИТМ (СТРОГО ПО ШАГАМ, ПРИСВАИВАЙ ПЕРЕМЕННЫЕ!)
-        # (далее алгоритм без изменений...)
-        # """
+        ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
+        """
+        # Формируем примеры из БД (группируем по localization)
+        location_examples = {"Общедомовое": [], "Индивидуальное": []}
+        for obj in self.objects_examples:
+            loc = obj.get('localization', 'Индивидуальное')
+            if loc and obj['name']:
+                if len(location_examples[loc]) < 10:  # max 10 примеров на тип
+                    location_examples[loc].append(f'- "{obj["name"]}" → {loc}')
 
-        # ========================================================================
-        # НОВЫЙ ПРОМПТ (с 2026-01-23, добавлены few-shot примеры из БД)
-        # ========================================================================
-        prompt = f"""## Роль
-Ты — строгий алгоритмический классификатор локации. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
+        examples_text = ""
+        if location_examples["Общедомовое"]:
+            examples_text += f"\nОБЩЕДОМОВОЕ (выборка из БД):\n" + "\n".join(location_examples["Общедомовое"][:10])
+        if location_examples["Индивидуальное"]:
+            examples_text += f"\n\nИНДИВИДУАЛЬНОЕ (выборка из БД):\n" + "\n".join(location_examples["Индивидуальное"][:10])
 
-## Входные данные
+        # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+        try:
+            from llm_tester.models import PromptTemplate
+            from asgiref.sync import sync_to_async
+
+            @sync_to_async
+            def get_db_template():
+                return PromptTemplate.objects.filter(
+                    slug='filter-location-type',
+                    is_active=True
+                ).first()
+
+            db_template = await get_db_template()
+
+            if db_template:
+                # Подставляем переменные в шаблон из БД
+                prompt = db_template.template.format(
+                    txtPrb=txtPrb,
+                    examples=examples_text
+                )
+
+                logger.debug(f"[DB] Промпт filter-location-type загружен из БД (ID: {db_template.id})")
+                return prompt
+            else:
+                logger.error(f"[DB] Промпт 'filter-location-type' не найден в БД!")
+
+        except Exception as e:
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+
+        # Fallback-промпт (если промпт не найден в БД)
+        logger.warning("[FALLBACK] Используется fallback-промпт для location_type")
+
+        prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
+
 TXT_PRB = "{txtPrb}"
 
-## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (проанализированы все 78 услуг)
+ОПРЕДЕЛИ ЛОКАЦИЮ:
+- "Индивидуальное" - если проблема в квартире/внутри помещения
+- "Общедомовое" - если проблема в общих местах (подъезд, подвал, крыша)
 
-ОБЩЕДОМОВОЕ (выборка из 47 услуг):
-- "Нет света во всем доме" → Общедомовое
-- "Нет света в части дома" → Общедомовое
-- "Нет горячей воды во всём доме" → Общедомовое
-- "Прорыв в системе отопления общедомовой" → Общедомовое
-- "Общедомовой прорыв труб и затопление" → Общедомовое
-- "Искрение, замыкание электрощитов и ВРУ" → Общедомовое
-- "Не работает домофон" → Общедомовое
-- "Лифт не работает, двери застряли" → Общедомовое
-- "Уборка подъездов, лестничных клеток" → Общедомовое
-- "Протечка крыши, затекание в квартиру" → Общедомовое
-- "Мусорные контейнеры переполнены" → Общедомовое
-- "Очистка лотков и приямков водоотведения" → Общедомовое
-
-ИНДИВИДУАЛЬНОЕ (выборка из 31 услуги):
-- "Нет света индивидуальное" → Индивидуальное
-- "Прорыв труб в квартире" → Индивидуальное
-- "Протечка батареи/радиатора в квартире" → Индивидуальное
-- "Затопление от соседей" → Индивидуальное
-- "Замена/поверка водомерных счётчиков" → Индивидуальное
-- "Полотенцесушитель не греет/холодный" → Индивидуальное
-- "Делопроизводство" → Индивидуальное
-- "Технические характеристики и информация о состоянии дома" → Индивидуальное
-
-⛔ ВСЕ Информационные запросы → Индивидуальное (12/12 услуг)
-
-## АЛГОРИТМ (СТРОГО ПО ШАГАМ, ПРИСВАИВАЙ ПЕРЕМЕННЫЕ!)
-
-### Шаг1. Сущности
-OBJ = "[сущность-проблема]"
-EVENT = "[событие]"
-PLACE = "[место]"
-reasoning_txt = "Шаг1: OBJ=" + OBJ + "; EVENT=" + EVENT + "; PLACE=" + PLACE
-
-### Шаг2. Определи SCOPE (внутри/вне)
-SCOPE = null
-
-# 2.1 Явная локация?
-# ИСПРАВЛЕНО (2026-01-23): Добавлен предлог "в"/"на" для точности
-# ПРИМЕР ОШИБКИ: "холодная вода" содержит "ванн" → внутри (НЕВЕРНО!)
-# ПРАВИЛЬНО: "в ванной" → "в ванной" содержит "в" + "ванн" → внутри (ВЕРНО!)
-если PLACE содержит ("в квартир"/"в ванн"/"в кухн"/"в спальн"/"в туалет"/"на балкон"):
-    SCOPE="внутри"
-reasoning_txt += " | 2.1: PLACE=[" + PLACE + "] → SCOPE=внутри"
-
-иначе если PLACE содержит ("в подъезд"/"в лифт"/"в подвал"/"на крыш"/"на чердак"/"во двор"/"на фасад"):
-    SCOPE="вне"
-    reasoning_txt += " | 2.1: PLACE=[" + PLACE + "] → SCOPE=вне"
-
-# 2.2 Если SCOPE=null, используй OBJ
-# ИСПРАВЛЕНО (2026-01-23): Шаг 2.2 ЗАКОММЕНТИРОВАН (неугадываем локацию!)
-# ПРИЧИНА: "вода", "кран" и т.п. НЕ являются явным указанием локации
-# ПРИМЕР ОШИБКИ: "нет холодной воды" → OBJ="вода" → SCOPE="внутри" → Индивидуальное
-#           Но правильная услуга "Нет холодной воды во всём доме" → Общедомовое!
-# РЕШЕНИЕ: Если PLACE не указан явно (шаг 2.1), оставляем SCOPE=null
-#          Это приведет к location_type=null → в MainAgent спросит "Где именно?"
-# СТАРЫЙ ВАРИАНТ (приводил к ошибкам):
-# иначе если OBJ содержит ("кран"/"смеситель"/"унитаз"/"ванна"/"розетка"/"дверь межкомнат"):
-#     SCOPE="внутри"
-#     reasoning_txt += " | 2.2: OBJ=[" + OBJ + "] → SCOPE=внутри"
-# иначе если OBJ содержит ("лифт"/"домофон"/"крыш"/"подвал"/"стояк"/"фасад"/"двор"):
-#     SCOPE="вне"
-#     reasoning_txt += " | 2.2: OBJ=[" + OBJ + "] → SCOPE=вне"
-
-# 2.3 Если всё ещё null, используй EVENT
-иначе если EVENT содержит ("сверху"/"с потолка"/"стена"/"фундамент"/"межпанель"):
-    SCOPE="вне"
-    reasoning_txt += " | 2.3: EVENT=[" + EVENT + "] → SCOPE=вне"
-
-### Шаг3. location_type
-# ⛔⛔⛔ КРИТИЧЕСКИ ВАЖНО: В блоке иначе ЯВНО присваиваем location_type=null!
-# КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать "Индивидуальное" или "Общедомовое" по умолчанию!
-# ПРИМЕР: "нет воды" → PLACE не содержит "в квартир"/"во дворе" → SCOPE=null → location_type=null
-#          НЕ ДОПУСКАЙ: "location_type=Индивидуальное по умолчанию" ❌❌❌
-location_type = null
-location_confidence = "0.5"
-
-если SCOPE=="внутри":
-    location_type="Индивидуальное"
-    location_confidence="1.0"
-    reasoning_txt += " | Шаг3: SCOPE=внутри → Индивидуальное(1.0)"
-иначе если SCOPE=="вне":
-    location_type="Общедомовое"
-    location_confidence="1.0"
-    reasoning_txt += " | Шаг3: SCOPE=вне → Общедомовое(1.0)"
-иначе:
-    # ⛔⛔⛔ STOP! Если SCOPE=null, location_type ТОЛЬКО null!
-    # НЕ вставляй "Индивидуальное" или "Общедомовое" - это КАТЕГОРИЧЕСКИ ОШИБКА!
-    location_type=null
-    location_confidence="0.5"
-    reasoning_txt += " | Шаг3: SCOPE=null → location_type=null(0.5)"
-
-### Шаг4. JSON
-{{
-  "location_type": """ + location_type + """",
-  "confidence": """ + location_confidence + """",
-  "reasoning": """ + reasoning_txt + """
-}}"""
+Верни JSON: {{"location_type": "Индивидуальное/Общедомовое", "confidence": 0.7, "reasoning": "обоснование"}}"""
         return prompt
 
     # ========================================================================
     # ПРОМПТ 3: category (категория проблемы)
     # ========================================================================
 
-    def _create_category_prompt(self, txtPrb: str) -> str:
-        """Создание промпта для определения category"""
+    async def _create_category_prompt(self, txtPrb: str) -> str:
+        """
+        Создание промпта для определения category
+
+        ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
+        """
         # Формируем список категорий
         categories_str = ", ".join([f'"{cat}"' for cat in self.categories_list])
 
-        # Переменные для f-string (будут заполнены LLM по алгоритму в промпте)
-        OBJ = ""
-        EVENT = ""
-        PLACE = ""
-        reasoning_txt = ""
-        M_EVENT = {}
-        M_PLACE = {}
-        M_OBJ = {}
-        M_CANDIDATE = {}
-        Z1_cat = ""
-        Z1 = 0.0
-        total = 0.0
-        ostatok = 0.0
-        category = ""
-        category_confidence = ""
+        # Формируем примеры из БД (группируем по category)
+        from collections import defaultdict
+        category_examples = defaultdict(list)
+        for obj in self.objects_examples:
+            cat = obj.get('category', '')
+            if cat and obj['name']:
+                if len(category_examples[cat]) < 6:  # max 6 примеров на категорию
+                    category_examples[cat].append(f'- "{obj["name"]}" → {cat}')
 
-        # ========================================================================
-        # СТАРЫЙ ПРОМПТ (до 2026-01-23, без few-shot примеров)
-        # ========================================================================
-        # prompt_old = f"""## Роль
-        # Ты — строгий алгоритмический классификатор категории. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
-        #
-        # ## Входные данные
-        # TXT_PRB = "{txtPrb}"
-        # CATEGORIES = [{categories_str}]
-        #
-        # ## АЛГОРИТМ (СТРОГО ПО ШАГАМ, ПРИСВАИВАЙ ПЕРЕМЕННЫЕ!)
-        # (далее сложный алгоритм с матрицами...)
-        # """
+        examples_text = "\n## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически)\n"
+        for cat in sorted(category_examples.keys()):
+            count = len([x for x in self.objects_examples if x.get('category') == cat])
+            examples_text += f"\n{cat} ({count} услуг):\n"
+            examples_text += "\n".join(category_examples[cat][:6]) + "\n"
 
-        # ========================================================================
-        # НОВЫЙ ПРОМПТ (с 2026-01-23, добавлены few-shot примеры из БД)
-        # ========================================================================
-        prompt = f"""## Роль
-Ты — строгий алгоритмический классификатор категории. Выполняй ТОЛЬКО алгоритм. Выход ТОЛЬКО JSON.
+        # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+        try:
+            from llm_tester.models import PromptTemplate
+            from asgiref.sync import sync_to_async
 
-## Входные данные
+            @sync_to_async
+            def get_db_template():
+                return PromptTemplate.objects.filter(
+                    slug='filter-category',
+                    is_active=True
+                ).first()
+
+            db_template = await get_db_template()
+
+            if db_template:
+                # Подставляем переменные в шаблон из БД
+                prompt = db_template.template.format(
+                    txtPrb=txtPrb,
+                    categories_str=categories_str
+                )
+
+                # Добавляем примеры в промпт
+                prompt = prompt.replace(
+                    '## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически)',
+                    f'## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически){examples_text}'
+                )
+
+                logger.debug(f"[DB] Промпт filter-category загружен из БД (ID: {db_template.id})")
+                return prompt
+            else:
+                logger.error(f"[DB] Промпт 'filter-category' не найден в БД!")
+
+        except Exception as e:
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+
+        # Fallback-промпт (если промпт не найден в БД)
+        logger.warning("[FALLBACK] Используется fallback-промпт для category")
+
+        prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
+
 TXT_PRB = "{txtPrb}"
 CATEGORIES = [{categories_str}]
 
-## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (проанализированы все 78 услуг)
+ОПРЕДЕЛИ КАТЕГОРИЮ из списка выше.
 
-Электричество (9 услуг):
-- "Нет света во всем доме" → Электричество
-- "Нет света в части дома" → Электричество
-- "Искрение, замыкание электрощитов и ВРУ" → Электричество
-- "Нет света индивидуальное" → Электричество
-- "Не работает домофон" → Электричество
-
-Водоснабжение (10 услуг):
-- "Прорыв труб в квартире" → Водоснабжение
-- "Общедомовой прорыв труб и затопление" → Водоснабжение
-- "Нет горячей воды во всём доме" → Водоснабжение
-- "Нет холодной воды во всём доме" → Водоснабжение
-- "Затопление от соседей" → Водоснабжение
-- "Полотенцесушитель не греет/холодный" → Водоснабжение
-
-Отопление (7 услуг):
-- "Отсутствие отопления" → Отопление
-- "Прорыв в системе отопления общедомовой" → Отопление
-- "Проверка и регулировка систем отопления" → Отопление
-- "Протечка батареи/радиатора в квартире" → Отопление
-
-Конструктив (9 услуг):
-- "Протечка крыши, затекание в квартиру" → Конструктив
-- "Повреждения крыши/желобов/водосточных труб" → Конструктив
-- "Ремонт стен и перекрытий" → Конструктив
-- "Ремонт крыши/желобов/водосточных труб" → Конструктив
-
-Санитария (10 услуг):
-- "Очистка лотков и приямков водоотведения" → Санитария
-- "Мусорные контейнеры переполнены" → Санитария
-- "Снег и наледь на территории" → Санитария
-- "Засор ливнёвой канализации/дренажных систем" → Санитария
-- "Уборка подъездов, лестничных клеток" → Санитария
-
-Информационные запросы (12 услуг):
-- "Делопроизводство" → Информационные запросы
-- "Технические характеристики и информация о состоянии дома" → Информационные запросы
-- "Запросы по квартирным платежам" → Информационные запросы
-- "Проведение общего собрания собственников" → Информационные запросы
-
-Пожарная безопасность (6 услуг):
-- "Пожар/возгорание общедомовой" → Пожарная безопасность
-- "Пожар в квартире" → Пожарная безопасность
-- "Сработала пожарная сигнализация" → Пожарная безопасность
-
-Озеленение (2 услуги):
-- "Упало дерево/ветка на провода/дом/дорога" → Озеленение
-- "Уход за зелёными зонами, газонами" → Озеленение
-
-## АЛГОРИТМ (СТРОГО ПО ШАГАМ, ПРИСВАИВАЙ ПЕРЕМЕННЫЕ!)
-
-### Шаг1. Сущности
-OBJ = "[сущность-проблема]"
-EVENT = "[событие]"
-PLACE = "[место]"
-reasoning_txt = "Шаг1: OBJ=" + OBJ + "; EVENT=" + EVENT + "; PLACE=" + PLACE
-
-### Шаг2. Category (ВСЕ CATEGORIES! sum релев=1.0, impossible=0.0)
-
-M_EVENT = {{cat: 0.0 for cat in CATEGORIES}}
-# Релевантные: распредели sum=1.0
-# ПРИМЕР: M_EVENT["Водоснабжение"]=0.4; M_EVENT["Канализация"]=0.3; ...
-reasoning_txt += " | Шаг2: M_EVENT=" + str(M_EVENT) + " (sum релев=1.0)"
-
-M_PLACE = {{cat: 0.0 for cat in CATEGORIES}}
-# Релевантные в PLACE sum=1.0 (равно если неоднозначно)
-# ПРИМЕР: M_PLACE["Водоснабжение"]=0.33; M_PLACE["Канализация"]=0.33; ...
-reasoning_txt += " | M_PLACE=" + str(M_PLACE) + " (sum=1.0)"
-
-M_OBJ = {{cat: 0.0 for cat in CATEGORIES}}
-# ПРИМЕР: M_OBJ["Водоснабжение"]=0.33; M_OBJ["Канализация"]=0.33; ...
-reasoning_txt += " | M_OBJ=" + str(M_OBJ) + " (sum=1.0)"
-
-M_CANDIDATE = {{}}
-# ИСПРАВЛЕНО (2026-01-26): Убран M_PLACE из умножения!
-# ПРИЧИНА: Если PLACE не указан, M_PLACE=[0,0,...] → M_CANDIDATE=[0,0,...] → category=null
-# НОВАЯ ФОРМУЛА: M_CANDIDATE = M_OBJ * M_EVENT (место не влияет на категорию!)
-for cat in CATEGORIES:
-    M_CANDIDATE[cat] = round(M_OBJ[cat] * M_EVENT[cat], 3)
-reasoning_txt += " | M_CANDIDATE=" + str(M_CANDIDATE)
-
-Z1_cat = max(M_CANDIDATE, key=M_CANDIDATE.get)
-Z1 = M_CANDIDATE[Z1_cat]
-total = sum(M_CANDIDATE.values())
-ostatok = total - Z1
-category = null
-category_confidence = "0.5"
-if Z1 > ostatok * 0.7:
-    category = Z1_cat
-    category_confidence = str(round(Z1, 1))
-reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + ", остаток=" + str(ostatok) + ", " + str(Z1) + ">" + str(ostatok*0.7) + "=" + (ДА/НЕТ) + " → category=" + str(category) + "(" + category_confidence + ")"
-
-### Шаг3. JSON
-{{
-  "category": """ + str(category) + """,
-  "confidence": """ + category_confidence + """,
-  "reasoning": """ + reasoning_txt + """
-}}"""
+Верни JSON: {{"category": "категория", "confidence": 0.7, "reasoning": "обоснование"}}"""
         return prompt
 
     # ========================================================================
@@ -692,9 +518,10 @@ reasoning_txt += " | Z1=" + Z1_cat + "(" + str(Z1) + "), total=" + str(total) + 
             logger.info(f"FilterDetectionService: запускаем 3 промпта параллельно...")
 
             # Создаем промпты
-            prompt_incident = self._create_incident_type_prompt(problem_description)
-            prompt_location = self._create_location_type_prompt(problem_description)
-            prompt_category = self._create_category_prompt(problem_description)
+            # ИСПРАВЛЕНО (2026-02-05): Добавлен await (методы теперь async)
+            prompt_incident = await self._create_incident_type_prompt(problem_description)
+            prompt_location = await self._create_location_type_prompt(problem_description)
+            prompt_category = await self._create_category_prompt(problem_description)
 
             # Вызываем LLM для каждого фильтра
             incident_result, location_result, category_result = await asyncio.gather(
