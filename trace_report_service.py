@@ -707,24 +707,30 @@ Session ID: {session_id}
                     service_name = "MainAgent (AI Question Generator)"
                 elif 'строгий логический валидатор' in prompt_text:
                     service_name = "QuestionValidatorService"
-                # ИСПРАВЛЕНО (2026-02-05): Заголовок ДО промпта и ответа
-                service_label = f" Ответ LLM для {service_name} ({provider} - {model}) "
-                border_length = len(service_label)
-                details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
 
                 if prompt_text:
+                    # ИСПРАВЛЕНО (2026-02-05): Заголовок промпта
+                    service_label = f" Промпт LLM для {service_name} ({provider} - {model}) "
+                    border_length = len(service_label)
+                    details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
+
                     # ИСПРАВЛЕНО (2026-01-16): Показываем полный промпт для FilterDetectionService
                     # Для остальных сервисов ограничиваем до 5000 символов
                     if "FilterDetectionService" in service_name:
                         prompt_preview = prompt_text  # Полный промпт
                     else:
                         prompt_preview = prompt_text[:5000] + "...\n(ПРОМПТ ОБРЕЗАН - полный текст в БД)" if len(prompt_text) > 5000 else prompt_text
-                    details += f"ПРОМПТ:\n{prompt_preview}\n"
+                    details += f"{prompt_preview}\n"
 
                 if response_text:
+                    # ИСПРАВЛЕНО (2026-02-05): Заголовок ответа
+                    service_label = f" Ответ LLM для {service_name} ({provider} - {model}) "
+                    border_length = len(service_label)
+                    details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
+
                     # Ограничиваем длину ответа для читаемости
                     response_preview = response_text[:1000] + "..." if len(response_text) > 1000 else response_text
-                    details += f"ОТВЕТ LLM:\n{response_preview}\n"
+                    details += f"{response_preview}\n"
 
         if not llm_calls_found:
             details += "\n9.1. LLM ВЫЗОВЫ:\n {(нет данных из llm_request_log)}\n"
