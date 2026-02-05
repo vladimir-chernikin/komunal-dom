@@ -16,6 +16,7 @@ class PromptTemplate(models.Model):
     PROMPT_TYPES = [
         ('filter_detection', 'FilterDetectionService'),
         ('main_agent', 'MainAgent'),
+        ('problem_accumulation', 'ProblemAccumulationService'),
         ('custom', 'Кастомный'),
     ]
 

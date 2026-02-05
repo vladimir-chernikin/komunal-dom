@@ -65,6 +65,7 @@ class ProblemAccumulationService:
                 'is_meaningful': bool,   # Содержит ли сообщение полезную информацию
                 'is_refusal': bool,      # ИСПРАВЛЕНО (2026-01-13): Является ли сообщением отказом
                 'new_info': str,         # Краткое описание новой информации
+                'db_error': bool,        # ИСПРАВЛЕНО (2026-02-05): Ошибка загрузки промпта из БД
                 'fields': {              # Извлеченные поля
                     'problem': str | None,
                     'location': str | None,
@@ -97,6 +98,7 @@ class ProblemAccumulationService:
                 'is_meaningful': False,  # Отказ не содержит новой информации о проблеме
                 'is_refusal': True,
                 'new_info': f"пользователь отказался от услуги '{refused_service}'",
+                'db_error': False,  # ИСПРАВЛЕНО (2026-02-05)
                 'fields': {},
                 'refused_service': refused_service
             }
@@ -109,9 +111,15 @@ class ProblemAccumulationService:
         logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
 
         # Формируем промпт для LLM
-        prompt = self._create_accumulation_prompt(
+        # ИСПРАВЛЕНО (2026-02-05): Добавлен await (функция теперь async)
+        prompt = await self._create_accumulation_prompt(
             message_text, current_problem, bot_question, dialog_history
         )
+
+        # ИСПРАВЛЕНО (2026-02-05): Проверяем на fallback-промпт (ошибка БД)
+        db_error = 'ТЕХНИЧЕСКАЯ ОШИБКА' in prompt
+        if db_error:
+            logger.error("[DB_ERROR] Используется fallback-промпт - ошибка загрузки из БД!")
 
         # ИСПРАВЛЕНО (2025-12-28): Логируем промт
         logger.info(f"🤖 ProblemAccumulation PROMPT:")
@@ -137,6 +145,9 @@ class ProblemAccumulationService:
 
             # Пытаемся распарсить JSON
             result = self._parse_llm_response(response_text, current_problem)
+
+            # ИСПРАВЛЕНО (2026-02-05): Добавляем флаг db_error в результат
+            result['db_error'] = db_error
 
             # ИСПРАВЛЕНО (2026-01-05): КРИТИЧЕСКИ ВАЖНО - если is_meaningful=false, сохраняем current_problem!
             if not result['is_meaningful']:
@@ -166,6 +177,7 @@ class ProblemAccumulationService:
                 'extracted_info': {},
                 'is_meaningful': False,
                 'new_info': '',
+                'db_error': False,  # ИСПРАВЛЕНО (2026-02-05)
                 'fields': {
                     'problem': None,
                     'location': None,
@@ -177,14 +189,20 @@ class ProblemAccumulationService:
                 }
             }
 
-    def _create_accumulation_prompt(
+    async def _create_accumulation_prompt(
         self,
         message_text: str,
         current_problem: str,
         bot_question: str = None,
         dialog_history: List[Dict] = None
     ) -> str:
-        """Создает промпт для LLM."""
+        """
+        Создает промпт для LLM.
+
+        ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
+        Если промпт не найден в БД - использует fallback с сообщением об ошибке.
+        ИСПРАВЛЕНО (2026-02-05): Сделан async для работы с Django ORM через sync_to_async.
+        """
 
         # Контекст истории диалога (последние 3 сообщения)
         history_context = ""
@@ -196,218 +214,67 @@ class ProblemAccumulationService:
                 text = msg.get('text', '')[:100]
                 history_context += f"  {role}: {text}\n"
 
-        prompt = f"""Ты - аналитик, извлекающий и накапливающий факты из диалога.
+        # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+        try:
+            from llm_tester.models import PromptTemplate
+            from asgiref.sync import sync_to_async
+
+            # ИСПРАВЛЕНО (2026-02-05): Используем sync_to_async для Django ORM
+            @sync_to_async
+            def get_db_template():
+                return PromptTemplate.objects.filter(
+                    slug='problem-accumulation-service',
+                    is_active=True
+                ).first()
+
+            db_template = await get_db_template()
+
+            if db_template:
+                # Подставляем переменные в шаблон из БД
+                prompt = db_template.template.format(
+                    message_text=message_text,
+                    current_problem=current_problem if current_problem else '(пусто - начало диалога)',
+                    bot_question=bot_question if bot_question else '(первое сообщение в диалоге)',
+                    history_context=history_context
+                )
+
+                logger.debug(f"[DB] Промпт загружен из БД (ID: {db_template.id})")
+                return prompt
+            else:
+                logger.error(f"[DB] Промпт 'problem-accumulation-service' не найден в БД!")
+
+        except Exception as e:
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+
+        # Fallback-промпт с сообщением об ошибке (если промпт не найден в БД)
+        logger.warning("[FALLBACK] Используется fallback-промпт (техническая ошибка!)")
+
+        # Короткий fallback-промпт для технической ошибки
+        prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
 
 ТЕКУЩЕЕ ОПИСАНИЕ ПРОБЛЕМЫ:
-{current_problem if current_problem else '(пусто - начало диалога)'}
+{current_problem if current_problem else '(пусто)'}
 
-ПРЕДЫДУЩИЙ ВОПРОС БОТА (на который пользователь отвечает):
-{bot_question if bot_question else '(первое сообщение в диалоге)'}
-
-ТЕКУЩЕЕ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:
+СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:
 {message_text}
-{history_context}
 
-ЗАДАЧА:
-1. Определи содержит ли сообщение ПОЛЕЗНУЮ информацию о проблеме
-2. Извлеки конкретные факты из сообщения
-3. Обнови описание проблемы, добавив новую информацию
+ИЗВЛЕКИ ИЗ СООБЩЕНИЯ:
+- problem: проблема (течет, сломался и т.д.)
+- location: локация (зал, ванная и т.д.)
+- source: источник (труба, батарея и т.д.)
 
-ВАЖНО:
-- Если "привет", "да", "нет", "ок", "спасибо", "пожалуйста" → is_meaningful=false
-- ⛔ КРИТИЧЕСКИ ВАЖНО: Если bot_question содержит вопрос ("Где", "Что", "Какой"), то ответ ВСЕГДА is_meaningful=true!
-  Даже если ответ короткий ("в зале", "труба", "батарея") - это ЗНАЧИМЫЙ ответ на вопрос бота!
-- Объединяй информацию с current_problem (НЕ копируй, а ДОБАВЛЯЙ)
-- НЕ повторяй уже известную информацию
-- Извлекай МАКСИМУМ конкретики: локация, источник, категория, серьезность
-- txtPrb должно быть КРАТКИМ и ПОНЯТНЫМ (1-2 предложения)
-- ⛔ КРИТИЧЕСКИ ВАЖНО: Если is_meaningful=false, ТОЧНО скопируй current_problem в updated_problem БЕЗ ИЗМЕНЕНИЙ!
-
-Верни ТОЛЬКО JSON (без markdown):
-
-{{
-    "is_meaningful": true или false,
-    "new_info": "краткое описание НОВОЙ информации (5-10 слов)",
-    "updated_problem": "полное обновленное описание проблемы (1-2 предложения)",
-    "fields": {{
-        "problem": "проблема (течет, сломался, запах, шум и т.д.)",
-        "location": "локация (зал, ванная, кухня, подъезд и т.д.)",
-        "source": "источник (труба, батарея, кран, розетка и т.д.)",
-        "category": "категория (отопление, водоснабжение, электрика и т.д.)",
-        "severity": "серьезность (авария, небольшая проблема)",
-        "intensity": "интенсивность (сильно, слабо, постоянно)",
-        "object": "объект (если упоминается конкретный объект)"
-    }}
-}}
-
-ПРИМЕРЫ:
-
-ПРИМЕР 1:
-current_problem: "(пусто)"
-bot_question: "(не было)"
-message_text: "у меня течет"
-Ответ:
+Верни JSON:
 {{
     "is_meaningful": true,
-    "new_info": "у пользователя течет",
-    "updated_problem": "у пользователя течет",
+    "new_info": "краткое описание",
+    "updated_problem": "обновленное описание",
     "fields": {{
-        "problem": "течет",
-        "location": null,
-        "source": null,
-        "category": null,
-        "severity": null,
-        "intensity": null,
-        "object": null
+        "problem": null, "location": null, "source": null,
+        "category": null, "severity": null, "intensity": null, "object": null
     }}
 }}
-
-ПРИМЕР 1.5 (ОТВЕТ НА ВОПРОС БОТА - ВСЕГДА ЗНАЧИМЫЙ!):
-current_problem: "у пользователя прорвало трубу"
-bot_question: "Где именно?"
-message_text: "в квартире"
-Ответ:
-{{
-    "is_meaningful": true,
-    "new_info": "локация: квартира",
-    "updated_problem": "у пользователя прорвало трубу в квартире",
-    "fields": {{
-        "problem": "прорвало",
-        "location": "квартира",
-        "source": "труба",
-        "category": null,
-        "severity": null,
-        "intensity": null,
-        "object": "труба"
-    }}
-}}
-
-ПРИМЕР 1.6 (КРИТИЧЕСКИ ВАЖНО - ОБЪЕДИНЯЙ, А НЕ ЗАМЕНЯЙ!):
-current_problem: "у пользователя прорыв трубы в квартире"
-bot_question: "Что именно сломалось?"
-message_text: "кран"
-❌ НЕПРАВИЛЬНЫЙ ОТВЕТ:
-{{
-    "updated_problem": "кран"  ❌❌❌ ЭТО НЕВЕРНО! Ты ЗАМЕНИЛ всю проблему!
-}}
-✅ ПРАВИЛЬНЫЙ ОТВЕТ:
-{{
-    "is_meaningful": true,
-    "new_info": "объект: кран",
-    "updated_problem": "у пользователя прорыв трубы в квартире, сломался кран",
-    "fields": {{
-        "problem": "прорыв",
-        "location": "квартира",
-        "source": "труба",
-        "category": null,
-        "object": "кран"
-    }}
-}}
-
-ПРИМЕР 2:
-current_problem: "у пользователя течет"
-bot_question: "Где именно?"
-message_text: "В зале"
-Ответ:
-{{
-    "is_meaningful": true,
-    "new_info": "локация: зал",
-    "updated_problem": "у пользователя течет в зале",
-    "fields": {{
-        "problem": "течет",
-        "location": "зал",
-        "source": null,
-        "category": null,
-        "severity": null,
-        "intensity": null,
-        "object": null
-    }}
-}}
-
-ПРИМЕР 3:
-current_problem: "у пользователя течет в зале"
-bot_question: "Что именно течет?"
-message_text: "Батарея"
-Ответ:
-{{
-    "is_meaningful": true,
-    "new_info": "источник: батарея (отопление)",
-    "updated_problem": "у пользователя течет из батареи (отопление) в зале",
-    "fields": {{
-        "problem": "течет",
-        "location": "зал",
-        "source": "батарея",
-        "category": "отопление",
-        "severity": null,
-        "intensity": null,
-        "object": "батарея"
-    }}
-}}
-
-ПРИМЕР 4 (НЕЗНАЧИМЫЕ СООБЩЕНИЯ):
-current_problem: "у пользователя течет из батареи в зале"
-bot_question: "Какой напор?"
-message_text: "постоянно"
-Ответ:
-{{
-    "is_meaningful": false,
-    "new_info": "интенсивность: постоянно",
-    "updated_problem": "у пользователя течет из батареи в зале постоянно",
-    "fields": {{
-        "problem": "течет",
-        "location": "зал",
-        "source": "батарея",
-        "category": "отопление",
-        "severity": null,
-        "intensity": "постоянно",
-        "object": "батарея"
-    }}
-}}
-
-ПРИМЕР 5 (НЕЗНАЧИМЫЕ СООБЩЕНИЯ):
-current_problem: "у пользователя течет"
-bot_question: null
-message_text: "Привет!"
-Ответ:
-{{
-    "is_meaningful": false,
-    "new_info": "",
-    "updated_problem": "у пользователя течет",
-    "fields": {{
-        "problem": "течет",
-        "location": null,
-        "source": null,
-        "category": null,
-        "severity": null,
-        "intensity": null,
-        "object": null
-    }}
-}}
-
-ПРИМЕР 6 (НЕЗНАЧИМЫЕ СООБЩЕНИЯ - сохранение контекста):
-current_problem: "у пользователя течет из трубы у батареи в зале"
-bot_question: "Какой характер у течи?"
-message_text: "а зачем тебе это?"
-Ответ:
-{{
-    "is_meaningful": false,
-    "new_info": "",
-    "updated_problem": "у пользователя течет из трубы у батареи в зале",
-    "fields": {{
-        "problem": "течет",
-        "location": "зал",
-        "source": "труба у батареи",
-        "category": null,
-        "severity": null,
-        "intensity": null,
-        "object": "труба"
-    }}
-}}
-
-ВАЖНО ПРИМЕЧАНИЕ: В примере 6 updated_problem ТОЧНО совпадает с current_problem!
 
 JSON:"""
-
         return prompt
 
     def _parse_llm_response(self, response_text: str, current_problem: str = None) -> Dict[str, Any]:
