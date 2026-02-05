@@ -377,6 +377,23 @@ class MainAgent:
                     message_id=message_id   # ИСПРАВЛЕНО (2026-01-06)
                 )
 
+                # ИСПРАВЛЕНО (2026-02-05): Проверка на ошибку загрузки промпта из БД
+                if accumulation_result.get('db_error'):
+                    logger.error("[DB_ERROR] ProblemAccumulationService: ошибка загрузки промпта из БД!")
+                    # Возвращаем сообщение о технической ошибке
+                    return {
+                        'status': 'ERROR',
+                        'error': 'Ошибка загрузки промпта из базы данных',
+                        'message': 'Извините, произошла техническая ошибка при обработке сообщения. '
+                                  'Пожалуйста, попробуйте переформулировать запрос или свяжитесь с диспетчером.',
+                        'candidates': [],
+                        '_metadata': {
+                            'txtPrb': txtPrb,
+                            'db_error': True,
+                            'error_type': 'prompt_db_error'
+                        }
+                    }
+
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
                 # Короткие ответы типа "в квартире" важны для контекста!
                 txtPrb = accumulation_result['updated_problem']
