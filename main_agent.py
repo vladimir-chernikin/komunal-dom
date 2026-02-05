@@ -1986,8 +1986,43 @@ class MainAgent:
             Dict: AMBIGUOUS с сгенерированным вопросом
         """
         try:
-            # Формируем промпт для AI
-            prompt = f"""Ты - диспетчер управляющей компании. У пользователя проблема.
+            # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+            try:
+                from llm_tester.models import PromptTemplate
+                from asgiref.sync import sync_to_async
+
+                @sync_to_async
+                def get_db_template():
+                    return PromptTemplate.objects.filter(
+                        slug='mainagent-clarify-category',
+                        is_active=True
+                    ).first()
+
+                db_template = await get_db_template()
+
+                if db_template:
+                    # Подставляем переменные в шаблон из БД
+                    prompt = db_template.template.format(
+                        txtPrb=txtPrb,
+                        location_filter=established_filters.get('location_type', {}).get('value', 'неизвестно'),
+                        incident_filter=established_filters.get('incident_type', {}).get('value', 'неизвестно'),
+                        category_filter=established_filters.get('category', {}).get('value', 'НЕ УСТАНОВЛЕНО'),
+                        candidate_name=candidate['service_name'],
+                        attribute_value=attribute_value
+                    )
+
+                    logger.debug(f"[DB] Промпт mainagent-clarify-category загружен из БД (ID: {db_template.id})")
+                else:
+                    logger.error("[DB] Промпт 'mainagent-clarify-category' не найден в БД!")
+                    # Fallback - используем захардкоженный промпт
+                    raise Exception("Промпт не найден в БД")
+
+            except Exception as e:
+                logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+                logger.warning("[FALLBACK] Используется захардкоженный промпт")
+
+                # Fallback-промпт (захардкожен)
+                prompt = f"""Ты - диспетчер управляющей компании. У пользователя проблема.
 
 НАКОПЛЕННАЯ ИНФОРМАЦИЯ:
 {txtPrb}
@@ -2612,9 +2647,40 @@ class MainAgent:
         # Формируем промпт для валидации
         facts_text = "\n".join([f"  - {fact}" for fact in absolute_facts])
 
-        # ИСПРАВЛЕНО (2026-01-03): Улучшенный промпт с примерами и строгими правилами
-        # ИСПРАВЛЕНО (2026-01-03): Проверка что текст является вопросом
-        prompt = f"""Ты - строгий логический валидатор вопросов AI-диспетчера.
+        # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+        try:
+            from llm_tester.models import PromptTemplate
+            from asgiref.sync import sync_to_async
+
+            @sync_to_async
+            def get_db_template():
+                return PromptTemplate.objects.filter(
+                    slug='mainagent-validate-question',
+                    is_active=True
+                ).first()
+
+            db_template = await get_db_template()
+
+            if db_template:
+                # Подставляем переменные в шаблон из БД
+                prompt = db_template.template.format(
+                    question=question,
+                    facts_text=facts_text
+                )
+
+                logger.debug(f"[DB] Промпт mainagent-validate-question загружен из БД (ID: {db_template.id})")
+            else:
+                logger.error("[DB] Промпт 'mainagent-validate-question' не найден в БД!")
+                raise Exception("Промпт не найден в БД")
+
+        except Exception as e:
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+            logger.warning("[FALLBACK] Используется захардкоженный промпт")
+
+            # Fallback-промпт (захардкожен)
+            # ИСПРАВЛЕНО (2026-01-03): Улучшенный промпт с примерами и строгими правилами
+            # ИСПРАВЛЕНО (2026-01-03): Проверка что текст является вопросом
+            prompt = f"""Ты - строгий логический валидатор вопросов AI-диспетчера.
 
 ВОПРОС БОТА: "{question}"
 
@@ -3675,10 +3741,39 @@ JSON:"""
         candidates_json += json.dumps(candidates_list, ensure_ascii=False, indent=2)
         candidates_json += "\n```\n"
 
-        # Формируем промт
-        # ПЕРЕРАБОТАНО (2025-12-29): Позитивная инструкция + алгоритм + JSON заявки
-        # ИСПРАВЛЕНО (2026-01-03): Убраны все эмодзи из промта
-        prompt = f"""Ты - AI-диспетчер УК "Аспект".
+        # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+        try:
+            from llm_tester.models import PromptTemplate
+            from asgiref.sync import sync_to_async
+
+            @sync_to_async
+            def get_db_template():
+                return PromptTemplate.objects.filter(
+                    slug='mainagent-orchestrator',
+                    is_active=True
+                ).first()
+
+            db_template = await get_db_template()
+
+            if db_template:
+                # Подставляем переменные в базовую часть шаблона из БД
+                prompt = db_template.template.format(
+                    context=context  # context будет добавлен ниже
+                )
+
+                logger.debug(f"[DB] Промпт mainagent-orchestrator загружен из БД (ID: {db_template.id})")
+            else:
+                logger.error("[DB] Промпт 'mainagent-orchestrator' не найден в БД!")
+                raise Exception("Промпт не найден в БД")
+
+        except Exception as e:
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+            logger.warning("[FALLBACK] Используется захардкоженный промпт")
+
+            # Fallback-промпт (захардкожен)
+            # ПЕРЕРАБОТАНО (2025-12-29): Позитивная инструкция + алгоритм + JSON заявки
+            # ИСПРАВЛЕНО (2026-01-03): Убраны все эмодзи из промта
+            prompt = f"""Ты - AI-диспетчер УК "Аспект".
 
 
 ⛔⛔⛔ КРИТИЧЕСКИ ВАЖНЕЙШЕЕ ПРАВИЛО - ДВОЙНЫЕ ВОПРОСЫ ЗАПРЕЩЕНЫ! ⛔⛔⛔
