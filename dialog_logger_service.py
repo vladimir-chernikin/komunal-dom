@@ -221,7 +221,7 @@ class DialogLoggerService:
             dialog_id=dialog_id,
             user_id=user_id,
             message_type='system',
-            message_content=f"LLM Request ({provider}/{model}):\nPROMPT: {prompt[:500]}\nRESPONSE: {response[:500]}",
+            message_content=f"LLM Request ({provider}/{model}):\nPROMPT: {prompt}\nRESPONSE: {response[:500]}",
             processing_stage=processing_stage,
             llm_provider=provider,
             llm_model=model,

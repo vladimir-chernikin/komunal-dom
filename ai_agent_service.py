@@ -579,7 +579,7 @@ class AIAgentService:
                         str(uuid.uuid4()),
                         provider,
                         model,
-                        prompt[:5000],  # Ограничиваем длину
+                        prompt,  # ИСПРАВЛЕНО (2026-02-05): Полный промпт без обрезки
                         response[:5000],
                         usage_info['prompt_tokens'],
                         usage_info['completion_tokens'],
