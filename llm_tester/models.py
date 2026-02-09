@@ -62,6 +62,7 @@ class PromptTemplate(models.Model):
         verbose_name_plural = 'AI и Промпты: Шаблоны промптов'
         ordering = ['prompt_type', 'name']
         app_label = 'portal'  # Группировка в раздел УК Аспект (Ольга:Рефакторинг 09.02.2026)
+        db_table = 'llm_tester_prompttemplate'  # Реальное имя таблицы в БД
 
     def __str__(self):
         return f"{self.get_prompt_type_display()}: {self.name}"
@@ -113,6 +114,7 @@ class PromptPreset(models.Model):
         verbose_name_plural = 'AI и Промпты: Тестовые пресеты'
         ordering = ['prompt', 'name']
         app_label = 'portal'  # Группировка в раздел УК Аспект (Ольга:Рефакторинг 09.02.2026)
+        db_table = 'llm_tester_promptpreset'  # Реальное имя таблицы в БД
 
     def __str__(self):
         return f"{self.prompt.name} - {self.name}"
@@ -212,6 +214,7 @@ class LLMTestResult(models.Model):
         verbose_name_plural = 'AI и Промпты: Результаты тестов LLM'
         ordering = ['-created_at']
         app_label = 'portal'  # Группировка в раздел УК Аспект (Ольга:Рефакторинг 09.02.2026)
+        db_table = 'llm_tester_llmtestresult'  # Реальное имя таблицы в БД
 
     def __str__(self):
         return f"{self.get_provider_display()} - {self.model} - {self.created_at.strftime('%d.%m.%Y %H:%M')}"
