@@ -58,10 +58,10 @@ class PromptTemplate(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлен')
 
     class Meta:
-        verbose_name = 'Шаблон промпта'
-        verbose_name_plural = 'Шаблоны промптов'
+        verbose_name = 'AI и Промпты: Шаблон промпта'
+        verbose_name_plural = 'AI и Промпты: Шаблоны промптов'
         ordering = ['prompt_type', 'name']
-        app_label = 'ai_and_prompts'  # Группировка в раздел "AI и Промпты" (Ольга:Рефакторинг 09.02.2026)
+        app_label = 'portal'  # Группировка в раздел УК Аспект (Ольга:Рефакторинг 09.02.2026)
 
     def __str__(self):
         return f"{self.get_prompt_type_display()}: {self.name}"
@@ -109,10 +109,10 @@ class PromptPreset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создан')
 
     class Meta:
-        verbose_name = 'Тестовый пресет'
-        verbose_name_plural = 'Тестовые пресеты'
+        verbose_name = 'AI и Промпты: Тестовый пресет'
+        verbose_name_plural = 'AI и Промпты: Тестовые пресеты'
         ordering = ['prompt', 'name']
-        app_label = 'ai_and_prompts'  # Группировка в раздел "AI и Промпты" (Ольга:Рефакторинг 09.02.2026)
+        app_label = 'portal'  # Группировка в раздел УК Аспект (Ольга:Рефакторинг 09.02.2026)
 
     def __str__(self):
         return f"{self.prompt.name} - {self.name}"
@@ -208,10 +208,10 @@ class LLMTestResult(models.Model):
     )
 
     class Meta:
-        verbose_name = 'Результат теста LLM'
-        verbose_name_plural = 'Результаты тестов LLM'
+        verbose_name = 'AI и Промпты: Результат теста LLM'
+        verbose_name_plural = 'AI и Промпты: Результаты тестов LLM'
         ordering = ['-created_at']
-        app_label = 'ai_and_prompts'  # Группировка в раздел "AI и Промпты" (Ольга:Рефакторинг 09.02.2026)
+        app_label = 'portal'  # Группировка в раздел УК Аспект (Ольга:Рефакторинг 09.02.2026)
 
     def __str__(self):
         return f"{self.get_provider_display()} - {self.model} - {self.created_at.strftime('%d.%m.%Y %H:%M')}"
