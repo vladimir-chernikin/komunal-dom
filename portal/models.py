@@ -22,6 +22,7 @@ class AIPrompt(models.Model):
     description = models.TextField(blank=True, verbose_name="Описание для чего используется")
     content = models.TextField(verbose_name="Содержание промпта")
     is_active = models.BooleanField(default=True, verbose_name="Активен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый", help_text="True = тестовый (для экспериментов), False = боевой (используется в продакшне)")
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")

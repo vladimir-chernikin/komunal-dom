@@ -85,14 +85,14 @@ class UserAdmin(BaseUserAdmin):
 class AIPromptAdmin(admin.ModelAdmin):
     """Администрирование AI промптов"""
 
-    list_display = ('prompt_id', 'prompt_type', 'title', 'is_active', 'updated_at')
-    list_filter = ('prompt_type', 'is_active', 'created_at')
+    list_display = ('prompt_id', 'prompt_type', 'title', 'is_test_badge', 'is_active', 'updated_at')
+    list_filter = ('prompt_type', 'is_test', 'is_active', 'created_at')
     search_fields = ('prompt_id', 'title', 'description')
     ordering = ('prompt_type', 'prompt_id')
 
     fieldsets = (
         (None, {
-            'fields': ('prompt_id', 'prompt_type', 'title', 'is_active'),
+            'fields': ('prompt_id', 'prompt_type', 'title', 'is_test', 'is_active'),
             'description': 'Основная информация о промпте'
         }),
         ('Описание', {
@@ -111,6 +111,22 @@ class AIPromptAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = ('created_at', 'updated_at')
+
+    def is_test_badge(self, obj):
+        """Показывает метку [Б] или [Т]"""
+        from django.utils.safestring import mark_safe
+        if obj.is_test:
+            return mark_safe('<span style="color: #ff6b6b; font-weight: bold; background: #ffebeb; padding: 2px 6px; border-radius: 3px;">[Т]</span>')
+        else:
+            return mark_safe('<span style="color: #51cf66; font-weight: bold; background: #e6fcf5; padding: 2px 6px; border-radius: 3px;">[Б]</span>')
+    is_test_badge.short_description = 'Тип'
+
+    def has_delete_permission(self, request, obj=None):
+        """Запрещает удаление боевых промптов"""
+        if obj is not None and not obj.is_test:
+            # Боевой промпт - запрещаем удаление
+            return False
+        return super().has_delete_permission(request, obj)
 
     def save_model(self, request, obj, form, change):
         """Автоматически устанавливаем создателя"""
