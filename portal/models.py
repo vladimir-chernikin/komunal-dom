@@ -31,6 +31,7 @@ class AIPrompt(models.Model):
         verbose_name = "AI промпт"
         verbose_name_plural = "AI промпты"
         ordering = ['prompt_type', 'prompt_id']
+        app_label = 'ai_and_prompts'  # Группировка в раздел "AI и Промпты" (Ольга:Рефакторинг 09.02.2026)
 
     def __str__(self):
         return f"{self.prompt_type}: {self.title}"

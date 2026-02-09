@@ -61,6 +61,7 @@ class PromptTemplate(models.Model):
         verbose_name = 'Шаблон промпта'
         verbose_name_plural = 'Шаблоны промптов'
         ordering = ['prompt_type', 'name']
+        app_label = 'ai_and_prompts'  # Группировка в раздел "AI и Промпты" (Ольга:Рефакторинг 09.02.2026)
 
     def __str__(self):
         return f"{self.get_prompt_type_display()}: {self.name}"
@@ -111,6 +112,7 @@ class PromptPreset(models.Model):
         verbose_name = 'Тестовый пресет'
         verbose_name_plural = 'Тестовые пресеты'
         ordering = ['prompt', 'name']
+        app_label = 'ai_and_prompts'  # Группировка в раздел "AI и Промпты" (Ольга:Рефакторинг 09.02.2026)
 
     def __str__(self):
         return f"{self.prompt.name} - {self.name}"
@@ -209,6 +211,7 @@ class LLMTestResult(models.Model):
         verbose_name = 'Результат теста LLM'
         verbose_name_plural = 'Результаты тестов LLM'
         ordering = ['-created_at']
+        app_label = 'ai_and_prompts'  # Группировка в раздел "AI и Промпты" (Ольга:Рефакторинг 09.02.2026)
 
     def __str__(self):
         return f"{self.get_provider_display()} - {self.model} - {self.created_at.strftime('%d.%m.%Y %H:%M')}"
