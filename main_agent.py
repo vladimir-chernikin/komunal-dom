@@ -4633,8 +4633,12 @@ JSON:"""
         Returns:
             List[Dict]: Отфильтрованный список кандидатов
         """
-        # Порог применения фильтра - только фильтры с уверенностью >= 0.8
-        FILTER_CONFIDENCE_THRESHOLD = 0.8
+        # ИСПРАВЛЕНО (2026-02-13): Разные пороги для разных фильтров
+        # Location: 0.8 (точный), Incident: 0.7 (важный), Category: 0.6 (менее точен)
+        FILTER_CONFIDENCE_THRESHOLD_LOCATION = 0.8
+        FILTER_CONFIDENCE_THRESHOLD_INCIDENT = 0.7
+        FILTER_CONFIDENCE_THRESHOLD_CATEGORY = 0.6
+        FILTER_CONFIDENCE_THRESHOLD_DEFAULT = 0.7
 
         logger.info(f"[SEARCH] _apply_filters_to_candidates: начало, кандидатов={len(candidates)}, фильтров={len(established_filters)}")
 
@@ -4645,12 +4649,22 @@ JSON:"""
             confidence = filter_data.get('confidence', 0.0)
             value = filter_data.get('value')
 
-            # Применяем только фильтры с высокой уверенностью
-            if confidence < FILTER_CONFIDENCE_THRESHOLD:
-                logger.info(f"[!] Фильтр {filter_name}: confidence={confidence:.2f} < {FILTER_CONFIDENCE_THRESHOLD}, ПРОПУСКАЕМ")
+            # ИСПРАВЛЕНО (2026-02-13): Разные пороги для разных фильтров
+            if filter_name == 'location_type':
+                threshold = FILTER_CONFIDENCE_THRESHOLD_LOCATION
+            elif filter_name == 'incident_type':
+                threshold = FILTER_CONFIDENCE_THRESHOLD_INCIDENT
+            elif filter_name == 'category':
+                threshold = FILTER_CONFIDENCE_THRESHOLD_CATEGORY
+            else:
+                threshold = FILTER_CONFIDENCE_THRESHOLD_DEFAULT
+
+            # Применяем только фильтры с уверенностью >= порога
+            if confidence < threshold:
+                logger.info(f"[!] Фильтр {filter_name}: confidence={confidence:.2f} < {threshold}, ПРОПУСКАЕМ")
                 continue
 
-            logger.info(f"[OK] ПРИМЕНЯЕМ ФИЛЬТР: {filter_name}={value} (confidence={confidence:.2f} >= {FILTER_CONFIDENCE_THRESHOLD})")
+            logger.info(f"[OK] ПРИМЕНЯЕМ ФИЛЬТР: {filter_name}={value} (confidence={confidence:.2f} >= {threshold})")
 
             # ИСПРАВЛЕНИЕ (2026-01-05): Используем правильные ключи established_filters
             # Фильтрация по location_type (было 'location')
