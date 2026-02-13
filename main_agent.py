@@ -1097,10 +1097,8 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-25): Используем отфильтрованных кандидатов
         filtered_candidates = clarification_result.get('filtered_candidates', candidates_with_attrs)
 
-        # ИСПРАВЛЕНО (2026-02-04): Обновляем txtStopQ в metadata
-        if '_metadata' in clarification_result and 'txtStopQ' in clarification_result['_metadata']:
-            result_metadata['txtStopQ'] = clarification_result['_metadata']['txtStopQ']
-            logger.info(f"[DEBUG] txtStopQ обновлен в result_metadata: {len(result_metadata['txtStopQ'])} вопросов")
+        # ИСПРАВЛЕНО (2026-02-13): УБРАНО обновление result_metadata (было undefined)
+        # _metadata добавляется из clarification_result на строках 1117-1119 ниже
 
         result = {
             'status': 'AMBIGUOUS',
@@ -1435,9 +1433,14 @@ class MainAgent:
         # Фильтруем кандидатов на основе известной информации
         filtered_candidates = candidates_with_attrs
         if known_location:
-            filtered_candidates = [c for c in filtered_candidates if known_location in c.get('location_type', '')]
-            logger.warning(f"[DEBUG] После location фильтра: {len(filtered_candidates)} кандидатов")
-            logger.info(f"Отфильтровано по location_type={known_location}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
+            # ИСПРАВЛЕНО (2026-02-13): КРИТИЧЕСКОЕ - проверяем что known_location не null/пустой
+            # Баг был: known_location=None, и "None in ''" = True → все кандидаты отфильтровались!
+            if known_location and known_location.lower() not in ['none', 'null', '']:
+                filtered_candidates = [c for c in filtered_candidates if known_location in c.get('location_type', '')]
+                logger.warning(f"[DEBUG] После location фильтра: {len(filtered_candidates)} кандидатов")
+                logger.info(f"Отфильтровано по location_type={known_location}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
+            else:
+                logger.warning(f"[DEBUG] Location фильтр ПРОПУЩЕН (known_location={known_location})")
 
         # ИСПРАВЛЕНО (2026-02-13): Добавлена category-фильтрация с МЯГКИМ отключением
         # Category важнее чем location для услуг типа Газоснабжение, Водоснабжение
@@ -1549,10 +1552,13 @@ class MainAgent:
             category_confidence = category_filter.get('confidence', 0.0) if isinstance(category_filter, dict) else 0.0
             category_value = category_filter.get('value', '') if isinstance(category_filter, dict) else ''
 
-            # Если у услуги ЕСТЬ категория в БД, но НЕ установлена в фильтрах
+            # ИСПРАВЛЕНО (2026-02-13): КРИТИЧЕСКОЕ - не уточняем категорию если УЖЕ 1 кандидат!
+            # Баг был: category-фильтр оставил 1 кандидата, но confidence < 0.6 → лишний вопрос
+            # Логика: если фильтрация уже оставила 1 кандидата → НЕ НУЖНО уточнять категорию
             needs_category_clarification = (
                 candidate_category and  # В БД есть категория
-                category_confidence < 0.6  # Но FilterDetectionService НЕ установил (или низкая уверенность)
+                category_confidence < 0.6 and  # Но FilterDetectionService НЕ установил (или низкая уверенность)
+                len(filtered_candidates) > 1  # ИСПРАВЛЕНО: только если осталось >1 кандидата!
             )
 
             if needs_category_clarification:

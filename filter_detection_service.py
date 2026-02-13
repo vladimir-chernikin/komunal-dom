@@ -135,7 +135,7 @@ class FilterDetectionService:
             from llm_tester.models import PromptTemplate
             from asgiref.sync import sync_to_async
 
-            @sync_to_async
+            @database_sync_to_async
             def get_db_template():
                 return PromptTemplate.objects.filter(
                     slug='filter-incident-type',
@@ -183,13 +183,30 @@ TXT_PRB = "{txtPrb}"
 
         ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
         """
+        # ИСПРАВЛЕНО (2026-02-13): ПЕРЕМЕШИВАЕМ примеры, чтобы не было перекоса к Общедомовому
         # Формируем примеры из БД (группируем по localization)
         location_examples = {"Общедомовое": [], "Индивидуальное": []}
+        # Разбиваем на два списка для перемешивания
+        individual_objs = []
+        common_objs = []
         for obj in self.objects_examples:
             loc = obj.get('localization', 'Индивидуальное')
             if loc and obj['name']:
-                if len(location_examples[loc]) < 10:  # max 10 примеров на тип
-                    location_examples[loc].append(f'- "{obj["name"]}" → {loc}')
+                if loc == 'Индивидуальное':
+                    individual_objs.append(obj)
+                elif loc == 'Общедомовое':
+                    common_objs.append(obj)
+        # Заполняем примеры вперемешку (чередуем: Индивидуальное, Общедомовое, Индивидуальное, ...)
+        max_examples = 10
+        # ИСПРАВЛЕНО (2026-02-13): берем по 10 каждого типа, а не 10 всего
+        for i in range(max_examples * 2):  # max 20 итерации (10 каждого типа)
+            # Чередуем: Индивидуальное, Общедомовое, Индивидуальное, ...
+            if i % 2 == 0 and i // 2 < len(individual_objs):
+                obj = individual_objs[i // 2]
+                location_examples['Индивидуальное'].append(f'- "{obj["name"]}" → Индивидуальное')
+            elif i % 2 == 1 and i // 2 < len(common_objs):
+                obj = common_objs[i // 2]
+                location_examples['Общедомовое'].append(f'- "{obj["name"]}" → Общедомовое')
 
         examples_text = ""
         if location_examples["Общедомовое"]:
@@ -202,7 +219,7 @@ TXT_PRB = "{txtPrb}"
             from llm_tester.models import PromptTemplate
             from asgiref.sync import sync_to_async
 
-            @sync_to_async
+            @database_sync_to_async
             def get_db_template():
                 return PromptTemplate.objects.filter(
                     slug='filter-location-type',
@@ -229,15 +246,34 @@ TXT_PRB = "{txtPrb}"
         # Fallback-промпт (если промпт не найден в БД)
         logger.warning("[FALLBACK] Используется fallback-промпт для location_type")
 
-        prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
+        prompt = f"""## Роль
+Ты — классификатор типа локации. Определи ИНДИВИДУАЛЬНОЕ или ОБЩЕДОМОВОЕ.
 
+## Входные данные
 TXT_PRB = "{txtPrb}"
 
-ОПРЕДЕЛИ ЛОКАЦИЮ:
-- "Индивидуальное" - если проблема в квартире/внутри помещения
-- "Общедомовое" - если проблема в общих местах (подъезд, подвал, крыша)
+## ЛОГИКА
+**ВАЖНОЕ ПРАВИЛО:** "в доме/кВАРТИРЕ" ≠ ОБЩЕДОМОВОЕ!
 
-Верни JSON: {{"location_type": "Индивидуальное/Общедомовое", "confidence": 0.7, "reasoning": "обоснование"}}"""
+Если проблема УЖЕ ЕСТЬ (запах, течет, сломалось) → ИНДИВИДУАЛЬНОЕ
+  - Запах газа в дому → ИНДИВИДУАЛЬНОЕ (газ в квартире!)
+  - Течет труба в дому → ИНДИВИДУАЛЬНОЕ (в вашем помещении!)
+  - Нет света в дому → ОБЩЕДОМОВОЕ (весь дом)
+  - Нет воды в дому → ОБЩЕДОМОВОЕ (весь дом)
+
+Ключевые слова ИНДИВИДУАЛЬНОЕ:
+- Запах (газа, гари, сырост), дым
+- Течет (труба, кран, батарея)
+- Прорвало (трубу)
+- Квартира, ванн, кухн, зал, спальн
+
+Ключевые слова ОБЩЕДОМОВОЕ:
+- Нет (свет/вод) во всём доме
+- Во подъезде/подвале/на крыше
+- Лифт, домофон, фасад, двор
+
+## Вывод
+Верни JSON: {{"location_type": "Индивидуальное/Общедомовое", "confidence": 0.8, "reasoning": "обоснование"}}"""
         return prompt
 
     # ========================================================================
@@ -273,7 +309,7 @@ TXT_PRB = "{txtPrb}"
             from llm_tester.models import PromptTemplate
             from asgiref.sync import sync_to_async
 
-            @sync_to_async
+            @database_sync_to_async
             def get_db_template():
                 return PromptTemplate.objects.filter(
                     slug='filter-category',
