@@ -9,16 +9,6 @@
 
 {% block nav-global %}{% endblock %}
 
-{% block userlinks %}
-{% if user.userprofile.is_django_admin %}
-<a href="{% url 'portal:admin_page' %}">Панель администратора</a> /
-<a href="{% url 'portal:dba_page' %}">Кабинет DBA</a> /
-{% elif user.userprofile.is_dba %}
-<a href="{% url 'portal:dba_page' %}">Кабинет DBA</a> /
-{% endif %}
-{{ block.super }}
-{% endblock %}
-
 {% block footer %}
 <div id="footer">
     <p class="text-center text-muted mb-0">

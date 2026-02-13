@@ -13,7 +13,7 @@
 
     <style>
         body {
-            background: #f8f9fa;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -30,34 +30,26 @@
         }
 
         .login-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             overflow: hidden;
-            border: 1px solid #dee2e6;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .login-header {
-            background: white;
-            color: #2c3e50;
-            padding: 30px;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 40px;
             text-align: center;
-            border-bottom: 1px solid #dee2e6;
         }
 
         .login-header h1 {
-            font-size: 1.5rem;
-            font-weight: 600;
+            font-size: 2rem;
+            font-weight: bold;
             margin: 0;
-            color: #2c3e50;
-        }
-
-        /* SVG домик */
-        .svg-house {
-            width: 48px;
-            height: 48px;
-            vertical-align: middle;
-            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .login-header .subtitle {
@@ -92,38 +84,39 @@
         }
 
         .form-control:focus {
-            border-color: #0d6efd;
-            box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1);
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
             background-color: white;
         }
 
         .submit-btn {
             width: 100%;
-            padding: 12px;
-            background: #0d6efd;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 500;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: background-color 0.15s ease-in-out;
-            margin-bottom: 15px;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
         }
 
         .submit-btn:hover {
-            background: #0b5ed7;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
         }
 
         .password-forgot {
-            color: #0d6efd;
+            color: #667eea;
             text-decoration: none;
             font-size: 0.9rem;
-            transition: color 0.15s ease-in-out;
+            transition: color 0.3s ease;
         }
 
         .password-forgot:hover {
-            color: #0a58ca;
+            color: #764ba2;
             text-decoration: underline;
         }
 
@@ -163,79 +156,7 @@
 <div class="login-container">
     <div class="login-card">
         <div class="login-header">
-            <svg class="svg-house" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-                <!-- Крыша -->
-                <polygon points="32,2 2,18 62,18" fill="#2C5282" stroke="#1A365D" stroke-width="1.5"/>
-
-                <!-- Основание дома - 4 этажа -->
-                <rect x="4" y="18" width="56" height="44" fill="#EDF2F7" stroke="#CBD5E0" stroke-width="1.5"/>
-
-                <!-- 4 этаж -->
-                <!-- Окно 1 - свет -->
-                <rect x="8" y="21" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                <line x1="13" y1="21" x2="13" y2="29" stroke="#718096" stroke-width="0.6"/>
-                <line x1="8" y1="25" x2="18" y2="25" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 2 - темно -->
-                <rect x="22" y="21" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                <line x1="27" y1="21" x2="27" y2="29" stroke="#718096" stroke-width="0.6"/>
-                <line x1="22" y1="25" x2="32" y2="25" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 3 - свет -->
-                <rect x="36" y="21" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                <line x1="41" y1="21" x2="41" y2="29" stroke="#718096" stroke-width="0.6"/>
-                <line x1="36" y1="25" x2="46" y2="25" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 4 - темно -->
-                <rect x="50" y="21" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                <line x1="55" y1="21" x2="55" y2="29" stroke="#718096" stroke-width="0.6"/>
-                <line x1="50" y1="25" x2="60" y2="25" stroke="#718096" stroke-width="0.6"/>
-
-                <!-- 3 этаж -->
-                <!-- Окно 1 - темно -->
-                <rect x="8" y="31" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                <line x1="13" y1="31" x2="13" y2="39" stroke="#718096" stroke-width="0.6"/>
-                <line x1="8" y1="35" x2="18" y2="35" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 2 - свет -->
-                <rect x="22" y="31" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                <line x1="27" y1="31" x2="27" y2="39" stroke="#718096" stroke-width="0.6"/>
-                <line x1="22" y1="35" x2="32" y2="35" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 3 - темно -->
-                <rect x="36" y="31" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                <line x1="41" y1="31" x2="41" y2="39" stroke="#718096" stroke-width="0.6"/>
-                <line x1="36" y1="35" x2="46" y2="35" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 4 - свет -->
-                <rect x="50" y="31" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                <line x1="55" y1="31" x2="55" y2="39" stroke="#718096" stroke-width="0.6"/>
-                <line x1="50" y1="35" x2="60" y2="35" stroke="#718096" stroke-width="0.6"/>
-
-                <!-- 2 этаж -->
-                <!-- Окно 1 - свет -->
-                <rect x="8" y="41" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                <line x1="13" y1="41" x2="13" y2="49" stroke="#718096" stroke-width="0.6"/>
-                <line x1="8" y1="45" x2="18" y2="45" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 2 - свет -->
-                <rect x="22" y="41" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                <line x1="27" y1="41" x2="27" y2="49" stroke="#718096" stroke-width="0.6"/>
-                <line x1="22" y1="45" x2="32" y2="45" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 3 - темно -->
-                <rect x="36" y="41" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                <line x1="41" y1="41" x2="41" y2="49" stroke="#718096" stroke-width="0.6"/>
-                <line x1="36" y1="45" x2="46" y2="45" stroke="#718096" stroke-width="0.6"/>
-                <!-- Окно 4 - темно -->
-                <rect x="50" y="41" width="10" height="8" fill="#A0AEC0" stroke="#718096" stroke-width="0.8"/>
-                <line x1="55" y1="41" x2="55" y2="49" stroke="#718096" stroke-width="0.6"/>
-                <line x1="50" y1="45" x2="60" y2="45" stroke="#718096" stroke-width="0.6"/>
-
-                <!-- 1 этаж -->
-                <!-- Дверь -->
-                <rect x="26" y="52" width="12" height="10" fill="#8B4513" stroke="#5D3A1A" stroke-width="1"/>
-                <!-- Окна 1 этажа -->
-                <rect x="8" y="51" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                <line x1="13" y1="51" x2="13" y2="59" stroke="#718096" stroke-width="0.6"/>
-                <line x1="8" y1="55" x2="18" y2="55" stroke="#718096" stroke-width="0.6"/>
-                <rect x="46" y="51" width="10" height="8" fill="#FEFCBF" stroke="#718096" stroke-width="0.8"/>
-                <line x1="51" y1="51" x2="51" y2="59" stroke="#718096" stroke-width="0.6"/>
-                <line x1="46" y1="55" x2="56" y2="55" stroke="#718096" stroke-width="0.6"/>
-            </svg>
-            <h1>УК "Аспект"</h1>
+            <h1>🏢 УК "Аспект"</h1>
             <div class="subtitle">Управляющая компания</div>
         </div>
 
