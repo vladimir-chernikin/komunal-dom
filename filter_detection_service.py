@@ -135,7 +135,7 @@ class FilterDetectionService:
             from llm_tester.models import PromptTemplate
             from asgiref.sync import sync_to_async
 
-            @database_sync_to_async
+            @sync_to_async
             def get_db_template():
                 return PromptTemplate.objects.filter(
                     slug='filter-incident-type',
@@ -219,7 +219,7 @@ TXT_PRB = "{txtPrb}"
             from llm_tester.models import PromptTemplate
             from asgiref.sync import sync_to_async
 
-            @database_sync_to_async
+            @sync_to_async
             def get_db_template():
                 return PromptTemplate.objects.filter(
                     slug='filter-location-type',
@@ -309,7 +309,7 @@ TXT_PRB = "{txtPrb}"
             from llm_tester.models import PromptTemplate
             from asgiref.sync import sync_to_async
 
-            @database_sync_to_async
+            @sync_to_async
             def get_db_template():
                 return PromptTemplate.objects.filter(
                     slug='filter-category',
