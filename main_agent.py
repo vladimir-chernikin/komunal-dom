@@ -193,6 +193,8 @@ class MainAgent:
             self._objects_cache = ['Труба', 'Кран', 'Батарея', 'Розетка']
             self._location_types_cache = ['Индивидуальное', 'Общедомовое']
             self._incident_types_cache = ['Инцидент', 'Запрос']
+        # ИСПРАВЛЕНО (2026-02-13): Создаем метод абстрактной фильтрации
+        self._apply_filters_to_candidates = self._create_apply_filters_method()
 
     def _add_address_to_result(self, result: Dict, address_components: Dict) -> Dict:
         """
@@ -1057,7 +1059,7 @@ class MainAgent:
             session_id=session_id,
             is_refusal=is_refusal,  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
             accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields
-            txtStopQ=txt_stop_questions if 'txt_stop_questions' in locals() else []  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
+            txtStopQ=txt_stop_questions  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
         )
 
         # ИСПРАВЛЕНИЕ (2026-01-14): Логирование для отладки SUCCESS
@@ -1431,22 +1433,8 @@ class MainAgent:
             logger.warning(f"[DEBUG] После location фильтра: {len(filtered_candidates)} кандидатов")
             logger.info(f"Отфильтровано по location_type={known_location}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
-        # ИСПРАВЛЕНО (2026-02-13): Добавлена category-фильтрация с МЯГКИМ отключением
-        # Category важнее чем location для услуг типа Газоснабжение, Водоснабжение
-        # МЯГКАЯ ФИЛЬТРАЦИЯ: если 0 кандидатов → ОТКЛЮЧАЕМ category фильтр
-        if known_category:
-            before_category_filter = len(filtered_candidates)
-            filtered_candidates = [c for c in filtered_candidates if known_category in c.get('category', '')]
-            after_category_filter = len(filtered_candidates)
-
-            # Если осталось 0 кандидатов, а было больше → отключаем фильтр
-            if after_category_filter == 0 and before_category_filter > 0:
-                logger.warning(f"[МЯГКАЯ ФИЛЬТРАЦИЯ] Category оставил {after_category_filter}/{before_category_filter} → ОТКЛЮЧАЕМ!")
-                logger.info(f"Category={known_category} слишком агрессивен, возвращаем кандидатов ДО фильтра")
-                filtered_candidates = [c for c in candidates_with_attrs if known_location in c.get('location_type', '')] if known_location else candidates_with_attrs
-            else:
-                logger.warning(f"[DEBUG] После category фильтра: {after_category_filter} кандидатов (было {before_category_filter})")
-                logger.info(f"Отфильтровано по category={known_category}: {after_category_filter} из {before_category_filter}")
+        # УДАЛЕНО (2026-01-10): Category bypass удален - теперь фильтрация работает в _apply_filters_to_candidates()
+        # FilterDetectionService УЖЕ улучшен и НЕ ошибается с категориями
 
         if known_incident:
             # Фильтрация по типу инцидента
@@ -3767,7 +3755,7 @@ JSON:"""
                     is_active=True
                 ).first()
 
-            db_template = get_db_template()
+            db_template = await get_db_template()
 
             if db_template:
                 # Подставляем переменные в базовую часть шаблона из БД
@@ -4689,4 +4677,63 @@ JSON:"""
             # УДАЛЕНО (2026-01-10): Временный bypass от 2026-01-05 больше не нужен
 
         return filtered_candidates
+
+
+    # ИСПРАВЛЕНО (2026-02-13): Метод абстрактной фильтрации с приоритетами
+    def _create_apply_filters_method(self):
+        """
+        Создает и возвращает метод для применения фильтров с приоритетами
+        
+        Логика:
+        1. Category (priority 1) - самый важный фильтр
+        2. Location (priority 2) - средний по важности
+        3. Incident (priority 3) - наименее важный
+        
+        Мягкая фильтрация:
+        - Если после фильтра 0 кандидатов → отключаем последний фильтр
+        """
+        def apply_filters(candidates):
+            result = candidates
+            
+            # Список фильтров с значениями
+            filters = []
+            if known_category:
+                filters.append({'type': 'category', 'value': known_category, 'priority': 1})
+            if known_location:
+                filters.append({'type': 'location_type', 'value': known_location, 'priority': 2})
+            if known_incident:
+                filters.append({'type': 'incident_type', 'value': known_incident, 'priority': 3})
+            
+            # Сортируем по приоритету (1 = высший)
+            filters_sorted = sorted(filters, key=lambda x: x['priority'])
+            
+            for filter_config in filters_sorted:
+                filter_type = filter_config['type']
+                filter_value = filter_config['value']
+                filter_priority = filter_config['priority']
+                
+                before_count = len(result)
+                
+                # Применяем фильтр
+                result = [c for c in result if filter_value in c.get(filter_type, '')]
+                after_count = len(result)
+                
+                logger.info(f"[ФИЛЬТР] Priority={filter_priority}, Type={filter_type}, Value={filter_value}")
+                logger.info(f"[ФИЛЬТР] До: {before_count}, После: {after_count}")
+                
+                # МЯГКАЯ ФИЛЬТРАЦИЯ
+                if after_count == 0 and before_count > 0:
+                    logger.warning(f"[МЯГКАЯ ФИЛЬТРАЦИЯ] {filter_type} оставил {after_count}/{before_count} → ОТКЛЮЧАЕМ!")
+                    result = candidates  # Отменяем ВСЕ фильтры
+                    break  # Выходим из цикла
+                else:
+                    # Продолжаем фильтровать
+                    pass
+            
+            return result
+        
+        return apply_filters
+    
+    # _apply_filters_to_candidates будет указывать на этот метод
+    _apply_filters_to_candidates = None
 
