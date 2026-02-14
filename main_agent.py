@@ -397,7 +397,7 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
                 # Короткие ответы типа "в квартире" важны для контекста!
                 txtPrb = accumulation_result['updated_problem']
-                accumulated_fields = accumulation_result['fields']
+                accumulated_fields = accumulation_result.get('fields', {})  # ИСПРАВЛЕНО (2026-02-14): БРАТЬ fields из результата!
 
                 if accumulation_result['is_meaningful']:
                     logger.info(f"txtPrb обновлен (содержательный): '{txtPrb[:100]}...'")
