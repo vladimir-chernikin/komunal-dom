@@ -863,11 +863,13 @@ class MainAgent:
                     if ai_result and ai_result.get('candidates'):
                         ai_candidates = ai_result['candidates']
                         if len(ai_candidates) == 1:
-                            # ИСПРАВЛЕНИЕ (2026-02-13): Логика needs_clarification по confidence
-                            # Если confidence >= 0.9: не спрашиваем, создаем заявку
-                            # Если confidence < 0.9: задаем уточняющий вопрос
+                            # ИСПРАВЛЕНИЕ (2026-02-14): Всегда спрашиваем локацию если она не указана явно
+                            # Проверяем: знаем ли мы точную локацию из accumulated_fields?
+                            location_known = accumulated_fields.get('location') is not None
                             confidence = ai_candidates[0].get('confidence', 0.8)
-                            needs_clarification = confidence < 0.9
+
+                            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence услуги
+                            needs_clarification = not location_known
 
                             if needs_clarification:
                                 # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
