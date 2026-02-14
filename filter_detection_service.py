@@ -459,6 +459,8 @@ CATEGORIES = [{categories_str}]
             elif filter_name == 'category':
                 value = parsed.get('category')
                 confidence = float(parsed.get('confidence', 0.5))
+                # ИСПРАВЛЕНИЕ (2026-02-13): Печатаем в stderr для отладки
+                print(f"[DEBUG] FilterDetectionService[{filter_name}]: value={value}, confidence={confidence}, parsed={parsed}")
             else:
                 value = None
                 confidence = 0.5

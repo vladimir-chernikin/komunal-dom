@@ -93,7 +93,7 @@ class TagSearchService:
                             # СТАРЫЙ ВАРИАНТ (2026-01-22): Возвращен порог 0.9
                             # ИСПРАВЛЕНО (2026-01-22): Case-insensitive поиск (LOWER)
                             # СТАРЫЙ ВАРИАНТ: sql += " AND rc.category_name = %s"
-                            if category_conf >= 0.9:
+                            if category_conf >= 0.7:
                                 sql += " AND LOWER(rc.category_name) = LOWER(%s)"
                                 params.append(category_data.get('value'))
 
@@ -101,7 +101,7 @@ class TagSearchService:
                         incident_data = filters.get('incident_type')
                         if incident_data and isinstance(incident_data, dict):
                             incident_conf = incident_data.get('confidence', 0)
-                            if incident_conf >= 0.9:
+                            if incident_conf >= 0.7:
                                 # ИСПРАВЛЕНО (2026-01-22): Case-insensitive поиск (LOWER)
                                 # СТАРЫЙ ВАРИАНТ: sql += " AND rst.type_name = %s"
                                 sql += " AND LOWER(rst.type_name) = LOWER(%s)"
@@ -111,7 +111,7 @@ class TagSearchService:
                         location_data = filters.get('location_type')
                         if location_data and isinstance(location_data, dict):
                             location_conf = location_data.get('confidence', 0)
-                            if location_conf >= 0.9:
+                            if location_conf >= 0.7:
                                 # ИСПРАВЛЕНО (2026-01-22): Case-insensitive поиск (LOWER)
                                 # СТАРЫЙ ВАРИАНТ: sql += " AND rl.localization_name = %s"
                                 sql += " AND LOWER(rl.localization_name) = LOWER(%s)"

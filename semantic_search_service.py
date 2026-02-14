@@ -73,7 +73,7 @@ class SemanticSearchService:
                         category_data = filters.get('category')
                         if category_data and isinstance(category_data, dict):
                             category_conf = category_data.get('confidence', 0)
-                            if category_conf >= 0.9:
+                            if category_conf >= 0.7:
                                 sql += " AND rc.category_name = %s"
                                 params.append(category_data.get('value'))
 
@@ -81,7 +81,7 @@ class SemanticSearchService:
                         incident_data = filters.get('incident_type')
                         if incident_data and isinstance(incident_data, dict):
                             incident_conf = incident_data.get('confidence', 0)
-                            if incident_conf >= 0.9:
+                            if incident_conf >= 0.7:
                                 sql += " AND rst.type_name = %s"
                                 params.append(incident_data.get('value'))
 
@@ -89,7 +89,7 @@ class SemanticSearchService:
                         location_data = filters.get('location_type')
                         if location_data and isinstance(location_data, dict):
                             location_conf = location_data.get('confidence', 0)
-                            if location_conf >= 0.9:
+                            if location_conf >= 0.7:
                                 sql += " AND rl.localization_name = %s"
                                 params.append(location_data.get('value'))
 
@@ -131,7 +131,7 @@ class SemanticSearchService:
                             # Если category установлен с confidence >= 90%, НЕ добавляем в поиск
                             category_data = filters.get('category')
                             if category_data and isinstance(category_data, dict):
-                                if category_data.get('confidence', 0) >= 0.9:
+                                if category_data.get('confidence', 0) >= 0.7:
                                     use_category_in_search = False
 
                         # ИСПРАВЛЕНО (2026-01-13): object_name ВСЕГДА добавляем в поиск (фильтра object нет в MainAgent)

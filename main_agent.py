@@ -832,18 +832,27 @@ class MainAgent:
                     if ai_result and ai_result.get('candidates'):
                         ai_candidates = ai_result['candidates']
                         if len(ai_candidates) == 1:
-                            # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - открытые вопросы
-                            # Вопрос БЕЗ названия услуги (иначе сбивает пользователя)
+                            # ИСПРАВЛЕНИЕ (2026-02-13): Логика needs_clarification по confidence
+                            # Если confidence >= 0.9: не спрашиваем, создаем заявку
+                            # Если confidence < 0.9: задаем уточняющий вопрос
+                            confidence = ai_candidates[0].get('confidence', 0.8)
+                            needs_clarification = confidence < 0.9
+
+                            if needs_clarification:
+                                message = 'Опишите подробнее, что именно происходит?'
+                            else:
+                                message = f"Поняла вас: {ai_candidates[0]['service_name']}. Создаю заявку."
+
                             result = {
                                 'status': 'SUCCESS',
                                 'service_id': ai_candidates[0]['service_id'],
                                 'service_name': ai_candidates[0]['service_name'],
-                                'confidence': ai_candidates[0].get('confidence', 0.8),
+                                'confidence': confidence,
                                 'source': 'ai_agent',
-                                'message': 'Опишите подробнее, что именно происходит?',
+                                'message': message,
                                 'candidates': ai_candidates,
-                                'needs_clarification': True,
-                                '_metadata': result_metadata  # ИСПРАВЛЕНО (2025-12-27): Добавляем metadata
+                                'needs_clarification': needs_clarification,
+                                '_metadata': result_metadata  # ИСПРАВЛЕНИЕ (2025-12-27): Добавляем metadata
                             }
                             return self._add_address_to_result(result, address_components)
 
@@ -1461,7 +1470,7 @@ class MainAgent:
 
         if known_incident:
             # Фильтрация по типу инцидента
-            filtered_candidates = [c for c in filtered_candidates if known_incident in c.get('incident_type', '')]
+            filtered_candidates = [c for c in filtered_candidates if known_incident.lower() in c.get('incident_type', '').lower()]
             logger.warning(f"[DEBUG] После incident фильтра: {len(filtered_candidates)} кандидатов")
             logger.info(f"Отфильтровано по incident_type={known_incident}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
@@ -1598,15 +1607,20 @@ class MainAgent:
                             logger.info(f"[!] УЖЕ был уточняющий вопрос: '{text[:60]}...'")
                             break
 
+            # ИСПРАВЛЕНИЕ (2026-02-13): Добавляем candidate_confidence в actual_confidence
+            # candidate имеет confidence от TagSearch/SemanticSearch/VectorSearch (может быть 100%)
+            # Раньше считали только llm_confidence и filter_confidence (могли быть 0.0)
+            candidate_confidence = candidate.get('confidence', 0.0)
+
             # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - ЗАПРЕЩЕНЫ закрытые вопросы!
             # Логика:
-            # - confidence >= 0.9 (LLM ИЛИ фильтры): просто сообщаем что услуга определена
+            # - confidence >= 0.9 (LLM ИЛИ фильтры ИЛИ кандидат): просто сообщаем что услуга определена
             # - confidence < 0.9: задаем открытый вопрос БЕЗ названия услуги (иначе сбивает)
             # ИСПРАВЛЕНО (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK ВОПРОСОВ!
-            actual_confidence = max(llm_confidence, filter_confidence)
+            actual_confidence = max(llm_confidence, filter_confidence, candidate_confidence)
             needs_clarification = actual_confidence < 0.9 and not already_asked_confirmation
 
-            logger.info(f"[DECISION] llm_conf={llm_confidence:.2%}, filter_conf={filter_confidence:.2%}, actual_conf={actual_confidence:.2%}, needs_clar={needs_clarification}")
+            logger.info(f"[DECISION] llm_conf={llm_confidence:.2%}, filter_conf={filter_confidence:.2%}, candidate_conf={candidate_confidence:.2%}, actual_conf={actual_confidence:.2%}, needs_clar={needs_clarification}")
 
             # Формируем сообщение (ИСПРАВЛЕНО: используем LLM вместо fallback!)
             if needs_clarification:
@@ -2285,27 +2299,27 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-25): UNION всех результатов с приоритетами (не пересечение!)
         all_candidates = []
 
-        # TagSearch: приоритет 1.0 (точный матч по тегам)
+        # TagSearch: приоритет 0.5 (ИСПРАВЛЕНО 2026-02-13: снижен на основе тестов: 0% точности)
         for c in tag_results:
             all_candidates.append({
                 **c,
-                'priority': 1.0,
+                'priority': 0.5,
                 'sources': c.get('sources', ['tag_search'])
             })
 
-        # SemanticSearch: приоритет 0.8 (семантический матч)
+        # SemanticSearch: приоритет 0.7 (ИСПРАВЛЕНО 2026-02-13: снижен на основе тестов: 33% точности)
         for c in semantic_results:
             all_candidates.append({
                 **c,
-                'priority': 0.8,
+                'priority': 0.7,
                 'sources': c.get('sources', ['semantic_search'])
             })
 
-        # VectorSearch: приоритет 0.9 (ИСПРАВЛЕНО 2026-01-23: повышен с 0.6 для доверия AI-семантике)
+        # VectorSearch: приоритет 1.0 (ИСПРАВЛЕНО 2026-02-13: повышен на основе тестов: 75% точности)
         for c in vector_results:
             all_candidates.append({
                 **c,
-                'priority': 0.9,
+                'priority': 1.0,
                 'sources': c.get('sources', ['vector_search'])
             })
 
@@ -2921,6 +2935,8 @@ JSON:"""
                     # Берем индивидуальный confidence из details
                     filter_details = details.get(filter_name, {})
                     individual_conf = filter_details.get('confidence', 0.8)  # fallback 0.8
+                    # ИСПРАВЛЕНИЕ (2026-02-13): Печатаем в stderr для отладки
+                    print(f"[DEBUG] SemanticPreCheck: filter_name={filter_name}, filter_value={filter_value}, individual_conf={individual_conf}, filter_details={filter_details}")
                     filters_with_conf[filter_name] = {
                         'value': filter_value,
                         'confidence': individual_conf
@@ -4670,7 +4686,7 @@ JSON:"""
             # Фильтрация по location_type (было 'location')
             if filter_name == 'location_type' and value:
                 # Маппинг: зал/комната -> Индивидуальное
-                if value in ['Индивидуальное', 'Квартира', 'индивидуальное']:
+                if value in ['Индивидуальное', 'Квартира', 'Индивидуальное']:
                     # ИСПРАВЛЕНО (2025-12-28): Добавлено детальное логирование
                     before_count = len(filtered_candidates)
 
@@ -4679,12 +4695,12 @@ JSON:"""
                     for i, c in enumerate(filtered_candidates, 1):
                         loc = c.get('location_type', 'NULL')
                         loc_lower = loc.lower() if loc else 'null'
-                        match = loc_lower in ['индивидуальное', 'квартира']
+                        match = loc_lower in ['Индивидуальное', 'квартира']
                         logger.info(f"    {i}. ID={c.get('service_id')} | '{loc}' -> '{loc_lower}' | match={match}")
 
                     filtered_candidates = [
                         c for c in filtered_candidates
-                        if c.get('location_type', '').lower() in ['индивидуальное', 'квартира']
+                        if c.get('location_type', '').lower() in ['Индивидуальное', 'квартира']
                     ]
                     after_count = len(filtered_candidates)
                     logger.info(f"  [OK] Фильтр location_type: {before_count} -> {after_count} (оставили Individual)")
