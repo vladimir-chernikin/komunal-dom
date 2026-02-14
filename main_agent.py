@@ -1645,6 +1645,7 @@ class MainAgent:
                 message = f"Поняла вас: {candidate['service_name']}. Создаю заявку."
 
             return {
+                'candidates': [candidate],
                 'status': 'SUCCESS',
                 'service_id': candidate['service_id'],
                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
@@ -2355,6 +2356,7 @@ class MainAgent:
                 # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - открытые вопросы только
                 # При высокой уверенности НЕ задаем вопросы, просто сообщаем
                 return {
+                    'candidates': [candidate],
                     'status': 'SUCCESS',
                     'service_id': candidate['service_id'],
                     'service_name': candidate['service_name'],
@@ -2390,6 +2392,7 @@ class MainAgent:
             if leader_conf > 0.80:
                 logger.info(f"ЯВНЫЙ ЛИДЕР: service_id={leader['service_id']}, conf={leader_conf:.3f}, второй={second_conf:.3f}, разница={leader_conf - second_conf:.3f}")
                 return {
+                    'candidates': [leader],
                     'status': 'SUCCESS',
                     'service_id': leader['service_id'],
                     'service_name': leader['service_name'],
