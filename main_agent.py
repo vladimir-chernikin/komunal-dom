@@ -841,7 +841,7 @@ class MainAgent:
                             if needs_clarification:
                                 message = 'Опишите подробнее, что именно происходит?'
                             else:
-                                message = f"Поняла вас: {ai_candidates[0]['service_name']}. Создаю заявку."
+                                message = f"Заявка создана: {ai_candidates[0]['service_name']}. Создаю заявку."
 
                             result = {
                                 'status': 'SUCCESS',
@@ -1642,7 +1642,7 @@ class MainAgent:
                 logger.info(f"[LLM QUESTION] Сгенерирован вопрос: {message}")
             else:
                 # Если уже спрашивали уточнение ИЛИ высокая уверенность - создаем заявку
-                message = f"Поняла вас: {candidate['service_name']}. Создаю заявку."
+                message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
 
             return {
                 'candidates': [candidate],
@@ -2178,7 +2178,7 @@ class MainAgent:
                     'status': 'AMBIGUOUS',
                     'candidates': [],
                     'candidate_names': [],
-                    'message': 'Поняла вас: течь. Где именно это произошло? Пожалуйста, опишите подробнее.',
+                    'message': 'Заявка создана: течь. Где именно это произошло? Пожалуйста, опишите подробнее.',
                     'needs_clarification': True,
                     'clarification_type': 'water'
                 }
@@ -2361,7 +2361,7 @@ class MainAgent:
                     'service_id': candidate['service_id'],
                     'service_name': candidate['service_name'],
                     'confidence': confidence,
-                    'message': f"Поняла вас: {candidate['service_name']}. Уточните детали если нужно.",
+                    'message': f"Заявка создана: {candidate['service_name']}. Уточните детали если нужно.",
                     'needs_clarification': False,
                     'source': 'orchestrator'
                 }
@@ -2397,7 +2397,7 @@ class MainAgent:
                     'service_id': leader['service_id'],
                     'service_name': leader['service_name'],
                     'confidence': leader_conf,
-                    'message': f"Поняла вас: {leader['service_name']}. Уточните детали если нужно.",
+                    'message': f"Заявка создана: {leader['service_name']}. Уточните детали если нужно.",
                     'needs_clarification': False,
                     'source': 'orchestrator'
                 }
