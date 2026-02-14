@@ -2546,6 +2546,48 @@ class MainAgent:
                     'source': 'orchestrator'
                 }
             else:
+                # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем интенсивность для протечек
+                candidate = unique_candidates[0]
+                category = candidate.get('category', '')
+                service_name_lower = candidate['service_name'].lower()
+
+                # Что нужно уточнить?
+                intensity_known = accumulated_fields.get('intensity') is not None
+                confidence = candidate.get('confidence', 0.8)
+
+                # Для протечек (Водоснабжение/Отопление с "теч" или "протеч") нужно знать интенсивность
+                is_leak = (
+                    category in ['Водоснабжение', 'Отопление'] and
+                    any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
+                )
+
+                # Если это протечка без интенсивности → спрашиваем
+                if is_leak and not intensity_known:
+                    logger.info(f"[DEBUG] Это протечка без интенсивности - спрашиваем 'как сильно течет?'")
+                    # Формируем контекст для LLM
+                    context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: интенсивность (как сильно течет)."
+                    ai_result = await self._generate_ai_question(
+                        context=context,
+                        dialog_history=dialog_history,
+                        candidates=unique_candidates,
+                        established_filters=established_filters,
+                        txtPrb=txtPrb,
+                        question_type='clarification',
+                        session_id=session_id,
+                        accumulated_fields=accumulated_fields
+                    )
+                    message = ai_result.get('question', 'Насколько сильно течет?')
+                    return {
+                        'candidates': unique_candidates,
+                        'status': 'AMBIGUOUS',
+                        'service_id': candidate['service_id'],
+                        'service_name': candidate['service_name'],
+                        'confidence': confidence,
+                        'message': message,
+                        'needs_clarification': True,
+                        'source': 'orchestrator'
+                    }
+
                 # Низкий confidence - уточняем через AI
                 # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
                 return await self._ask_ai_clarification(
