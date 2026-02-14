@@ -1916,136 +1916,142 @@ class MainAgent:
             'is_followup': is_followup
         }
 
-    def _generate_clarification_questions(self, context: Dict = None) -> str:
-        """
-        Генерирует умные уточняющие вопросы на основе контекста
+    # ЗАКОММЕНТИРОВАНО (2026-02-14): Метод не используется (0 вызовов), содержит hardcoded вопросы
+    # TODO: Протестировать систему без этого метода, если ОК - удалить
+    # def _generate_clarification_questions(self, context: Dict = None) -> str:
+    #     """
+    #     Генерирует умные уточняющие вопросы на основе контекста
+    #
+    #     ИСПРАВЛЕНО (2025-12-25): Убрана фраза "попробую определить услугу заново"
+    #     ИСПРАВЛЕНО (2025-12-25): Конкретные вопросы вместо общих фраз
+    #     """
+    #     # Если есть контекст предыдущих сообщений, используем его
+    #     if context:
+    #         original_message = context.get('original_message', '').lower()
+    #         dialog_history = context.get('dialog_history', [])
+    #
+    #         # Анализируем что уже было сказано
+    #         user_messages = [m.get('text', '') for m in dialog_history if m.get('role') == 'user']
+    #
+    #         # Если упоминалась вода/течь - спрашиваем источник
+    #         if any(word in original_message or any(word in msg for msg in user_messages)
+    #                for word in ['теч', 'льет', 'капает', 'протека', 'утечк', 'вода']):
+    #             return "Уточните, пожалуйста: откуда именно течет? (кран, труба, батарея, крыша, соседей)"
+    #
+    #         # Если упоминалось электричество - спрашиваем что конкретно
+    #         if any(word in original_message or any(word in msg for msg in user_messages)
+    #                for word in ['свет', 'электр', 'розетк', 'выключател', 'лампочк']):
+    #             return "Что именно случилось с электричеством? (нет света, искрит, не работает розетка/выключатель)"
+    #
+    #         # Если упоминался мусор/уборка - спрашиваем что конкретно
+    #         if any(word in original_message or any(word in msg for msg in user_messages)
+    #                for word in ['мусор', 'уборк', 'чистот', 'грязь']):
+    #             return "Уточните, пожалуйста: какая проблема с уборкой? (не вывозят мусор, грязь в подъезде, нужно убрать территорию)"
+    #
+    #     # Общий уточняющий вопрос - спрашиваем что сломалось
+    #     return "Что именно случилось? Опишите, пожалуйста: что сломалось, течет или не работает."
 
-        ИСПРАВЛЕНО (2025-12-25): Убрана фраза "попробую определить услугу заново"
-        ИСПРАВЛЕНО (2025-12-25): Конкретные вопросы вместо общих фраз
-        """
-        # Если есть контекст предыдущих сообщений, используем его
-        if context:
-            original_message = context.get('original_message', '').lower()
-            dialog_history = context.get('dialog_history', [])
+    # ЗАКОММЕНТИРОВАНО (2026-02-14): Метод не используется (0 вызовов), содержит hardcoded вопросы
+    # TODO: Протестировать систему без этого метода, если ОК - удалить
+    # def _generate_context_clarification_question(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False) -> str:
+    #     """
+    #     Генерирует уточняющий вопрос для понимания контекста
+    #
+    #     ИСПРАВЛЕНО (2025-12-25): Убрана общая фраза, добавлен конкретный вопрос
+    #     ИСПРАВЛЕНО (2025-12-25): Убран хардкод keywords
+    #     """
+    #     # Если есть оригинальное сообщение - анализируем его
+    #     if original_message:
+    #         original_lower = original_message.lower()
+    #
+    #         # Умные вопросы на основе контекста
+    #         if any(word in original_lower for word in ['теч', 'льет', 'капает', 'мокр', 'сыр']):
+    #             return "Откуда именно течет? (кран, труба, батарея, крыша, от соседей)"
+    #
+    #         if any(word in original_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
+    #             return "Что именно сломалось или не работает?"
+    #
+    #         if any(word in original_lower for word in ['запах', 'воня', 'дух']):
+    #             return "Опишите подробнее: откуда запах?"
+    #
+    #     # Fallback - если не смогли определить контекст
+    #     # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
+    #     return "Опишите подробнее, что именно произошло."
 
-            # Анализируем что уже было сказано
-            user_messages = [m.get('text', '') for m in dialog_history if m.get('role') == 'user']
-
-            # Если упоминалась вода/течь - спрашиваем источник
-            if any(word in original_message or any(word in msg for msg in user_messages)
-                   for word in ['теч', 'льет', 'капает', 'протека', 'утечк', 'вода']):
-                return "Уточните, пожалуйста: откуда именно течет? (кран, труба, батарея, крыша, соседей)"
-
-            # Если упоминалось электричество - спрашиваем что конкретно
-            if any(word in original_message or any(word in msg for msg in user_messages)
-                   for word in ['свет', 'электр', 'розетк', 'выключател', 'лампочк']):
-                return "Что именно случилось с электричеством? (нет света, искрит, не работает розетка/выключатель)"
-
-            # Если упоминался мусор/уборка - спрашиваем что конкретно
-            if any(word in original_message or any(word in msg for msg in user_messages)
-                   for word in ['мусор', 'уборк', 'чистот', 'грязь']):
-                return "Уточните, пожалуйста: какая проблема с уборкой? (не вывозят мусор, грязь в подъезде, нужно убрать территорию)"
-
-        # Общий уточняющий вопрос - спрашиваем что сломалось
-        return "Что именно случилось? Опишите, пожалуйста: что сломалось, течет или не работает."
-
-    def _generate_context_clarification_question(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False) -> str:
-        """
-        Генерирует уточняющий вопрос для понимания контекста
-
-        ИСПРАВЛЕНО (2025-12-25): Убрана общая фраза, добавлен конкретный вопрос
-        ИСПРАВЛЕНО (2025-12-25): Убран хардкод keywords
-        """
-        # Если есть оригинальное сообщение - анализируем его
-        if original_message:
-            original_lower = original_message.lower()
-
-            # Умные вопросы на основе контекста
-            if any(word in original_lower for word in ['теч', 'льет', 'капает', 'мокр', 'сыр']):
-                return "Откуда именно течет? (кран, труба, батарея, крыша, от соседей)"
-
-            if any(word in original_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
-                return "Что именно сломалось или не работает?"
-
-            if any(word in original_lower for word in ['запах', 'воня', 'дух']):
-                return "Опишите подробнее: откуда запах?"
-
-        # Fallback - если не смогли определить контекст
-        # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
-        return "Опишите подробнее, что именно произошло."
-
-    def _generate_smart_fallback(self, original_message: str, dialog_history: list = None, is_followup: bool = False) -> str:
-        """
-        Генерирует умный fallback вопрос, избегая повторов
-
-        ИСПРАВЛЕНО (2025-12-28):
-        - Проверяет историю диалога на повторяющиеся вопросы бота
-        - Анализирует последние ответы пользователя
-        - Генерирует разные вопросы в зависимости от контекста
-
-        Args:
-            original_message: Оригинальное сообщение пользователя
-            dialog_history: История диалога
-            is_followup: Это продолжение диалога
-
-        Returns:
-            str: Умный fallback вопрос
-        """
-        if not dialog_history:
-            # Нет истории - базовый вопрос
-            return "Опишите подробнее, что именно произошло."
-
-        # Проверяем последние вопросы бота
-        recent_bot_questions = []
-        for msg in reversed(dialog_history[-6:]):  # Последние 3 цикла
-            if msg.get('role') == 'bot':
-                bot_text = msg.get('text', '')
-                recent_bot_questions.append(bot_text)
-
-        # Если последний вопрос был "Опишите подробнее что именно произошло"
-        # и пользователь ответил коротко ("течет", "течет у меня", "течет труба")
-        # то нужно задать более конкретный вопрос
-
-        last_bot_question = recent_bot_questions[0] if recent_bot_questions else ""
-        last_user_answers = [msg.get('text', '') for msg in reversed(dialog_history[-4:]) if msg.get('role') == 'user']
-
-        # Проверяем на повторяющийся паттерн
-        if "опишите подробнее" in last_bot_question.lower():
-            # Бот уже задавал общий вопрос, нужно конкретизировать
-            logger.info(f"Detected repeated fallback question, last answers: {last_user_answers}")
-
-            # Анализируем ответы пользователя на ключевые слова
-            all_answers = ' '.join(last_user_answers).lower()
-
-            if any(word in all_answers for word in ['теч', 'льет', 'капает', 'мокр']):
-                if 'труб' in all_answers:
-                    # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос без перечисления комнат
-                    return "Уточните, пожалуйста: где именно течет?"
-                elif any(word in all_answers for word in ['батарей', 'отопл', 'радиатор']):
-                    return "Где именно течет?"
-                else:
-                    # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос без перечисления
-                    return "Уточните, откуда именно течет?"
-            elif any(word in all_answers for word in ['сломал', 'не работ', 'испортил']):
-                return "Опишите подробнее, что именно сломалось."
-
-            # Если ответ очень короткий (1-2 слова) - просим больше деталей
-            # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос вместо двойного
-            if len(last_user_answers) > 0 and len(last_user_answers[-1].split()) <= 2:
-                return "Опишите подробнее, что именно произошло."
-
-        # Проверяем количество повторов одного и того же
-        if len(recent_bot_questions) >= 2:
-            # Если последние 2+ вопроса от бота одинаковы
-            if len(set(q.lower() for q in recent_bot_questions[:2])) <= 1:
-                logger.warning("Detected repeated bot questions, changing strategy")
-                # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос вместо двойного
-                return "Пожалуйста, опишите проблему другими словами. Что именно произошло?"
-
-        # Default fallback
-        if is_followup:
-            return "Уточните детали проблемы."
-        return "Опишите подробнее, что именно произошло."
+    # ЗАКОММЕНТИРОВАНО (2026-02-14): Метод не используется (0 вызовов), содержит hardcoded вопросы
+    # TODO: Протестировать систему без этого метода, если ОК - удалить
+    # def _generate_smart_fallback(self, original_message: str, dialog_history: list = None, is_followup: bool = False) -> str:
+    #     """
+    #     Генерирует умный fallback вопрос, избегая повторов
+    #
+    #     ИСПРАВЛЕНО (2025-12-28):
+    #     - Проверяет историю диалога на повторяющиеся вопросы бота
+    #     - Анализирует последние ответы пользователя
+    #     - Генерирует разные вопросы в зависимости от контекста
+    #
+    #     Args:
+    #         original_message: Оригинальное сообщение пользователя
+    #         dialog_history: История диалога
+    #         is_followup: Это продолжение диалога
+    #
+    #     Returns:
+    #         str: Умный fallback вопрос
+    #     """
+    #     if not dialog_history:
+    #         # Нет истории - базовый вопрос
+    #         return "Опишите подробнее, что именно произошло."
+    #
+    #     # Проверяем последние вопросы бота
+    #     recent_bot_questions = []
+    #     for msg in reversed(dialog_history[-6:]):  # Последние 3 цикла
+    #         if msg.get('role') == 'bot':
+    #             bot_text = msg.get('text', '')
+    #             recent_bot_questions.append(bot_text)
+    #
+    #     # Если последний вопрос был "Опишите подробнее что именно произошло"
+    #     # и пользователь ответил коротко ("течет", "течет у меня", "течет труба")
+    #     # то нужно задать более конкретный вопрос
+    #
+    #     last_bot_question = recent_bot_questions[0] if recent_bot_questions else ""
+    #     last_user_answers = [msg.get('text', '') for msg in reversed(dialog_history[-4:]) if msg.get('role') == 'user']
+    #
+    #     # Проверяем на повторяющийся паттерн
+    #     if "опишите подробнее" in last_bot_question.lower():
+    #         # Бот уже задавал общий вопрос, нужно конкретизировать
+    #         logger.info(f"Detected repeated fallback question, last answers: {last_user_answers}")
+    #
+    #         # Анализируем ответы пользователя на ключевые слова
+    #         all_answers = ' '.join(last_user_answers).lower()
+    #
+    #         if any(word in all_answers for word in ['теч', 'льет', 'капает', 'мокр']):
+    #             if 'труб' in all_answers:
+    #                 # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос без перечисления комнат
+    #                 return "Уточните, пожалуйста: где именно течет?"
+    #             elif any(word in all_answers for word in ['батарей', 'отопл', 'радиатор']):
+    #                 return "Где именно течет?"
+    #             else:
+    #                 # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос без перечисления
+    #                 return "Уточните, откуда именно течет?"
+    #         elif any(word in all_answers for word in ['сломал', 'не работ', 'испортил']):
+    #             return "Опишите подробнее, что именно сломалось."
+    #
+    #         # Если ответ очень короткий (1-2 слова) - просим больше деталей
+    #         # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос вместо двойного
+    #         if len(last_user_answers) > 0 and len(last_user_answers[-1].split()) <= 2:
+    #             return "Опишите подробнее, что именно произошло."
+    #
+    #     # Проверяем количество повторов одного и того же
+    #     if len(recent_bot_questions) >= 2:
+    #         # Если последние 2+ вопроса от бота одинаковы
+    #         if len(set(q.lower() for q in recent_bot_questions[:2])) <= 1:
+    #             logger.warning("Detected repeated bot questions, changing strategy")
+    #             # ИСПРАВЛЕНО (2025-12-28): Открытый вопрос вместо двойного
+    #             return "Пожалуйста, опишите проблему другими словами. Что именно произошло?"
+    #
+    #     # Default fallback
+    #     if is_followup:
+    #         return "Уточните детали проблемы."
+    #     return "Опишите подробнее, что именно произошло."
 
     async def _ask_about_missing_attribute(
         self,
