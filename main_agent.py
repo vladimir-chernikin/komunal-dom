@@ -1614,19 +1614,23 @@ class MainAgent:
                 len(filtered_candidates) > 1  # ИСПРАВЛЕНО: только если осталось >1 кандидата!
             )
 
-            if needs_category_clarification:
-                logger.warning(f"[КАТЕГОРИЯ] У услуги '{candidate['service_name']}' есть category='{candidate_category}' в БД, но НЕ установлена в фильтрах (confidence={category_confidence})")
-                logger.warning(f"[КАТЕГОРИЯ] Нужно уточнить категорию перед SUCCESS")
-
-                # Генерируем вопрос через AI (без хардкода!)
-                return await self._ask_about_missing_attribute(
-                    candidate=candidate,
-                    attribute_name='category',
-                    attribute_value=candidate_category,
-                    dialog_history=dialog_history,
-                    txtPrb=txtPrb,
-                    established_filters=established_filters
-                )
+            # ЗАКОММЕНТИРОВАНО (2026-02-14): Метод _ask_about_missing_attribute для category
+            # ПРИЧИНА: Category УЖЕ есть в established_filters от FilterDetectionService
+            # Логика: FilterDetectionService определяет категорию, если есть (даже с низкой confident) → установлен в established_filters
+            # ПРОБЛЕМА: Зачем еще раз спрашивать категорию через _ask_about_missing_attribute?
+            # TODO: Протестировать систему без этого блока, проверить что category не спрашивается
+            # if needs_category_clarification:
+            #     logger.warning(f"[КАТЕГОРИЯ] У услуги '{candidate['service_name']}' есть category='{candidate_category}' в БД, но НЕ установлена в фильтрах (confidence={category_confidence})")
+            #     logger.warning(f"[КАТЕГОРИЯ] Нужно уточнить категорию перед SUCCESS")
+            #     # Генерируем вопрос через AI (без хардкода!)
+            #     return await self._ask_about_missing_attribute(
+            #         candidate=candidate,
+            #         attribute_name='category',
+            #         attribute_value=candidate_category,
+            #         dialog_history=dialog_history,
+            #         txtPrb=txtPrb,
+            #         established_filters=established_filters
+            #     )
 
             # ИСПРАВЛЕНО (2025-12-25): Добавляем needs_confirmation для низкого confidence
             # Получаем confidence из LLM ранжирования если было
