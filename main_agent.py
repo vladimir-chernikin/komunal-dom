@@ -543,27 +543,43 @@ class MainAgent:
 
                 logger.info(f"[!] Ответ повторяется {repeat_count} раз (has_frustration_history={has_frustration_history})")
 
-                # ИСПРАВЛЕНО (2026-01-14): Генерируем вопрос с учетом txtPrb
-                if has_frustration_history and txtPrb:
-                    # Пользователь недоволен + есть txtPrb → анализируем контекст
-                    txtPrb_lower = txtPrb.lower()
+                # ИСПРАВЛЕНО (2026-02-14): Генерируем вопрос через LLM вместо hardcoded
+                # ЗАКОММЕНТИРОВАНО (2026-02-14): Hardcoded вопросы - нарушение CLAUDE.md §8
+                # if has_frustration_history and txtPrb:
+                #     # Пользователь недоволен + есть txtPrb → анализируем контекст
+                #     txtPrb_lower = txtPrb.lower()
+                #
+                #     # Анализируем ключевые слова
+                #     if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
+                #         message = 'Понял, что-то течет или капает. Что именно?'
+                #     elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
+                #         message = 'Понял, есть запах. Откуда именно?'
+                #     elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
+                #         message = 'Понял, что-то сломалось. Что именно?'
+                #     else:
+                #         # Общий случай с учетом txtPrb
+                #         message = f'Понял: {txtPrb[:50]}. Уточните детали.'
+                # elif repeat_count >= 3:
+                #     # 3+ повторения - просим описать проблему другими словами
+                #     message = 'Пожалуйста, опишите проблему другими словами. Что именно случилось?'
+                # else:
+                #     # 2 повтора - задаем более конкретный вопрос
+                #     message = 'Уточните, пожалуйста: что именно произошло?'
 
-                    # Анализируем ключевые слова
-                    if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
-                        message = 'Понял, что-то течет или капает. Что именно?'
-                    elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
-                        message = 'Понял, есть запах. Откуда именно?'
-                    elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
-                        message = 'Понял, что-то сломалось. Что именно?'
-                    else:
-                        # Общий случай с учетом txtPrb
-                        message = f'Понял: {txtPrb[:50]}. Уточните детали.'
-                elif repeat_count >= 3:
-                    # 3+ повторения - просим описать проблему другими словами
-                    message = 'Пожалуйста, опишите проблему другими словами. Что именно случилось?'
-                else:
-                    # 2 повтора - задаем более конкретный вопрос
-                    message = 'Уточните, пожалуйста: что именно произошло?'
+                # ИСПРАВЛЕНО (2026-02-14): Используем LLM для генерации вопросов
+                context = f"Пользователь недоволен: {message_text}. Накопленная информация: {txtPrb or '(пусто)'}"
+                question_type = 'what_happened' if repeat_count >= 3 else 'details'
+
+                ai_result = await self._generate_ai_question(
+                    context=context,
+                    dialog_history=dialog_history,
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type=question_type,
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields
+                )
+                message = ai_result.get('question', 'Пожалуйста, уточните: что именно произошло?')
 
                 logger.info("[!] Меняем стратегию: задаем другой вопрос")
 
@@ -594,22 +610,37 @@ class MainAgent:
         if has_frustration_current:
             logger.warning(f"[!] Обнаружено недовольство в ТЕКУЩЕМ сообщении, обрабатываем...")
 
-            # Генерируем вопрос с учетом txtPrb
-            if txtPrb:
-                txtPrb_lower = txtPrb.lower()
+            # ИСПРАВЛЕНО (2026-02-14): Генерируем вопрос через LLM вместо hardcoded
+            # ЗАКОММЕНТИРОВАНО (2026-02-14): Hardcoded вопросы - нарушение CLAUDE.md §8
+            # if txtPrb:
+            #     txtPrb_lower = txtPrb.lower()
+            #
+            #     # Анализируем ключевые слова
+            #     if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
+            #         message = 'Понял, что-то течет или капает. Что именно?'
+            #     elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
+            #         message = 'Понял, есть запах. Откуда именно?'
+            #     elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
+            #         message = 'Понял, что-то сломалось. Что именно?'
+            #     else:
+            #         # Общий случай с учетом txtPrb
+            #         message = f'Понял: {txtPrb[:50]}. Уточните детали.'
+            # else:
+            #     message = 'Пожалуйста, уточните: что именно произошло?'
 
-                # Анализируем ключевые слова
-                if any(word in txtPrb_lower for word in ['капает', 'течет', 'льет', 'мокро', 'мокр']):
-                    message = 'Понял, что-то течет или капает. Что именно?'
-                elif any(word in txtPrb_lower for word in ['запах', 'воняет', 'пахнет']):
-                    message = 'Понял, есть запах. Откуда именно?'
-                elif any(word in txtPrb_lower for word in ['сломал', 'не работ', 'испортил', 'поломк']):
-                    message = 'Понял, что-то сломалось. Что именно?'
-                else:
-                    # Общий случай с учетом txtPrb
-                    message = f'Понял: {txtPrb[:50]}. Уточните детали.'
-            else:
-                message = 'Пожалуйста, уточните: что именно произошло?'
+            # ИСПРАВЛЕНО (2026-02-14): Используем LLM для генерации вопросов
+            context = f"Пользователь недоволен в текущем сообщении: {message_text}. Накопленная информация: {txtPrb or '(пусто)'}"
+
+            ai_result = await self._generate_ai_question(
+                context=context,
+                dialog_history=dialog_history,
+                established_filters=established_filters,
+                txtPrb=txtPrb,
+                question_type='details',
+                session_id=session_id,
+                accumulated_fields=accumulated_fields
+            )
+            message = ai_result.get('question', 'Пожалуйста, уточните: что именно произошло?')
 
             logger.info(f"[!] Сгенерирован ответ на недовольство: {message}")
 
@@ -839,7 +870,20 @@ class MainAgent:
                             needs_clarification = confidence < 0.9
 
                             if needs_clarification:
-                                message = 'Опишите подробнее, что именно происходит?'
+                                # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
+                                # ЗАКОММЕНТИРОВАНО (2026-02-14): message = 'Опишите подробнее, что именно происходит?'
+                                context = f"Найдена услуга: {ai_candidates[0]['service_name']} (confidence={confidence:.1%}). Нужно уточнить детали."
+                                ai_result = await self._generate_ai_question(
+                                    context=context,
+                                    dialog_history=dialog_history,
+                                    candidates=ai_candidates,
+                                    established_filters=established_filters,
+                                    txtPrb=txtPrb,
+                                    question_type='clarification',
+                                    session_id=session_id,
+                                    accumulated_fields=accumulated_fields
+                                )
+                                message = ai_result.get('question', 'Опишите подробнее, что именно происходит?')
                             else:
                                 message = f"Заявка создана: {ai_candidates[0]['service_name']}. Создаю заявку."
 
