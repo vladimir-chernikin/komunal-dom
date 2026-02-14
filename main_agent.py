@@ -2411,7 +2411,7 @@ class MainAgent:
                     'service_id': candidate['service_id'],
                     'service_name': candidate['service_name'],
                     'confidence': confidence,
-                    'message': f"Заявка создана: {candidate['service_name']}. Уточните детали если нужно.",
+                    'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
                     'needs_clarification': False,
                     'source': 'orchestrator'
                 }
@@ -2447,7 +2447,7 @@ class MainAgent:
                     'service_id': leader['service_id'],
                     'service_name': leader['service_name'],
                     'confidence': leader_conf,
-                    'message': f"Заявка создана: {leader['service_name']}. Уточните детали если нужно.",
+                    'message': f"Заявка создана: {leader['service_name']}. Создаю заявку.",
                     'needs_clarification': False,
                     'source': 'orchestrator'
                 }
@@ -2705,7 +2705,7 @@ class MainAgent:
                 location_value = location_data.get('value') if isinstance(location_data, dict) else location_data
                 location_conf = location_data.get('confidence') if isinstance(location_data, dict) else 0.9
 
-                if location_conf >= 0.8:
+                if location_conf >= 0.9:
                     if location_value == 'Индивидуальное' and re.search(r'(квартира|дом|общедом)', question_lower):
                         logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
                         forbidden_questions.append('location')
