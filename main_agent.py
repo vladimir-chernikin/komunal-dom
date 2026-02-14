@@ -1705,8 +1705,8 @@ class MainAgent:
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем что это проблема с ВОДОЙ/ТЕЧЬЮ
             # Только для водоснабжения и течи спрашиваем про интенсивность
             category = established_filters.get('category', {}).get('value', '')
-            source = accumulated_fields.get('source', '').lower()
-            problem = accumulated_fields.get('problem', '').lower()
+            source = (accumulated_fields.get('source') or '').lower()
+            problem = (accumulated_fields.get('problem') or '').lower()
 
             # Ключевые слова для воды/течи
             water_keywords = ['труба', 'кран', 'смеситель', 'унитаз', 'раковина', 'сифон',
