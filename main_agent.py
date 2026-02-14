@@ -900,8 +900,10 @@ class MainAgent:
                             }
                             return self._add_address_to_result(result, address_components)
 
-                # Fallback
-                return await self._fallback_service_detection(message_text, address_components)
+                # ИСПРАВЛЕНО (2026-02-14): _fallback_service_detection ЗАКОММЕНТИРОВАН (нарушение CLAUDE.md §8)
+                # Fallback - вместо hardcoded keywords используем AI-генерацию вопросов
+                # return await self._fallback_service_detection(message_text, address_components)
+                return await self._create_ambiguous_result([])
 
             # Есть кандидаты, но нет однозначного пересечения
             candidates_data = [service_results_map[sid] for sid in all_service_ids]
@@ -2214,82 +2216,83 @@ class MainAgent:
             'candidates': []
         }
 
-    async def _fallback_service_detection(self, message_text: str, address_components: Dict = None) -> Dict:
-        """
-        Запасной метод определения услуг по ключевым словам
-
-        ИСПРАВЛЕНО: Сделано async для вызова _create_ambiguous_result
-        ДОБАВЛЕНО: Принимает address_components для добавления к результату
-        """
-        try:
-            # Улучшенные ключевые слова для проблем с водой
-            water_keywords = ['теч', 'течет', 'протека', 'капа', 'утечк', 'льет', 'протек', 'затека', 'сырость', 'влага', 'капает', 'жидкость', 'сыро', 'мокро', 'протекает', 'течь']
-            equipment_keywords = ['сломал', 'не работает', 'испортил', 'повредил', 'поломк', 'брак']
-            heating_keywords = ['нет отопления', 'холодно', 'не греет', 'отопление не работает', 'батарея холодная']
-            electricity_keywords = ['нет света', 'света нет', 'выключили свет', 'нет электричества', 'электричество']
-            lift_keywords = ['лифт', 'лифта', 'лифтом', 'лифт не работает']
-
-            message_lower = message_text.lower()
-
-            if any(keyword in message_lower for keyword in water_keywords):
-                # ИСПРАВЛЕНО: Возвращаем AMBIGUOUS вместо SUCCESS чтобы задать уточняющий вопрос
-                return {
-                    'status': 'AMBIGUOUS',
-                    'candidates': [],
-                    'candidate_names': [],
-                    'message': 'Заявка создана: течь. Где именно это произошло? Пожалуйста, опишите подробнее.',
-                    'needs_clarification': True,
-                    'clarification_type': 'water'
-                }
-            elif any(keyword in message_lower for keyword in equipment_keywords):
-                return {
-                    'status': 'AMBIGUOUS',
-                    'candidates': [],
-                    'candidate_names': [],
-                    # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
-                    'message': 'Понимаю, у вас поломка оборудования. Опишите подробнее, что именно сломалось.',
-                    'needs_clarification': True,
-                    'clarification_type': 'equipment'
-                }
-            elif any(keyword in message_lower for keyword in heating_keywords):
-                return {
-                    'status': 'AMBIGUOUS',
-                    'candidates': [],
-                    'candidate_names': [],
-                    'message': 'Похоже, проблема с отоплением. Где именно это произошло? Пожалуйста, уточните детали.',
-                    'needs_clarification': True,
-                    'clarification_type': 'heating'
-                }
-            elif any(keyword in message_lower for keyword in electricity_keywords):
-                return {
-                    'status': 'AMBIGUOUS',
-                    'candidates': [],
-                    'candidate_names': [],
-                    'message': 'Похоже, проблема с электричеством. Где именно это произошло? Опишите подробнее ситуацию.',
-                    'needs_clarification': True,
-                    'clarification_type': 'electricity'
-                }
-            elif any(keyword in message_lower for keyword in lift_keywords):
-                result = {
-                    'status': 'SUCCESS',
-                    'service_id': 42,
-                    'service_name': 'Лифт не работает, двери застряли, люди внутри',
-                    'confidence': 0.9,
-                    'source': 'fallback_detection',
-                    'message': 'Я определил, что у вас проблема: Лифт не работает',
-                    'candidates': []
-                }
-                # ДОБАВЛЕНО: Добавляем адресные компоненты
-                if address_components:
-                    result = self._add_address_to_result(result, address_components)
-                return result
-
-            # Если не смогли определить проблему
-            return await self._create_ambiguous_result([])
-
-        except Exception as e:
-            logger.error(f"Ошибка в fallback_service_detection: {e}")
-            return await self._create_ambiguous_result([])
+    # ЗАКОММЕНТИРОВАНО (2026-02-14): Нарушение CLAUDE.md §8 - запрещены keywords, hardcoded вопросы, if/else цепочки
+    # async def _fallback_service_detection(self, message_text: str, address_components: Dict = None) -> Dict:
+    #     """
+    #     Запасной метод определения услуг по ключевым словам
+    #
+    #     ИСПРАВЛЕНО: Сделано async для вызова _create_ambiguous_result
+    #     ДОБАВЛЕНО: Принимает address_components для добавления к результату
+    #     """
+    #     try:
+    #         # Улучшенные ключевые слова для проблем с водой
+    #         water_keywords = ['теч', 'течет', 'протека', 'капа', 'утечк', 'льет', 'протек', 'затека', 'сырость', 'влага', 'капает', 'жидкость', 'сыро', 'мокро', 'протекает', 'течь']
+    #         equipment_keywords = ['сломал', 'не работает', 'испортил', 'повредил', 'поломк', 'брак']
+    #         heating_keywords = ['нет отопления', 'холодно', 'не греет', 'отопление не работает', 'батарея холодная']
+    #         electricity_keywords = ['нет света', 'света нет', 'выключили свет', 'нет электричества', 'электричество']
+    #         lift_keywords = ['лифт', 'лифта', 'лифтом', 'лифт не работает']
+    #
+    #         message_lower = message_text.lower()
+    #
+    #         if any(keyword in message_lower for keyword in water_keywords):
+    #             # ИСПРАВЛЕНО: Возвращаем AMBIGUOUS вместо SUCCESS чтобы задать уточняющий вопрос
+    #             return {
+    #                 'status': 'AMBIGUOUS',
+    #                 'candidates': [],
+    #                 'candidate_names': [],
+    #                 'message': 'Заявка создана: течь. Где именно это произошло? Пожалуйста, опишите подробнее.',
+    #                 'needs_clarification': True,
+    #                 'clarification_type': 'water'
+    #             }
+    #         elif any(keyword in message_lower for keyword in equipment_keywords):
+    #             return {
+    #                 'status': 'AMBIGUOUS',
+    #                 'candidates': [],
+    #                 'candidate_names': [],
+    #                 # ИСПРАВЛЕНО (2025-12-27): Открытый вопрос вместо двойного
+    #                 'message': 'Понимаю, у вас поломка оборудования. Опишите подробнее, что именно сломалось.',
+    #                 'needs_clarification': True,
+    #                 'clarification_type': 'equipment'
+    #             }
+    #         elif any(keyword in message_lower for keyword in heating_keywords):
+    #             return {
+    #                 'status': 'AMBIGUOUS',
+    #                 'candidates': [],
+    #                 'candidate_names': [],
+    #                 'message': 'Похоже, проблема с отоплением. Где именно это произошло? Пожалуйста, уточните детали.',
+    #                 'needs_clarification': True,
+    #                 'clarification_type': 'heating'
+    #             }
+    #         elif any(keyword in message_lower for keyword in electricity_keywords):
+    #             return {
+    #                 'status': 'AMBIGUOUS',
+    #                 'candidates': [],
+    #                 'candidate_names': [],
+    #                 'message': 'Похоже, проблема с электричеством. Где именно это произошло? Опишите подробнее ситуацию.',
+    #                 'needs_clarification': True,
+    #                 'clarification_type': 'electricity'
+    #             }
+    #         elif any(keyword in message_lower for keyword in lift_keywords):
+    #             result = {
+    #                 'status': 'SUCCESS',
+    #                 'service_id': 42,
+    #                 'service_name': 'Лифт не работает, двери застряли, люди внутри',
+    #                 'confidence': 0.9,
+    #                 'source': 'fallback_detection',
+    #                 'message': 'Я определил, что у вас проблема: Лифт не работает',
+    #                 'candidates': []
+    #             }
+    #             # ДОБАВЛЕНО: Добавляем адресные компоненты
+    #             if address_components:
+    #                 result = self._add_address_to_result(result, address_components)
+    #             return result
+    #
+    #         # Если не смогли определить проблему
+    #         return await self._create_ambiguous_result([])
+    #
+    #     except Exception as e:
+    #         logger.error(f"Ошибка в fallback_service_detection: {e}")
+    #         return await self._create_ambiguous_result([])
 
     def _get_service_name(self, service_id: int) -> str:
         """Получить название услуги по ID из services_catalog"""
@@ -3640,12 +3643,28 @@ JSON:"""
                 f"[ANTI-LOOP] Слишком много AI-вопросов (turn={dialog_turn}) -> "
                 f"возвращаем финальное сообщение о передаче оператору"
             )
-            final_message = "К сожалению, я не смог определить вашу проблему. Пожалуйста, свяжитесь с оператором по телефону или опишите проблему другими словами."
+            # ЗАКОММЕНТИРОВАНО (2026-02-14): Hardcoded fallback - заменяем на AI-генерацию
+            # final_message = "К сожалению, я не смог определить вашу проблему. Пожалуйста, свяжитесь с оператором по телефону или опишите проблему другими словами."
+            # return {
+            #     'question': final_message,
+            #     'prompt': '[ANTI-LOOP] Превышен лимит попыток',
+            #     'response': final_message,
+            #     'model': 'anti-loop',
+            #     'usage': {}
+            # }
+            # ИСПРАВЛЕНО (2026-02-14): Вместо hardcoded fallback используем ИИ для генерации финального сообщения
+            final_context = f"После {dialog_turn} сообщений не удалось определить проблему. Пользователь: {context.get('original_message', '')[:200]}"
+            ai_result = await self.ai_agent.call_llm(
+                prompt=f"Сгенерируй вежливый ответ для пользователя: {final_context}\n\nОтвет должен быть кратким, без эмодзи.",
+                provider='yandexgpt',
+                model='lite'
+            )
+            final_message = ai_result[0].strip() if ai_result else "Пожалуйста, опишите проблему другими словами или свяжитесь с оператором."
             return {
                 'question': final_message,
-                'prompt': '[ANTI-LOOP] Превышен лимит попыток',
+                'prompt': f'[ANTI-LOOP] Превышен лимит попыток (AI-generated)',
                 'response': final_message,
-                'model': 'anti-loop',
+                'model': 'anti-loop-ai',
                 'usage': {}
             }
 
