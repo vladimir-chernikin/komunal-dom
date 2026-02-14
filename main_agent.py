@@ -2564,7 +2564,7 @@ class MainAgent:
                 # Если это протечка без интенсивности → спрашиваем
                 if is_leak and not intensity_known:
                     logger.info(f"[DEBUG] Это протечка без интенсивности - спрашиваем 'как сильно течет?'")
-                    # Формируем контекст для LLM
+                   # Формируем контекст для LLM
                     context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: интенсивность (как сильно течет)."
                     ai_result = await self._generate_ai_question(
                         context=context,
@@ -2588,8 +2588,8 @@ class MainAgent:
                         'source': 'orchestrator'
                     }
 
-                # Низкий confidence - уточняем через AI
-                # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
+               # Низкий confidence - уточняем через AI
+               # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
                 return await self._ask_ai_clarification(
                     message_text, unique_candidates, dialog_history, established_filters
                 )
