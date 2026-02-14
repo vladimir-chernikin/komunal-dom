@@ -2612,6 +2612,43 @@ class MainAgent:
             # СТАРЫЙ ПОРОГ (2026-01-23): confidence > 0.9 AND (diff > 0.2)
             # НОВЫЙ ПОРОГ (2026-01-23): confidence > 0.80 (упрощен после удаления штрафов/бонусов)
             if leader_conf > 0.80:
+                # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем интенсивность для протечек ПЕРЕД созданием заявки
+                category = leader.get('category', '')
+                service_name_lower = leader['service_name'].lower()
+                intensity_known = accumulated_fields.get('intensity') is not None
+
+                # Для протечек (Водоснабжение/Отопление с "теч" или "протеч") нужно знать интенсивность
+                is_leak = (
+                    category in ['Водоснабжение', 'Отопление'] and
+                    any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
+                )
+
+                # Если это протечка без интенсивности → спрашиваем
+                if is_leak and not intensity_known:
+                    logger.info(f"[DEBUG] ЯВНЫЙ ЛИДЕР - это протечка без интенсивности, спрашиваем")
+                    context = f"Найдена услуга: {leader['service_name']} (confidence={leader_conf:.1%}). Нужно уточнить: интенсивность (как сильно течет)."
+                    ai_result = await self._generate_ai_question(
+                        context=context,
+                        dialog_history=dialog_history,
+                        candidates=[leader],
+                        established_filters=established_filters,
+                        txtPrb=txtPrb,
+                        question_type='clarification',
+                        session_id=session_id,
+                        accumulated_fields=accumulated_fields
+                    )
+                    message = ai_result.get('question', 'Насколько сильно течет?')
+                    return {
+                        'candidates': [leader],
+                        'status': 'AMBIGUOUS',
+                        'service_id': leader['service_id'],
+                        'service_name': leader['service_name'],
+                        'confidence': leader_conf,
+                        'message': message,
+                        'needs_clarification': True,
+                        'source': 'orchestrator'
+                    }
+
                 logger.info(f"ЯВНЫЙ ЛИДЕР: service_id={leader['service_id']}, conf={leader_conf:.3f}, второй={second_conf:.3f}, разница={leader_conf - second_conf:.3f}")
                 return {
                     'candidates': [leader],
