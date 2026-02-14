@@ -1031,19 +1031,19 @@ class MessageLogAdmin(admin.ModelAdmin):
             if not accumulated_fields.get('problem'):
                 acc_status = 'warning'
                 acc_issues.append('❌ Нет поля problem (что случилось?)')
-            if not accumulated_fields.get('category'):
-                acc_status = 'warning'
-                acc_issues.append('❌ Нет поля category (какая система?)')
+#             if not accumulated_fields.get('category'):
+#                 acc_status = 'warning'
+#                 acc_issues.append('❌ Нет поля category (какая система?)')
             if not accumulated_fields.get('location'):
                 acc_issues.append('⚠️ Нет поля location (где именно?)')
 
             if acc_issues and acc_status != 'warning':
                 acc_status = 'warning'
 
-            # ПРОВЕРКА: Дублирование вызова AI
-            # Если accumulated_fields заполнен → был ПЕРВЫЙ вызов extract_and_accumulate
-            # Если есть AI Orchestrator → был ВТОРОЙ вызов в _build_question_prompt
-            # через _extract_known_info → ДУБЛИРОВАНИЕ!
+            # ИСПРАВЛЕНИЕ (2026-02-14): Если category УЖЕ установлен в established_filters - НЕ спрашивать! ПРОВЕРКА: Дублирование вызова AI
+            # ИСПРАВЛЕНИЕ (2026-02-14): Если category УЖЕ установлен в established_filters - НЕ спрашивать! Если accumulated_fields заполнен → был ПЕРВЫЙ вызов extract_and_accumulate
+            # ИСПРАВЛЕНИЕ (2026-02-14): Если category УЖЕ установлен в established_filters - НЕ спрашивать! Если есть AI Orchestrator → был ВТОРОЙ вызов в _build_question_prompt
+            # ИСПРАВЛЕНИЕ (2026-02-14): Если category УЖЕ установлен в established_filters - НЕ спрашивать! через _extract_known_info → ДУБЛИРОВАНИЕ!
             if accumulated_fields and ai_orchestrator:
                 acc_duplicate_issue = False
 

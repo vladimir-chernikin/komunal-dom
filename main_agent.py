@@ -863,22 +863,39 @@ class MainAgent:
                     if ai_result and ai_result.get('candidates'):
                         ai_candidates = ai_result['candidates']
                         if len(ai_candidates) == 1:
-                            # ИСПРАВЛЕНИЕ (2026-02-14): Всегда спрашиваем локацию если она не указана явно
-                            # Проверяем: знаем ли мы точную локацию из accumulated_fields?
-                            location_known = accumulated_fields.get('location') is not None
-                            confidence = ai_candidates[0].get('confidence', 0.8)
+                            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем, нужно ли уточнение
+                            candidate = ai_candidates[0]
+                            category = candidate.get('category', '')
+                            service_name_lower = candidate['service_name'].lower()
 
-                            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence услуги
-                            needs_clarification = not location_known
+                            # Что нужно уточнить?
+                            location_known = accumulated_fields.get('location') is not None
+                            intensity_known = accumulated_fields.get('intensity') is not None
+                            confidence = candidate.get('confidence', 0.8)
+
+                            # Для протечек (Водоснабжение/Отопление с "теч" или "протеч") нужно знать интенсивность
+                            is_leak = (
+                                category in ['Водоснабжение', 'Отопление'] and
+                                any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
+                            )
+
+                            # Если локация НЕ известна - ИЛИ это протечка без интенсивности → спрашиваем
+                            needs_clarification = (not location_known) or (is_leak and not intensity_known)
 
                             if needs_clarification:
                                 # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
-                                # ЗАКОММЕНТИРОВАНО (2026-02-14): message = 'Опишите подробнее, что именно происходит?'
-                                context = f"Найдена услуга: {ai_candidates[0]['service_name']} (confidence={confidence:.1%}). Нужно уточнить детали."
+                                # Формируем контекст с указанием, что именно нужно уточнить
+                                missing_info = []
+                                if not location_known:
+                                    missing_info.append("локацию")
+                                if is_leak and not intensity_known:
+                                    missing_info.append("интенсивность (как сильно течет)")
+
+                                context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: {', '.join(missing_info)}."
                                 ai_result = await self._generate_ai_question(
                                     context=context,
                                     dialog_history=dialog_history,
-                                    candidates=ai_candidates,
+                                    candidates=[candidate],
                                     established_filters=established_filters,
                                     txtPrb=txtPrb,
                                     question_type='clarification',
@@ -887,16 +904,16 @@ class MainAgent:
                                 )
                                 message = ai_result.get('question', 'Опишите подробнее, что именно происходит?')
                             else:
-                                message = f"Заявка создана: {ai_candidates[0]['service_name']}. Создаю заявку."
+                                message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
 
                             result = {
                                 'status': 'SUCCESS',
-                                'service_id': ai_candidates[0]['service_id'],
-                                'service_name': ai_candidates[0]['service_name'],
+                                'service_id': candidate['service_id'],
+                                'service_name': candidate['service_name'],
                                 'confidence': confidence,
                                 'source': 'ai_agent',
                                 'message': message,
-                                'candidates': ai_candidates,
+                                'candidates': [candidate],
                                 'needs_clarification': needs_clarification,
                                 '_metadata': result_metadata  # ИСПРАВЛЕНИЕ (2025-12-27): Добавляем metadata
                             }
@@ -1674,6 +1691,35 @@ class MainAgent:
 
             logger.info(f"[DECISION] llm_conf={llm_confidence:.2%}, filter_conf={filter_confidence:.2%}, candidate_conf={candidate_confidence:.2%}, actual_conf={actual_confidence:.2%}, needs_clar={needs_clarification}")
 
+            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
+            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence
+            location_known = accumulated_fields.get('location') is not None
+
+            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем серьёзность ПЕРЕД созданием заявки
+            # Для Инцидентов с ВОДОЙ/ТЕЧЬЮ нужно знать severity/intensity
+            incident_type = established_filters.get('incident_type', {}).get('value', '')
+            severity_known = accumulated_fields.get('severity') is not None
+            intensity_known = accumulated_fields.get('intensity') is not None
+            is_incident = incident_type == 'Инцидент'
+
+            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем что это проблема с ВОДОЙ/ТЕЧЬЮ
+            # Только для водоснабжения и течи спрашиваем про интенсивность
+            category = established_filters.get('category', {}).get('value', '')
+            source = accumulated_fields.get('source', '').lower()
+            problem = accumulated_fields.get('problem', '').lower()
+
+            # Ключевые слова для воды/течи
+            water_keywords = ['труба', 'кран', 'смеситель', 'унитаз', 'раковина', 'сифон',
+                           'протекает', 'течет', 'капает', 'капает', 'протечка']
+            is_water_problem = (
+                category == 'Водоснабжение' or  # Категория - Водоснабжение
+                any(keyword in source for keyword in water_keywords) or  # Источник - труба, кран и т.д.
+                any(keyword in problem for keyword in water_keywords)  # Проблема - течёт, капает
+            )
+
+            # Для Инцидентов с водой: если НЕ известны severity/intensity → нужно уточнить
+            needs_severity_clarification = is_incident and is_water_problem and not (severity_known or intensity_known)
+
             # Формируем сообщение (ИСПРАВЛЕНО: используем LLM вместо fallback!)
             if needs_clarification:
                 # ИСПРАВЛЕНО (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK!
@@ -1692,9 +1738,57 @@ class MainAgent:
                 )
                 message = ai_result['question']
                 logger.info(f"[LLM QUESTION] Сгенерирован вопрос: {message}")
-            else:
-                # Если уже спрашивали уточнение ИЛИ высокая уверенность - создаем заявку
-                message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
+
+                return {
+                    'candidates': [candidate],
+                    'status': 'AMBIGUOUS',
+                    'service_id': candidate['service_id'],
+                    'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                    'confidence': actual_confidence if actual_confidence > 0 else 1.0,
+                    'source': 'filtered_search_with_llm',
+                    'message': message,
+                    'single_candidate': candidate,
+                    'filtered_candidates': filtered_candidates,
+                    'needs_clarification': True,
+                    'is_followup': is_followup
+                }
+
+            # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО локация НЕ известна - спрашиваем
+            if not location_known:
+                logger.warning(f"[NO LOCATION] actual_conf={actual_confidence:.2%} >= 90%, НО локация НЕ известна - спрашиваем 'Где именно?'")
+                return {
+                    'candidates': [candidate],
+                    'status': 'AMBIGUOUS',
+                    'service_id': candidate['service_id'],
+                    'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                    'confidence': actual_confidence if actual_confidence > 0 else 1.0,
+                    'source': 'filtered_search_with_llm',
+                    'message': "Где именно это произошло?",
+                    'single_candidate': candidate,
+                    'filtered_candidates': filtered_candidates,
+                    'needs_clarification': True,
+                    'is_followup': is_followup
+                }
+
+            # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО для Инцидента НЕ известны severity/intensity
+            if needs_severity_clarification:
+                logger.warning(f"[NO SEVERITY] actual_conf={actual_confidence:.2%} >= 90%, incident_type=Инцидент, НО НЕ известны severity/intensity - спрашиваем")
+                return {
+                    'candidates': [candidate],
+                    'status': 'AMBIGUOUS',
+                    'service_id': candidate['service_id'],
+                    'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                    'confidence': actual_confidence if actual_confidence > 0 else 1.0,
+                    'source': 'filtered_search_with_llm',
+                    'message': "Как сильно течёт? Есть затопление?",
+                    'single_candidate': candidate,
+                    'filtered_candidates': filtered_candidates,
+                    'needs_clarification': True,
+                    'is_followup': is_followup
+                }
+
+            # Высокая уверенность И локация известна И (для Инцидентов) известна серьёзность - создаем заявку
+            message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
 
             return {
                 'candidates': [candidate],
@@ -2416,17 +2510,39 @@ class MainAgent:
             candidate = unique_candidates[0]
             confidence = candidate.get('confidence', 0.0)
 
-            if confidence >= 0.9:
-                # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - открытые вопросы только
-                # При высокой уверенности НЕ задаем вопросы, просто сообщаем
+            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
+            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence услуги
+            location_known = accumulated_fields.get('location') is not None
+
+            # ПРОВЕРЯЕМ: Если локация НЕ известна → проверяем тип обращения
+            if not location_known:
+                # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем incident_type - Запрос или Инцидент?
+                incident_type = established_filters.get('incident_type', {}).get('value', '')
+
+                if incident_type == 'Запрос':
+                    # ИСПРАВЛЕНИЕ (2026-02-14): Консультационный запрос - создаем заявку БЕЗ локации
+                    logger.info(f"[DEBUG] Это Запрос - создаем заявку БЕЗ вопроса о локации")
+                    return {
+                        'candidates': [candidate],
+                        'status': 'SUCCESS',
+                        'service_id': candidate['service_id'],
+                        'service_name': candidate['service_name'],
+                        'confidence': confidence,
+                        'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
+                        'needs_clarification': False,
+                        'source': 'orchestrator'
+                    }
+
+                # Инцидент - спрашиваем локацию
+                logger.info(f"[DEBUG] Это Инцидент без локации - спрашиваем 'Где именно?'")
                 return {
                     'candidates': [candidate],
-                    'status': 'SUCCESS',
+                    'status': 'AMBIGUOUS',
                     'service_id': candidate['service_id'],
                     'service_name': candidate['service_name'],
                     'confidence': confidence,
-                    'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
-                    'needs_clarification': False,
+                    'message': "Где именно это произошло?",
+                    'needs_clarification': True,
                     'source': 'orchestrator'
                 }
             else:
@@ -4733,10 +4849,21 @@ JSON:"""
             List[Dict]: Отфильтрованный список кандидатов
         """
         # ИСПРАВЛЕНО (2026-02-13): Разные пороги для разных фильтров
-        # Location: 0.8 (точный), Incident: 0.7 (важный), Category: 0.6 (менее точен)
+        # Location: 0.8 (точный), Incident: 0.7 (важный), Category: 0.7 (менее точен)
         FILTER_CONFIDENCE_THRESHOLD_LOCATION = 0.8
         FILTER_CONFIDENCE_THRESHOLD_INCIDENT = 0.7
-        FILTER_CONFIDENCE_THRESHOLD_CATEGORY = 0.6
+        # ИСПРАВЛЕНО (2026-02-14): Порог category поднят с 0.6 до 0.7 на основе анализа 2498 реальных диалогов
+        # Статистика из dialog_logs (metadata->established_filters):
+        #   - 1553 записей category
+        #   - Среднее confidence: 0.87
+        #   - 69.1% имеют confidence >= 0.90
+        #   - 90.3% имеют confidence >= 0.70
+        #   - 90.5% имеют confidence >= 0.60 (было)
+        # Разница между >= 0.70 и >= 0.60 = всего 0.2% (2 записи из 1553)
+        # ВЫВОД: Порог 0.60 слишком либерален, есть риск false positive
+        #         Порог 0.70 снижает риск без потери полноты
+        # FILTER_CONFIDENCE_THRESHOLD_CATEGORY = 0.6  # СТАРЫЙ (слишком либеральный)
+        FILTER_CONFIDENCE_THRESHOLD_CATEGORY = 0.7  # НОВЫЙ (на основе анализа реальных данных)
         FILTER_CONFIDENCE_THRESHOLD_DEFAULT = 0.7
 
         logger.info(f"[SEARCH] _apply_filters_to_candidates: начало, кандидатов={len(candidates)}, фильтров={len(established_filters)}")
