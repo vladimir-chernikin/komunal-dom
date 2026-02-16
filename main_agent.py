@@ -237,6 +237,7 @@ class MainAgent:
         session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
         message_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем message_id
         established_filters = None  # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters
+        accumulated_fields = None  # ИСПРАВЛЕНО (2026-02-16): Извлекаем accumulated_fields
         txt_stop_questions = []  # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы)
 
         if user_context:
@@ -245,7 +246,10 @@ class MainAgent:
             session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
             message_id = user_context.get('message_id')  # ИСПРАВЛЕНО (2026-01-06)
             established_filters = user_context.get('established_filters')  # ИСПРАВЛЕНО (2026-01-10)
+            accumulated_fields = user_context.get('accumulated_fields')  # ИСПРАВЛЕНО (2026-02-16)
             txt_stop_questions = user_context.get('txtStopQ', [])  # ИСПРАВЛЕНО (2026-02-04): txtStopQ
+            if accumulated_fields:
+                logger.info(f"[DEBUG] ✅ Получены accumulated_fields из user_context: {accumulated_fields}")
             if txt_stop_questions:
                 logger.info(f"[DEBUG] Получены txtStopQ из user_context: {len(txt_stop_questions)} запрещенных вопросов")
 
@@ -397,12 +401,22 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
                 # Короткие ответы типа "в квартире" важны для контекста!
                 txtPrb = accumulation_result['updated_problem']
-                accumulated_fields = accumulation_result.get('fields', {})  # ИСПРАВЛЕНО (2026-02-14): БРАТЬ fields из результата!
+                new_accumulated_fields = accumulation_result.get('fields', {})  # НОВЫЕ поля из сообщения
 
-                # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПОСЛЕ получения accumulated_fields
-                print(f"=== [CRITICAL DEBUG] ПОСЛЕ accumulation_result ===")
-                print(f"accumulated_fields={accumulated_fields}")
-                print(f"txtPrb={txtPrb}")
+                # ИСПРАВЛЕНО (2026-02-16): ОБЪЕДИНЯЕМ старые и новые accumulated_fields
+                # Приоритет: НОВЫЕ поля перезаписывают СТАРЫЕ
+                final_accumulated_fields = {}
+                if accumulated_fields:
+                    final_accumulated_fields.update(accumulated_fields)
+                    logger.info(f"[DEBUG] Старые accumulated_fields: {accumulated_fields}")
+                if new_accumulated_fields:
+                    final_accumulated_fields.update(new_accumulated_fields)
+                    logger.info(f"[DEBUG] Новые accumulated_fields: {new_accumulated_fields}")
+                accumulated_fields = final_accumulated_fields
+
+                # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПОСЛЕ объединения accumulated_fields
+                logger.info(f"[CRITICAL DEBUG] ✅ ФИНАЛЬНЫЕ accumulated_fields: {accumulated_fields}")
+                logger.info(f"[CRITICAL DEBUG] txtPrb: {txtPrb}")
 
                 if accumulation_result['is_meaningful']:
                     logger.info(f"txtPrb обновлен (содержательный): '{txtPrb[:100]}...'")
@@ -2260,7 +2274,8 @@ class MainAgent:
         attribute_value: str,
         dialog_history: List[Dict],
         txtPrb: str,
-        established_filters: Dict
+        established_filters: Dict,
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> Dict:
         """
         Генерирует уточняющий вопрос о пропущенном атрибуте через AI
@@ -2365,11 +2380,13 @@ class MainAgent:
 
             # ИСПРАВЛЕНИЕ (2026-01-11): ВАЛИДАЦИЯ вопроса через _llm_validate_question!
             # КРИТИЧЕСКИ ВАЖНО: ЛLM может сгенерировать вопрос с "или" несмотря на запрет в промпте
+            # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации
             question = await self._llm_validate_question(
                 question=question,
                 txtPrb=txtPrb,
                 established_filters=established_filters,
-                asked_questions=[]  # TODO: можно добавить уже заданные вопросы
+                asked_questions=[],  # TODO: можно добавить уже заданные вопросы
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
             )
 
             logger.info(f"[AI QUESTION] Сгенерирован вопрос о category: '{question}'")
@@ -3086,6 +3103,22 @@ class MainAgent:
         absolute_facts = []
         if txtPrb:
             absolute_facts.append(f"Описание проблемы: {txtPrb}")
+
+        # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields в absolute_facts для валидатора
+        # КРИТИЧЕСКИ ВАЖНО: Чтобы валидатор видел УЖЕ извлеченные поля и НЕ пропускал вопросы о них!
+        if accumulated_fields:
+            if accumulated_fields.get('source'):
+                absolute_facts.append(f"Объект: {accumulated_fields['source']}")
+            if accumulated_fields.get('location'):
+                absolute_facts.append(f"Локация: {accumulated_fields['location']}")
+            if accumulated_fields.get('problem'):
+                absolute_facts.append(f"Проблема: {accumulated_fields['problem']}")
+            if accumulated_fields.get('severity'):
+                absolute_facts.append(f"Серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                absolute_facts.append(f"Интенсивность: {accumulated_fields['intensity']}")
+            if accumulated_fields.get('category'):
+                absolute_facts.append(f"Категория (накопленная): {accumulated_fields['category']}")
 
         if established_filters:
             for filter_name, filter_data in established_filters.items():
@@ -3929,7 +3962,7 @@ JSON:"""
         prompt = f"{system_block}{intro_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
 
         # Добавляем инструкцию по формату ответа
-        prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"
+        prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"""
 
         return prompt
 
@@ -4062,7 +4095,8 @@ JSON:"""
                 logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
             else:
                 # Для остальных типов используем старый метод
-                prompt = self._build_question_prompt(
+                # ИСПРАВЛЕНО (2026-02-16): Добавлен await (теперь _build_question_prompt async)
+                prompt = await self._build_question_prompt(
                     context=context,
                     dialog_history=dialog_history,
                     candidates=candidates,
@@ -4151,7 +4185,9 @@ JSON:"""
                 }
 
         except Exception as e:
+            import traceback
             logger.error(f"Ошибка генерации AI вопроса: {e}")
+            logger.error(f"TRACEBACK:\n{traceback.format_exc()}")
             question = self._fallback_question(question_type, context)
             return {
                 'question': question,
@@ -4161,7 +4197,8 @@ JSON:"""
                 'usage': {}
             }
 
-    def _build_question_prompt(
+    # ИСПРАВЛЕНО (2026-02-16): Сделал async чтобы можно было await внутри
+    async def _build_question_prompt(
         self,
         context: str,
         dialog_history: List[Dict] = None,
@@ -4179,8 +4216,7 @@ JSON:"""
         - Атомарные открытые вопросы
         - Запрет на двойные вопросы
         ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
-        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
-        """
+        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов"""
 
         # Анализируем что уже известно из истории
         # ИСПРАВЛЕНО (2026-01-21): Передаем accumulated_fields чтобы избежать повторного LLM вызова
@@ -4195,21 +4231,23 @@ JSON:"""
                 recent_dialog += f"{role}: {msg.get('text', '')}\n"
 
         # Формируем JSON кандидатов для промта
+        # ИСПРАВЛЕНО (2026-02-16): Проверяем candidates на None
         candidates_json = ""
         import json
         candidates_list = []
-        for c in candidates[:15]:  # До 15 кандидатов
-            candidate_data = {
-                "КодУслуги": c.get('service_id', 'Unknown'),
-                "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),
-                "Фильтры": {
-                    "Тип": c.get('incident_type', '-'),
-                    "Вид": c.get('location_type', '-'),
-                    "Категория": c.get('category', '-'),
-                    "Объект": c.get('object_type', '-')
+        if candidates:  # Проверка на None и пустой список
+            for c in candidates[:15]:  # До 15 кандидатов
+                candidate_data = {
+                    "КодУслуги": c.get('service_id', 'Unknown'),
+                    "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),
+                    "Фильтры": {
+                        "Тип": c.get('incident_type', '-'),
+                        "Вид": c.get('location_type', '-'),
+                        "Категория": c.get('category', '-'),
+                        "Объект": c.get('object_type', '-')
+                    }
                 }
-            }
-            candidates_list.append(candidate_data)
+                candidates_list.append(candidate_data)
 
         candidates_json = f"\nСПИСОК КАНДИДАТОВ (услуги которые подходят под описание):\n"
         candidates_json += "```json\n"
@@ -4228,7 +4266,8 @@ JSON:"""
                     is_active=True
                 ).first()
 
-            db_template = get_db_template()
+            # ИСПРАВЛЕНО (2026-02-16): Добавлен await для sync_to_async функции
+            db_template = await get_db_template()
 
             if db_template:
                 # Подставляем переменные в базовую часть шаблона из БД
@@ -4313,10 +4352,11 @@ JSON:"""
 ✅ Если location="зал" → НЕЛЬЗЯ спрашивать "Где именно?"
 ✅ Если category="Отопление" → НЕЛЬЗЯ спрашивать "Это отопление?"
 
-Правильные вопросы при УЖЕ известных фактах:
-- Знаешь: "течёт" + "зал" → спроси: "Опишите детально проблему"
-- Знаешь: "течёт" + "квартира" → спроси: "В какой комнате это происходит?"
-- Знаешь: "сломалось" + "батарея" → спроси: "Опишите подробнее что случилось"
+ПРАВИЛЬНЫЕ вопросы при УЖЕ известных фактах:
+- Если известно: "течёт" + "батарея" → спроси про ЛОКАЦИЮ: "Где именно это происходит?"
+- Если известно: "течёт" + "батарея" + "зал" → спроси про ИНТЕНСИВНОСТЬ: "Насколько сильно течет?"
+- Если известно: "батарея" + "холодная" → спроси про ЛОКАЦИЮ: "В какой комнате батарея?"
+- Если известно: "сломалось" + "кран" → спроси: "В каком помещении кран?"
 
 НЕ ПРИМЕНЯЙ:
 - Двойные вопросы ("что и где?")
@@ -4400,74 +4440,13 @@ JSON:"""
 {txtPrb}
 """
 
-        # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
-        # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ПЕРЕД established_filters!
-        # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
-        absolute_facts_list = []
-
-        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
-        # ИСПРАВЛЕНО (2026-02-16): Логируем accumulated_fields для отладки
-        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
-
-        if accumulated_fields:
-            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
-            if accumulated_fields.get('source'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
-                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
-            if accumulated_fields.get('location'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
-                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
-            if accumulated_fields.get('problem'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
-                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
-            if accumulated_fields.get('severity'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
-            if accumulated_fields.get('intensity'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
-            if accumulated_fields.get('category'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
-                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
-
-            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
-        else:
-            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
-
-        # ПОТОМ established_filters (из FilterDetectionService)
-        if established_filters:
-            # object_description
-            obj_desc = established_filters.get('object_description')
-            if obj_desc and isinstance(obj_desc, dict):
-                obj_value = obj_desc.get('value')
-                obj_conf = obj_desc.get('confidence', 0)
-                if obj_value and obj_conf >= 0.8:
-                    absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
-
-            # location_type
-            location = established_filters.get('location_type')
-            if location and isinstance(location, dict):
-                loc_value = location.get('value')
-                loc_conf = location.get('confidence', 0)
-                if loc_value and loc_conf >= 0.8:
-                    absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
-
-            # category
-            category = established_filters.get('category')
-            if category and isinstance(category, dict):
-                cat_value = category.get('value')
-                cat_conf = category.get('confidence', 0)
-                if cat_value and cat_conf >= 0.8:
-                    absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
-
-        # ИСПРАВЛЕНО (2026-02-16): Проверяем absolute_facts_list ПОСЛЕ обоих блоков (accumulated + established)
-        if absolute_facts_list:
-            prompt += f"""
-⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
-{''.join(absolute_facts_list)}
-
-КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом!
-Если известно "проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
-Если известно "локация: зал" → НЕЛЬЗЯ спрашивать "Где именно?"
-"""
+        # ЗАКОММЕНТИРОВАНО (2026-02-16): Дубликат убран - код теперь перед return prompt
+        # # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
+        # # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ПЕРЕД established_filters!
+        # # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
+        # absolute_facts_list = []
+        # ...
+        # (дубликат кода убран чтобы не было двойного добавления в промт)
 
         if recent_dialog:
             prompt += f"""
@@ -4611,14 +4590,19 @@ JSON:"""
 ЗАДАЧА
 ══════════════════════════════════════════════════════════════════════════════
 
-Задай ОДИН вопрос чтобы понять что именно случилось.
+# ИСПРАВЛЕНО (2026-02-16): Задай вопрос для уточнения ТОЛЬКО НЕИЗВЕСТНЫХ деталей
+# КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать про УЖЕ ИЗВЕСТНЫЕ объект, проблему, категорию!
+# Спроси про: локацию, интенсивность или серьезность.
+
+СНАЧАЛА прочитай блок "⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ ⛔⛔⛔" НИЖЕ - там указано что НЕЛЬЗЯ спрашивать!
+После этого задай ОДИН вопрос для уточнения ТОЛЬКО неизвестных деталей (локация, интенсивность).
 
 Ограничения:
 - Один вопрос
 - Открытый вопрос
 - Без перечислений
 - Коротко
-- НЕ спрашивай то, что УЖЕ известно из фильтров
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать то, что УЖЕ известно в блоке ниже!
 
 Вопрос:"""
 
@@ -4678,6 +4662,75 @@ JSON:"""
 - Без союза "и"
 
 Вопрос:"""
+
+        # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ВСЕГДА (не только в fallback!)
+        # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
+        absolute_facts_list = []
+
+        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
+        # ИСПРАВЛЕНО (2026-02-16): Логируем accumulated_fields для отладки
+        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
+
+        if accumulated_fields:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
+            if accumulated_fields.get('source'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
+                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
+            if accumulated_fields.get('location'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
+                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
+            if accumulated_fields.get('problem'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
+                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
+            if accumulated_fields.get('severity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
+            if accumulated_fields.get('category'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
+                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
+
+            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
+        else:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
+
+        # ПОТОМ established_filters (из FilterDetectionService)
+        if established_filters:
+            # object_description
+            obj_desc = established_filters.get('object_description')
+            if obj_desc and isinstance(obj_desc, dict):
+                obj_value = obj_desc.get('value')
+                obj_conf = obj_desc.get('confidence', 0)
+                if obj_value and obj_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
+
+            # location_type
+            location = established_filters.get('location_type')
+            if location and isinstance(location, dict):
+                loc_value = location.get('value')
+                loc_conf = location.get('confidence', 0)
+                if loc_value and loc_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
+
+            # category
+            category = established_filters.get('category')
+            if category and isinstance(category, dict):
+                cat_value = category.get('value')
+                cat_conf = category.get('confidence', 0)
+                if cat_value and cat_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
+
+        # ИСПРАВЛЕНО (2026-02-16): Проверяем absolute_facts_list ПОСЛЕ обоих блоков (accumulated + established)
+        # ИСПРАВЛЕНО (2026-02-16): Используем '\n'.join() вместо ''.join() чтобы факты были на разных строках!
+        if absolute_facts_list:
+            prompt += f"""
+⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
+{'\\n'.join(absolute_facts_list)}
+
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом!
+Если известно "проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
+Если известно "локация: зал" → НЕЛЬЗЯ спрашивать "Где именно?"
+"""
 
         return prompt
 
