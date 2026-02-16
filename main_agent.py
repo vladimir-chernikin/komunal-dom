@@ -2657,8 +2657,10 @@ class MainAgent:
 
                # Низкий confidence - уточняем через AI
                # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
+               # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации вопросов
                 return await self._ask_ai_clarification(
-                    message_text, unique_candidates, dialog_history, established_filters
+                    message_text, unique_candidates, dialog_history, established_filters,
+                    session_id=session_id, accumulated_fields=accumulated_fields
                 )
 
         # Если несколько кандидатов (2-10) - проверяем есть ли явный лидер
@@ -3029,7 +3031,8 @@ class MainAgent:
             for filter_name, filter_data in established_filters.items():
                 if isinstance(filter_data, dict) and filter_data.get('value'):
                     confidence = filter_data.get('confidence', 0)
-                    if confidence > 0.8:
+                    # ИСПРАВЛЕНО (2026-02-16): Изменено с > 0.8 на >= 0.8, чтобы category с 80% попадала в absolute_facts
+                    if confidence >= 0.8:
                         absolute_facts.append(f"{filter_name}={filter_data['value']} (уверенность: {confidence:.0%})")
 
         # Если нет известных фактов - пропускаем валидацию
@@ -4821,12 +4824,14 @@ JSON:"""
         candidates: List[Dict],
         dialog_history: List[Dict],
         established_filters: Dict = None,
-        session_id: str = None
+        session_id: str = None,
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> Dict:
         """Спрашивает как уточнить - использует CommunicativeScriptsService
 
         ИСПРАВЛЕНО (2025-12-26): Вместо AI использует CommunicativeScriptsService
         ИСПРАВЛЕНО (2026-01-05): Добавлен параметр established_filters
+        ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields для корректной валидации вопросов
         """
         # Вычисляем dialog_turn и is_followup
         dialog_turn = len(dialog_history) if dialog_history else 1
@@ -4843,6 +4848,7 @@ JSON:"""
 
         # ИСПРАВЛЕНО (2026-01-05): Получаем Dict с вопросом И метаданными, ПЕРЕДАЕМ established_filters
         # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+        # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации вопросов
         ai_result = await self._generate_ai_question(
             context=context,
             dialog_history=dialog_history,
@@ -4851,7 +4857,7 @@ JSON:"""
             txtPrb=extracted_txtPrb,
             question_type='clarification',
             session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-            accumulated_fields=None  # ИСПРАВЛЕНО (2026-01-21): Нет accumulated_fields в этом контексте
+            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
         )
 
         ai_question = ai_result['question']
