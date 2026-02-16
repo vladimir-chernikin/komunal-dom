@@ -910,15 +910,17 @@ class MainAgent:
                             intensity_known = accumulated_fields.get('intensity') is not None
                             confidence = candidate.get('confidence', 0.8)
 
-                            # Для протечек (Водоснабжение/Отопление с "теч" или "протеч") нужно знать интенсивность
-                            is_leak = (
-                                category in ['Водоснабжение', 'Отопление'] and
-                                any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
+                            # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields.source
+                            has_source = accumulated_fields.get('source') is not None
+                            category_confidence = established_filters.get('category', {}).get('confidence', 0.0)
+                            is_water_problem = (
+                                category in ['Водоснабжение', 'Отопление', 'Канализация'] and
+                                category_confidence >= 0.7
                             )
 
                             # ИСПРАВЛЕНИЕ (2026-02-16): Проверяем incident_type - Запросы не требуют локации
                             incident_type = established_filters.get('incident_type', {}).get('value', '')
-                            needs_clarification = (not location_known and incident_type != 'Запрос') or (is_leak and not intensity_known)
+                            needs_clarification = (not location_known and incident_type != 'Запрос') or (is_water_problem and has_source and not intensity_known)
 
                             if needs_clarification:
                                 # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
@@ -1758,13 +1760,24 @@ class MainAgent:
             source = (accumulated_fields.get('source') or '').lower()
             problem = (accumulated_fields.get('problem') or '').lower()
 
-            # ИСПРАВЛЕНО (2026-02-16): Убран хардкод water_keywords, проверка только на течь/протечку
-            # Спрашиваем интенсивность только если есть слова "течь/протек/капает"
-            is_leak = any(word in (source + ' ' + problem) for word in ['теч', 'протек', 'капа', 'батарей', 'радиатор'])
-            is_water_problem = category in ['Водоснабжение', 'Отопление'] and is_leak
+            # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields
+            # LLM сгенерирует правильный вопрос на основе source/problem из accumulated_fields
+            has_source = accumulated_fields.get('source') is not None
+            category_data = established_filters.get('category', {})
+            category_confidence = category_data.get('confidence', 0.0)
 
-            # Для Инцидентов с водой: если НЕ известны severity/intensity → нужно уточнить
-            needs_severity_clarification = is_incident and is_water_problem and not (severity_known or intensity_known)
+            is_water_problem = (
+                category in ['Водоснабжение', 'Отопление', 'Канализация'] and
+                category_confidence >= 0.7
+            )
+
+            # Для Инцидентов с водой: если есть source но нет severity/intensity → уточняем
+            needs_severity_clarification = (
+                is_incident and
+                is_water_problem and
+                has_source and
+                not (severity_known or intensity_known)
+            )
 
             # Формируем сообщение (ИСПРАВЛЕНО: используем LLM вместо fallback!)
             if needs_clarification:
@@ -2650,19 +2663,12 @@ class MainAgent:
                 intensity_known = accumulated_fields.get('intensity') is not None
                 confidence = candidate.get('confidence', 0.8)
 
-                # Для протечек (Водоснабжение/Отопление с "теч" или "протеч") нужно знать интенсивность
-                is_leak = (
-                    category in ['Водоснабжение', 'Отопление'] and
-                    any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
-                )
-
-                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1783)
+                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1773)
                 # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
-                # Если это протечка без интенсивности → спрашиваем
+                # УБРАН HARDCODE keywords - используется accumulated_fields.source
                 # if is_leak and not intensity_known:
-                #     logger.info(f"[DEBUG] Это протечка без интенсивности - спрашиваем 'как сильно течет?'")
-                #    # Формируем контекст для LLM
-                #     context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: СТЕПЕНЬ ПРОТЕЧКИ (как сильно течет)."
+                #     logger.info(f"[DEBUG] Это водная проблема без интенсивности - спрашиваем через LLM")
+                #     context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить детали."
                 #     ai_result = await self._generate_ai_question(
                 #         context=context,
                 #         dialog_history=dialog_history,
@@ -2716,13 +2722,10 @@ class MainAgent:
                 service_name_lower = leader['service_name'].lower()
                 intensity_known = accumulated_fields.get('intensity') is not None
 
-                # Для протечек (Водоснабжение/Отопление с "теч" или "протеч") нужно знать интенсивность
-                is_leak = (
-                    category in ['Водоснабжение', 'Отопление'] and
-                    any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
-                )
+                # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields.source
+                # Проверка is_leak удалена - используется needs_severity_clarification (строка 1773)
 
-                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1783)
+                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1773)
                 # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
                 # Если это протечка без интенсивности → спрашиваем
                 # if is_leak and not intensity_known:
@@ -4373,10 +4376,27 @@ JSON:"""
 """
 
         # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
+        # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ПЕРЕД established_filters!
         # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
-        if established_filters:
-            absolute_facts_list = []
+        absolute_facts_list = []
 
+        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
+        if accumulated_fields:
+            if accumulated_fields.get('source'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
+            if accumulated_fields.get('location'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
+            if accumulated_fields.get('problem'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
+            if accumulated_fields.get('severity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
+            if accumulated_fields.get('category'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
+
+        # ПОТОМ established_filters (из FilterDetectionService)
+        if established_filters:
             # object_description
             obj_desc = established_filters.get('object_description')
             if obj_desc and isinstance(obj_desc, dict):
@@ -4401,8 +4421,9 @@ JSON:"""
                 if cat_value and cat_conf >= 0.8:
                     absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
 
-            if absolute_facts_list:
-                prompt += f"""
+        # ИСПРАВЛЕНО (2026-02-16): Проверяем absolute_facts_list ПОСЛЕ обоих блоков (accumulated + established)
+        if absolute_facts_list:
+            prompt += f"""
 ⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
 {''.join(absolute_facts_list)}
 
