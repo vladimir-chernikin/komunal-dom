@@ -1721,14 +1721,10 @@ class MainAgent:
             source = (accumulated_fields.get('source') or '').lower()
             problem = (accumulated_fields.get('problem') or '').lower()
 
-            # Ключевые слова для воды/течи
-            water_keywords = ['труба', 'кран', 'смеситель', 'унитаз', 'раковина', 'сифон',
-                           'протекает', 'течет', 'капает', 'капает', 'протечка']
-            is_water_problem = (
-                category == 'Водоснабжение' or  # Категория - Водоснабжение
-                any(keyword in source for keyword in water_keywords) or  # Источник - труба, кран и т.д.
-                any(keyword in problem for keyword in water_keywords)  # Проблема - течёт, капает
-            )
+            # ИСПРАВЛЕНО (2026-02-16): Убран хардкод water_keywords, проверка только на течь/протечку
+            # Спрашиваем интенсивность только если есть слова "течь/протек/капает"
+            is_leak = any(word in (source + ' ' + problem) for word in ['теч', 'протек', 'капа', 'батарей', 'радиатор'])
+            is_water_problem = category in ['Водоснабжение', 'Отопление'] and is_leak
 
             # Для Инцидентов с водой: если НЕ известны severity/intensity → нужно уточнить
             needs_severity_clarification = is_incident and is_water_problem and not (severity_known or intensity_known)
@@ -1786,6 +1782,25 @@ class MainAgent:
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО для Инцидента НЕ известны severity/intensity
             if needs_severity_clarification:
                 logger.warning(f"[NO SEVERITY] actual_conf={actual_confidence:.2%} >= 90%, incident_type=Инцидент, НО НЕ известны severity/intensity - спрашиваем")
+
+                # ИСПРАВЛЕНО (2026-02-16): Используем LLM вместо hardcoded вопроса
+                context = f"Найдена услуга: {candidate['service_name']} (confidence={actual_confidence:.1%}). Нужно уточнить СТЕПЕНЬ ПРОТЕЧКИ (как сильно течет/протекает)."
+                ai_result = await self._generate_ai_question(
+                    context=context,
+                    dialog_history=dialog_history,
+                    candidates=[candidate],
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type='clarification',
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields
+                )
+                message = ai_result.get('question', 'Опишите подробнее степень протечки.')
+                logger.info(f"[LLM SEVERITY QUESTION] Сгенерирован вопрос: {message}")
+
+                # OLD: 'message': "Как сильно течёт? Есть затопление?",  # ❌ HARDCODED
+
+                logger.warning(f"[SEVERITY CLARIFICATION] Возвращаем AMBIGUOUS с вопросом: {message}")
                 return {
                     'candidates': [candidate],
                     'status': 'AMBIGUOUS',
@@ -1793,7 +1808,7 @@ class MainAgent:
                     'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
                     'confidence': actual_confidence if actual_confidence > 0 else 1.0,
                     'source': 'filtered_search_with_llm',
-                    'message': "Как сильно течёт? Есть затопление?",
+                    'message': message,
                     'single_candidate': candidate,
                     'filtered_candidates': filtered_candidates,
                     'needs_clarification': True,
@@ -2574,32 +2589,34 @@ class MainAgent:
                     any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
                 )
 
+                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1783)
+                # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
                 # Если это протечка без интенсивности → спрашиваем
-                if is_leak and not intensity_known:
-                    logger.info(f"[DEBUG] Это протечка без интенсивности - спрашиваем 'как сильно течет?'")
-                   # Формируем контекст для LLM
-                    context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: интенсивность (как сильно течет)."
-                    ai_result = await self._generate_ai_question(
-                        context=context,
-                        dialog_history=dialog_history,
-                        candidates=unique_candidates,
-                        established_filters=established_filters,
-                        txtPrb=txtPrb,
-                        question_type='clarification',
-                        session_id=session_id,
-                        accumulated_fields=accumulated_fields
-                    )
-                    message = ai_result.get('question', 'Насколько сильно течет?')
-                    return {
-                        'candidates': unique_candidates,
-                        'status': 'AMBIGUOUS',
-                        'service_id': candidate['service_id'],
-                        'service_name': candidate['service_name'],
-                        'confidence': confidence,
-                        'message': message,
-                        'needs_clarification': True,
-                        'source': 'orchestrator'
-                    }
+                # if is_leak and not intensity_known:
+                #     logger.info(f"[DEBUG] Это протечка без интенсивности - спрашиваем 'как сильно течет?'")
+                #    # Формируем контекст для LLM
+                #     context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: СТЕПЕНЬ ПРОТЕЧКИ (как сильно течет)."
+                #     ai_result = await self._generate_ai_question(
+                #         context=context,
+                #         dialog_history=dialog_history,
+                #         candidates=unique_candidates,
+                #         established_filters=established_filters,
+                #         txtPrb=txtPrb,
+                #         question_type='clarification',
+                #         session_id=session_id,
+                #         accumulated_fields=accumulated_fields
+                #     )
+                #     message = ai_result.get('question', 'Какова степень протечки?')
+                #     return {
+                #         'candidates': unique_candidates,
+                #         'status': 'AMBIGUOUS',
+                #         'service_id': candidate['service_id'],
+                #         'service_name': candidate['service_name'],
+                #         'confidence': confidence,
+                #         'message': message,
+                #         'needs_clarification': True,
+                #         'source': 'orchestrator'
+                #     }
 
                # Низкий confidence - уточняем через AI
                # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
@@ -2636,31 +2653,33 @@ class MainAgent:
                     any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
                 )
 
+                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1783)
+                # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
                 # Если это протечка без интенсивности → спрашиваем
-                if is_leak and not intensity_known:
-                    logger.info(f"[DEBUG] ЯВНЫЙ ЛИДЕР - это протечка без интенсивности, спрашиваем")
-                    context = f"Найдена услуга: {leader['service_name']} (confidence={leader_conf:.1%}). Нужно уточнить: интенсивность (как сильно течет)."
-                    ai_result = await self._generate_ai_question(
-                        context=context,
-                        dialog_history=dialog_history,
-                        candidates=[leader],
-                        established_filters=established_filters,
-                        txtPrb=txtPrb,
-                        question_type='clarification',
-                        session_id=session_id,
-                        accumulated_fields=accumulated_fields
-                    )
-                    message = ai_result.get('question', 'Насколько сильно течет?')
-                    return {
-                        'candidates': [leader],
-                        'status': 'AMBIGUOUS',
-                        'service_id': leader['service_id'],
-                        'service_name': leader['service_name'],
-                        'confidence': leader_conf,
-                        'message': message,
-                        'needs_clarification': True,
-                        'source': 'orchestrator'
-                    }
+                # if is_leak and not intensity_known:
+                #     logger.info(f"[DEBUG] ЯВНЫЙ ЛИДЕР - это протечка без интенсивности, спрашиваем")
+                #     context = f"Найдена услуга: {leader['service_name']} (confidence={leader_conf:.1%}). Нужно уточнить: СТЕПЕНЬ ПРОТЕЧКИ (как сильно течет)."
+                #     ai_result = await self._generate_ai_question(
+                #         context=context,
+                #         dialog_history=dialog_history,
+                #         candidates=[leader],
+                #         established_filters=established_filters,
+                #         txtPrb=txtPrb,
+                #         question_type='clarification',
+                #         session_id=session_id,
+                #         accumulated_fields=accumulated_fields
+                #     )
+                #     message = ai_result.get('question', 'Какова степень протечки?')
+                #     return {
+                #         'candidates': [leader],
+                #         'status': 'AMBIGUOUS',
+                #         'service_id': leader['service_id'],
+                #         'service_name': leader['service_name'],
+                #         'confidence': leader_conf,
+                #         'message': message,
+                #         'needs_clarification': True,
+                #         'source': 'orchestrator'
+                #     }
 
                 logger.info(f"ЯВНЫЙ ЛИДЕР: service_id={leader['service_id']}, conf={leader_conf:.3f}, второй={second_conf:.3f}, разница={leader_conf - second_conf:.3f}")
                 return {
@@ -2802,32 +2821,35 @@ class MainAgent:
             return question
 
         # ИСПРАВЛЕНИЕ (2026-01-15): Блокируем универсальные вопросы при наличии txtPrb
-        # Если txtPrb не пустой → значит уже известна проблема
-        if txtPrb and len(txtPrb.strip()) > 0:
-            # Универсальные вопросы, которые нужно блокировать при известных фактах
-            generic_questions = [
-                'опишите подробнее',
-                'опишите, пожалуйста',
-                'что именно произошло',
-                'что случилось',
-                'расскажите подробнее'
-            ]
-
-            question_lower = question.lower().strip()
-
-            if any(phrase in question_lower for phrase in generic_questions):
-                logger.warning(f"⚠️ DETECTED GENERIC QUESTION WITH KNOWN FACTS!")
-                logger.warning(f"⚠️ Question: '{question}'")
-                logger.warning(f"⚠️ txtPrb: '{txtPrb}'")
-
-                # Генерируем контекстный вопрос с учетом txtPrb
-                txtPrb_lower = txtPrb.lower()
-
-                # ИСПРАВЛЕНО (2026-02-04): Убран хардкод вопросов - используем LLM
-                # FilterDetectionService определяет локацию, category, incident_type
-                # Передаем вопрос дальше без изменений - LLM сам сгенерирует правильный вопрос
-                logger.info(f"Generic question detected, passing through to LLM: '{question}'")
-                return question
+        # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - избыточная логика
+        # yandexgpt-pro УЖЕ получает контекст (txtPrb, established_filters, accumulated_fields)
+        # и генерирует хорошие контекстные вопросы. Блок вызывал лишние LLM-вызовы.
+        # # Если txtPrb не пустой → значит уже известна проблема
+        # if txtPrb and len(txtPrb.strip()) > 0:
+        #     # Универсальные вопросы, которые нужно блокировать при известных фактах
+        #     generic_questions = [
+        #         'опишите подробнее',
+        #         'опишите, пожалуйста',
+        #         'что именно произошло',
+        #         'что случилось',
+        #         'расскажите подробнее'
+        #     ]
+        #
+        #     question_lower = question.lower().strip()
+        #
+        #     if any(phrase in question_lower for phrase in generic_questions):
+        #         logger.warning(f"⚠️ DETECTED GENERIC QUESTION WITH KNOWN FACTS!")
+        #         logger.warning(f"⚠️ Question: '{question}'")
+        #         logger.warning(f"⚠️ txtPrb: '{txtPrb}'")
+        #
+        #         # Генерируем контекстный вопрос с учетом txtPrb
+        #         txtPrb_lower = txtPrb.lower()
+        #
+        #         # ИСПРАВЛЕНО (2026-02-04): Убран хардкод вопросов - используем LLM
+        #         # FilterDetectionService определяет локацию, category, incident_type
+        #         # Передаем вопрос дальше без изменений - LLM сам сгенерирует правильный вопрос
+        #         logger.info(f"Generic question detected, passing through to LLM: '{question}'")
+        #         return question
 
         # ИСПРАВЛЕНО (2026-02-04): Убран хардкод location_words
         # FilterDetectionService определяет локацию, category, incident_type
