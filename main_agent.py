@@ -1799,9 +1799,24 @@ class MainAgent:
                     'is_followup': is_followup
                 }
 
-            # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО локация НЕ известна - спрашиваем
+            # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО локация НЕ известна - спрашиваем через LLM
             if not location_known:
-                logger.warning(f"[NO LOCATION] actual_conf={actual_confidence:.2%} >= 90%, НО локация НЕ известна - спрашиваем 'Где именно?'")
+                logger.warning(f"[NO LOCATION] actual_conf={actual_confidence:.2%} >= 90%, НО локация НЕ известна - генерируем контекстный вопрос")
+                # ИСПРАВЛЕНО (2026-02-16): Используем LLM для генерации контекстного вопроса
+                # вместо hardcoded "Где именно это произошло?"
+                context = f"Найдена услуга: {candidate.get('service_name', candidate.get('scenario_name', 'Unknown'))} (confidence={actual_confidence:.1%}). Нужно уточнить локацию."
+
+                ai_result = await self._generate_ai_question(
+                    context=context,
+                    dialog_history=dialog_history,
+                    candidates=[candidate],
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type='location',
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields
+                )
+
                 return {
                     'candidates': [candidate],
                     'status': 'AMBIGUOUS',
@@ -1809,7 +1824,7 @@ class MainAgent:
                     'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
                     'confidence': actual_confidence if actual_confidence > 0 else 1.0,
                     'source': 'filtered_search_with_llm',
-                    'message': "Где именно это произошло?",
+                    'message': ai_result.get('question', 'Где именно это произошло?'),  # Fallback если LLM недоступен
                     'single_candidate': candidate,
                     'filtered_candidates': filtered_candidates,
                     'needs_clarification': True,
@@ -2598,15 +2613,30 @@ class MainAgent:
                         'source': 'orchestrator'
                     }
 
-                # Инцидент - спрашиваем локацию
-                logger.info(f"[DEBUG] Это Инцидент без локации - спрашиваем 'Где именно?'")
+                # Инцидент - спрашиваем локацию через LLM (контекстный вопрос)
+                logger.info(f"[DEBUG] Это Инцидент без локации - генерируем контекстный вопрос 'Где именно?'")
+                # ИСПРАВЛЕНО (2026-02-16): Используем LLM для генерации контекстного вопроса
+                # вместо hardcoded "Где именно это произошло?"
+                context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить локацию."
+
+                ai_result = await self._generate_ai_question(
+                    context=context,
+                    dialog_history=dialog_history,
+                    candidates=[candidate],
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type='location',
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields
+                )
+
                 return {
                     'candidates': [candidate],
                     'status': 'AMBIGUOUS',
                     'service_id': candidate['service_id'],
                     'service_name': candidate['service_name'],
                     'confidence': confidence,
-                    'message': "Где именно это произошло?",
+                    'message': ai_result.get('question', 'Где именно это произошло?'),  # Fallback если LLM недоступен
                     'needs_clarification': True,
                     'source': 'orchestrator'
                 }
