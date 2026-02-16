@@ -2586,6 +2586,10 @@ class MainAgent:
         if not unique_candidates:
             # Никто ничего не нашел - спрашиваем что случилось
             # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ДО вызова _ask_ai_what_happened
+            print(f"=== [CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened ===")
+            print(f"accumulated_fields={accumulated_fields}")
+            print(f"accumulated_fields type={type(accumulated_fields)}")
+            print(f"accumulated_fields is truthy={bool(accumulated_fields)}")
             logger.info(f"[CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened:")
             logger.info(f"  accumulated_fields={accumulated_fields}")
             logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
@@ -2816,6 +2820,10 @@ class MainAgent:
             accumulated_fields: Извлеченные поля из ProblemAccumulationService
         """
         # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПРИ ВХОДЕ в метод
+        print(f"=== [CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened ===")
+        print(f"accumulated_fields={accumulated_fields}")
+        print(f"accumulated_fields type={type(accumulated_fields)}")
+        print(f"accumulated_fields is truthy={bool(accumulated_fields)}")
         logger.info(f"[CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened:")
         logger.info(f"  accumulated_fields={accumulated_fields}")
         logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
