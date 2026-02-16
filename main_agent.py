@@ -399,6 +399,11 @@ class MainAgent:
                 txtPrb = accumulation_result['updated_problem']
                 accumulated_fields = accumulation_result.get('fields', {})  # ИСПРАВЛЕНО (2026-02-14): БРАТЬ fields из результата!
 
+                # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПОСЛЕ получения accumulated_fields
+                print(f"=== [CRITICAL DEBUG] ПОСЛЕ accumulation_result ===")
+                print(f"accumulated_fields={accumulated_fields}")
+                print(f"txtPrb={txtPrb}")
+
                 if accumulation_result['is_meaningful']:
                     logger.info(f"txtPrb обновлен (содержательный): '{txtPrb[:100]}...'")
                     logger.info(f"Извлеченные поля: {accumulated_fields}")
