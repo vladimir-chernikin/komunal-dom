@@ -2830,13 +2830,15 @@ class MainAgent:
         txtPrb: str = None,
         established_filters: Dict = None,
         asked_questions: List[str] = None,
-        txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные)
+        txtStopQ: List[str] = None,  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные)
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): LLM-валидация вопроса вместо Regex
         ИСПРАВЛЕНО (2026-01-10): Добавлена regex-проверка двойных вопросов
         ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
         ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb + established_filters)
+        ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields для проверки location
         ИСПРАВЛЕНО (2026-02-04): Добавлен механизм накопления txtStopQ
 
         Проверяет через YandexGPT Lite:
@@ -4053,12 +4055,14 @@ JSON:"""
                 # ИСПРАВЛЕНО (2026-01-03): Regex-валидаторы удалены, используем LLM-валидацию
                 # ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
                 # ИСПРАВЛЕНО (2026-02-04): Передаем txtStopQ для накопления глупых вопросов
+                # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации
                 question = await self._llm_validate_question(
                     question=question,
                     txtPrb=txtPrb,
                     established_filters=established_filters,
                     asked_questions=asked_questions,  # ИСПРАВЛЕНО (2026-01-10)
-                    txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Накопление запрещенных вопросов
+                    txtStopQ=txtStopQ,  # ИСПРАВЛЕНО (2026-02-04): Накопление запрещенных вопросов
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
                 )
 
                 # ИСПРАВЛЕНО (2025-12-29): Отладочный режим - добавляем объяснение к вопросу
