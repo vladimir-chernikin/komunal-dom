@@ -797,6 +797,43 @@ class MainAgent:
             if orch_result.get('status') == 'SUCCESS':
                 # Услуга определена AI Orchestrator'ом
                 logger.info(f"AI Orchestrator определил услугу: {orch_result.get('service_name')}")
+                
+                # ИСПРАВЛЕНО (2026-02-16): Проверяем location_known ПЕРЕД созданием заявки
+                # ПРИЧИНА: accumulated_fields.location надежнее established_filters.location_type
+                # - НЕ спрашиваем если location ЯВНО извлечена из текста ("в зале", "в ванной")
+                # - СПРАШИВАЕМ если location НЕ извлечена (null)
+                location_known = accumulated_fields.get('location') is not None if accumulated_fields else False
+                
+                # Проверяем incident_type - Запросы не требуют локации
+                incident_type = established_filters.get('incident_type', {}).get('value', '') if established_filters else ''
+                
+                if not location_known and incident_type != 'Запрос':
+                    logger.warning(f"[AI-ORCHESTRATOR] SUCCESS но location НЕ известна (accumulated_fields.location=null) - спрашиваем 'Где именно?'")
+                    # Генерируем уточняющий вопрос через LLM
+                    context = f"Найдена услуга: {orch_result.get('service_name')} (confidence={orch_result.get('confidence', 0.8):.1%}). Нужно уточнить локацию."
+                    ai_result = await self._generate_ai_question(
+                        context=context,
+                        dialog_history=dialog_history,
+                        candidates=orch_result.get('candidates', []),
+                        established_filters=established_filters,
+                        txtPrb=txtPrb,
+                        question_type='location',
+                        session_id=session_id,
+                        accumulated_fields=accumulated_fields
+                    )
+                    # Возвращаем AMBIGUOUS вместо SUCCESS, чтобы задать вопрос
+                    return {
+                        'status': 'AMBIGUOUS',
+                        'message': ai_result.get('question', 'Где именно это произошло?'),
+                        'candidates': orch_result.get('candidates', []),
+                        'service_id': orch_result.get('service_id'),
+                        'service_name': orch_result.get('service_name'),
+                        'confidence': orch_result.get('confidence', 0.8),
+                        'is_followup': is_followup,
+                        '_metadata': result_metadata
+                    }
+                
+                # Если локация известна или Запрос - создаем заявку (SUCCESS)
                 result = {
                     'status': 'SUCCESS',
                     'service_id': orch_result.get('service_id'),
@@ -2943,19 +2980,35 @@ class MainAgent:
             # Извлекаем факты из txtPrb и established_filters
             forbidden_questions = []
 
-            # Проверяем location_type (КРИТИЧНО: не спрашивать локацию если известна!)
-            if established_filters and established_filters.get('location_type'):
-                location_data = established_filters['location_type']
-                location_value = location_data.get('value') if isinstance(location_data, dict) else location_data
-                location_conf = location_data.get('confidence') if isinstance(location_data, dict) else 0.9
+            # ИСПРАВЛЕНО (2026-02-16): Проверяем accumulated_fields.location вместо established_filters.location_type
+            # ПРИЧИНА: accumulated_fields надежнее, так как извлекает ТОЛЬКО ЯВНОЕ упоминание из текста
+            # established_filters (LLM) может додумывать локацию ("обычно в квартире")
+            #
+            # accumulated_fields.location: "зал" ← ЯВНО в тексте ✅
+            # accumulated_fields.location: null ← НЕ в тексте ✅
+            # established_filters.location_type: "Индивидуальное" ← LLM додумал ❌
+            if accumulated_fields and accumulated_fields.get('location'):
+                location_value = accumulated_fields['location']
+                logger.info(f"[DEBUG] Location ЯВНО извлечена из текста: '{location_value}' - запрещаем спрашивать")
+                forbidden_questions.append('location')
 
-                if location_conf >= 0.9:
-                    if location_value == 'Индивидуальное' and re.search(r'(квартира|дом|общедом)', question_lower):
-                        logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
-                        forbidden_questions.append('location')
-                    elif location_value == 'Общедомовое' and re.search(r'(квартира|индивидуа)', question_lower):
-                        logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
-                        forbidden_questions.append('location')
+            # ЗАКОММЕНТИРОВАНО (2026-02-16): Старая логика через established_filters.location_type
+            # ПРИЧИНА: LLM может додумывать локацию с высокой уверенностью (1.0) даже если она НЕ указана
+            # Проблема: "нет воды" → location_type="Индивидуальное" (1.0) → бот НЕ спрашивает "Где?"
+            # Решение: использовать accumulated_fields (явное упоминание) вместо LLM-догадок
+            #
+            # if established_filters and established_filters.get('location_type'):
+            #     location_data = established_filters['location_type']
+            #     location_value = location_data.get('value') if isinstance(location_data, dict) else location_data
+            #     location_conf = location_data.get('confidence') if isinstance(location_data, dict) else 0.9
+            #
+            #     if location_conf >= 0.9:
+            #         if location_value == 'Индивидуальное' and re.search(r'(квартира|дом|общедом)', question_lower):
+            #             logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
+            #             forbidden_questions.append('location')
+            #         elif location_value == 'Общедомовое' and re.search(r'(квартира|индивидуа)', question_lower):
+            #             logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
+            #             forbidden_questions.append('location')
 
             # ИСПРАВЛЕНО (2026-01-15): Убрана проверка object_description (используется txtPrb)
             # Если txtPrb не пустой → уже известна проблема, не спрашиваем "что именно?"

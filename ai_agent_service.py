@@ -554,10 +554,23 @@ class AIAgentService:
         ИСПРАВЛЕНО (2026-01-06):
         - Добавлен параметр session_id для связи с dialog_logs
         - Добавлен параметр message_id для надежной связи с сообщением
+        ИСПРАВЛЕНО (2026-02-16): Добавлены отладочные логи для response_text
         """
+        # ИСПРАВЛЕНО (2026-02-16): Отладочные логи для проверки response
+        response_len = len(response) if response else 0
+        response_preview = response[:100] if response else "(empty)"
+        logger.info(f"[LLM-STAT] ВХОД: provider={provider}, model={model}, response_len={response_len}")
+        logger.info(f"[LLM-STAT] response_preview={response_preview}")
+
         try:
             def save_sync():
                 with connection.cursor() as cursor:
+                    # ИСПРАВЛЕНО (2026-02-16): Обрезаем response с проверкой
+                    response_to_save = response[:5000] if response else ""
+
+                    # ИСПРАВЛЕНО (2026-02-16): Логируем что записываем
+                    logger.info(f"[LLM-STAT] ЗАПИСЬ: response_to_save_len={len(response_to_save)}")
+
                     cursor.execute("""
                         INSERT INTO llm_request_log (
                             request_id,
@@ -580,7 +593,7 @@ class AIAgentService:
                         provider,
                         model,
                         prompt,  # ИСПРАВЛЕНО (2026-02-05): Полный промпт без обрезки
-                        response[:5000],
+                        response_to_save,
                         usage_info['prompt_tokens'],
                         usage_info['completion_tokens'],
                         usage_info['total_tokens'],
@@ -590,7 +603,7 @@ class AIAgentService:
                     ])
 
             await sync_to_async(save_sync)()
-            logger.debug(f"AIAgentService: Статистика сохранена в БД (provider={provider}, model={model})")
+            logger.info(f"[LLM-STAT] УСПЕХ: Статистика сохранена в БД (provider={provider}, model={model})")
 
         except Exception as e:
             logger.error(f"Ошибка при сохранении статистики в БД: {e}")
