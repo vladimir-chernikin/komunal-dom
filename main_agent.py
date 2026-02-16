@@ -879,8 +879,9 @@ class MainAgent:
                                 any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
                             )
 
-                            # Если локация НЕ известна - ИЛИ это протечка без интенсивности → спрашиваем
-                            needs_clarification = (not location_known) or (is_leak and not intensity_known)
+                            # ИСПРАВЛЕНИЕ (2026-02-16): Проверяем incident_type - Запросы не требуют локации
+                            incident_type = established_filters.get('incident_type', {}).get('value', '')
+                            needs_clarification = (not location_known and incident_type != 'Запрос') or (is_leak and not intensity_known)
 
                             if needs_clarification:
                                 # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
@@ -903,20 +904,32 @@ class MainAgent:
                                     accumulated_fields=accumulated_fields
                                 )
                                 message = ai_result.get('question', 'Опишите подробнее, что именно происходит?')
+
+                                # ИСПРАВЛЕНИЕ (2026-02-16): Статус AMBIGUOUS при уточнении, SUCCESS когда всё известно
+                                result = {
+                                    'status': 'AMBIGUOUS',
+                                    'service_id': candidate['service_id'],
+                                    'service_name': candidate['service_name'],
+                                    'confidence': confidence,
+                                    'source': 'ai_agent',
+                                    'message': message,
+                                    'candidates': [candidate],
+                                    'needs_clarification': True,
+                                    '_metadata': result_metadata
+                                }
                             else:
                                 message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
-
-                            result = {
-                                'status': 'SUCCESS',
-                                'service_id': candidate['service_id'],
-                                'service_name': candidate['service_name'],
-                                'confidence': confidence,
-                                'source': 'ai_agent',
-                                'message': message,
-                                'candidates': [candidate],
-                                'needs_clarification': needs_clarification,
-                                '_metadata': result_metadata  # ИСПРАВЛЕНИЕ (2025-12-27): Добавляем metadata
-                            }
+                                result = {
+                                    'status': 'SUCCESS',
+                                    'service_id': candidate['service_id'],
+                                    'service_name': candidate['service_name'],
+                                    'confidence': confidence,
+                                    'source': 'ai_agent',
+                                    'message': message,
+                                    'candidates': [candidate],
+                                    'needs_clarification': False,
+                                    '_metadata': result_metadata
+                                }
                             return self._add_address_to_result(result, address_components)
 
                 # ИСПРАВЛЕНО (2026-02-14): _fallback_service_detection ЗАКОММЕНТИРОВАН (нарушение CLAUDE.md §8)
