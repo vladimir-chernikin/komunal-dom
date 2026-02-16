@@ -2585,6 +2585,12 @@ class MainAgent:
 
         if not unique_candidates:
             # Никто ничего не нашел - спрашиваем что случилось
+            # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ДО вызова _ask_ai_what_happened
+            logger.info(f"[CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened:")
+            logger.info(f"  accumulated_fields={accumulated_fields}")
+            logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
+            logger.info(f"  accumulated_fields is truthy={bool(accumulated_fields)}")
+
             return {
                 'status': 'AMBIGUOUS',
                 'message': await self._ask_ai_what_happened(
@@ -2809,6 +2815,12 @@ class MainAgent:
             session_id: ID сессии для логирования
             accumulated_fields: Извлеченные поля из ProblemAccumulationService
         """
+        # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПРИ ВХОДЕ в метод
+        logger.info(f"[CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened:")
+        logger.info(f"  accumulated_fields={accumulated_fields}")
+        logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
+        logger.info(f"  accumulated_fields is truthy={bool(accumulated_fields)}")
+
         # Вычисляем dialog_turn
         dialog_turn = len(dialog_history) if dialog_history else 1
 
