@@ -4381,19 +4381,31 @@ JSON:"""
         absolute_facts_list = []
 
         # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
+        # ИСПРАВЛЕНО (2026-02-16): Логируем accumulated_fields для отладки
+        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
+
         if accumulated_fields:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
             if accumulated_fields.get('source'):
                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
+                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
             if accumulated_fields.get('location'):
                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
+                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
             if accumulated_fields.get('problem'):
                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
+                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
             if accumulated_fields.get('severity'):
                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
             if accumulated_fields.get('intensity'):
                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
             if accumulated_fields.get('category'):
                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
+                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
+
+            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
+        else:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
 
         # ПОТОМ established_filters (из FilterDetectionService)
         if established_filters:
