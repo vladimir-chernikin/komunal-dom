@@ -2751,8 +2751,11 @@ class MainAgent:
                         continue
                     if not result or not result.get('candidates'):
                         continue
+                    method = result.get('method', 'search')
                     for c in result['candidates']:
-                        c['sources'] = [result.get('method', 'search')]
+                        # ИСПРАВЛЕНО (2026-02-17): Не перезаписываем sources, добавляем к существующим
+                        if 'sources' not in c:
+                            c['sources'] = [method]
                         all_candidates_no_cat.append(c)
 
                 unique_candidates = self._deduplicate_and_prioritize_candidates(all_candidates_no_cat)
