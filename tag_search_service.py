@@ -510,7 +510,7 @@ class TagSearchService:
         # ИСПРАВЛЕНО (2026-02-18): Если фраза совпала (> 30%), используем ТОЛЬКО её
         # Отдельные слова используются только если фраза НЕ совпала
         if phrase_best_score > 30:
-            return phrase_best_score
+            return int(phrase_best_score)
 
         for word in message_words:
             if len(word) < 3:
