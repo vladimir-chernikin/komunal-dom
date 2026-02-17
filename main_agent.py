@@ -2822,6 +2822,30 @@ class MainAgent:
                         'source': 'orchestrator'
                     }
 
+                # ИСПРАВЛЕНО (2026-02-17): Если confidence 80-90% ПРОВЕРЯЕМ ПЕРЕСЕЧЕНИЕ txtPrb с названием услуги
+                # ПРИЧИНА: "ливнёвка забита листвой" + "Засор ливнёвой канализации" → пересечение "ливнёвка"
+                elif confidence >= 0.8:
+                    service_name_lower = candidate.get('service_name', '').lower()
+                    txtPrb_lower = (txtPrb or '').lower()
+
+                    # Проверяем пересечение ключевых слов
+                    keywords = ['ливнёв', 'ливнев', 'канализ', 'засор', 'мусоропр']
+                    has_keyword = any(kw in txtPrb_lower and kw in service_name_lower for kw in keywords)
+
+                    if has_keyword:
+                        logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 80% + пересечение txtPrb/услуга → SUCCESS без вопроса")
+                        return {
+                            'candidates': unique_candidates,
+                            'status': 'SUCCESS',
+                            'service_id': candidate['service_id'],
+                            'service_name': candidate['service_name'],
+                            'confidence': confidence,
+                            'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
+                            'needs_clarification': False,
+                            'source': 'orchestrator'
+                        }
+
+
                 # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1773)
                 # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
                 # УБРАН HARDCODE keywords - используется accumulated_fields.source
