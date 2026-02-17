@@ -1227,7 +1227,7 @@ class MainAgent:
                 'status': 'SUCCESS',
                 'service_id': candidate['service_id'],
                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
-                'confidence': 1.0,
+                'confidence': candidate.get('confidence', 1.0),  # ИСПРАВЛЕНО (2026-02-17): Берем confidence из кандидата, а не захардкодим 1.0!
                 'source': 'filtered_search',
                 'message': clarification_result['message'],
                 'candidates': candidates_data[:1],
@@ -1571,7 +1571,27 @@ class MainAgent:
         logger.warning(f"[DEBUG] _generate_smart_clarification: кандидатов ДО фильтрации={len(candidates_with_attrs)}")
         logger.warning(f"[DEBUG] Извлеченные фильтры: location={known_location}, category={known_category}, incident={known_incident}")
         for i, c in enumerate(candidates_with_attrs[:5], 1):
-            logger.warning(f"[DEBUG]   {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}")
+            logger.warning(f"[DEBUG]   {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}, loc={c.get('location_type')}, cat={c.get('category')}, inc={c.get('incident_type')}")
+
+        # ИСПРАВЛЕНО (2026-02-17): Сохраняем диагностику в файл для быстрого доступа
+        import datetime
+        diag_path = f"/tmp/_clarification_diag_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(diag_path, 'w', encoding='utf-8') as f:
+            f.write(f"=== _generate_smart_clarification DIAGNOSTICS ===\n")
+            f.write(f"candidates_with_attrs: {len(candidates_with_attrs)}\n")
+            f.write(f"known_location: {known_location}\n")
+            f.write(f"known_category: {known_category}\n")
+            f.write(f"known_incident: {known_incident}\n")
+            f.write(f"original_message: {original_message[:100]}\n")
+            f.write(f"\nCANDIDATES:\n")
+            for i, c in enumerate(candidates_with_attrs[:5], 1):
+                f.write(f"  {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}\n")
+                f.write(f"     location_type='{c.get('location_type')}'\n")
+                f.write(f"     category='{c.get('category')}'\n")
+                f.write(f"     incident_type='{c.get('incident_type')}'\n")
+        import os
+        os.chmod(diag_path, 0o644)
+        logger.warning(f"[DEBUG] Диагностика сохранена в {diag_path}")
 
         logger.info(f"Извлеченные фильтры: location_type={known_location}, category={known_category}, incident_type={known_incident}")
 
@@ -1611,6 +1631,17 @@ class MainAgent:
             logger.info(f"Отфильтровано по incident_type={known_incident}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
         logger.warning(f"[DEBUG] ВСЕГО после фильтрации: {len(filtered_candidates)} кандидатов")
+
+        # ИСПРАВЛЕНО (2026-02-17): Добавляем диагностику ПОСЛЕ фильтрации
+        if len(filtered_candidates) != len(candidates_with_attrs):
+            with open(diag_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n=== AFTER FILTERING ===\n")
+                f.write(f"filtered_candidates: {len(filtered_candidates)}\n")
+                for i, c in enumerate(filtered_candidates[:5], 1):
+                    f.write(f"  {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}\n")
+                    f.write(f"     location_type='{c.get('location_type')}'\n")
+                    f.write(f"     category='{c.get('category')}'\n")
+                    f.write(f"     incident_type='{c.get('incident_type')}'\n")
 
         # ИСПРАВЛЕНО (2025-12-25): Ранжирование через LLM вместо хардкода keywords
         # ИСПРАВЛЕНО (2026-01-15): Убрана проверка known_object (ранжируем если >1 кандидата)
@@ -1686,6 +1717,15 @@ class MainAgent:
             # Услуга определена после фильтрации!
             candidate = filtered_candidates[0]
             logger.info(f"После фильтрации остался 1 кандидат: {candidate['service_name']} (ID: {candidate['service_id']})")
+
+            # ИСПРАВЛЕНО (2026-02-17): Диагностика - почему НЕ SUCCESS?
+            with open(diag_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n=== SINGLE CANDIDATE DECISION ===\n")
+                f.write(f"candidate: {candidate['service_name']} (ID: {candidate['service_id']})\n")
+                f.write(f"candidate_confidence: {candidate.get('confidence', 0):.3f}\n")
+                f.write(f"location_known: {accumulated_fields.get('location') is not None}\n")
+                f.write(f"incident_type: {established_filters.get('incident_type', {}).get('value', '')}\n")
+                f.write(f"category: {established_filters.get('category', {}).get('value', '')}\n")
 
             # ИСПРАВЛЕНИЕ (2026-01-06): Проверяем - ВСЕ ЛИ важные фильтры установлены
             # Если у кандидата ЕСТЬ category/location/incident в services_catalog,
