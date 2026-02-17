@@ -2803,6 +2803,21 @@ class MainAgent:
                 intensity_known = accumulated_fields.get('intensity') is not None
                 confidence = candidate.get('confidence', 0.8)
 
+                # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКОЕ - Проверяем confidence ПЕРЕД генерацией вопроса!
+                # Если confidence >= 90% и location известен → возвращаем SUCCESS БЕЗ вопроса
+                if confidence >= 0.9:
+                    logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 90% и location известен → SUCCESS без вопроса")
+                    return {
+                        'candidates': unique_candidates,
+                        'status': 'SUCCESS',
+                        'service_id': candidate['service_id'],
+                        'service_name': candidate['service_name'],
+                        'confidence': confidence,
+                        'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
+                        'needs_clarification': False,
+                        'source': 'orchestrator'
+                    }
+
                 # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1773)
                 # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
                 # УБРАН HARDCODE keywords - используется accumulated_fields.source
@@ -2831,7 +2846,7 @@ class MainAgent:
                 #         'source': 'orchestrator'
                 #     }
 
-               # Низкий confidence - уточняем через AI
+               # Confidence < 90% - уточняем через AI
                # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
                # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации вопросов
                 return await self._ask_ai_clarification(
