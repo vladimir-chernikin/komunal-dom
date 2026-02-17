@@ -3570,1244 +3570,1176 @@ JSON:"""
 
         return asked
 
-    # ============================================================================
-    # ЗАКОММЕНТИРОВАНО (2026-02-17): _build_dynamic_prompt - УСТАРЕЛЫЙ МЕТОД
-    # ПРИЧИНА: Использует захардкоженный промпт БЕЗ accumulated_fields
-    # ЗАМЕНА: Используем _build_question_prompt (промпт из БД С accumulated_fields)
-    #
-    # Был создан: 2026-01-03
-    # Закомментирован: 2026-02-17
-    #
-    # Если что-то пойдёт не так - раскомментируйте этот метод и строку 4087-4099
-    # ============================================================================
-    #
-    # def _build_dynamic_prompt(
-    #     self,
-    #     strategy: str,
-    #     context: str,
-    #     candidates: List[Dict] = None,
-    #     missing_filter: str = None,
-    #     txtPrb: str = None,
-    #     asked_questions: List[str] = None,
-    #     intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-    #     accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
-    # ) -> str:
-#         """
-#         ИСПРАВЛЕНО (2026-01-03): Динамическая сборка промпта по стратегии
-#         ИСПРАВЛЕНО (2026-01-05): Добавлен параметр asked_questions для исключения повторов
-#         ИСПРАВЛЕНО (2026-01-06): Добавлена стратегия NONE для случая без кандидатов
-#         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля
-#         ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
-#         ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
-# 
-#         Стратегии:
-#         - A (1 кандидат, >90%): Подтверждение
-#         - B (2-10 кандидатов): Уточнение по списку
-#         - C (>10 кандидатов): Фильтрация С анализом кандидатов (ИСПРАВЛЕНО 2026-01-06)
-#         - NONE (0 кандидатов): Уточнение без анализа услуг
-# 
-#         Args:
-#             strategy: Тип стратегии (A, B, C, NONE)
-#             context: Контекст ситуации
-#             candidates: Список кандидатов (для стратегий B и C)
-#             missing_filter: Недостающий фильтр (для стратегии C)
-#             txtPrb: Накопленное описание проблемы (ProblemAccumulationService)
-#             asked_questions: Список уже заданных вопросов (ИСПРАВЛЕНО 2026-01-05)
-#             intro_phrase: Вводная фраза для комплементарного стиля (ИСПРАВЛЕНО 2026-01-13)
-#             accumulated_fields: Извлеченные поля из ProblemAccumulationService (ИСПРАВЛЕНО 2026-01-21)
-# 
-#         Returns:
-#             str: Промпт для YandexGPT Pro
-#         """
-#         # ИСПРАВЛЕНО (2026-01-13): Блок вводной фразы для комплементарного стиля
-#         intro_block = ""
-#         if intro_phrase:
-#             intro_block = f"""
-# ⚠️⚠️⚠️ КРИТИЧЕСКИ ВАЖНО: КОМПЛЕМЕНТАРНЫЙ СТИЛЬ ВОПРОСА ⚠️⚠️⚠️
-# 
-# Пользователь ПОТВЕРДИЛ факты: {intro_phrase}
-# 
-# Но пользователь НЕ СОГЛАСЕН с предложенной ранее услугой.
-# 
-# ТВОЯ ЗАДАЧА:
-# 1. СНАЧАЛА сформулируй комплементарную фразу (1 предложение):
-#    - Признай факты которые подтвердил пользователь
-#    - Отметь что предложенная услуга не подходит
-#    - Используй формулировки "вижу что вы описали...", "понимаю что у вас..."
-#    - НЕ используй "пользователь сказал" (говорить о пользователе в 3-м лице ЗАПРЕЩЕНО!)
-# 
-# 2. ПОТОМ задай уточняющий вопрос (максимум 10 слов)
-# 
-# ПРИМЕРЫ правильных комплементарных фраз:
-# ✅ "Вижу, что у вас течь, но вы не считаете это прорывом канализации. Где именно это происходит?"
-# ✅ "Понимаю, что что-то сломалось, но это не [{услуга}]. Опишите подробнее что произошло."
-# ❌ "Пользователь сказал что у него течет. Но вы не согласны." (ЗАПРЕЩЕНО про "пользователь сказал"!)
-# 
-# """
-#             logger.warning(f"[INTRO] Добавлен блок комплементарного стиля: '{intro_phrase[:100]}...'")
-# 
-#         # Базовый блок системы
-#         system_block = """Ты - AI-диспетчер управляющей компании.
-# 
-# ТВОЯ ЗАДАЧА:
-# Проанализировать накопленное описание проблемы (txtPrb) и список кандидатов из каталога услуг.
-# Если кандидат ОДИН с уверенностью >90% - задай подтверждающий вопрос.
-# Если кандидатов НЕСКОЛЬКО - задай уточняющий вопрос который ПОЗВОЛИТ ОДНОЗНАЧНО ВЫБРАТЬ услугу.
-# Вопрос должен использовать информацию из txtPrb и помогать различить кандидатов по их параметрам.
-# 
-# Стиль: Краткий, деловой, без приветствий. Максимум 15 слов.
-# """
-# 
-#         # ИСПРАВЛЕНО (2026-01-05): Блок уже заданных вопросов
-#         asked_questions_block = ""
-#         if asked_questions:
-#             questions_list = "\n".join([f"{i+1}. {q}" for i, q in enumerate(asked_questions)])
-#             asked_questions_block = f"""
-# ================================================================================
-# ⛔ КРИТИЧЕСКОЕ ПРЕДОСТЕРЕЖЕНИЕ: УЖЕ ЗАДАННЫЕ ВОПРОСЫ ⛔
-# ================================================================================
-# 
-# НИЖЕ ПЕРЕЧИСЛЕНЫ ВОПРОСЫ КОТОРЫЕ БОТ УЖЕ ЗАДАВАЛ В ЭТОМ ДИАЛОГЕ:
-# 
-# {questions_list}
-# 
-# 🚨 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО:
-# 1. ЗАДАВАТЬ ТОЧНО ТАКИЕ ЖЕ ВОПРОСЫ
-# 2. ЗАДАВАТЬ ПОХОЖИЕ ВОПРОСЫ (перефразирования)
-# 3. СПРАШИВАТЬ ТО ЧТО УЖЕ СПРАШИВАЛИ
-# 
-# ПРИМЕРЫ НАРУШЕНИЙ (ЗАПРЕЩЕНО!):
-# - Уже спросили "Где именно?" → НЕЛЬЗЯ спросить "В каком месте?"
-# - Уже спросили "Что именно?" → НЕЛЬЗЯ спросить "Что сломалось?"
-# - Уже спросили "Правильно ли я понял, что прорыв труб?" → НЕЛЬЗЯ спросить "Это прорыв труб?"
-# 
-# ВАЖНО: Если пользователь НЕ ОТВЕТИЛ на вопрос, задай ДРУГОЙ вопрос по другой теме!
-# ================================================================================
-# 
-# """
-# 
-#         # Блок контекста
-#         context_block = f"""
-# БЛОК: КОНТЕКСТ
-# Текущее описание проблемы: {context}
-# """
-#         if txtPrb:
-#             context_block += f"\nНакопленное описание: {txtPrb}"
-# 
-#         # Блок ограничений
-#         # ИСПРАВЛЕНИЕ (2026-01-11): Усилен Rule 0 - добавлены явные примеры запрещенных вопросов
-#         constraints_block = """
-# БЛОК: ОГРАНИЧЕНИЯ (КРИТИЧЕСКИ ВАЖНО - НАРУШЕНИЕ ЗАПРЕЩЕНО!)
-# 0. 🚨 САМОЕ ВАЖНОЕ: НЕ ПОВТОРЯЙ УЖЕ ЗАДАННЫЕ ВОПРОСЫ!
-#    Если выше в блоке "УЖЕ ЗАДАННЫЕ ВОПРОСЫ" есть вопрос "Где именно?",
-#    ТЫ КАТЕГОРИЧЕСКИ НЕ МОЖЕШЬ спросить "В каком месте?" или "Где это?"
-#    ЗАДАЙ ДРУГОЙ ВОПРОС ПО ДРУГОЙ ТЕМЕ!
-# 
-# 1. ⛔⛔⛔ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: двойные вопросы через "или", "и", перечисления через запятую ⛔⛔⛔
-#    ПРИМЕРЫ ЗАПРЕЩЕННЫХ ВОПРОСОВ:
-#    ❌ "Какая система водоснабжения, отопления или канализации затронута?" → ПЕРЕЧИСЛЕНИЕ + "или"
-#    ❌ "Что именно или где именно?" → ДВОЙНОЙ ВОПРОС + "или"
-#    ❌ "Это труба или батарея?" → ЗАКРЫТЫЙ ВОПРОС + "или"
-#    ❌ "Где: ванная, кухня или зал?" → ПЕРЕЧИСЛЕНИЕ В ВАРИАНТАХ
-# 
-#    ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ:
-#    ✅ "Где именно это произошло?" (ОДИН параметр - локация)
-#    ✅ "Что именно сломалось?" (ОДИН параметр - объект)
-#    ✅ "Какая система повреждена?" (ОДИН параметр - категория, БЕЗ перечисления!)
-#    ✅ "Опишите подробнее, что именно произошло?" (открытый вопрос БЕЗ вариантов)
-# 
-# 2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО перечислять варианты в скобках или запятыми:
-#    ❌ "Какой характер? (капает, струей, trickle)"
-#    ❌ "Что: труба, кран, батарея?"
-#    ✅ "Опишите характер проблемы подробнее"
-# 
-# 3. ЗАПРЕЩЕНО спрашивать о том, что УЖЕ есть в "Накопленное описание (txtPrb)":
-#    Если txtPrb содержит "в зале течет", вопрос "Что происходит?" → ИЗБЫТОЧЕН!
-#    ИСПОЛЬЗУЙ txtPrb для формирования контекстных вопросов!
-# 
-# 4. Максимум ОДИН вопрос, не более 10 слов, без вводных фраз
-# 
-# 5. Используй только открытые вопросы (Что? Как? Где? Когда? Почему?)
-#    ЗАПРЕЩЕНО закрытые вопросы типа "Это X или Y?"
-# """
-# 
-#         # Блок задачи в зависимости от стратегии
-#         if strategy == 'A':
-#             # 1 кандидат, уверенность >90%
-#             candidate_name = candidates[0]['service_name'] if candidates else 'Неизвестно'
-# 
-#             # ИСПРАВЛЕНО (2026-01-05): Проверяем есть ли уже похожий подтверждающий вопрос
-#             has_confirm_question = False
-#             logger.info(f"[DEBUG] Стратегия A: asked_questions={len(asked_questions) if asked_questions else 0}")
-#             if asked_questions:
-#                 for i, q in enumerate(asked_questions):
-#                     logger.info(f"[DEBUG] Проверка вопроса #{i+1}: '{q[:60]}...'")
-#                     if 'правильно ли я понял' in q.lower() or 'подтверд' in q.lower():
-#                         has_confirm_question = True
-#                         logger.info(f"[DEBUG] НАЙДЕН подтверждающий вопрос!")
-#                         break
-# 
-#             if has_confirm_question:
-#                 logger.info(f"[DEBUG] Используем альтернативный вопрос (уже спрашивали подтверждение)")
-#                 # ИСПРАВЛЕНИЕ (2026-01-12): Открытые вопросы только по правилу 7 CLAUDE.md
-#                 # Уже спрашивали - даем возможность уточнить детали
-#                 task_block = f"""
-# БЛОК: ЗАДАЧА
-# Услуга определена с вероятностью >90%: {candidate_name}.
-# Вы УЖЕ задавали уточняющий вопрос выше.
-# ЗАПРЕЩЕНО задавать "да/нет" вопросы! Дай пользователю возможность уточнить детали.
-# Формула: "Уточните детали если нужно, или я создаю заявку."
-# 
-# Кандидат: {candidate_name}
-# """
-#             else:
-#                 # Первый раз - задаем уточняющий вопрос (открытый!)
-#                 logger.info(f"[DEBUG] Первый уточняющий вопрос")
-#                 task_block = f"""
-# БЛОК: ЗАДАЧА
-# Услуга определена с вероятностью >90%.
-# ЗАПРЕЩЕНО задавать "да/нет" вопросы! Используй открытые вопросы.
-# Формула: "Похоже на [описание проблемы]. Опишите подробнее что происходит."
-# 
-# Кандидат: {candidate_name}
-# """
-#         elif strategy == 'B':
-#             import json
-#             candidates_json = json.dumps([{
-#                 'id': c.get('service_id'),
-#                 'name': c.get('service_name', c.get('scenario_name', 'Unknown')),
-#                 'category': c.get('category', '-'),
-#                 'location': c.get('location_type', '-')
-#             } for c in (candidates or [])], ensure_ascii=False)
-# 
-#             asked_questions_json = json.dumps(asked_questions or [], ensure_ascii=False)
-# 
-#             task_block = f"""
-# # Роль
-# Ты — AI-диспетчер управляющей компании. Твоя задача — задать ОДИН уточняющий вопрос, который максимально сузит список услуг-кандидатов на следующей итерации.
-# 
-# # Цель
-# Сформировать осознанный вопрос с максимальной информативностью: ответ пользователя должен позволить отфильтровать кандидатов на следующем шаге по одному из допустимых фильтров:
-# - Инцидент / запрос (уточнение сути происшествия, формулируемое как текст для расширения ProblemText)
-# - category
-# - location (значения уровня: "Индивидуальное" / "Общедомовое")
-# 
-# # Входные данные (переменные)
-# ## ProblemText (накопленное описание проблемы)
-# {txtPrb or '(не накоплено)'}
-# 
-# ## CandidateServices (JSON массив кандидатов из каталога; использовать только эти поля)
-# {candidates_json}
-# 
-# ### Схема элемента CandidateServices (строго как в данных)
-# - id: целое, уникальный идентификатор услуги
-# - name: строка, название услуги
-# - category: строка, категория услуги
-# - location: строка, тип локации ("Индивидуальное" / "Общедомовое")
-# 
-# ## AskedQuestions (уже заданные вопросы в этом диалоге)
-# {asked_questions_json}
-# 
-# # Ограничение по данным
-# Используй только информацию из ProblemText и CandidateServices.
-# Не додумывай отсутствующие признаки.
-# Не задавай вопрос, который требует значения поля, которого нет в CandidateServices.
-# 
-# # Алгоритм выбора темы вопроса (делай рассуждение внутренне, не выводи его)
-# ## Шаг 1. Извлеки «уже известные факты»
-# - Из ProblemText выдели факты, которые уже явно указаны пользователем (например: место, объект, система, симптом, контекст).
-# - Считай факт «известным», если он уже присутствует в ProblemText или был зафиксирован ранее в диалоге.
-# 
-# ## Шаг 2. Определи, что реально различает кандидатов
-# - Для каждого допустимого фильтра (Инцидент/запрос, category, location) оцени, сможет ли ответ пользователя разделить CandidateServices на разные группы.
-# - Не используй тему, которая не меняет выборку (если все кандидаты имеют одинаковую category или одинаковую location).
-# 
-# ## Шаг 3. Выбери один лучший фильтр для следующей итерации
-# Приоритет выбора:
-# 1) location — если среди кандидатов есть разные значения и это не было уже определено.
-# 2) category — если среди кандидатов есть разные значения и это не было уже определено.
-# 3) Инцидент/запрос — если category и location одинаковы (или уже известны), либо они не дают разделения, тогда уточняй суть инцидента так, чтобы расширить ProblemText и отсеять часть кандидатов по смыслу.
-# 
-# Важно: избегай вопросов, которые слабо влияют на фильтрацию и не приближают к выбору услуги (интенсивность, планы пользователя, материалы, стоимость, "насколько сильно", "что вы планируете делать", "что купить" и т.п.).
-# 
-# ## Шаг 4. Предотврати повтор темы
-# - Определи смысловую тему вопроса (location / category / инцидент-запрос).
-# - Если эта тема уже встречалась в AskedQuestions (даже другими словами), выбери следующую по приоритету тему из Шага 3.
-# 
-# # Правила формулировки вопроса (строго)
-# 1) Верни ровно ОДНО предложение-вопрос на русском языке.
-# 2) Длина: 4–10 слов. Заверши знаком вопроса "?".
-# 3) Открытая форма: начинай с "Где", "Какая", "Что", "Как", "Когда", "Почему".
-# 4) Запрещены перечисления и варианты:
-#    - не используй "или"
-#    - не используй запятые и точки с запятой
-#    - не перечисляй варианты в скобках
-# 5) Не спрашивай то, что уже известно из ProblemText или уже выяснялось ранее.
-# 6) Никаких пояснений, никакого текста вокруг — только вопрос.
-# 
-# # Формат ответа
-# Верни только вопрос, без кавычек, без списков, без комментариев.
-# """
-#         elif strategy == 'C':
-#             # ИСПРАВЛЕНО (2026-01-16): Обновлен промпт для стратегии C (>10 кандидатов)
-#             import json
-# 
-#             # Собираем уникальные значения параметров для анализа
-#             locations = set()
-#             categories = set()
-#             incidents = set()
-# 
-#             for c in (candidates or []):
-#                 if c.get('location_type'):
-#                     locations.add(c['location_type'])
-#                 if c.get('category'):
-#                     categories.add(c['category'])
-#                 if c.get('incident_type'):
-#                     incidents.add(c['incident_type'])
-# 
-#             # Сжимаем список кандидатов для промпта (первые 30)
-#             candidates_summary = []
-#             for c in (candidates or [])[:30]:
-#                 candidates_summary.append({
-#                     'id': c.get('service_id'),
-#                     'name': c.get('service_name', c.get('scenario_name', 'Unknown'))[:50],
-#                     'category': c.get('category', '-'),
-#                     'location': c.get('location_type', '-')
-#                 })
-# 
-#             candidates_json = json.dumps(candidates_summary, ensure_ascii=False)
-#             asked_questions_json = json.dumps(asked_questions or [], ensure_ascii=False)
-# 
-#             # Формируем блок с количеством кандидатов и различиями
-#             candidates_info = f"Всего кандидатов: {len(candidates or [])}\n"
-#             if locations:
-#                 candidates_info += f"- Разные локации: {', '.join(locations)}\n"
-#             if categories:
-#                 candidates_info += f"- Разные категории: {', '.join(categories)}\n"
-#             if incidents:
-#                 candidates_info += f"- Разные типы инцидентов: {', '.join(incidents)}\n"
-# 
-#             task_block = f"""
-# # Роль
-# Ты — AI-диспетчер управляющей компании. Твоя задача — задать ОДИН уточняющий вопрос, который максимально сузит список услуг-кандидатов на следующей итерации.
-# 
-# # Цель
-# Кандидатов слишком много ({len(candidates or [])} штук). Сформировать осознанный вопрос с максимальной информативностью: ответ пользователя должен позволить отфильтровать кандидатов на следующем шаге по одному из допустимых фильтров:
-# - Инцидент / запрос (уточнение сути происшествия)
-# - category
-# - location (значения уровня: "Индивидуальное" / "Общедомовое")
-# 
-# # Входные данные (переменные)
-# ## ProblemText (накопленное описание проблемы)
-# {txtPrb or '(не накоплено)'}
-# 
-# ## Анализ кандидатов
-# {candidates_info}
-# 
-# ## CandidateServices (первые 30 из {len(candidates or [])}, JSON)
-# {candidates_json}
-# 
-# ### Схема элемента CandidateServices
-# - id: уникальный идентификатор услуги
-# - name: название услуги
-# - category: категория услуги
-# - location: тип локации ("Индивидуальное" / "Общедомовое")
-# 
-# ## AskedQuestions (уже заданные вопросы в этом диалоге)
-# {asked_questions_json}
-# 
-# # Ограничение по данным
-# Используй только информацию из ProblemText и CandidateServices.
-# Не додумывай отсутствующие признаки.
-# Не задавай вопрос, который требует значения поля, которого нет в CandidateServices.
-# 
-# # Алгоритм выбора темы вопроса (делай рассуждение внутренне, не выводи его)
-# ## Шаг 1. Извлеки «уже известные факты»
-# - Из ProblemText выдели факты, которые уже явно указаны пользователем (место, объект, система, симптом).
-# - Считай факт «известным», если он уже присутствует в ProblemText или был зафиксирован ранее.
-# 
-# ## Шаг 2. Определи параметр с максимальным разнообразием
-# - Для каждого фильтра (location, category, инцидент/запрос) определи сколько разных значений есть среди кандидатов.
-# - Выбери параметр с МАКСИМАЛЬНЫМ разнообразием значений.
-# 
-# ## Шаг 3. Выбери один лучший фильтр для следующей итерации
-# Приоритет выбора:
-# 1) location — если есть разные значения и это не было определено.
-# 2) category — если есть разные значения и это не было определено.
-# 3) Инцидент/запрос — если location и category одинаковы (или уже известны).
-# 
-# ## Шаг 4. Предотврати повтор темы
-# - Определи смысловую тему вопроса (location / category / инцидент-запрос).
-# - Если эта тема уже встречалась в AskedQuestions, выбери следующую по приоритету тему из Шага 3.
-# 
-# # Правила формулировки вопроса (строго)
-# 1) Верни ровно ОДНО предложение-вопрос на русском языке.
-# 2) Длина: 4–10 слов. Заверши знаком вопроса "?".
-# 3) Открытая форма: начинай с "Где", "Какая", "Что", "Как", "Когда", "Почему".
-# 4) Запрещены перечисления и варианты:
-#    - не используй "или"
-#    - не используй запятые и точки с запятой
-#    - не перечисляй варианты в скобках
-# 5) Не спрашивай то, что уже известно из ProblemText.
-# 6) Никаких пояснений, никакого текста вокруг — только вопрос.
-# 
-# # Формат ответа
-# Верни только вопрос, без кавычек, без списков, без комментариев.
-# """
-#         else:  # strategy == 'NONE' - нет кандидатов совсем
-#             task_block = f"""
-# БЛОК: ЗАДАЧА
-# Ни одна услуга не подходит под описание проблемы.
-# 
-# Задай вопрос который поможет лучше понять:
-# - Что именно произошло?
-# - Где именно это произошло?
-# - Какой объект поврежден?
-# 
-# Выбери ОДИН самый важный аспект для уточнения.
-# """
-# 
-#         # ИСПРАВЛЕНО (2026-01-05): Собираем промпт с блоком уже заданных вопросов
-#         # ИСПРАВЛЕНО (2026-01-13): Добавлен блок intro_phrase для комплементарного стиля
-#         # ИСПРАВЛЕНО (2026-01-15): Убран facts_block (используется txtPrb в context_block)
-#         prompt = f"{system_block}{intro_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
-# 
-#         # Добавляем инструкцию по формату ответа
-#         prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"""
-# 
-#         return prompt
-# 
-#     async def _generate_ai_question(
-#         self,
-#         context: str,
-#         dialog_history: List[Dict] = None,
-#         candidates: List[Dict] = None,
-#         established_filters: Dict = None,
-#         txtPrb: str = None,
-#         question_type: str = "clarification",
-#         session_id: str = None,
-#         intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-#         accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (чтобы избежать повторного LLM)
-#         txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
-#     ) -> Dict[str, str]:
-#         """
-#         Универсальный метод для генерации вопросов через AI
-# 
-#         ИСПРАВЛЕНО (2025-12-28): Все вопросы генерируются через YandexGPT
-#         ИСПРАВЛЕНО (2025-12-29): Возвращает Dict с вопросом И метаданными для трассировки
-#         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
-#         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля вопроса
-#         ИСПРАВЛЕНО (2026-01-21): Добавлена защита от зацикливания - после 6 ходов
-#         ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
-#         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
-#         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
-# 
-#         Args:
-#             context: Контекст ситуации (описание проблемы)
-#             dialog_history: История диалога
-#             candidates: Кандидаты услуг (для уточнения)
-#             established_filters: Установленные фильтры
-#             txtPrb: Накопленное описание проблемы
-#             question_type: Тип вопроса
-#                 - 'clarification' - уточняющий вопрос
-#                 - 'what_happened' - что случилось
-#                 - 'location' - где произошло
-#                 - 'details' - детали проблемы
-#             session_id: ID сессии для сохранения в llm_request_log
-#             intro_phrase: Вводная фраза для ИИ (факты + отвергнутая услуга) - ИСПРАВЛЕНО 2026-01-13
-#             accumulated_fields: Извлеченные поля из ProblemAccumulationService - ИСПРАВЛЕНО 2026-01-21
-#                 (передается чтобы избежать повторного вызова LLM в _extract_known_info)
-#             txtStopQ: Список запрещенных вопросов (накопленные глупые вопросы) - ИСПРАВЛЕНО 2026-02-04
-# 
-#         Returns:
-#             Dict: {
-#                 'question': str,  # Сгенерированный вопрос
-#                 'prompt': str,    # Промт отправленный в LLM
-#                 'response': str,  # Ответ от LLM
-#                 'model': str,     # Модель использованная
-#                 'usage': Dict     # Информация об использовании токенов
-#             }
-#         """
-#         # ИСПРАВЛЕНИЕ (2026-01-21): Защита от зацикливания
-#         dialog_turn = len(dialog_history) if dialog_history else 1
-#         if dialog_turn >= 7:
-#             logger.warning(
-#                 f"[ANTI-LOOP] Слишком много AI-вопросов (turn={dialog_turn}) -> "
-#                 f"возвращаем финальное сообщение о передаче оператору"
-#             )
-#             # ЗАКОММЕНТИРОВАНО (2026-02-14): Hardcoded fallback - заменяем на AI-генерацию
-#             # final_message = "К сожалению, я не смог определить вашу проблему. Пожалуйста, свяжитесь с оператором по телефону или опишите проблему другими словами."
-#             # return {
-#             #     'question': final_message,
-#             #     'prompt': '[ANTI-LOOP] Превышен лимит попыток',
-#             #     'response': final_message,
-#             #     'model': 'anti-loop',
-#             #     'usage': {}
-#             # }
-#             # ИСПРАВЛЕНО (2026-02-14): Вместо hardcoded fallback используем ИИ для генерации финального сообщения
-#             final_context = f"После {dialog_turn} сообщений не удалось определить проблему. Пользователь: {context.get('original_message', '')[:200]}"
-#             ai_result = await self.ai_agent.call_llm(
-#                 prompt=f"Сгенерируй вежливый ответ для пользователя: {final_context}\n\nОтвет должен быть кратким, без эмодзи.",
-#                 provider='yandexgpt',
-#                 model='lite'
-#             )
-#             final_message = ai_result[0].strip() if ai_result else "Пожалуйста, опишите проблему другими словами или свяжитесь с оператором."
-#             return {
-#                 'question': final_message,
-#                 'prompt': f'[ANTI-LOOP] Превышен лимит попыток (AI-generated)',
-#                 'response': final_message,
-#                 'model': 'anti-loop-ai',
-#                 'usage': {}
-#             }
-# 
-#         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
-#         logger.info("[SEARCH] _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
-#         logger.info(f"  [NOTE] context: '{context[:100]}'")
-#         logger.info(f"  [TOOL] question_type: {question_type}")
-#         logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
-#         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
-#         logger.info(f"  [TOOL] established_filters: {established_filters if established_filters else '(не переданы)'}")
-#         logger.info(f"  👥 candidates: {len(candidates) if candidates else 0} кандидатов")
-#         logger.info(f"  [INTRO] intro_phrase: '{intro_phrase[:100] if intro_phrase else '(не передана)'}'")  # ИСПРАВЛЕНО (2026-01-13)
-# 
-#         try:
-#             # ИСПРАВЛЕНО (2026-01-03): Используем _build_dynamic_prompt вместо _build_question_prompt
-#             # Определяем стратегию на основе количества кандидатов
-#             strategy = self._determine_strategy(candidates, established_filters)
-# 
-#             # Определяем недостающий фильтр для стратегии C
-#             missing_filter = None
-#             if strategy == 'C':
-#                 missing_filter = self._determine_missing_filter(candidates or [], established_filters or {})
-# 
-#             # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
-#             # txtPrb уже содержит всю накопленную информацию о проблеме
-# 
-#             # ИСПРАВЛЕНО (2026-01-05): Извлекаем уже заданные вопросы из истории
-#             asked_questions = []
-#             if dialog_history:
-#                 asked_questions = self._extract_asked_questions(dialog_history)
-#                 logger.info(f"[!] Уже задано вопросов: {len(asked_questions)}")
-# 
-#             # ИСПРАВЛЕНО (2026-02-17): УБРАНО условное использование _build_dynamic_prompt
-#             # ЗАКОММЕНТИРОВАНО (2026-02-17): _build_dynamic_prompt - УСТАРЕЛ, использует захардкоженный промпт без accumulated_fields
-#             # ВСЕГДА используем _build_question_prompt (промпт из БД с accumulated_fields)
-#             #
-#             # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
-#             # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
-#             # if question_type == 'clarification' and candidates is not None:
-#             #     # Используем новый метод с динамическими промптами по стратегиям
-#             #     prompt = self._build_dynamic_prompt(
-#             #         strategy=strategy,
-#             #         context=context,
-#             #         candidates=candidates,
-#             #         missing_filter=missing_filter,
-#             #         txtPrb=txtPrb,
-#             #         asked_questions=asked_questions if asked_questions else None,  # ИСПРАВЛЕНО 2026-01-05
-#             #         intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-#             #         accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
-#             #     )
-#             #     logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
-#             # else:
-#             #     # Для остальных типов используем старый метод
-# 
-#             # ИСПРАВЛЕНО (2026-02-17): ВСЕГДА используем _build_question_prompt (промпт из БД)
-#             # ИСПРАВЛЕНО (2026-02-16): Добавлен await (теперь _build_question_prompt async)
-#             prompt = await self._build_question_prompt(
-#                 context=context,
-#                 dialog_history=dialog_history,
-#                 candidates=candidates,
-#                 established_filters=established_filters,
-#                 txtPrb=txtPrb,
-#                 question_type=question_type,
-#                 accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
-#                 txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
-#             )
-# 
-#             # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
-#             logger.info(f"[BOT] PROMPT ДЛЯ LLM ({question_type}):")
-#             logger.info(f"{'=' * 80}")
-#             logger.info(f"{prompt[:500]}...")
-#             logger.info(f"{'=' * 80} (полная длина: {len(prompt)} символов)")
-# 
-#             # Вызываем AI через AIAgentService
-#             if self.ai_agent:
-#                 # ИСПРАВЛЕНО (2025-12-28): ГИБРИДНАЯ МОДЕЛЬ
-#                 # - Для вопросов к пользователю: Pro (качество критично!)
-#                 # - Для остальных задач: используется default (обычно Lite)
-#                 question_types_requiring_pro = ['clarification', 'what_happened', 'location', 'details']
-#                 model = 'pro' if question_type in question_types_requiring_pro else 'lite'
-# 
-#                 # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
-#                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
-#                 # ИСПРАВЛЕНО (2026-01-10): Передаем message_id для логирования в llm_request_log
-#                 response, usage = await self.ai_agent.call_llm(
-#                     prompt=prompt,
-#                     provider='yandexgpt',  # Можно менять на 'gigachat'
-#                     model=model,
-#                     session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-#                     message_id=self.current_message_id  # ИСПРАВЛЕНО (2026-01-10)
-#                 )
-#                 question = response.strip()
-# 
-#                 # ИСПРАВЛЕНО (2025-12-28): Логируем ответ LLM
-#                 logger.info(f"[BOT] ОТВЕТ LLM ({question_type}, model={usage.get('model', 'unknown')}):")
-#                 logger.info(f"  [NOTE] Текст: '{question}'")
-#                 logger.info(f"  [$] Usage: {usage}")
-# 
-#                 # Удаляем лишние кавычки если есть
-#                 if question.startswith('"') and question.endswith('"'):
-#                     question = question[1:-1]
-#                 if question.startswith("'") and question.endswith("'"):
-#                     question = question[1:-1]
-# 
-#                 # ИСПРАВЛЕНО (2026-01-03): Regex-валидаторы удалены, используем LLM-валидацию
-#                 # ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
-#                 # ИСПРАВЛЕНО (2026-02-04): Передаем txtStopQ для накопления глупых вопросов
-#                 # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации
-#                 question = await self._llm_validate_question(
-#                     question=question,
-#                     txtPrb=txtPrb,
-#                     established_filters=established_filters,
-#                     asked_questions=asked_questions,  # ИСПРАВЛЕНО (2026-01-10)
-#                     txtStopQ=txtStopQ,  # ИСПРАВЛЕНО (2026-02-04): Накопление запрещенных вопросов
-#                     accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
-#                 )
-# 
-#                 # ИСПРАВЛЕНО (2025-12-29): Отладочный режим - добавляем объяснение к вопросу
-#                 if self.tst_prompt:
-#                     question = self._add_debug_explanation(question, question_type, candidates)
-# 
-#                 logger.info(f"[OK] AI сгенерировал вопрос ({question_type}): {question}")
-# 
-#                 # ИСПРАВЛЕНО (2025-12-29): Возвращаем Dict с вопросом И метаданными для трассировки
-#                 # ИСПРАВЛЕНО (2026-02-04): Добавляем txtStopQ для сохранения в metadata
-#                 return {
-#                     'question': question,
-#                     'prompt': prompt,
-#                     'response': response,
-#                     'model': usage.get('model', 'unknown'),
-#                     'usage': usage,
-#                     'txtStopQ': txtStopQ or []  # ИСПРАВЛЕНО (2026-02-04): Возвращаем обновленный список
-#                 }
-#             else:
-#                 logger.warning("AIAgentService недоступен, используем fallback")
-#                 question = self._fallback_question(question_type, context)
-#                 return {
-#                     'question': question,
-#                     'prompt': '(fallback - нет LLM вызова)',
-#                     'response': '(fallback - нет LLM ответа)',
-#                     'model': 'fallback',
-#                     'usage': {}
-#                 }
-# 
-#         except Exception as e:
-#             import traceback
-#             logger.error(f"Ошибка генерации AI вопроса: {e}")
-#             logger.error(f"TRACEBACK:\n{traceback.format_exc()}")
-#             question = self._fallback_question(question_type, context)
-#             return {
-#                 'question': question,
-#                 'prompt': f'(error: {str(e)})',
-#                 'response': f'(error: {str(e)})',
-#                 'model': 'error',
-#                 'usage': {}
-#             }
-# 
-#     # ИСПРАВЛЕНО (2026-02-16): Сделал async чтобы можно было await внутри
-#     async def _build_question_prompt(
-#         self,
-#         context: str,
-#         dialog_history: List[Dict] = None,
-#         candidates: List[Dict] = None,
-#         established_filters: Dict = None,
-#         txtPrb: str = None,
-#         question_type: str = "clarification",
-#         accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
-#         txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
-#     ) -> str:
-#         """Строит промт для генерации вопроса
-# 
-#         ПЕРЕРАБОТАНО (2025-12-28):
-#         - Добавлено объяснение про фильтры и услуги
-#         - Атомарные открытые вопросы
-#         - Запрет на двойные вопросы
-#         ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
-#         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов"""
-# 
-#         # Анализируем что уже известно из истории
-#         # ИСПРАВЛЕНО (2026-01-21): Передаем accumulated_fields чтобы избежать повторного LLM вызова
-#         known_info = self._extract_known_info(dialog_history, txtPrb, accumulated_fields)
-# 
-#         # Собираем контекст из истории
-#         recent_dialog = ""
-#         if dialog_history:
-#             last_msgs = dialog_history[-4:]  # Последние 2 цикла
-#             for msg in last_msgs:
-#                 role = "Пользователь" if msg.get('role') == 'user' else "Бот"
-#                 recent_dialog += f"{role}: {msg.get('text', '')}\n"
-# 
-#         # Формируем JSON кандидатов для промта
-#         # ИСПРАВЛЕНО (2026-02-16): Проверяем candidates на None
-#         candidates_json = ""
-#         import json
-#         candidates_list = []
-#         if candidates:  # Проверка на None и пустой список
-#             for c in candidates[:15]:  # До 15 кандидатов
-#                 candidate_data = {
-#                     "КодУслуги": c.get('service_id', 'Unknown'),
-#                     "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),
-#                     "Фильтры": {
-#                         "Тип": c.get('incident_type', '-'),
-#                         "Вид": c.get('location_type', '-'),
-#                         "Категория": c.get('category', '-'),
-#                         "Объект": c.get('object_type', '-')
-#                     }
-#                 }
-#                 candidates_list.append(candidate_data)
-# 
-#         candidates_json = f"\nСПИСОК КАНДИДАТОВ (услуги которые подходят под описание):\n"
-#         candidates_json += "```json\n"
-#         candidates_json += json.dumps(candidates_list, ensure_ascii=False, indent=2)
-#         candidates_json += "\n```\n"
-# 
-#         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
-#         try:
-#             from llm_tester.models import PromptTemplate
-#             from asgiref.sync import sync_to_async
-# 
-#             @sync_to_async
-#             def get_db_template():
-#                 return PromptTemplate.objects.filter(
-#                     slug='mainagent-orchestrator',
-#                     is_active=True
-#                 ).first()
-# 
-#             # ИСПРАВЛЕНО (2026-02-16): Добавлен await для sync_to_async функции
-#             db_template = await get_db_template()
-# 
-#             if db_template:
-#                 # ИСПРАВЛЕНО (2026-02-17): Формируем absolute_facts из accumulated_fields
-#                 absolute_facts_list = []
-# 
-#                 if accumulated_fields:
-#                     if accumulated_fields.get('source'):
-#                         absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
-#                     if accumulated_fields.get('location'):
-#                         absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
-#                     if accumulated_fields.get('problem'):
-#                         absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
-#                     if accumulated_fields.get('severity'):
-#                         absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
-#                     if accumulated_fields.get('intensity'):
-#                         absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
-#                     if accumulated_fields.get('category'):
-#                         absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория: {accumulated_fields['category']}")
-# 
-#                 # Добавляем established_filters с высоким confidence
-#                 if established_filters:
-#                     obj_desc = established_filters.get('object_description')
-#                     if obj_desc and isinstance(obj_desc, dict):
-#                         obj_value = obj_desc.get('value')
-#                         obj_conf = obj_desc.get('confidence', 0)
-#                         if obj_value and obj_conf >= 0.8:
-#                             absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема (фильтр): {obj_value}")
-# 
-#                     location = established_filters.get('location_type')
-#                     if location and isinstance(location, dict):
-#                         loc_value = location.get('value')
-#                         loc_conf = location.get('confidence', 0)
-#                         if loc_value and loc_conf >= 0.8:
-#                             absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация (фильтр): {loc_value}")
-# 
-#                     category = established_filters.get('category')
-#                     if category and isinstance(category, dict):
-#                         cat_value = category.get('value')
-#                         cat_conf = category.get('confidence', 0)
-#                         if cat_value and cat_conf >= 0.8:
-#                             absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (фильтр): {cat_value}")
-# 
-#                 absolute_facts = '\n'.join(absolute_facts_list) if absolute_facts_list else '(нет известных фактов)'
-# 
-#                 # Формируем все переменные для подстановки
-#                 prompt_vars = {
-#                     'context': context,
-#                     'absolute_facts': absolute_facts,
-#                     'txtPrb': txtPrb or '(не указано)',
-#                     'dialog_history': recent_dialog or '(история пуста)',
-#                     'established_filters': str(established_filters) if established_filters else '(нет фильтров)',
-#                     'candidates': candidates_json or '(нет кандидатов)'
-#                 }
-# 
-#                 # ИСПРАВЛЕНО (2026-02-17): Логируем переменные до .format()
-#                 logger.debug(f"[DB] prompt_vars ключи: {list(prompt_vars.keys())}")
-#                 logger.debug(f"[DB] candidates_json длина: {len(candidates_json) if candidates_json else 0}")
-#                 logger.debug(f"[DB] established_filters: {prompt_vars['established_filters'][:100] if prompt_vars['established_filters'] else '(нет)'}")
-# 
-#                 # Подставляем все переменные в шаблон из БД
-#                 prompt = db_template.template.format(**prompt_vars)
-# 
-#                 logger.debug(f"[DB] Промпт mainagent-orchestrator загружен из БД (ID: {db_template.id})")
-#             else:
-#                 logger.error("[DB] Промпт 'mainagent-orchestrator' не найден в БД!")
-#                 raise Exception("Промпт не найден в БД")
-# 
-#         except Exception as e:
-#             import traceback
-#             logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
-#             logger.error(f"[DB] Traceback:\n{traceback.format_exc()}")
-#             logger.warning("[FALLBACK] Используется захардкоженный промпт")
-# 
-#             # Fallback-промпт (захардкожен)
-#             # ПЕРЕРАБОТАНО (2025-12-29): Позитивная инструкция + алгоритм + JSON заявки
-#             # ИСПРАВЛЕНО (2026-01-03): Убраны все эмодзи из промта
-#             prompt = f"""Ты - AI-диспетчер УК "Аспект".
-# 
-# 
-# ⛔⛔⛔ КРИТИЧЕСКИ ВАЖНЕЙШЕЕ ПРАВИЛО - ДВОЙНЫЕ ВОПРОСЫ ЗАПРЕЩЕНЫ! ⛔⛔⛔
-# 
-# 0. (САМОЕ ВАЖНОЕ!) КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ ДВОЙНЫЕ ВОПРОСЫ:
-#    ⛔ ЗАПРЕЩЕНО вопросы через "или", "или", "и"
-#    ⛔ ЗАПРЕЩЕНО перечислять варианты в скобках или запятыми
-#    ⛔ ЗАПРЕЩЕНО закрывать варианты в один вопрос ("Это А или Б?")
-#    ⛔ ЗАПРЕЩЕНО вопросы "Является ли...?" (隐式双重问题)
-# 
-#    ПРИМЕРЫ ЗАПРЕЩЕННЫХ ВОПРОСОВ:
-#    ❌ "Это прорыв трубы в квартире или общедомовой прорыв?" → ДВОЙНОЙ + "или"
-#    ❌ "Что и где именно?" → ДВОЙНОЙ
-#    ❌ "Является ли прорыв трубы в квартире общедомовой проблемой?" → ДВОЙНОЙ
-#    ❌ "Каков источник протечки: трубы или крыша?" → ДВОЙНОЙ + "или"
-#    # ❌ "Уточните, какая система водоснабжения, отопления или канализация затронута?" → ПЕРЕЧИСЛЕНИЕ + "или"  # ЗАКОММЕНТИРОВАНО (2026-02-14): LLM копирует этот пример
-# 
-#    ⛔ ЕСЛИ СГЕНЕРИРУЕШЬ ДВОЙНОЙ ВОПРОС - БУДЕТ АВТОМАТИЧЕСКИ ОТВЕРГНУТ regex-валидатором!
-# 
-#    ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ:
-#    ✅ "Где именно это произошло?" (ОДИН параметр - локация)
-#    ✅ "Что именно сломалось?" (ОДИН параметр - объект)
-#    ✅ "Опишите подробнее, что произошло?" (открытый вопрос БЕЗ вариантов)
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════════════════════
-# ГЛАВНАЯ ЗАДАЧА
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# Сформировать заявку от абонента в формате JSON:
-# 
-# Этап 1: Определить услугу (поиск в каталоге, получение подтверждения от пользователя)
-# Этап 2: Определить адрес (через AddressExtractor)
-# Этап 3: Вернуть JSON заявки с полями:
-#   - timestamp: время обращения
-#   - telegram_user: ник пользователя в ТГ или логин в чате
-#   - dialog_id: ID диалога
-#   - service_id: ID услуги
-#   - address_id: ID объекта обслуживания
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# ИНСТРУКЦИЯ ПО ГЕНЕРАЦИИ ВОПРОСА
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# Верни уточняющий открытый вопрос, который:
-# 
-# 1. СОКРАТИТ список кандидатов до ОДНОЙ услуги
-#    ИЛИ
-# 2. НАЛОЖИТ один из фильтров (Тип/Вид/Категория/Объект) на множество кандидатов
-# 
-# Ограничения:
-# - Максимальная длина: 10 слов
-# - Только ОДИН вопрос
-# - Открытый вопрос (без вариантов ответа)
-# - Ответ должен приблизить к однозначному определению услуги
-# 
-# ⛔⛔⛔ КРИТИЧЕСКИ ВАЖНО - УЖЕ ИЗВЕСТНЫЕ ФАКТЫ ⛔⛔⛔
-# Если есть УЖЕ известная информация - НЕ СПРАШИВАЙ О НЕЙ!
-# 
-# Примеры:
-# ✅ Если object_description="течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
-# ✅ Если location="зал" → НЕЛЬЗЯ спрашивать "Где именно?"
-# ✅ Если category="Отопление" → НЕЛЬЗЯ спрашивать "Это отопление?"
-# 
-# ПРАВИЛЬНЫЕ вопросы при УЖЕ известных фактах:
-# - Если известно: "течёт" + "батарея" → спроси про ЛОКАЦИЮ: "Где именно это происходит?"
-# - Если известно: "течёт" + "батарея" + "зал" → спроси про ИНТЕНСИВНОСТЬ: "Насколько сильно течет?"
-# - Если известно: "батарея" + "холодная" → спроси про ЛОКАЦИЮ: "В какой комнате батарея?"
-# - Если известно: "сломалось" + "кран" → спроси: "В каком помещении кран?"
-# 
-# НЕ ПРИМЕНЯЙ:
-# - Двойные вопросы ("что и где?")
-# - Перечисления вариантов ("например, труба или батарея?")
-# - ЗАКРЫТЫЕ ВОПРОСЫ (да/нет) - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО!
-# - Слово "например" и любые перечисления через него
-# - Внутренние термины "Инцидент/Запрос" - говори по-человечески
-# - Вопросы которые НЕ приближают к решению (не позволяют установить фильтр)
-# 
-# ПРИМЕНЯЙ:
-# - Открытый вопрос, уточнение одного параметра
-# - Учет уже известной информации
-# - Анализ истории диалога ниже
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# АЛГОРИТМ ПОИСКА УСЛУГИ
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# 1. Анализируй историю диалога в блоке [ИСТОРИЯ ДИАЛОГА]
+    def _build_dynamic_prompt(
+        self,
+        strategy: str,
+        context: str,
+        candidates: List[Dict] = None,
+        missing_filter: str = None,
+        txtPrb: str = None,
+        asked_questions: List[str] = None,
+        intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+    ) -> str:
+        """
+        ИСПРАВЛЕНО (2026-01-03): Динамическая сборка промпта по стратегии
+        ИСПРАВЛЕНО (2026-01-05): Добавлен параметр asked_questions для исключения повторов
+        ИСПРАВЛЕНО (2026-01-06): Добавлена стратегия NONE для случая без кандидатов
+        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля
+        ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
+
+        Стратегии:
+        - A (1 кандидат, >90%): Подтверждение
+        - B (2-10 кандидатов): Уточнение по списку
+        - C (>10 кандидатов): Фильтрация С анализом кандидатов (ИСПРАВЛЕНО 2026-01-06)
+        - NONE (0 кандидатов): Уточнение без анализа услуг
+
+        Args:
+            strategy: Тип стратегии (A, B, C, NONE)
+            context: Контекст ситуации
+            candidates: Список кандидатов (для стратегий B и C)
+            missing_filter: Недостающий фильтр (для стратегии C)
+            txtPrb: Накопленное описание проблемы (ProblemAccumulationService)
+            asked_questions: Список уже заданных вопросов (ИСПРАВЛЕНО 2026-01-05)
+            intro_phrase: Вводная фраза для комплементарного стиля (ИСПРАВЛЕНО 2026-01-13)
+            accumulated_fields: Извлеченные поля из ProblemAccumulationService (ИСПРАВЛЕНО 2026-01-21)
+
+        Returns:
+            str: Промпт для YandexGPT Pro
+        """
+        # ИСПРАВЛЕНО (2026-01-13): Блок вводной фразы для комплементарного стиля
+        intro_block = ""
+        if intro_phrase:
+            intro_block = f"""
+⚠️⚠️⚠️ КРИТИЧЕСКИ ВАЖНО: КОМПЛЕМЕНТАРНЫЙ СТИЛЬ ВОПРОСА ⚠️⚠️⚠️
+
+Пользователь ПОТВЕРДИЛ факты: {intro_phrase}
+
+Но пользователь НЕ СОГЛАСЕН с предложенной ранее услугой.
+
+ТВОЯ ЗАДАЧА:
+1. СНАЧАЛА сформулируй комплементарную фразу (1 предложение):
+   - Признай факты которые подтвердил пользователь
+   - Отметь что предложенная услуга не подходит
+   - Используй формулировки "вижу что вы описали...", "понимаю что у вас..."
+   - НЕ используй "пользователь сказал" (говорить о пользователе в 3-м лице ЗАПРЕЩЕНО!)
+
+2. ПОТОМ задай уточняющий вопрос (максимум 10 слов)
+
+ПРИМЕРЫ правильных комплементарных фраз:
+✅ "Вижу, что у вас течь, но вы не считаете это прорывом канализации. Где именно это происходит?"
+✅ "Понимаю, что что-то сломалось, но это не [{услуга}]. Опишите подробнее что произошло."
+❌ "Пользователь сказал что у него течет. Но вы не согласны." (ЗАПРЕЩЕНО про "пользователь сказал"!)
+
+"""
+            logger.warning(f"[INTRO] Добавлен блок комплементарного стиля: '{intro_phrase[:100]}...'")
+
+        # Базовый блок системы
+        system_block = """Ты - AI-диспетчер управляющей компании.
+
+ТВОЯ ЗАДАЧА:
+Проанализировать накопленное описание проблемы (txtPrb) и список кандидатов из каталога услуг.
+Если кандидат ОДИН с уверенностью >90% - задай подтверждающий вопрос.
+Если кандидатов НЕСКОЛЬКО - задай уточняющий вопрос который ПОЗВОЛИТ ОДНОЗНАЧНО ВЫБРАТЬ услугу.
+Вопрос должен использовать информацию из txtPrb и помогать различить кандидатов по их параметрам.
+
+Стиль: Краткий, деловой, без приветствий. Максимум 15 слов.
+"""
+
+        # ИСПРАВЛЕНО (2026-01-05): Блок уже заданных вопросов
+        asked_questions_block = ""
+        if asked_questions:
+            questions_list = "\n".join([f"{i+1}. {q}" for i, q in enumerate(asked_questions)])
+            asked_questions_block = f"""
+================================================================================
+⛔ КРИТИЧЕСКОЕ ПРЕДОСТЕРЕЖЕНИЕ: УЖЕ ЗАДАННЫЕ ВОПРОСЫ ⛔
+================================================================================
+
+НИЖЕ ПЕРЕЧИСЛЕНЫ ВОПРОСЫ КОТОРЫЕ БОТ УЖЕ ЗАДАВАЛ В ЭТОМ ДИАЛОГЕ:
+
+{questions_list}
+
+🚨 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО:
+1. ЗАДАВАТЬ ТОЧНО ТАКИЕ ЖЕ ВОПРОСЫ
+2. ЗАДАВАТЬ ПОХОЖИЕ ВОПРОСЫ (перефразирования)
+3. СПРАШИВАТЬ ТО ЧТО УЖЕ СПРАШИВАЛИ
+
+ПРИМЕРЫ НАРУШЕНИЙ (ЗАПРЕЩЕНО!):
+- Уже спросили "Где именно?" → НЕЛЬЗЯ спросить "В каком месте?"
+- Уже спросили "Что именно?" → НЕЛЬЗЯ спросить "Что сломалось?"
+- Уже спросили "Правильно ли я понял, что прорыв труб?" → НЕЛЬЗЯ спросить "Это прорыв труб?"
+
+ВАЖНО: Если пользователь НЕ ОТВЕТИЛ на вопрос, задай ДРУГОЙ вопрос по другой теме!
+================================================================================
+
+"""
+
+        # Блок контекста
+        context_block = f"""
+БЛОК: КОНТЕКСТ
+Текущее описание проблемы: {context}
+"""
+        if txtPrb:
+            context_block += f"\nНакопленное описание: {txtPrb}"
+
+        # Блок ограничений
+        # ИСПРАВЛЕНИЕ (2026-01-11): Усилен Rule 0 - добавлены явные примеры запрещенных вопросов
+        constraints_block = """
+БЛОК: ОГРАНИЧЕНИЯ (КРИТИЧЕСКИ ВАЖНО - НАРУШЕНИЕ ЗАПРЕЩЕНО!)
+0. 🚨 САМОЕ ВАЖНОЕ: НЕ ПОВТОРЯЙ УЖЕ ЗАДАННЫЕ ВОПРОСЫ!
+   Если выше в блоке "УЖЕ ЗАДАННЫЕ ВОПРОСЫ" есть вопрос "Где именно?",
+   ТЫ КАТЕГОРИЧЕСКИ НЕ МОЖЕШЬ спросить "В каком месте?" или "Где это?"
+   ЗАДАЙ ДРУГОЙ ВОПРОС ПО ДРУГОЙ ТЕМЕ!
+
+1. ⛔⛔⛔ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: двойные вопросы через "или", "и", перечисления через запятую ⛔⛔⛔
+   ПРИМЕРЫ ЗАПРЕЩЕННЫХ ВОПРОСОВ:
+   ❌ "Какая система водоснабжения, отопления или канализации затронута?" → ПЕРЕЧИСЛЕНИЕ + "или"
+   ❌ "Что именно или где именно?" → ДВОЙНОЙ ВОПРОС + "или"
+   ❌ "Это труба или батарея?" → ЗАКРЫТЫЙ ВОПРОС + "или"
+   ❌ "Где: ванная, кухня или зал?" → ПЕРЕЧИСЛЕНИЕ В ВАРИАНТАХ
+
+   ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ:
+   ✅ "Где именно это произошло?" (ОДИН параметр - локация)
+   ✅ "Что именно сломалось?" (ОДИН параметр - объект)
+   ✅ "Какая система повреждена?" (ОДИН параметр - категория, БЕЗ перечисления!)
+   ✅ "Опишите подробнее, что именно произошло?" (открытый вопрос БЕЗ вариантов)
+
+2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО перечислять варианты в скобках или запятыми:
+   ❌ "Какой характер? (капает, струей, trickle)"
+   ❌ "Что: труба, кран, батарея?"
+   ✅ "Опишите характер проблемы подробнее"
+
+3. ЗАПРЕЩЕНО спрашивать о том, что УЖЕ есть в "Накопленное описание (txtPrb)":
+   Если txtPrb содержит "в зале течет", вопрос "Что происходит?" → ИЗБЫТОЧЕН!
+   ИСПОЛЬЗУЙ txtPrb для формирования контекстных вопросов!
+
+4. Максимум ОДИН вопрос, не более 10 слов, без вводных фраз
+
+5. Используй только открытые вопросы (Что? Как? Где? Когда? Почему?)
+   ЗАПРЕЩЕНО закрытые вопросы типа "Это X или Y?"
+"""
+
+        # Блок задачи в зависимости от стратегии
+        if strategy == 'A':
+            # 1 кандидат, уверенность >90%
+            candidate_name = candidates[0]['service_name'] if candidates else 'Неизвестно'
+
+            # ИСПРАВЛЕНО (2026-01-05): Проверяем есть ли уже похожий подтверждающий вопрос
+            has_confirm_question = False
+            logger.info(f"[DEBUG] Стратегия A: asked_questions={len(asked_questions) if asked_questions else 0}")
+            if asked_questions:
+                for i, q in enumerate(asked_questions):
+                    logger.info(f"[DEBUG] Проверка вопроса #{i+1}: '{q[:60]}...'")
+                    if 'правильно ли я понял' in q.lower() or 'подтверд' in q.lower():
+                        has_confirm_question = True
+                        logger.info(f"[DEBUG] НАЙДЕН подтверждающий вопрос!")
+                        break
+
+            if has_confirm_question:
+                logger.info(f"[DEBUG] Используем альтернативный вопрос (уже спрашивали подтверждение)")
+                # ИСПРАВЛЕНИЕ (2026-01-12): Открытые вопросы только по правилу 7 CLAUDE.md
+                # Уже спрашивали - даем возможность уточнить детали
+                task_block = f"""
+БЛОК: ЗАДАЧА
+Услуга определена с вероятностью >90%: {candidate_name}.
+Вы УЖЕ задавали уточняющий вопрос выше.
+ЗАПРЕЩЕНО задавать "да/нет" вопросы! Дай пользователю возможность уточнить детали.
+Формула: "Уточните детали если нужно, или я создаю заявку."
+
+Кандидат: {candidate_name}
+"""
+            else:
+                # Первый раз - задаем уточняющий вопрос (открытый!)
+                logger.info(f"[DEBUG] Первый уточняющий вопрос")
+                task_block = f"""
+БЛОК: ЗАДАЧА
+Услуга определена с вероятностью >90%.
+ЗАПРЕЩЕНО задавать "да/нет" вопросы! Используй открытые вопросы.
+Формула: "Похоже на [описание проблемы]. Опишите подробнее что происходит."
+
+Кандидат: {candidate_name}
+"""
+        elif strategy == 'B':
+            import json
+            candidates_json = json.dumps([{
+                'id': c.get('service_id'),
+                'name': c.get('service_name', c.get('scenario_name', 'Unknown')),
+                'category': c.get('category', '-'),
+                'location': c.get('location_type', '-')
+            } for c in (candidates or [])], ensure_ascii=False)
+
+            asked_questions_json = json.dumps(asked_questions or [], ensure_ascii=False)
+
+            task_block = f"""
+# Роль
+Ты — AI-диспетчер управляющей компании. Твоя задача — задать ОДИН уточняющий вопрос, который максимально сузит список услуг-кандидатов на следующей итерации.
+
+# Цель
+Сформировать осознанный вопрос с максимальной информативностью: ответ пользователя должен позволить отфильтровать кандидатов на следующем шаге по одному из допустимых фильтров:
+- Инцидент / запрос (уточнение сути происшествия, формулируемое как текст для расширения ProblemText)
+- category
+- location (значения уровня: "Индивидуальное" / "Общедомовое")
+
+# Входные данные (переменные)
+## ProblemText (накопленное описание проблемы)
+{txtPrb or '(не накоплено)'}
+
+## CandidateServices (JSON массив кандидатов из каталога; использовать только эти поля)
+{candidates_json}
+
+### Схема элемента CandidateServices (строго как в данных)
+- id: целое, уникальный идентификатор услуги
+- name: строка, название услуги
+- category: строка, категория услуги
+- location: строка, тип локации ("Индивидуальное" / "Общедомовое")
+
+## AskedQuestions (уже заданные вопросы в этом диалоге)
+{asked_questions_json}
+
+# Ограничение по данным
+Используй только информацию из ProblemText и CandidateServices.
+Не додумывай отсутствующие признаки.
+Не задавай вопрос, который требует значения поля, которого нет в CandidateServices.
+
+# Алгоритм выбора темы вопроса (делай рассуждение внутренне, не выводи его)
+## Шаг 1. Извлеки «уже известные факты»
+- Из ProblemText выдели факты, которые уже явно указаны пользователем (например: место, объект, система, симптом, контекст).
+- Считай факт «известным», если он уже присутствует в ProblemText или был зафиксирован ранее в диалоге.
+
+## Шаг 2. Определи, что реально различает кандидатов
+- Для каждого допустимого фильтра (Инцидент/запрос, category, location) оцени, сможет ли ответ пользователя разделить CandidateServices на разные группы.
+- Не используй тему, которая не меняет выборку (если все кандидаты имеют одинаковую category или одинаковую location).
+
+## Шаг 3. Выбери один лучший фильтр для следующей итерации
+Приоритет выбора:
+1) location — если среди кандидатов есть разные значения и это не было уже определено.
+2) category — если среди кандидатов есть разные значения и это не было уже определено.
+3) Инцидент/запрос — если category и location одинаковы (или уже известны), либо они не дают разделения, тогда уточняй суть инцидента так, чтобы расширить ProblemText и отсеять часть кандидатов по смыслу.
+
+Важно: избегай вопросов, которые слабо влияют на фильтрацию и не приближают к выбору услуги (интенсивность, планы пользователя, материалы, стоимость, "насколько сильно", "что вы планируете делать", "что купить" и т.п.).
+
+## Шаг 4. Предотврати повтор темы
+- Определи смысловую тему вопроса (location / category / инцидент-запрос).
+- Если эта тема уже встречалась в AskedQuestions (даже другими словами), выбери следующую по приоритету тему из Шага 3.
+
+# Правила формулировки вопроса (строго)
+1) Верни ровно ОДНО предложение-вопрос на русском языке.
+2) Длина: 4–10 слов. Заверши знаком вопроса "?".
+3) Открытая форма: начинай с "Где", "Какая", "Что", "Как", "Когда", "Почему".
+4) Запрещены перечисления и варианты:
+   - не используй "или"
+   - не используй запятые и точки с запятой
+   - не перечисляй варианты в скобках
+5) Не спрашивай то, что уже известно из ProblemText или уже выяснялось ранее.
+6) Никаких пояснений, никакого текста вокруг — только вопрос.
+
+# Формат ответа
+Верни только вопрос, без кавычек, без списков, без комментариев.
+"""
+        elif strategy == 'C':
+            # ИСПРАВЛЕНО (2026-01-16): Обновлен промпт для стратегии C (>10 кандидатов)
+            import json
+
+            # Собираем уникальные значения параметров для анализа
+            locations = set()
+            categories = set()
+            incidents = set()
+
+            for c in (candidates or []):
+                if c.get('location_type'):
+                    locations.add(c['location_type'])
+                if c.get('category'):
+                    categories.add(c['category'])
+                if c.get('incident_type'):
+                    incidents.add(c['incident_type'])
+
+            # Сжимаем список кандидатов для промпта (первые 30)
+            candidates_summary = []
+            for c in (candidates or [])[:30]:
+                candidates_summary.append({
+                    'id': c.get('service_id'),
+                    'name': c.get('service_name', c.get('scenario_name', 'Unknown'))[:50],
+                    'category': c.get('category', '-'),
+                    'location': c.get('location_type', '-')
+                })
+
+            candidates_json = json.dumps(candidates_summary, ensure_ascii=False)
+            asked_questions_json = json.dumps(asked_questions or [], ensure_ascii=False)
+
+            # Формируем блок с количеством кандидатов и различиями
+            candidates_info = f"Всего кандидатов: {len(candidates or [])}\n"
+            if locations:
+                candidates_info += f"- Разные локации: {', '.join(locations)}\n"
+            if categories:
+                candidates_info += f"- Разные категории: {', '.join(categories)}\n"
+            if incidents:
+                candidates_info += f"- Разные типы инцидентов: {', '.join(incidents)}\n"
+
+            task_block = f"""
+# Роль
+Ты — AI-диспетчер управляющей компании. Твоя задача — задать ОДИН уточняющий вопрос, который максимально сузит список услуг-кандидатов на следующей итерации.
+
+# Цель
+Кандидатов слишком много ({len(candidates or [])} штук). Сформировать осознанный вопрос с максимальной информативностью: ответ пользователя должен позволить отфильтровать кандидатов на следующем шаге по одному из допустимых фильтров:
+- Инцидент / запрос (уточнение сути происшествия)
+- category
+- location (значения уровня: "Индивидуальное" / "Общедомовое")
+
+# Входные данные (переменные)
+## ProblemText (накопленное описание проблемы)
+{txtPrb or '(не накоплено)'}
+
+## Анализ кандидатов
+{candidates_info}
+
+## CandidateServices (первые 30 из {len(candidates or [])}, JSON)
+{candidates_json}
+
+### Схема элемента CandidateServices
+- id: уникальный идентификатор услуги
+- name: название услуги
+- category: категория услуги
+- location: тип локации ("Индивидуальное" / "Общедомовое")
+
+## AskedQuestions (уже заданные вопросы в этом диалоге)
+{asked_questions_json}
+
+# Ограничение по данным
+Используй только информацию из ProblemText и CandidateServices.
+Не додумывай отсутствующие признаки.
+Не задавай вопрос, который требует значения поля, которого нет в CandidateServices.
+
+# Алгоритм выбора темы вопроса (делай рассуждение внутренне, не выводи его)
+## Шаг 1. Извлеки «уже известные факты»
+- Из ProblemText выдели факты, которые уже явно указаны пользователем (место, объект, система, симптом).
+- Считай факт «известным», если он уже присутствует в ProblemText или был зафиксирован ранее.
+
+## Шаг 2. Определи параметр с максимальным разнообразием
+- Для каждого фильтра (location, category, инцидент/запрос) определи сколько разных значений есть среди кандидатов.
+- Выбери параметр с МАКСИМАЛЬНЫМ разнообразием значений.
+
+## Шаг 3. Выбери один лучший фильтр для следующей итерации
+Приоритет выбора:
+1) location — если есть разные значения и это не было определено.
+2) category — если есть разные значения и это не было определено.
+3) Инцидент/запрос — если location и category одинаковы (или уже известны).
+
+## Шаг 4. Предотврати повтор темы
+- Определи смысловую тему вопроса (location / category / инцидент-запрос).
+- Если эта тема уже встречалась в AskedQuestions, выбери следующую по приоритету тему из Шага 3.
+
+# Правила формулировки вопроса (строго)
+1) Верни ровно ОДНО предложение-вопрос на русском языке.
+2) Длина: 4–10 слов. Заверши знаком вопроса "?".
+3) Открытая форма: начинай с "Где", "Какая", "Что", "Как", "Когда", "Почему".
+4) Запрещены перечисления и варианты:
+   - не используй "или"
+   - не используй запятые и точки с запятой
+   - не перечисляй варианты в скобках
+5) Не спрашивай то, что уже известно из ProblemText.
+6) Никаких пояснений, никакого текста вокруг — только вопрос.
+
+# Формат ответа
+Верни только вопрос, без кавычек, без списков, без комментариев.
+"""
+        else:  # strategy == 'NONE' - нет кандидатов совсем
+            task_block = f"""
+БЛОК: ЗАДАЧА
+Ни одна услуга не подходит под описание проблемы.
+
+Задай вопрос который поможет лучше понять:
+- Что именно произошло?
+- Где именно это произошло?
+- Какой объект поврежден?
+
+Выбери ОДИН самый важный аспект для уточнения.
+"""
+
+        # ИСПРАВЛЕНО (2026-01-05): Собираем промпт с блоком уже заданных вопросов
+        # ИСПРАВЛЕНО (2026-01-13): Добавлен блок intro_phrase для комплементарного стиля
+        # ИСПРАВЛЕНО (2026-01-15): Убран facts_block (используется txtPrb в context_block)
+        prompt = f"{system_block}{intro_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
+
+        # Добавляем инструкцию по формату ответа
+        prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"""
+
+        return prompt
+
+    async def _generate_ai_question(
+        self,
+        context: str,
+        dialog_history: List[Dict] = None,
+        candidates: List[Dict] = None,
+        established_filters: Dict = None,
+        txtPrb: str = None,
+        question_type: str = "clarification",
+        session_id: str = None,
+        intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (чтобы избежать повторного LLM)
+        txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
+    ) -> Dict[str, str]:
+        """
+        Универсальный метод для генерации вопросов через AI
+
+        ИСПРАВЛЕНО (2025-12-28): Все вопросы генерируются через YandexGPT
+        ИСПРАВЛЕНО (2025-12-29): Возвращает Dict с вопросом И метаданными для трассировки
+        ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
+        ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля вопроса
+        ИСПРАВЛЕНО (2026-01-21): Добавлена защита от зацикливания - после 6 ходов
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
+        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
+        ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
+
+        Args:
+            context: Контекст ситуации (описание проблемы)
+            dialog_history: История диалога
+            candidates: Кандидаты услуг (для уточнения)
+            established_filters: Установленные фильтры
+            txtPrb: Накопленное описание проблемы
+            question_type: Тип вопроса
+                - 'clarification' - уточняющий вопрос
+                - 'what_happened' - что случилось
+                - 'location' - где произошло
+                - 'details' - детали проблемы
+            session_id: ID сессии для сохранения в llm_request_log
+            intro_phrase: Вводная фраза для ИИ (факты + отвергнутая услуга) - ИСПРАВЛЕНО 2026-01-13
+            accumulated_fields: Извлеченные поля из ProblemAccumulationService - ИСПРАВЛЕНО 2026-01-21
+                (передается чтобы избежать повторного вызова LLM в _extract_known_info)
+            txtStopQ: Список запрещенных вопросов (накопленные глупые вопросы) - ИСПРАВЛЕНО 2026-02-04
+
+        Returns:
+            Dict: {
+                'question': str,  # Сгенерированный вопрос
+                'prompt': str,    # Промт отправленный в LLM
+                'response': str,  # Ответ от LLM
+                'model': str,     # Модель использованная
+                'usage': Dict     # Информация об использовании токенов
+            }
+        """
+        # ИСПРАВЛЕНИЕ (2026-01-21): Защита от зацикливания
+        dialog_turn = len(dialog_history) if dialog_history else 1
+        if dialog_turn >= 7:
+            logger.warning(
+                f"[ANTI-LOOP] Слишком много AI-вопросов (turn={dialog_turn}) -> "
+                f"возвращаем финальное сообщение о передаче оператору"
+            )
+            # ЗАКОММЕНТИРОВАНО (2026-02-14): Hardcoded fallback - заменяем на AI-генерацию
+            # final_message = "К сожалению, я не смог определить вашу проблему. Пожалуйста, свяжитесь с оператором по телефону или опишите проблему другими словами."
+            # return {
+            #     'question': final_message,
+            #     'prompt': '[ANTI-LOOP] Превышен лимит попыток',
+            #     'response': final_message,
+            #     'model': 'anti-loop',
+            #     'usage': {}
+            # }
+            # ИСПРАВЛЕНО (2026-02-14): Вместо hardcoded fallback используем ИИ для генерации финального сообщения
+            final_context = f"После {dialog_turn} сообщений не удалось определить проблему. Пользователь: {context.get('original_message', '')[:200]}"
+            ai_result = await self.ai_agent.call_llm(
+                prompt=f"Сгенерируй вежливый ответ для пользователя: {final_context}\n\nОтвет должен быть кратким, без эмодзи.",
+                provider='yandexgpt',
+                model='lite'
+            )
+            final_message = ai_result[0].strip() if ai_result else "Пожалуйста, опишите проблему другими словами или свяжитесь с оператором."
+            return {
+                'question': final_message,
+                'prompt': f'[ANTI-LOOP] Превышен лимит попыток (AI-generated)',
+                'response': final_message,
+                'model': 'anti-loop-ai',
+                'usage': {}
+            }
+
+        # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
+        logger.info("[SEARCH] _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
+        logger.info(f"  [NOTE] context: '{context[:100]}'")
+        logger.info(f"  [TOOL] question_type: {question_type}")
+        logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
+        logger.info(f"  [NOTE] txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
+        logger.info(f"  [TOOL] established_filters: {established_filters if established_filters else '(не переданы)'}")
+        logger.info(f"  👥 candidates: {len(candidates) if candidates else 0} кандидатов")
+        logger.info(f"  [INTRO] intro_phrase: '{intro_phrase[:100] if intro_phrase else '(не передана)'}'")  # ИСПРАВЛЕНО (2026-01-13)
+
+        try:
+            # ИСПРАВЛЕНО (2026-01-03): Используем _build_dynamic_prompt вместо _build_question_prompt
+            # Определяем стратегию на основе количества кандидатов
+            strategy = self._determine_strategy(candidates, established_filters)
+
+            # Определяем недостающий фильтр для стратегии C
+            missing_filter = None
+            if strategy == 'C':
+                missing_filter = self._determine_missing_filter(candidates or [], established_filters or {})
+
+            # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
+            # txtPrb уже содержит всю накопленную информацию о проблеме
+
+            # ИСПРАВЛЕНО (2026-01-05): Извлекаем уже заданные вопросы из истории
+            asked_questions = []
+            if dialog_history:
+                asked_questions = self._extract_asked_questions(dialog_history)
+                logger.info(f"[!] Уже задано вопросов: {len(asked_questions)}")
+
+            # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
+            # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
+            if question_type == 'clarification' and candidates is not None:
+                # Используем новый метод с динамическими промптами по стратегиям
+                prompt = self._build_dynamic_prompt(
+                    strategy=strategy,
+                    context=context,
+                    candidates=candidates,
+                    missing_filter=missing_filter,
+                    txtPrb=txtPrb,
+                    asked_questions=asked_questions if asked_questions else None,  # ИСПРАВЛЕНО 2026-01-05
+                    intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+                )
+                logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
+            else:
+                # Для остальных типов используем старый метод
+                # ИСПРАВЛЕНО (2026-02-16): Добавлен await (теперь _build_question_prompt async)
+                prompt = await self._build_question_prompt(
+                    context=context,
+                    dialog_history=dialog_history,
+                    candidates=candidates,
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type=question_type,
+                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+                    txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
+                )
+
+            # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
+            logger.info(f"[BOT] PROMPT ДЛЯ LLM ({question_type}):")
+            logger.info(f"{'=' * 80}")
+            logger.info(f"{prompt[:500]}...")
+            logger.info(f"{'=' * 80} (полная длина: {len(prompt)} символов)")
+
+            # Вызываем AI через AIAgentService
+            if self.ai_agent:
+                # ИСПРАВЛЕНО (2025-12-28): ГИБРИДНАЯ МОДЕЛЬ
+                # - Для вопросов к пользователю: Pro (качество критично!)
+                # - Для остальных задач: используется default (обычно Lite)
+                question_types_requiring_pro = ['clarification', 'what_happened', 'location', 'details']
+                model = 'pro' if question_type in question_types_requiring_pro else 'lite'
+
+                # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
+                # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
+                # ИСПРАВЛЕНО (2026-01-10): Передаем message_id для логирования в llm_request_log
+                response, usage = await self.ai_agent.call_llm(
+                    prompt=prompt,
+                    provider='yandexgpt',  # Можно менять на 'gigachat'
+                    model=model,
+                    session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+                    message_id=self.current_message_id  # ИСПРАВЛЕНО (2026-01-10)
+                )
+                question = response.strip()
+
+                # ИСПРАВЛЕНО (2025-12-28): Логируем ответ LLM
+                logger.info(f"[BOT] ОТВЕТ LLM ({question_type}, model={usage.get('model', 'unknown')}):")
+                logger.info(f"  [NOTE] Текст: '{question}'")
+                logger.info(f"  [$] Usage: {usage}")
+
+                # Удаляем лишние кавычки если есть
+                if question.startswith('"') and question.endswith('"'):
+                    question = question[1:-1]
+                if question.startswith("'") and question.endswith("'"):
+                    question = question[1:-1]
+
+                # ИСПРАВЛЕНО (2026-01-03): Regex-валидаторы удалены, используем LLM-валидацию
+                # ИСПРАВЛЕНО (2026-01-10): Добавлена проверка на повторяющиеся вопросы
+                # ИСПРАВЛЕНО (2026-02-04): Передаем txtStopQ для накопления глупых вопросов
+                # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации
+                question = await self._llm_validate_question(
+                    question=question,
+                    txtPrb=txtPrb,
+                    established_filters=established_filters,
+                    asked_questions=asked_questions,  # ИСПРАВЛЕНО (2026-01-10)
+                    txtStopQ=txtStopQ,  # ИСПРАВЛЕНО (2026-02-04): Накопление запрещенных вопросов
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
+                )
+
+                # ИСПРАВЛЕНО (2025-12-29): Отладочный режим - добавляем объяснение к вопросу
+                if self.tst_prompt:
+                    question = self._add_debug_explanation(question, question_type, candidates)
+
+                logger.info(f"[OK] AI сгенерировал вопрос ({question_type}): {question}")
+
+                # ИСПРАВЛЕНО (2025-12-29): Возвращаем Dict с вопросом И метаданными для трассировки
+                # ИСПРАВЛЕНО (2026-02-04): Добавляем txtStopQ для сохранения в metadata
+                return {
+                    'question': question,
+                    'prompt': prompt,
+                    'response': response,
+                    'model': usage.get('model', 'unknown'),
+                    'usage': usage,
+                    'txtStopQ': txtStopQ or []  # ИСПРАВЛЕНО (2026-02-04): Возвращаем обновленный список
+                }
+            else:
+                logger.warning("AIAgentService недоступен, используем fallback")
+                question = self._fallback_question(question_type, context)
+                return {
+                    'question': question,
+                    'prompt': '(fallback - нет LLM вызова)',
+                    'response': '(fallback - нет LLM ответа)',
+                    'model': 'fallback',
+                    'usage': {}
+                }
+
+        except Exception as e:
+            import traceback
+            logger.error(f"Ошибка генерации AI вопроса: {e}")
+            logger.error(f"TRACEBACK:\n{traceback.format_exc()}")
+            question = self._fallback_question(question_type, context)
+            return {
+                'question': question,
+                'prompt': f'(error: {str(e)})',
+                'response': f'(error: {str(e)})',
+                'model': 'error',
+                'usage': {}
+            }
+
+    # ИСПРАВЛЕНО (2026-02-16): Сделал async чтобы можно было await внутри
+    async def _build_question_prompt(
+        self,
+        context: str,
+        dialog_history: List[Dict] = None,
+        candidates: List[Dict] = None,
+        established_filters: Dict = None,
+        txtPrb: str = None,
+        question_type: str = "clarification",
+        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
+    ) -> str:
+        """Строит промт для генерации вопроса
+
+        ПЕРЕРАБОТАНО (2025-12-28):
+        - Добавлено объяснение про фильтры и услуги
+        - Атомарные открытые вопросы
+        - Запрет на двойные вопросы
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
+        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов"""
+
+        # Анализируем что уже известно из истории
+        # ИСПРАВЛЕНО (2026-01-21): Передаем accumulated_fields чтобы избежать повторного LLM вызова
+        known_info = self._extract_known_info(dialog_history, txtPrb, accumulated_fields)
+
+        # Собираем контекст из истории
+        recent_dialog = ""
+        if dialog_history:
+            last_msgs = dialog_history[-4:]  # Последние 2 цикла
+            for msg in last_msgs:
+                role = "Пользователь" if msg.get('role') == 'user' else "Бот"
+                recent_dialog += f"{role}: {msg.get('text', '')}\n"
+
+        # Формируем JSON кандидатов для промта
+        # ИСПРАВЛЕНО (2026-02-16): Проверяем candidates на None
+        candidates_json = ""
+        import json
+        candidates_list = []
+        if candidates:  # Проверка на None и пустой список
+            for c in candidates[:15]:  # До 15 кандидатов
+                candidate_data = {
+                    "КодУслуги": c.get('service_id', 'Unknown'),
+                    "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),
+                    "Фильтры": {
+                        "Тип": c.get('incident_type', '-'),
+                        "Вид": c.get('location_type', '-'),
+                        "Категория": c.get('category', '-'),
+                        "Объект": c.get('object_type', '-')
+                    }
+                }
+                candidates_list.append(candidate_data)
+
+        candidates_json = f"\nСПИСОК КАНДИДАТОВ (услуги которые подходят под описание):\n"
+        candidates_json += "```json\n"
+        candidates_json += json.dumps(candidates_list, ensure_ascii=False, indent=2)
+        candidates_json += "\n```\n"
+
+        # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+        try:
+            from llm_tester.models import PromptTemplate
+            from asgiref.sync import sync_to_async
+
+            @sync_to_async
+            def get_db_template():
+                return PromptTemplate.objects.filter(
+                    slug='mainagent-orchestrator',
+                    is_active=True
+                ).first()
+
+            # ИСПРАВЛЕНО (2026-02-16): Добавлен await для sync_to_async функции
+            db_template = await get_db_template()
+
+            if db_template:
+                # Подставляем переменные в базовую часть шаблона из БД
+                prompt = db_template.template.format(
+                    context=context  # context будет добавлен ниже
+                )
+
+                logger.debug(f"[DB] Промпт mainagent-orchestrator загружен из БД (ID: {db_template.id})")
+            else:
+                logger.error("[DB] Промпт 'mainagent-orchestrator' не найден в БД!")
+                raise Exception("Промпт не найден в БД")
+
+        except Exception as e:
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+            logger.warning("[FALLBACK] Используется захардкоженный промпт")
+
+            # Fallback-промпт (захардкожен)
+            # ПЕРЕРАБОТАНО (2025-12-29): Позитивная инструкция + алгоритм + JSON заявки
+            # ИСПРАВЛЕНО (2026-01-03): Убраны все эмодзи из промта
+            prompt = f"""Ты - AI-диспетчер УК "Аспект".
+
+
+⛔⛔⛔ КРИТИЧЕСКИ ВАЖНЕЙШЕЕ ПРАВИЛО - ДВОЙНЫЕ ВОПРОСЫ ЗАПРЕЩЕНЫ! ⛔⛔⛔
+
+0. (САМОЕ ВАЖНОЕ!) КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ ДВОЙНЫЕ ВОПРОСЫ:
+   ⛔ ЗАПРЕЩЕНО вопросы через "или", "или", "и"
+   ⛔ ЗАПРЕЩЕНО перечислять варианты в скобках или запятыми
+   ⛔ ЗАПРЕЩЕНО закрывать варианты в один вопрос ("Это А или Б?")
+   ⛔ ЗАПРЕЩЕНО вопросы "Является ли...?" (隐式双重问题)
+
+   ПРИМЕРЫ ЗАПРЕЩЕННЫХ ВОПРОСОВ:
+   ❌ "Это прорыв трубы в квартире или общедомовой прорыв?" → ДВОЙНОЙ + "или"
+   ❌ "Что и где именно?" → ДВОЙНОЙ
+   ❌ "Является ли прорыв трубы в квартире общедомовой проблемой?" → ДВОЙНОЙ
+   ❌ "Каков источник протечки: трубы или крыша?" → ДВОЙНОЙ + "или"
+   # ❌ "Уточните, какая система водоснабжения, отопления или канализация затронута?" → ПЕРЕЧИСЛЕНИЕ + "или"  # ЗАКОММЕНТИРОВАНО (2026-02-14): LLM копирует этот пример
+
+   ⛔ ЕСЛИ СГЕНЕРИРУЕШЬ ДВОЙНОЙ ВОПРОС - БУДЕТ АВТОМАТИЧЕСКИ ОТВЕРГНУТ regex-валидатором!
+
+   ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ:
+   ✅ "Где именно это произошло?" (ОДИН параметр - локация)
+   ✅ "Что именно сломалось?" (ОДИН параметр - объект)
+   ✅ "Опишите подробнее, что произошло?" (открытый вопрос БЕЗ вариантов)
+
+══════════════════════════════════════════════════════════════════════════════
+══════════════════════════════════════════════════════════════════════════════
+ГЛАВНАЯ ЗАДАЧА
+══════════════════════════════════════════════════════════════════════════════
+
+Сформировать заявку от абонента в формате JSON:
+
+Этап 1: Определить услугу (поиск в каталоге, получение подтверждения от пользователя)
+Этап 2: Определить адрес (через AddressExtractor)
+Этап 3: Вернуть JSON заявки с полями:
+  - timestamp: время обращения
+  - telegram_user: ник пользователя в ТГ или логин в чате
+  - dialog_id: ID диалога
+  - service_id: ID услуги
+  - address_id: ID объекта обслуживания
+
+══════════════════════════════════════════════════════════════════════════════
+ИНСТРУКЦИЯ ПО ГЕНЕРАЦИИ ВОПРОСА
+══════════════════════════════════════════════════════════════════════════════
+
+Верни уточняющий открытый вопрос, который:
+
+1. СОКРАТИТ список кандидатов до ОДНОЙ услуги
+   ИЛИ
+2. НАЛОЖИТ один из фильтров (Тип/Вид/Категория/Объект) на множество кандидатов
+
+Ограничения:
+- Максимальная длина: 10 слов
+- Только ОДИН вопрос
+- Открытый вопрос (без вариантов ответа)
+- Ответ должен приблизить к однозначному определению услуги
+
+⛔⛔⛔ КРИТИЧЕСКИ ВАЖНО - УЖЕ ИЗВЕСТНЫЕ ФАКТЫ ⛔⛔⛔
+Если есть УЖЕ известная информация - НЕ СПРАШИВАЙ О НЕЙ!
+
+Примеры:
+✅ Если object_description="течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
+✅ Если location="зал" → НЕЛЬЗЯ спрашивать "Где именно?"
+✅ Если category="Отопление" → НЕЛЬЗЯ спрашивать "Это отопление?"
+
+ПРАВИЛЬНЫЕ вопросы при УЖЕ известных фактах:
+- Если известно: "течёт" + "батарея" → спроси про ЛОКАЦИЮ: "Где именно это происходит?"
+- Если известно: "течёт" + "батарея" + "зал" → спроси про ИНТЕНСИВНОСТЬ: "Насколько сильно течет?"
+- Если известно: "батарея" + "холодная" → спроси про ЛОКАЦИЮ: "В какой комнате батарея?"
+- Если известно: "сломалось" + "кран" → спроси: "В каком помещении кран?"
+
+НЕ ПРИМЕНЯЙ:
+- Двойные вопросы ("что и где?")
+- Перечисления вариантов ("например, труба или батарея?")
+- ЗАКРЫТЫЕ ВОПРОСЫ (да/нет) - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО!
+- Слово "например" и любые перечисления через него
+- Внутренние термины "Инцидент/Запрос" - говори по-человечески
+- Вопросы которые НЕ приближают к решению (не позволяют установить фильтр)
+
+ПРИМЕНЯЙ:
+- Открытый вопрос, уточнение одного параметра
+- Учет уже известной информации
+- Анализ истории диалога ниже
+
+══════════════════════════════════════════════════════════════════════════════
+АЛГОРИТМ ПОИСКА УСЛУГИ
+══════════════════════════════════════════════════════════════════════════════
+
+1. Анализируй историю диалога в блоке [ИСТОРИЯ ДИАЛОГА]
+2. Если невозможно однозначно определить:
+   → Задай уточняющий вопрос который отфильтрует большинство кандидатов
+   → Ответ пользователя позволит установить фильтр для следующего этапа
+3. Повторяй пока не будет подтверждение услуги (90%+)
+
+# ИСПРАВЛЕНО (2026-02-17): ЗАКОММЕНТИРОВАНО - вызывало проводные LLM вызовы
+# При confidence >= 90% код создаёт заявку, но этот промпт говорил LLM спрашивать "Опишите подробнее"
+# Деньги тратились (3-8 руб), вопрос НЕ показывался пользователю
+#
+# СТАРЫЙ ВАРИАНТ (удалён):
 # 2. Если можешь однозначно определить услугу (вероятность 90%+):
 #    → Открытый вопрос: "Похоже на [описание]. Опишите подробнее что происходит."
-# 3. Если невозможно однозначно определить:
-#    → Задай уточняющий вопрос который отфильтрует большинство кандидатов
-#    → Ответ пользователя позволит установить фильтр для следующего этапа
-# 4. Повторяй пока не будет подтверждение услуги (90%+)
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# КАК РАБОТАЮТ ФИЛЬТРЫ
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# Фильтры сокращают список кандидатов:
-# 
-# - Тип (Инцидент/Запрос):
-#   * Инцидент = сломалось, не работает, угроза жизни/здоровью/имуществу
-#   * Запрос = нужно выполнить работу, НЕТ угрозы жизни/здоровью/имуществу
-#     (улучшение: установка нового унитаза, консультация, замена счетчика и т.д.)
-# 
-# - Вид (Индивидуальное/Общедомовое):
-#   * Индивидуальное = проблема в квартире пользователя
-#     (квартира состоит из комнат: ванная, зал, кухня, спальня и т.д.)
-#     (если пользователь назвал локацию "ванная"/"зал" → проверь может ли она быть в квартире)
-#   * Общедомовое = проблема в подъезде, на улице, местах общего пользования
-#   Варианты: {', '.join(self._location_types_cache)}
-# 
-# - Категория: {', '.join(self._categories_cache)}
-# 
-# - Объект: {', '.join(self._objects_cache)}
-# 
-# Стратегия: задавай вопросы чтобы установить фильтры и сократить список кандидатов.
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# ТЕКУЩАЯ СИТУАЦИЯ
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# {context}
-# """
-# 
-#         if known_info:
-#             prompt += f"""
-# УЖЕ ИЗВЕСТНО (не спрашивай повторно):
-# {known_info}
-# """
-# 
-#         # ИСПРАВЛЕНО (2026-02-04): Добавляем txtStopQ - запрещенные вопросы
-#         if txtStopQ and len(txtStopQ) > 0:
-#             import json
-#             txtstopq_json = json.dumps(txtStopQ, ensure_ascii=False)
-#             prompt += f"""
-# ⛔⛔⛔ ЗАПРЕЩЕННЫЕ ВОПРОСЫ (txtStopQ) ⛔⛔⛔
-# Эти вопросы были УЖЕ заданы и оказались НЕЭФФЕКТИВНЫМИ или ГЛУПЫМИ.
-# КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО задавать похожие вопросы!
-# 
-# {txtstopq_json}
-# 
-# Если LLM сгенерирует похожий вопрос - он будет добавлен в txtStopQ и ОТКЛОНЕН!
-# """
-# 
-#         if txtPrb:
-#             prompt += f"""
-# ОПИСАНИЕ ПРОБЛЕМЫ:
-# {txtPrb}
-# """
-# 
-#         # ЗАКОММЕНТИРОВАНО (2026-02-16): Дубликат убран - код теперь перед return prompt
-#         # # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
-#         # # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ПЕРЕД established_filters!
-#         # # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
-#         # absolute_facts_list = []
-#         # ...
-#         # (дубликат кода убран чтобы не было двойного добавления в промт)
-# 
-#         if recent_dialog:
-#             prompt += f"""
-# ИСТОРИЯ ДИАЛОГА:
-# {recent_dialog}
-# """
-# 
-#         if established_filters:
-#             prompt += f"""
-# УСТАНОВЛЕННЫЕ ФИЛЬТРЫ (с вероятностью):
-# {self._format_filters_for_prompt(established_filters)}
-# 
-# ВАЖНО: Учитывай эти фильтры при генерации вопроса!
-# """
-# 
-#         if candidates_json:
-#             prompt += f"{candidates_json}\n"
-# 
-#         # Инструкция по типу вопроса
-#         if question_type == 'clarification':
-#             prompt += """
-# ══════════════════════════════════════════════════════════════════════════════
-# ⛔⛔⛔ КРИТИЧЕСКИ ВАЖНЕЙШЕЕ ПРАВИЛО - ДВОЙНЫЕ ВОПРОСЫ ЗАПРЕЩЕНЫ! ⛔⛔⛔
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# 0. (САМОЕ ВАЖНОЕ!) КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ ДВОЙНЫЕ ВОПРОСЫ:
-#    ⛔ ЗАПРЕЩЕНО вопросы через "или", "или", "и"
-#    ⛔ ЗАПРЕЩЕНО перечислять варианты в скобках или запятыми
-#    ⛔ ЗАПРЕЩЕНО закрывать варианты в один вопрос ("Это А или Б?")
-#    ⛔ Максимум ОДИН вопрос, не более 10 слов
-# 
-#    ПРИМЕРЫ ЗАПРЕЩЕННЫХ ВОПРОСОВ (АБСОЛЮТНО НЕ ДЕЛАЙ ТАК!):
-#    - "Это прорыв трубы в квартире или общедомовой прорыв?" → ДВОЙНОЙ + "или" ✗
-#    - "Что именно или где именно?" → ДВОЙНОЙ (Что? + Где?) ✗
-#    - "Это труба или батарея?" → ДВОЙНОЙ + закрытый + "или" ✗
-#    - "Какой объект и в каком месте?" → ДВОЙНОЙ + "и" ✗
-#    - "Опишите что и где это произошло" → ДВОЙНОЙ ✗
-#    - "Это инцидент или запрос?" → ДВОЙНОЙ + внутренние термины ✗
-# 
-#    ПРАВИЛЬНЫЕ ОДИНОЧНЫЕ ВОПРОСЫ:
-#    - "Где именно это произошло?" → ОДИН вопрос ✓
-#    - "Опишите что именно сломалось" → ОДИН вопрос ✓
-#    - "Что именно течет?" → ОДИН вопрос ✓
-# 
-#    ⛔ ЕСЛИ СГЕНЕРИРУЕШЬ ДВОЙНОЙ ВОПРОС - ОТВЕТ БУДЕТ ОТВЕРГНУТ!
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# 1. ОБЯЗАТЕЛЬНО: Верни ВОПРОС (заканчивается на "?")
-#    - НЕЛЬЗЯ возвращать утверждения
-#    - НЕЛЬЗЯ возвращать "Нет необходимости уточнять"
-#    - НЕЛЬЗЯ возвращать "Все понятно"
-# 
-# 2. Проверка что текст является вопросом:
-#    ПРИМЕРЫ НЕВОПРОСОВ (ОТКЛОНИТЬ):
-#    - "Нет необходимости уточнять локацию." → НЕ ВОПРОС (утверждение)
-#    - "Я понял проблему." → НЕ ВОПРОС
-#    - "Все понятно." → НЕ ВОПРОС
-# 
-#    ПРИМЕРЫ ВОПРОСОВ (ПРИНЯТЬ):
-#    - "Где именно это произошло?" → ВОПРОС
-#    - "Опишите что именно сломалось?" → ВОПРОС
-# 
-# 3. ИСПРАВЛЕНИЕ (2026-01-05): КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать то, что УЖЕ ИЗВЕСТНО:
-#    - Проверь блок "УСТАНОВЛЕННЫЕ ФИЛЬТРЫ" выше
-#    - Если фильтр установлен с уверенностью 80%+ → НЕ спрашивай про него!
-#    - Если location=Индивидуальное (90%) → НЕ спрашивай "Где?"
-#    - Если category=Водоснабжение (95%) → НЕ спрашивай "Это водоснабжение?"
-#    - Если object=труба (90%) → НЕ спрашивай "Что именно?"
-# 
-#    ПРИМЕРЫ НАРУШЕНИЙ (НЕ ДЕЛАЙ ТАК):
-#    - Фильтр: location=Индивидуальное (90%), вопрос: "Где это произошло?" → ЗАПРЕЩЕНО!
-#    - Фильтр: category=Водоснабжение (95%), вопрос: "Это водоснабжение?" → ЗАПРЕЩЕНО!
-#    - Фильтр: object=труба (90%), вопрос: "Из чего течет?" → ЗАПРЕЩЕНО!
-# 
-# 4. ИСПРАВЛЕНО (2026-01-10): Если source/object_description НЕ установлен или null:
-#    - Проверь блок "ОПИСАНИЕ ПРОБЛЕМЫ" выше - если там нет источника проблемы
-#    - ОБЯЗАТЕЛЬНО спроси: "Что именно течет/сломалось?" или "Откуда именно?"
-#    - НЕ спрашивай про конкретную категорию (водоснабжение/отопление) если она НЕ установлена!
-#    - Пользователь НЕ ЗНАЕТ категорию - он знает только симптомы!
-# 
-#    ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ (source=null):
-#    - "Что именно течет?" (пользователь сказал "течет" но не указал источник)
-#    - "Откуда именно течет?" (пользователь сказал "течет в зале" но не сказал источник)
-#    - "Какой объект неисправен?" (общий вопрос про объект)
-# 
-#    ПРИМЕРЫ НЕПРАВИЛЬНЫХ ВОПРОСОВ (category=null, source=null):
-#    - "Что происходит с водоснабжением?" → ЗАПРЕЩЕНО! (категория не установлена)
-#    - "Это проблема с отоплением?" → ЗАПРЕЩЕНО! (категория не установлена)
-#    - "Какой характер протечки?" → ЗАПРЕЩЕНО! (не помогает определить источник)
-# 
-#    ПРАВИЛО: СНАЧАЛА выясни источник (что именно), ПОТОМ категорию определишь!
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# ЗАДАЧА
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# Проанализируй список кандидатов, установленные фильтры и историю диалога.
-# 
-# Верни ОДИН вопрос который:
-# - Позволит однозначно определить кандидата ИЛИ наложить фильтр
-# - Максимально короткий (до 10 слов)
-# - Открытый вопрос (без перечислений вариантов)
-# - Учитывает уже известную информацию (НЕ спрашивай то, что УЖЕ есть в фильтрах!)
-# - ПРИБЛИЖАЕТ К РЕШЕНИЮ (позволяет установить фильтр или определить услугу)
-# 
-# ПРИМЕРЫ:
-# 
-# ХОРОШО: "Где именно это произошло?"
-#    Цель: Установить фильтр Вид (Индивидуальное/Общедомовое)
-# 
-# ХОРОШО: "Опишите что именно сломалось"
-#    Цель: Установить фильтр Объект (Труба/Кран/Батарея)
-# 
-# ХОРОШО (90%+ кандидат): "Похоже что течет из трубы в ванной. Опишите подробнее проблему."
-#    Цель: Уточнить детали при высокой вероятности (открытый вопрос)
-# 
-# ПЛОХО: "Что и где?" (двойной вопрос)
-# ПЛОХО: "Это труба или батарея?" (закрытый вопрос)
-# ПЛОХО: "Это труба отопления или водоснабжения?" (закрытый вопрос с "или")
-# ПЛОХО: "Какой характер? Например, капает или струей?" (НЕ приближает к решению + перечисление)
-# ПЛОХО: "Это инцидент или запрос?" (внутренние термины, не для пользователя)
-# ПЛОХО: "Правильно ли я понял, что у вас течет из трубы в ванной?" (закрытый вопрос)
-# 
-# Вопрос:"""
-# 
-#         elif question_type == 'what_happened':
-#             prompt += """
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО (2026-01-05):
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать то, что УЖЕ ИЗВЕСТНО из установленных фильтров!
-# - Проверь блок "УСТАНОВЛЕННЫЕ ФИЛЬТРЫ" выше
-# - Если фильтр установлен с уверенностью 80%+ → НЕ спрашивай про него!
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# ЗАДАЧА
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# # ИСПРАВЛЕНО (2026-02-16): Задай вопрос для уточнения ТОЛЬКО НЕИЗВЕСТНЫХ деталей
-# # КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать про УЖЕ ИЗВЕСТНЫЕ объект, проблему, категорию!
-# # Спроси про: локацию, интенсивность или серьезность.
-# 
-# СНАЧАЛА прочитай блок "⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ ⛔⛔⛔" НИЖЕ - там указано что НЕЛЬЗЯ спрашивать!
-# После этого задай ОДИН вопрос для уточнения ТОЛЬКО неизвестных деталей (локация, интенсивность).
-# 
-# Ограничения:
-# - Один вопрос
-# - Открытый вопрос
-# - Без перечислений
-# - Коротко
-# - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать то, что УЖЕ известно в блоке ниже!
-# 
-# Вопрос:"""
-# 
-#         elif question_type == 'location':
-#             prompt += """
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО (2026-01-05):
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать про локацию если она УЖЕ ИЗВЕСТНА!
-# - Проверь блок "УСТАНОВЛЕННЫЕ ФИЛЬТРЫ" выше
-# - Если location_type установлен с уверенностью 80%+ → НЕ спрашивай "Где?"
-# - Вместо этого спроси про другой параметр (объект, деталь проблемы)
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# ЗАДАЧА
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# Задай ОДИН вопрос о месте проблемы (ТОЛЬКО если локация НЕ известна).
-# 
-# Ограничения:
-# - Один вопрос
-# - Открытый вопрос
-# - НЕ спрашивай если локация уже известна (см. правило выше)
-# - Коротко
-# 
-# Вопрос:"""
-# 
-#         else:  # details
-#             prompt += """
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА (2026-01-05):
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# 1. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Двойные вопросы
-# 2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Спрашивать то, что УЖЕ ИЗВЕСТНО из фильтров!
-# 3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Использовать союз "и"
-# 
-# Проверь блок "УСТАНОВЛЕННЫЕ ФИЛЬТРЫ" выше:
-# - Если location известен (80%+) → НЕ спрашивай "Где?"
-# - Если object известен (80%+) → НЕ спрашивай "Что именно?"
-# - Если category известен (80%+) → НЕ спрашивай "Это [категория]?"
-# 
-# ══════════════════════════════════════════════════════════════════════════════
-# ЗАДАЧА
-# ══════════════════════════════════════════════════════════════════════════════
-# 
-# Задай ОДИН уточняющий вопрос для детализации проблемы (ТОЛЬКО того, что НЕ известно).
-# 
-# Ограничения:
-# - Только ОДИН вопрос
-# - Открытый вопрос
-# - Вежливый тон
-# - Учитывай что уже известно из фильтров (НЕ спрашивай повторно!)
-# - Без союза "и"
-# 
-# Вопрос:"""
-# 
-#         # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ВСЕГДА (не только в fallback!)
-#         # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
-#         absolute_facts_list = []
-# 
-#         # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
-#         # ИСПРАВЛЕНО (2026-02-16): Логируем accumulated_fields для отладки
-#         logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
-# 
-#         if accumulated_fields:
-#             logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
-#             if accumulated_fields.get('source'):
-#                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
-#                 logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
-#             if accumulated_fields.get('location'):
-#                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
-#                 logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
-#             if accumulated_fields.get('problem'):
-#                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
-#                 logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
-#             if accumulated_fields.get('severity'):
-#                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
-#             if accumulated_fields.get('intensity'):
-#                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
-#             if accumulated_fields.get('category'):
-#                 absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
-#                 logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
-# 
-#             logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
-#         else:
-#             logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
-# 
-#         # ПОТОМ established_filters (из FilterDetectionService)
-#         if established_filters:
-#             # object_description
-#             obj_desc = established_filters.get('object_description')
-#             if obj_desc and isinstance(obj_desc, dict):
-#                 obj_value = obj_desc.get('value')
-#                 obj_conf = obj_desc.get('confidence', 0)
-#                 if obj_value and obj_conf >= 0.8:
-#                     absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
-# 
-#             # location_type
-#             location = established_filters.get('location_type')
-#             if location and isinstance(location, dict):
-#                 loc_value = location.get('value')
-#                 loc_conf = location.get('confidence', 0)
-#                 if loc_value and loc_conf >= 0.8:
-#                     absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
-# 
-#             # category
-#             category = established_filters.get('category')
-#             if category and isinstance(category, dict):
-#                 cat_value = category.get('value')
-#                 cat_conf = category.get('confidence', 0)
-#                 if cat_value and cat_conf >= 0.8:
-#                     absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
-# 
-#         # ИСПРАВЛЕНО (2026-02-16): Проверяем absolute_facts_list ПОСЛЕ обоих блоков (accumulated + established)
-#         # ИСПРАВЛЕНО (2026-02-16): Используем '\n'.join() вместо ''.join() чтобы факты были на разных строках!
-#         if absolute_facts_list:
-#             prompt += f"""
-# ⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
-# {'\\n'.join(absolute_facts_list)}
-# 
-# КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом!
-# Если известно "проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
-# Если известно "локация: зал" → НЕЛЬЗЯ спрашивать "Где именно?"
-# """
-# 
-#         return prompt
-# 
+
+══════════════════════════════════════════════════════════════════════════════
+КАК РАБОТАЮТ ФИЛЬТРЫ
+══════════════════════════════════════════════════════════════════════════════
+
+Фильтры сокращают список кандидатов:
+
+- Тип (Инцидент/Запрос):
+  * Инцидент = сломалось, не работает, угроза жизни/здоровью/имуществу
+  * Запрос = нужно выполнить работу, НЕТ угрозы жизни/здоровью/имуществу
+    (улучшение: установка нового унитаза, консультация, замена счетчика и т.д.)
+
+- Вид (Индивидуальное/Общедомовое):
+  * Индивидуальное = проблема в квартире пользователя
+    (квартира состоит из комнат: ванная, зал, кухня, спальня и т.д.)
+    (если пользователь назвал локацию "ванная"/"зал" → проверь может ли она быть в квартире)
+  * Общедомовое = проблема в подъезде, на улице, местах общего пользования
+  Варианты: {', '.join(self._location_types_cache)}
+
+- Категория: {', '.join(self._categories_cache)}
+
+- Объект: {', '.join(self._objects_cache)}
+
+Стратегия: задавай вопросы чтобы установить фильтры и сократить список кандидатов.
+
+══════════════════════════════════════════════════════════════════════════════
+ТЕКУЩАЯ СИТУАЦИЯ
+══════════════════════════════════════════════════════════════════════════════
+
+{context}
+"""
+
+        if known_info:
+            prompt += f"""
+УЖЕ ИЗВЕСТНО (не спрашивай повторно):
+{known_info}
+"""
+
+        # ИСПРАВЛЕНО (2026-02-04): Добавляем txtStopQ - запрещенные вопросы
+        if txtStopQ and len(txtStopQ) > 0:
+            import json
+            txtstopq_json = json.dumps(txtStopQ, ensure_ascii=False)
+            prompt += f"""
+⛔⛔⛔ ЗАПРЕЩЕННЫЕ ВОПРОСЫ (txtStopQ) ⛔⛔⛔
+Эти вопросы были УЖЕ заданы и оказались НЕЭФФЕКТИВНЫМИ или ГЛУПЫМИ.
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО задавать похожие вопросы!
+
+{txtstopq_json}
+
+Если LLM сгенерирует похожий вопрос - он будет добавлен в txtStopQ и ОТКЛОНЕН!
+"""
+
+        if txtPrb:
+            prompt += f"""
+ОПИСАНИЕ ПРОБЛЕМЫ:
+{txtPrb}
+"""
+
+        # ЗАКОММЕНТИРОВАНО (2026-02-16): Дубликат убран - код теперь перед return prompt
+        # # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
+        # # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ПЕРЕД established_filters!
+        # # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
+        # absolute_facts_list = []
+        # ...
+        # (дубликат кода убран чтобы не было двойного добавления в промт)
+
+        if recent_dialog:
+            prompt += f"""
+ИСТОРИЯ ДИАЛОГА:
+{recent_dialog}
+"""
+
+        if established_filters:
+            prompt += f"""
+УСТАНОВЛЕННЫЕ ФИЛЬТРЫ (с вероятностью):
+{self._format_filters_for_prompt(established_filters)}
+
+ВАЖНО: Учитывай эти фильтры при генерации вопроса!
+"""
+
+        if candidates_json:
+            prompt += f"{candidates_json}\n"
+
+        # Инструкция по типу вопроса
+        if question_type == 'clarification':
+            prompt += """
+══════════════════════════════════════════════════════════════════════════════
+⛔⛔⛔ КРИТИЧЕСКИ ВАЖНЕЙШЕЕ ПРАВИЛО - ДВОЙНЫЕ ВОПРОСЫ ЗАПРЕЩЕНЫ! ⛔⛔⛔
+══════════════════════════════════════════════════════════════════════════════
+
+0. (САМОЕ ВАЖНОЕ!) КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ ДВОЙНЫЕ ВОПРОСЫ:
+   ⛔ ЗАПРЕЩЕНО вопросы через "или", "или", "и"
+   ⛔ ЗАПРЕЩЕНО перечислять варианты в скобках или запятыми
+   ⛔ ЗАПРЕЩЕНО закрывать варианты в один вопрос ("Это А или Б?")
+   ⛔ Максимум ОДИН вопрос, не более 10 слов
+
+   ПРИМЕРЫ ЗАПРЕЩЕННЫХ ВОПРОСОВ (АБСОЛЮТНО НЕ ДЕЛАЙ ТАК!):
+   - "Это прорыв трубы в квартире или общедомовой прорыв?" → ДВОЙНОЙ + "или" ✗
+   - "Что именно или где именно?" → ДВОЙНОЙ (Что? + Где?) ✗
+   - "Это труба или батарея?" → ДВОЙНОЙ + закрытый + "или" ✗
+   - "Какой объект и в каком месте?" → ДВОЙНОЙ + "и" ✗
+   - "Опишите что и где это произошло" → ДВОЙНОЙ ✗
+   - "Это инцидент или запрос?" → ДВОЙНОЙ + внутренние термины ✗
+
+   ПРАВИЛЬНЫЕ ОДИНОЧНЫЕ ВОПРОСЫ:
+   - "Где именно это произошло?" → ОДИН вопрос ✓
+   - "Опишите что именно сломалось" → ОДИН вопрос ✓
+   - "Что именно течет?" → ОДИН вопрос ✓
+
+   ⛔ ЕСЛИ СГЕНЕРИРУЕШЬ ДВОЙНОЙ ВОПРОС - ОТВЕТ БУДЕТ ОТВЕРГНУТ!
+
+══════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА
+══════════════════════════════════════════════════════════════════════════════
+
+1. ОБЯЗАТЕЛЬНО: Верни ВОПРОС (заканчивается на "?")
+   - НЕЛЬЗЯ возвращать утверждения
+   - НЕЛЬЗЯ возвращать "Нет необходимости уточнять"
+   - НЕЛЬЗЯ возвращать "Все понятно"
+
+2. Проверка что текст является вопросом:
+   ПРИМЕРЫ НЕВОПРОСОВ (ОТКЛОНИТЬ):
+   - "Нет необходимости уточнять локацию." → НЕ ВОПРОС (утверждение)
+   - "Я понял проблему." → НЕ ВОПРОС
+   - "Все понятно." → НЕ ВОПРОС
+
+   ПРИМЕРЫ ВОПРОСОВ (ПРИНЯТЬ):
+   - "Где именно это произошло?" → ВОПРОС
+   - "Опишите что именно сломалось?" → ВОПРОС
+
+3. ИСПРАВЛЕНИЕ (2026-01-05): КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать то, что УЖЕ ИЗВЕСТНО:
+   - Проверь блок "УСТАНОВЛЕННЫЕ ФИЛЬТРЫ" выше
+   - Если фильтр установлен с уверенностью 80%+ → НЕ спрашивай про него!
+   - Если location=Индивидуальное (90%) → НЕ спрашивай "Где?"
+   - Если category=Водоснабжение (95%) → НЕ спрашивай "Это водоснабжение?"
+   - Если object=труба (90%) → НЕ спрашивай "Что именно?"
+
+   ПРИМЕРЫ НАРУШЕНИЙ (НЕ ДЕЛАЙ ТАК):
+   - Фильтр: location=Индивидуальное (90%), вопрос: "Где это произошло?" → ЗАПРЕЩЕНО!
+   - Фильтр: category=Водоснабжение (95%), вопрос: "Это водоснабжение?" → ЗАПРЕЩЕНО!
+   - Фильтр: object=труба (90%), вопрос: "Из чего течет?" → ЗАПРЕЩЕНО!
+
+4. ИСПРАВЛЕНО (2026-01-10): Если source/object_description НЕ установлен или null:
+   - Проверь блок "ОПИСАНИЕ ПРОБЛЕМЫ" выше - если там нет источника проблемы
+   - ОБЯЗАТЕЛЬНО спроси: "Что именно течет/сломалось?" или "Откуда именно?"
+   - НЕ спрашивай про конкретную категорию (водоснабжение/отопление) если она НЕ установлена!
+   - Пользователь НЕ ЗНАЕТ категорию - он знает только симптомы!
+
+   ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ (source=null):
+   - "Что именно течет?" (пользователь сказал "течет" но не указал источник)
+   - "Откуда именно течет?" (пользователь сказал "течет в зале" но не сказал источник)
+   - "Какой объект неисправен?" (общий вопрос про объект)
+
+   ПРИМЕРЫ НЕПРАВИЛЬНЫХ ВОПРОСОВ (category=null, source=null):
+   - "Что происходит с водоснабжением?" → ЗАПРЕЩЕНО! (категория не установлена)
+   - "Это проблема с отоплением?" → ЗАПРЕЩЕНО! (категория не установлена)
+   - "Какой характер протечки?" → ЗАПРЕЩЕНО! (не помогает определить источник)
+
+   ПРАВИЛО: СНАЧАЛА выясни источник (что именно), ПОТОМ категорию определишь!
+
+══════════════════════════════════════════════════════════════════════════════
+ЗАДАЧА
+══════════════════════════════════════════════════════════════════════════════
+
+Проанализируй список кандидатов, установленные фильтры и историю диалога.
+
+Верни ОДИН вопрос который:
+- Позволит однозначно определить кандидата ИЛИ наложить фильтр
+- Максимально короткий (до 10 слов)
+- Открытый вопрос (без перечислений вариантов)
+- Учитывает уже известную информацию (НЕ спрашивай то, что УЖЕ есть в фильтрах!)
+- ПРИБЛИЖАЕТ К РЕШЕНИЮ (позволяет установить фильтр или определить услугу)
+
+ПРИМЕРЫ:
+
+ХОРОШО: "Где именно это произошло?"
+   Цель: Установить фильтр Вид (Индивидуальное/Общедомовое)
+
+ХОРОШО: "Опишите что именно сломалось"
+   Цель: Установить фильтр Объект (Труба/Кран/Батарея)
+
+ХОРОШО (90%+ кандидат): "Похоже что течет из трубы в ванной. Опишите подробнее проблему."
+   Цель: Уточнить детали при высокой вероятности (открытый вопрос)
+
+ПЛОХО: "Что и где?" (двойной вопрос)
+ПЛОХО: "Это труба или батарея?" (закрытый вопрос)
+ПЛОХО: "Это труба отопления или водоснабжения?" (закрытый вопрос с "или")
+ПЛОХО: "Какой характер? Например, капает или струей?" (НЕ приближает к решению + перечисление)
+ПЛОХО: "Это инцидент или запрос?" (внутренние термины, не для пользователя)
+ПЛОХО: "Правильно ли я понял, что у вас течет из трубы в ванной?" (закрытый вопрос)
+
+Вопрос:"""
+
+        elif question_type == 'what_happened':
+            prompt += """
+
+══════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО (2026-01-05):
+══════════════════════════════════════════════════════════════════════════════
+
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать то, что УЖЕ ИЗВЕСТНО из установленных фильтров!
+- Проверь блок "УСТАНОВЛЕННЫЕ ФИЛЬТРЫ" выше
+- Если фильтр установлен с уверенностью 80%+ → НЕ спрашивай про него!
+
+══════════════════════════════════════════════════════════════════════════════
+ЗАДАЧА
+══════════════════════════════════════════════════════════════════════════════
+
+# ИСПРАВЛЕНО (2026-02-16): Задай вопрос для уточнения ТОЛЬКО НЕИЗВЕСТНЫХ деталей
+# КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать про УЖЕ ИЗВЕСТНЫЕ объект, проблему, категорию!
+# Спроси про: локацию, интенсивность или серьезность.
+
+СНАЧАЛА прочитай блок "⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ ⛔⛔⛔" НИЖЕ - там указано что НЕЛЬЗЯ спрашивать!
+После этого задай ОДИН вопрос для уточнения ТОЛЬКО неизвестных деталей (локация, интенсивность).
+
+Ограничения:
+- Один вопрос
+- Открытый вопрос
+- Без перечислений
+- Коротко
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать то, что УЖЕ известно в блоке ниже!
+
+Вопрос:"""
+
+        elif question_type == 'location':
+            prompt += """
+
+══════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО (2026-01-05):
+══════════════════════════════════════════════════════════════════════════════
+
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать про локацию если она УЖЕ ИЗВЕСТНА!
+- Проверь блок "УСТАНОВЛЕННЫЕ ФИЛЬТРЫ" выше
+- Если location_type установлен с уверенностью 80%+ → НЕ спрашивай "Где?"
+- Вместо этого спроси про другой параметр (объект, деталь проблемы)
+
+══════════════════════════════════════════════════════════════════════════════
+ЗАДАЧА
+══════════════════════════════════════════════════════════════════════════════
+
+Задай ОДИН вопрос о месте проблемы (ТОЛЬКО если локация НЕ известна).
+
+Ограничения:
+- Один вопрос
+- Открытый вопрос
+- НЕ спрашивай если локация уже известна (см. правило выше)
+- Коротко
+
+Вопрос:"""
+
+        else:  # details
+            prompt += """
+
+══════════════════════════════════════════════════════════════════════════════
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА (2026-01-05):
+══════════════════════════════════════════════════════════════════════════════
+
+1. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Двойные вопросы
+2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Спрашивать то, что УЖЕ ИЗВЕСТНО из фильтров!
+3. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: Использовать союз "и"
+
+Проверь блок "УСТАНОВЛЕННЫЕ ФИЛЬТРЫ" выше:
+- Если location известен (80%+) → НЕ спрашивай "Где?"
+- Если object известен (80%+) → НЕ спрашивай "Что именно?"
+- Если category известен (80%+) → НЕ спрашивай "Это [категория]?"
+
+══════════════════════════════════════════════════════════════════════════════
+ЗАДАЧА
+══════════════════════════════════════════════════════════════════════════════
+
+Задай ОДИН уточняющий вопрос для детализации проблемы (ТОЛЬКО того, что НЕ известно).
+
+Ограничения:
+- Только ОДИН вопрос
+- Открытый вопрос
+- Вежливый тон
+- Учитывай что уже известно из фильтров (НЕ спрашивай повторно!)
+- Без союза "и"
+
+Вопрос:"""
+
+        # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ВСЕГДА (не только в fallback!)
+        # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
+        absolute_facts_list = []
+
+        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
+        # ИСПРАВЛЕНО (2026-02-16): Логируем accumulated_fields для отладки
+        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
+
+        if accumulated_fields:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
+            if accumulated_fields.get('source'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
+                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
+            if accumulated_fields.get('location'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
+                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
+            if accumulated_fields.get('problem'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
+                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
+            if accumulated_fields.get('severity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
+            if accumulated_fields.get('category'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
+                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
+
+            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
+        else:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
+
+        # ПОТОМ established_filters (из FilterDetectionService)
+        if established_filters:
+            # object_description
+            obj_desc = established_filters.get('object_description')
+            if obj_desc and isinstance(obj_desc, dict):
+                obj_value = obj_desc.get('value')
+                obj_conf = obj_desc.get('confidence', 0)
+                if obj_value and obj_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
+
+            # location_type
+            location = established_filters.get('location_type')
+            if location and isinstance(location, dict):
+                loc_value = location.get('value')
+                loc_conf = location.get('confidence', 0)
+                if loc_value and loc_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
+
+            # category
+            category = established_filters.get('category')
+            if category and isinstance(category, dict):
+                cat_value = category.get('value')
+                cat_conf = category.get('confidence', 0)
+                if cat_value and cat_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
+
+        # ИСПРАВЛЕНО (2026-02-16): Проверяем absolute_facts_list ПОСЛЕ обоих блоков (accumulated + established)
+        # ИСПРАВЛЕНО (2026-02-16): Используем '\n'.join() вместо ''.join() чтобы факты были на разных строках!
+        if absolute_facts_list:
+            prompt += f"""
+⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
+{'\\n'.join(absolute_facts_list)}
+
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом!
+Если известно "проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
+Если известно "локация: зал" → НЕЛЬЗЯ спрашивать "Где именно?"
+"""
+
+        return prompt
+
     def _format_filters_for_prompt(self, filters: Dict) -> str:
         """Форматирует установленные фильтры для промта AI."""
         if not filters:
