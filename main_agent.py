@@ -1857,6 +1857,12 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK!
                 logger.warning(f"[LOW CONFIDENCE] actual_conf={actual_confidence:.2%} < 90% → используем LLM для генерации вопроса")
 
+                # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
+                with open(diag_path, 'a', encoding='utf-8') as f:
+                    f.write(f"\n=== RETURN PATH ===\n")
+                    f.write(f"BLOCK: needs_clarification (line 1856)\n")
+                    f.write(f"RETURN: AMBIGUOUS\n")
+
                 # Вызываем _generate_ai_question с новым промптом (НЕ fallback!)
                 ai_result = await self._generate_ai_question(
                     context=original_message,
@@ -1891,6 +1897,12 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2026-02-16): Используем LLM для генерации контекстного вопроса
                 # вместо hardcoded "Где именно это произошло?"
                 context = f"Найдена услуга: {candidate.get('service_name', candidate.get('scenario_name', 'Unknown'))} (confidence={actual_confidence:.1%}). Нужно уточнить локацию."
+
+                # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
+                with open(diag_path, 'a', encoding='utf-8') as f:
+                    f.write(f"\n=== RETURN PATH ===\n")
+                    f.write(f"BLOCK: not location_known (line 1895)\n")
+                    f.write(f"RETURN: AMBIGUOUS\n")
 
                 ai_result = await self._generate_ai_question(
                     context=context,
@@ -1938,6 +1950,12 @@ class MainAgent:
 
                 # OLD: 'message': "Как сильно течёт? Есть затопление?",  # ❌ HARDCODED
 
+                # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
+                with open(diag_path, 'a', encoding='utf-8') as f:
+                    f.write(f"\n=== RETURN PATH ===\n")
+                    f.write(f"BLOCK: needs_severity_clarification (line 1927)\n")
+                    f.write(f"RETURN: AMBIGUOUS\n")
+
                 logger.warning(f"[SEVERITY CLARIFICATION] Возвращаем AMBIGUOUS с вопросом: {message}")
                 return {
                     'candidates': [candidate],
@@ -1955,6 +1973,12 @@ class MainAgent:
 
             # Высокая уверенность И локация известна И (для Инцидентов) известна серьёзность - создаем заявку
             message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
+
+            # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
+            with open(diag_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n=== RETURN PATH ===\n")
+                f.write(f"BLOCK: SUCCESS (line 1965)\n")
+                f.write(f"RETURN: SUCCESS\n")
 
             return {
                 'candidates': [candidate],
