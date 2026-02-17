@@ -476,8 +476,10 @@ class TagSearchService:
         """
         ИСПРАВЛЕНО (2026-01-22): Универсальный score на основе rapidfuzz
         ИСПРАВЛЕНО (2026-01-23): Добавлен штраф за общие слова (NLTK stopwords)
+        ИСПРАВЛЕНО (2026-02-18): Добавлено сравнение целой фразы (token_sort_ratio)
 
         Логика:
+        0. Сравнение целой фразы (token_sort_ratio) → учитывает ВСЕ слова
         1. Прямое совпадение → 100
         2. Нормальная форма (pymorphy2) → 95
         3. Вхождение подстроки → 90
@@ -490,6 +492,25 @@ class TagSearchService:
         morph = self._get_morph()
         stopwords = self._get_stopwords()  # Динамическая загрузка!
         best_score = 0
+
+        # ИСПРАВЛЕНО (2026-02-18): Шаг 0 - сравниваем ВСЮ фразу целиком
+        # Это позволяет избежать ложных срабатываний на общих словах ("замена", "счётчик")
+        phrase_best_score = 0
+        if message_words:
+            full_message = " ".join(message_words).lower()
+            for term in search_terms:
+                term_lower = term.lower()
+                if len(term_lower) < 4:
+                    continue
+                # token_sort_ratio учитывает ВСЕ слова, не дает 100% за частичное совпадение
+                phrase_score = fuzz.token_sort_ratio(full_message, term_lower)
+                if phrase_score > phrase_best_score:
+                    phrase_best_score = phrase_score
+
+        # ИСПРАВЛЕНО (2026-02-18): Если фраза совпала (> 30%), используем ТОЛЬКО её
+        # Отдельные слова используются только если фраза НЕ совпала
+        if phrase_best_score > 30:
+            return phrase_best_score
 
         for word in message_words:
             if len(word) < 3:
@@ -516,13 +537,16 @@ class TagSearchService:
                     if score > best_score:
                         best_score = score
 
-                # 3. Вхождение слова в терм
-                if len(word) >= 5 and word_lower in term_lower:
-                    score = int(90 * weight)
-                    if score > best_score:
-                        best_score = score
+                # ИСПРАВЛЕНО (2026-02-18): Убрано "вхождение слова в терм" - давало ложные срабатывания
+                # на общих словах ("замена" в "замена водосчётчика" = 90)
+                # Вместо этого используем token_sort_ratio для целой фразы (выше)
+                # # 3. Вхождение слова в терм
+                # if len(word) >= 5 and word_lower in term_lower:
+                #     score = int(90 * weight)
+                #     if score > best_score:
+                #         best_score = score
 
-                # 4. Нечеткое совпадение (rapidfuzz partial_ratio)
+                # 3. Нечеткое совпадение (rapidfuzz partial_ratio)
                 if len(word) >= 4 and len(term_lower) >= 4:
                     fuzz_score = fuzz.partial_ratio(word_lower, term_lower)
                     fuzz_score_weighted = int(fuzz_score * weight)
