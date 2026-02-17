@@ -1220,6 +1220,23 @@ class MainAgent:
             logger.warning(f"[DEBUG] single_candidate: {clarification_result.get("single_candidate")}")
             logger.warning(f"[DEBUG] message: {clarification_result.get("message", "")[:100]}")
 
+        # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКАЯ ДИАГНОСТИКА - почему не SUCCESS?
+        import datetime
+        debug_path = f"/tmp/_clarification_result_debug_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(debug_path, 'w', encoding='utf-8') as f:
+            f.write(f"=== clarification_result DEBUG ===\n")
+            f.write(f"status: {clarification_result.get('status')}\n")
+            f.write(f"single_candidate: {clarification_result.get('single_candidate')}\n")
+            f.write(f"message: {clarification_result.get('message', '')[:100]}\n")
+            f.write(f"keys: {list(clarification_result.keys())}\n")
+            if clarification_result.get('single_candidate'):
+                candidate = clarification_result['single_candidate']
+                f.write(f"candidate keys: {list(candidate.keys())}\n")
+                f.write(f"candidate confidence: {candidate.get('confidence', 'N/A')}\n")
+        import os
+        os.chmod(debug_path, 0o644)
+        logger.warning(f"[DEBUG] Диагностика clarification_result сохранена в {debug_path}")
+
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
             candidate = clarification_result['single_candidate']
