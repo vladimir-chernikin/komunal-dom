@@ -1800,20 +1800,6 @@ class MainAgent:
             actual_confidence = max(llm_confidence, filter_confidence, candidate_confidence)
             needs_clarification = actual_confidence < 0.9 and not already_asked_confirmation
 
-            # ИСПРАВЛЕНО (2026-02-17): Диагностика условий
-            with open(diag_path, 'a', encoding='utf-8') as f:
-                f.write(f"\n=== DECISION LOGIC ===\n")
-                f.write(f"llm_confidence: {llm_confidence:.3f}\n")
-                f.write(f"filter_confidence: {filter_confidence:.3f}\n")
-                f.write(f"candidate_confidence: {candidate_confidence:.3f}\n")
-                f.write(f"actual_confidence: {actual_confidence:.3f}\n")
-                f.write(f"already_asked_confirmation: {already_asked_confirmation}\n")
-                f.write(f"needs_clarification: {needs_clarification}\n")
-                f.write(f"location_known: {location_known}\n")
-                f.write(f"is_incident: {is_incident}\n")
-                f.write(f"is_water_problem: {is_water_problem}\n")
-                f.write(f"needs_severity_clarification: {needs_severity_clarification}\n")
-
             logger.info(f"[DECISION] llm_conf={llm_confidence:.2%}, filter_conf={filter_confidence:.2%}, candidate_conf={candidate_confidence:.2%}, actual_conf={actual_confidence:.2%}, needs_clar={needs_clarification}")
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
@@ -1851,6 +1837,20 @@ class MainAgent:
                 has_source and
                 not (severity_known or intensity_known)
             )
+
+            # ИСПРАВЛЕНО (2026-02-17): Диагностика условий (ПЕРЕМЕЩЕНО после объявления переменных)
+            with open(diag_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n=== DECISION LOGIC ===\n")
+                f.write(f"llm_confidence: {llm_confidence:.3f}\n")
+                f.write(f"filter_confidence: {filter_confidence:.3f}\n")
+                f.write(f"candidate_confidence: {candidate_confidence:.3f}\n")
+                f.write(f"actual_confidence: {actual_confidence:.3f}\n")
+                f.write(f"already_asked_confirmation: {already_asked_confirmation}\n")
+                f.write(f"needs_clarification: {needs_clarification}\n")
+                f.write(f"location_known: {location_known}\n")
+                f.write(f"is_incident: {is_incident}\n")
+                f.write(f"is_water_problem: {is_water_problem}\n")
+                f.write(f"needs_severity_clarification: {needs_severity_clarification}\n")
 
             # Формируем сообщение (ИСПРАВЛЕНО: используем LLM вместо fallback!)
             if needs_clarification:
