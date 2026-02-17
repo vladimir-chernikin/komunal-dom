@@ -2725,6 +2725,39 @@ class MainAgent:
 
         logger.info(f"AI Orchestrator: UNION={len(all_candidates)}, уникальных={len(unique_candidates)}")
 
+        # ИСПРАВЛЕНО (2026-02-17): Если нет кандидатов с фильтрами - пробуем БЕЗ category filter
+        # ПРИЧИНА: Filter Detection может ошибочно определить категорию ("Канализация" vs "Санитария")
+        if not unique_candidates and established_filters and established_filters.get('category'):
+            logger.warning(f"[ORCHESTRATOR] Нет кандидатов с фильтрами! Пробуем БЕЗ category filter...")
+            # Убираем category filter и перезапускаем поиск
+            filters_without_category = {k: v for k, v in established_filters.items() if k != 'category'}
+
+            # Перезапускаем поиск без category
+            search_tasks = []
+            if self.tag_search:
+                search_tasks.append(self._run_tag_search(search_text, filters=filters_without_category))
+            if self.semantic_search:
+                search_tasks.append(self._run_semantic_search(search_text, filters=filters_without_category))
+            if self.vector_search:
+                search_tasks.append(self._run_vector_search(search_text, filters=filters_without_category))
+
+            if search_tasks:
+                search_results_no_cat = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+                # Собираем кандидатов
+                all_candidates_no_cat = []
+                for result in search_results_no_cat:
+                    if isinstance(result, Exception):
+                        continue
+                    if not result or not result.get('candidates'):
+                        continue
+                    for c in result['candidates']:
+                        c['sources'] = [result.get('method', 'search')]
+                        all_candidates_no_cat.append(c)
+
+                unique_candidates = self._deduplicate_and_prioritize_candidates(all_candidates_no_cat)
+                logger.info(f"[ORCHESTRATOR] После поиска БЕЗ category: {len(unique_candidates)} кандидатов")
+
         if not unique_candidates:
             # Никто ничего не нашел - спрашиваем что случилось
             # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ДО вызова _ask_ai_what_happened
