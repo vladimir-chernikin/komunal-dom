@@ -1238,6 +1238,19 @@ class MainAgent:
         logger.warning(f"[DEBUG] Диагностика clarification_result сохранена в {debug_path}")
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
+        # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКАЯ ПРОВЕРКА - почему не заходит в if?
+        status_check = clarification_result.get('status') == 'SUCCESS'
+        single_check = clarification_result.get('single_candidate') is not None
+
+        with open(debug_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n=== CONDITION CHECK ===\n")
+            f.write(f"status == 'SUCCESS': {status_check}\n")
+            f.write(f"single_candidate exists: {single_check}\n")
+            f.write(f"COMBINED condition: {status_check and single_check}\n")
+            f.write(f"SHOULD ENTER SUCCESS BLOCK: {status_check and single_check}\n")
+
+        logger.warning(f"[DEBUG] status_check={status_check}, single_check={single_check}")
+
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
             candidate = clarification_result['single_candidate']
             result = {
