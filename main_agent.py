@@ -821,7 +821,11 @@ class MainAgent:
                 # ПРИЧИНА: accumulated_fields.location надежнее established_filters.location_type
                 # - НЕ спрашиваем если location ЯВНО извлечена из текста ("в зале", "в ванной")
                 # - СПРАШИВАЕМ если location НЕ извлечена (null)
-                location_known = accumulated_fields.get('location') is not None if accumulated_fields else False
+                # ИСПРАВЛЕНО (2026-02-17): location_type из filters тоже считается
+                location_known = (
+                    (accumulated_fields.get('location') is not None if accumulated_fields else False) or
+                    (established_filters.get('location_type', {}).get('value') is not None if established_filters else False)
+                )
                 
                 # Проверяем incident_type - Запросы не требуют локации
                 incident_type = established_filters.get('incident_type', {}).get('value', '') if established_filters else ''
@@ -925,7 +929,11 @@ class MainAgent:
                             service_name_lower = candidate['service_name'].lower()
 
                             # Что нужно уточнить?
-                            location_known = accumulated_fields.get('location') is not None
+                            # ИСПРАВЛЕНО (2026-02-17): location_type из filters тоже считается
+                            location_known = (
+                                accumulated_fields.get('location') is not None or
+                                established_filters.get('location_type', {}).get('value') is not None
+                            )
                             intensity_known = accumulated_fields.get('intensity') is not None
                             confidence = candidate.get('confidence', 0.8)
 
@@ -1833,8 +1841,12 @@ class MainAgent:
             logger.info(f"[DECISION] llm_conf={llm_confidence:.2%}, filter_conf={filter_confidence:.2%}, candidate_conf={candidate_confidence:.2%}, actual_conf={actual_confidence:.2%}, needs_clar={needs_clarification}")
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
-            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence
-            location_known = accumulated_fields.get('location') is not None
+            # ИСПРАВЛЕНО (2026-02-17): location_known=True если location_type ИЛИ location установлены
+            # ПРИЧИНА: "Общедомовое" из filters тоже считается известной локацией
+            location_known = (
+                accumulated_fields.get('location') is not None or
+                established_filters.get('location_type', {}).get('value') is not None
+            )
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем серьёзность ПЕРЕД созданием заявки
             # Для Инцидентов с ВОДОЙ/ТЕЧЬЮ нужно знать severity/intensity
