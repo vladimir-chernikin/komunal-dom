@@ -237,10 +237,16 @@ class MessageHandlerService:
 
             # ИСПРАВЛЕНО (2026-01-06): Обновляем metadata для inbound сообщения с txtPrb
             # КРИТИЧЕСКИ ВАЖНО: TraceReportService читает metadata из БД!
+            logger.info(f"[METADATA CHECK] _metadata в result: {('_metadata' in result)}, message_log is dict: {isinstance(message_log, dict)}")
             if '_metadata' in result and isinstance(message_log, dict):
                 inbound_message_id = message_log.get('id')
+                logger.info(f"[METADATA CHECK] inbound_message_id={inbound_message_id}, condition: {inbound_message_id and inbound_message_id > 0}")
                 if inbound_message_id and inbound_message_id > 0:
                     try:
+                        # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКИЙ ЛОГ (БЕЗОПАСНЫЙ)
+                        metadata_obj = result.get('_metadata', {})
+                        txtPrb_val = metadata_obj.get('txtPrb', '(нет)') if isinstance(metadata_obj, dict) else '(нет)'
+                        logger.info(f"[CRITICAL] Обновляем metadata для inbound id={inbound_message_id}, txtPrb='{str(txtPrb_val)[:60]}...'")
                         await self._update_message_metadata(
                             message_id=inbound_message_id,
                             metadata=result['_metadata']
@@ -248,6 +254,11 @@ class MessageHandlerService:
                         logger.info(f"[DEBUG] ✅ Metadata обновлена для inbound сообщения id={inbound_message_id}")
                     except Exception as e:
                         logger.warning(f"[WARNING] Не удалось обновить metadata для inbound: {e}")
+                        logger.error(f"[ERROR] Traceback:", exc_info=True)
+                else:
+                    logger.warning(f"[WARNING] inbound_message_id={inbound_message_id}, обновление пропущено")
+            else:
+                logger.warning(f"[WARNING] _metadata не в result или message_log not dict: _metadata={('_metadata' in result)}, is_dict={isinstance(message_log, dict)}")
 
             # 5. Формируем ответ бота
             bot_response = self._extract_bot_response(result)
@@ -303,7 +314,8 @@ class MessageHandlerService:
                 'raw_result': result,
                 'message_log_id': message_log.get('id') if isinstance(message_log, dict) else None,
                 'session_id': session_id,
-                'service_detected': result.get('service_id') if result.get('status') == 'SUCCESS' else None
+                'service_detected': result.get('service_id') if result.get('status') == 'SUCCESS' else None,
+                '_metadata': result.get('_metadata', {})  # ИСПРАВЛЕНО (2026-02-17): Передаем metadata в финальный ответ
             }
 
         except Exception as e:
