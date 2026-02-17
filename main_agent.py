@@ -2744,8 +2744,12 @@ class MainAgent:
             confidence = candidate.get('confidence', 0.0)
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
-            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence услуги
-            location_known = accumulated_fields.get('location') is not None
+            # ИСПРАВЛЕНО (2026-02-17): location_known=True если location_type ИЛИ location установлены
+            # ПРИЧИНА: "Общедомовое" из filters тоже считается известной локацией
+            location_known = (
+                accumulated_fields.get('location') is not None or
+                established_filters.get('location_type', {}).get('value') is not None
+            )
 
             # ПРОВЕРЯЕМ: Если локация НЕ известна → проверяем тип обращения
             if not location_known:
