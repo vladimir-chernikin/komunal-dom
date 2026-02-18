@@ -1035,13 +1035,15 @@ class MainAgent:
 
                                 logger.info(f"[WATER_TYPE] category={category}, txtPrb='{txtPrb_lower}', source='{source_lower}', water_type_known={water_type_known}")
 
-                            needs_clarification = (not location_known and incident_type != 'Запрос') or (is_water_problem and has_source and not intensity_known) or (category == 'Водоснабжение' and not water_type_known)
+                            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
+                            needs_clarification = (not location_known and incident_type != 'Запрос' and candidate.get('location_type') != 'Общедомовое') or (is_water_problem and has_source and not intensity_known) or (category == 'Водоснабжение' and not water_type_known)
 
                             if needs_clarification:
                                 # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
                                 # Формируем контекст с указанием, что именно нужно уточнить
                                 missing_info = []
-                                if not location_known:
+                                # ИСПРАВЛЕНО (2026-02-18): НЕ добавляем "локацию" для услуг с localization=Общедомовое
+                                if not location_known and candidate.get('location_type') != 'Общедомовое':
                                     missing_info.append("локацию")
                                 # ИСПРАВЛЕНО (2026-02-18): Проверяем тип воды для Водоснабжения
                                 if category == 'Водоснабжение' and not water_type_known:
@@ -2035,7 +2037,8 @@ class MainAgent:
                 }
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО локация НЕ известна - спрашиваем через LLM
-            if not location_known:
+            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
+            if not location_known and candidate.get('location_type') != 'Общедомовое':
                 logger.warning(f"[NO LOCATION] actual_conf={actual_confidence:.2%} >= 90%, НО локация НЕ известна - генерируем контекстный вопрос")
                 # ИСПРАВЛЕНО (2026-02-16): Используем LLM для генерации контекстного вопроса
                 # вместо hardcoded "Где именно это произошло?"
@@ -2973,7 +2976,8 @@ class MainAgent:
             location_known = accumulated_fields.get('location') is not None
 
             # ПРОВЕРЯЕМ: Если локация НЕ известна → проверяем тип обращения
-            if not location_known:
+            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
+            if not location_known and candidate.get('location_type') != 'Общедомовое':
                 # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем incident_type - Запрос или Инцидент?
                 incident_type = established_filters.get('incident_type', {}).get('value', '')
 
