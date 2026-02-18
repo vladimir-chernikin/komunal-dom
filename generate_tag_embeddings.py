@@ -25,6 +25,18 @@ from django.db import connection
 # Русские stopwords из NLTK
 RUSSIAN_STOPWORDS = set(stopwords.words('russian'))
 
+# КРИТИЧЕСКИ ВАЖНО (2026-02-18): Исключаем слово "нет" из stopwords!
+# ПРИЧИНА: Теги и услуги "Нет горячей воды", "Нет света" и т.д. должны находиться
+# при поиске "нет воды", "нет света" и т.д.
+WORDS_TO_KEEP = {'нет', 'нetheus', 'нету', 'нетёк'}
+RUSSIAN_STOPWORDS = RUSSIAN_STOPWORDS - WORDS_TO_KEEP
+
+print("=" * 70)
+print("ИСПРАВЛЕНО (2026-02-18): Список stopwords БЕЗ слова 'нет'")
+print(f"Всего stopwords: {len(RUSSIAN_STOPWORDS)} (было 151)")
+print(f"Исключены слова: {WORDS_TO_KEEP}")
+print("=" * 70)
+
 
 def preprocess_tag(tag_name: str, morph: pymorphy2.MorphAnalyzer) -> str:
     """
