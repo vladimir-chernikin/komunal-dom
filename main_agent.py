@@ -4297,7 +4297,7 @@ JSON:"""
 
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
         logger.info("[SEARCH] _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
-        logger.info(f"  [NOTE] context: '{context[:100]}'")
+        logger.info(f"  [NOTE] context: {str(context)[:100]}")
         logger.info(f"  [TOOL] question_type: {question_type}")
         logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
@@ -4324,50 +4324,47 @@ JSON:"""
                 asked_questions = self._extract_asked_questions(dialog_history)
                 logger.info(f"[!] Уже задано вопросов: {len(asked_questions)}")
 
-            # ИСПРАВЛЕНО (2026-01-03): Для типа clarification использовали _build_dynamic_prompt
-            # ИСПРАВЛЕНО (2026-02-18): ОТКЛЮЧЕН Fallback - используем ТОЛЬКО промпт из БД
-            # if question_type == 'clarification' and candidates is not None:
-            #     # Используем новый метод с динамическими промптами по стратегиям
-            #     prompt = self._build_dynamic_prompt(
-            #         strategy=strategy,
-            #         context=context,
-            #         candidates=candidates,
-            #         missing_filter=missing_filter,
-            #         txtPrb=txtPrb,
-            #         asked_questions=asked_questions if asked_questions else None,
-            #         intro_phrase=intro_phrase,
-            #         accumulated_fields=accumulated_fields,
-            #         established_filters=established_filters
-            #     )
-            #     logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
-            # else:
-            #     # Для остальных типов используем промпт из БД
-            #
-            # ВСЕГДА используем промпт из БД (mainagent-orchestrator)
-            # ПЕРЕХОД НА unified approach - один промпт для всех случаев
-            if False:  # Условие отключено - всегда используем промпт из БД
-                # ЗАКОММЕНТИРОВАНО (2026-02-18): Отключен _build_dynamic_prompt (fallback)
-                # Используем ТОЛЬКО промпт из БД (mainagent-orchestrator)
-                pass
+            # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
+            # ИСПРАВЛЕНО (2026-02-18): ПЕРЕВКЛЮЧЕН - используем стратегии A/B/C/NONE с established_filters
+            if question_type == 'clarification' and candidates is not None:
+                # Используем новый метод с динамическими промптами по стратегиям
+                prompt = self._build_dynamic_prompt(
+                    strategy=strategy,
+                    context=context,
+                    candidates=candidates,
+                    missing_filter=missing_filter,
+                    txtPrb=txtPrb,
+                    asked_questions=asked_questions if asked_questions else None,
+                    intro_phrase=intro_phrase,
+                    accumulated_fields=accumulated_fields,
+                    established_filters=established_filters  # ИСПРАВЛЕНО (2026-02-18): Передаем established_filters
+                )
+                logger.info(f"[BOT] Используем стратегию {strategy} (кандидатов: {len(candidates) if candidates else 0})")
+            else:
+                # Для остальных типов используем промпт из БД
+                # ИСПРАВЛЕНО (2026-02-18): ВСЕГДА используем промпт из БД (unified approach)
+                prompt = await self._build_question_prompt(
+                    context=context,
+                    dialog_history=dialog_history,
+                    candidates=candidates,
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type=question_type,
+                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторный LLM
+                    txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
+                )
+                logger.info(f"[BOT] Используется промпт из БД (mainagent-orchestrator), candidates: {len(candidates) if candidates else 0}")
 
-            # ИСПРАВЛЕНО (2026-02-18): ВСЕГДА используем промпт из БД (unified approach)
-            prompt = await self._build_question_prompt(
-                context=context,
-                dialog_history=dialog_history,
-                candidates=candidates,
-                established_filters=established_filters,
-                txtPrb=txtPrb,
-                question_type=question_type,
-                accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
-                txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
-            )
-            logger.info(f"[BOT] Используется промпт из БД (mainagent-orchestrator), candidates: {len(candidates) if candidates else 0}")
 
-            # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
+            # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 + последние 500 символов)
             logger.info(f"[BOT] PROMPT ДЛЯ LLM ({question_type}):")
             logger.info(f"{'=' * 80}")
             logger.info(f"{prompt[:500]}...")
             logger.info(f"{'=' * 80} (полная длина: {len(prompt)} символов)")
+            logger.info(f"[BOT] КОНЕЦ ПРОМПТА (последние 500 символов):")
+            logger.info(f"{'=' * 80}")
+            logger.info(f"...{prompt[-500:]}")
+            logger.info(f"{'=' * 80}")
 
             # Вызываем AI через AIAgentService
             if self.ai_agent:
@@ -4602,6 +4599,77 @@ JSON:"""
 {self._format_filters_for_prompt(established_filters)}
 
 ВАЖНО: Учитывай эти фильтры при генерации вопроса!
+"""
+
+        # ИСПРАВЛЕНО (2026-02-18): ВОССТАНОВЛЕН код absolute_facts_list!
+        # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
+        # СКОПИРОВАНО из _build_dynamic_prompt (строки 4810-4875)
+        absolute_facts_list = []
+
+        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
+        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
+
+        if accumulated_fields:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
+            if accumulated_fields.get('source'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
+                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
+            if accumulated_fields.get('location'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
+                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
+            if accumulated_fields.get('problem'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
+                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
+            if accumulated_fields.get('severity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
+            if accumulated_fields.get('category'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
+                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
+
+            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
+        else:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
+
+        # ПОТОМ established_filters (из FilterDetectionService)
+        if established_filters:
+            # object_description
+            obj_desc = established_filters.get('object_description')
+            if obj_desc and isinstance(obj_desc, dict):
+                obj_value = obj_desc.get('value')
+                obj_conf = obj_desc.get('confidence', 0)
+                if obj_value and obj_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
+
+            # location_type
+            # ИСПРАВЛЕНО (2026-02-18): "Индивидуальное/Общедомовое" - это ТИП локации, НЕ ЯВНАЯ локация!
+            # НЕ добавляем в absolute_facts, чтобы LLM спрашивал "Где именно?"
+            location = established_filters.get('location_type')
+            if location and isinstance(location, dict):
+                loc_value = location.get('value')
+                loc_conf = location.get('confidence', 0)
+                # Добавляем ТОЛЬКО если это ЯВНАЯ локация (не Индивидуальное/Общедомовое)
+                if loc_value and loc_conf >= 0.8 and loc_value not in ['Индивидуальное', 'Общедомовое', 'null', 'None']:
+                    absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
+
+            # category
+            category = established_filters.get('category')
+            if category and isinstance(category, dict):
+                cat_value = category.get('value')
+                cat_conf = category.get('confidence', 0)
+                if cat_value and cat_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
+
+        # ИСПРАВЛЕНО (2026-02-18): Добавляем absolute_facts_list в промпт!
+        if absolute_facts_list:
+            prompt += f"""
+⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
+{'\\n'.join(absolute_facts_list)}
+
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом!
+Если известно "проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
+Если известно "локация: зал" → НЕЛЬЗЯ спрашивать "Где именно?"
 """
 
         if candidates_json:
@@ -4847,11 +4915,14 @@ JSON:"""
                     absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
 
             # location_type
+            # ИСПРАВЛЕНО (2026-02-18): "Индивидуальное/Общедомовое" - это ТИП локации, НЕ ЯВНАЯ локация!
+            # НЕ добавляем в absolute_facts, чтобы LLM спрашивал "Где именно?"
             location = established_filters.get('location_type')
             if location and isinstance(location, dict):
                 loc_value = location.get('value')
                 loc_conf = location.get('confidence', 0)
-                if loc_value and loc_conf >= 0.8:
+                # Добавляем ТОЛЬКО если это ЯВНАЯ локация (не Индивидуальное/Общедомовое)
+                if loc_value and loc_conf >= 0.8 and loc_value not in ['Индивидуальное', 'Общедомовое', 'null', 'None']:
                     absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
 
             # category
