@@ -2731,6 +2731,7 @@ class MainAgent:
         # ПРИЧИНА: Filter Detection может ошибочно определить категорию ("Канализация" vs "Санитария")
         if not unique_candidates and established_filters and established_filters.get('category'):
             logger.warning(f"[ORCHESTRATOR] Нет кандидатов с фильтрами! Пробуем БЕЗ category filter...")
+            logger.info(f"[ORCHESTRATOR] DEBUG: unique_candidates={len(unique_candidates) if unique_candidates else 0}, category_filter={established_filters.get('category')}")
             # Убираем category filter и перезапускаем поиск
             filters_without_category = {k: v for k, v in established_filters.items() if k != 'category'}
 
@@ -2763,6 +2764,10 @@ class MainAgent:
 
                 unique_candidates = self._deduplicate_and_prioritize_candidates(all_candidates_no_cat)
                 logger.info(f"[ORCHESTRATOR] После поиска БЕЗ category: {len(unique_candidates)} кандидатов")
+                if unique_candidates:
+                    logger.info(f"[ORCHESTRATOR] Кандидаты БЕЗ category: {[c.get('service_id') for c in unique_candidates[:5]]}")
+                else:
+                    logger.warning(f"[ORCHESTRATOR] fallback БЕЗ category НЕ нашел кандидатов!")
 
         if not unique_candidates:
             # Никто ничего не нашел - спрашиваем что случилось
