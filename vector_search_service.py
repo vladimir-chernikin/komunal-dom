@@ -81,9 +81,18 @@ class VectorSearchService:
                     'candidates': []
                 }
 
+            # ИСПРАВЛЕНО (2026-02-18): Для Водоснабжения НЕ передаем location_type в поиск
+            # ПРИЧИНА: SemanticPreCheck ошибочно определяет location_type=Индивидуальное для "горячей"/"холодной",
+            # но услуги "Нет горячей/холодной воды" имеют localization=Общедомовое → отфильтровываются!
+            is_water_supply = category == 'Водоснабжение'
+            search_location_type = '' if is_water_supply else location_type
+
+            if is_water_supply:
+                logger.info(f"VectorSearch: Категория=Водоснабжение, location_type фильтр ОТКЛЮЧЕН")
+
             # ШАГ 2: Параллельный двойной поиск
-            tag_results = await self._search_by_tags(query_embedding, incident_type, location_type, category)
-            service_results = await self._search_by_services(query_embedding, incident_type, location_type, category)
+            tag_results = await self._search_by_tags(query_embedding, incident_type, search_location_type, category)
+            service_results = await self._search_by_services(query_embedding, incident_type, search_location_type, category)
 
             logger.info(f"VectorSearch: найдено тегов: {len(tag_results)}, услуг: {len(service_results)}")
 
