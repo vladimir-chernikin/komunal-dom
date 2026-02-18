@@ -940,7 +940,22 @@ class MainAgent:
 
                             # ИСПРАВЛЕНИЕ (2026-02-16): Проверяем incident_type - Запросы не требуют локации
                             incident_type = established_filters.get('incident_type', {}).get('value', '')
-                            needs_clarification = (not location_known and incident_type != 'Запрос') or (is_water_problem and has_source and not intensity_known)
+
+                            # ИСПРАВЛЕНО (2026-02-18): Проверяем тип воды для Водоснабжения
+                            # Если категория "Водоснабжение" и НЕ указан тип (горячая/холодная) → нужно уточнить
+                            water_type_known = False
+                            if category == 'Водоснабжение':
+                                # Проверяем txtPrb и accumulated_fields.source
+                                txtPrb_lower = (txtPrb or '').lower()
+                                source = accumulated_fields.get('source', '')
+                                source_lower = source.lower() if source else ''
+
+                                # Тип воды известен если есть слова "горяч"/"холод"
+                                water_type_known = any(word in txtPrb_lower or word in source_lower for word in ['горяч', 'холод'])
+
+                                logger.info(f"[WATER_TYPE] category={category}, txtPrb='{txtPrb_lower}', source='{source_lower}', water_type_known={water_type_known}")
+
+                            needs_clarification = (not location_known and incident_type != 'Запрос') or (is_water_problem and has_source and not intensity_known) or (category == 'Водоснабжение' and not water_type_known)
 
                             if needs_clarification:
                                 # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
@@ -948,6 +963,9 @@ class MainAgent:
                                 missing_info = []
                                 if not location_known:
                                     missing_info.append("локацию")
+                                # ИСПРАВЛЕНО (2026-02-18): Проверяем тип воды для Водоснабжения
+                                if category == 'Водоснабжение' and not water_type_known:
+                                    missing_info.append("тип воды (горячая или холодная)")
                                 # ИСПРАВЛЕНО (2026-02-18): Используем is_water_problem вместо неопределенного is_leak
                                 if is_water_problem and has_source and not intensity_known:
                                     missing_info.append("интенсивность (как сильно течет)")
@@ -1973,6 +1991,51 @@ class MainAgent:
                     'needs_clarification': True,
                     'is_followup': is_followup
                 }
+
+            # ИСПРАВЛЕНО (2026-02-18): Если высокая уверенность НО для Водоснабжения НЕ известен тип воды
+            category = candidate.get('category', '')
+            if category == 'Водоснабжение':
+                # Проверяем тип воды
+                txtPrb_lower = (txtPrb or '').lower()
+                source = accumulated_fields.get('source', '') if accumulated_fields else ''
+                source_lower = source.lower() if source else ''
+
+                water_type_known = any(word in txtPrb_lower or word in source_lower for word in ['горяч', 'холод'])
+
+                if not water_type_known:
+                    logger.warning(f"[NO WATER_TYPE] actual_conf={actual_confidence:.2%} >= 90%, НО тип воды НЕ известен - генерируем контекстный вопрос")
+
+                    context = f"Найдена услуга: {candidate.get('service_name', candidate.get('scenario_name', 'Unknown'))} (confidence={actual_confidence:.1%}). Нужно уточнить тип воды (горячая или холодная)."
+
+                    with open(diag_path, 'a', encoding='utf-8') as f:
+                        f.write(f"\n=== RETURN PATH ===\n")
+                        f.write(f"BLOCK: not water_type_known (line 1996)\n")
+                        f.write(f"RETURN: AMBIGUOUS\n")
+
+                    ai_result = await self._generate_ai_question(
+                        context=context,
+                        dialog_history=dialog_history,
+                        candidates=[candidate],
+                        established_filters=established_filters,
+                        txtPrb=txtPrb,
+                        question_type='clarification',
+                        session_id=session_id,
+                        accumulated_fields=accumulated_fields
+                    )
+
+                    return {
+                        'candidates': [candidate],
+                        'status': 'AMBIGUOUS',
+                        'service_id': candidate['service_id'],
+                        'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                        'confidence': actual_confidence if actual_confidence > 0 else 1.0,
+                        'source': 'filtered_search_with_llm',
+                        'message': ai_result.get('question', 'Какой воды нет?'),
+                        'single_candidate': candidate,
+                        'filtered_candidates': filtered_candidates,
+                        'needs_clarification': True,
+                        'is_followup': is_followup
+                    }
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО для Инцидента НЕ известны severity/intensity
             if needs_severity_clarification:
@@ -4006,14 +4069,17 @@ JSON:"""
 ⛔ КРИТИЧЕСКИ ВАЖНО:
 - ЗАПРЕЩЕНО говорить "Похоже на..." - это ИЗБЫТОЧНО!
 - ЗАПРЕЩЕНО задавать "да/нет" вопросы
-- ЗАПРЕЩЕНО повторять название услуги в вопросе
+- ЗАПРЕЩЕНО использовать "или" в вопросах!
 
 Алгоритм:
-1. Проверь ЧТО уже известно из txtPrb и established_filters
-2. Если локация НЕ известна → спроси "Где именно это происходит?"
-3. Если локация известна → создай заявку (НЕ задавай лишних вопросов)
-
-Формула: "Где именно?" или другой ОДИН открытый вопрос по НЕизвестному.
+1. Проверь txtPrb: указан ли ТИП воды ("горячей", "холодной", "горячая", "холодная")
+2. Если категория "Водоснабжение" И тип НЕ указан в txtPrb:
+   - Сначала спроси локацию
+   - Потом спроси тип открытым вопросом: "Какой воды нет?" или "Уточните тип воды"
+3. Если категория "Водоснабжение" И тип УЖЕ указан в txtPrb:
+   - Спроси только локацию
+   - НЕ уточняй тип - он уже известен!
+4. Для остальных категорий: уточняй только неизвестное
 
 Кандидат: {candidate_name}
 """
