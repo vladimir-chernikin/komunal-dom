@@ -2779,6 +2779,19 @@ class MainAgent:
                 logger.info(f"[ORCHESTRATOR] После поиска БЕЗ category: {len(unique_candidates)} кандидатов")
                 if unique_candidates:
                     logger.info(f"[ORCHESTRATOR] Кандидаты БЕЗ category: {[c.get('service_id') for c in unique_candidates[:5]]}")
+
+                    # ИСПРАВЛЕНО (2026-02-18): Логируем fallback кандидатов в файл
+                    import datetime
+                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    log_path = f"/tmp/_fallback_candidates_{timestamp}.txt"
+                    with open(log_path, "w") as f:
+                        f.write(f"FALLBACK КАНДИДАТЫ ({len(unique_candidates)} шт)\n")
+                        f.write(f"Время: {datetime.datetime.now()}\n\n")
+                        for i, c in enumerate(unique_candidates[:10], 1):
+                            f.write(f"{i}. ID={c.get('service_id')}: {c.get('service_name')}\n")
+                            f.write(f"   Категория: {c.get('category')}, conf={c.get('confidence')}\n")
+                            f.write(f"   Sources: {c.get('sources')}\n\n")
+                    os.chmod(log_path, 0o644)
                 else:
                     logger.warning(f"[ORCHESTRATOR] fallback БЕЗ category НЕ нашел кандидатов!")
 
