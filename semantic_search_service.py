@@ -85,9 +85,18 @@ class SemanticSearchService:
                                 sql += " AND rst.type_name = %s"
                                 params.append(incident_data.get('value'))
 
+                        # ИСПРАВЛЕНО (2026-02-18): Для Водоснабжения НЕ фильтруем по location_type!
+                        # ПРИЧИНА: Услуги "Нет горячей/холодной воды" имеют localization=Общедомовое,
+                        # но LLM определяет location_type=Индивидуальное → услуги отфильтровываются
+                        category_data = filters.get('category')
+                        is_water_supply = False
+                        if category_data and isinstance(category_data, dict):
+                            is_water_supply = category_data.get('value', '') == 'Водоснабжение'
+
                         # Предварительная фильтрация по location_type (confidence >= 90%)
+                        # ИСКЛЮЧЕНИЕ: НЕ фильтруем для Водоснабжения
                         location_data = filters.get('location_type')
-                        if location_data and isinstance(location_data, dict):
+                        if location_data and isinstance(location_data, dict) and not is_water_supply:
                             location_conf = location_data.get('confidence', 0)
                             if location_conf >= 0.7:
                                 sql += " AND rl.localization_name = %s"
