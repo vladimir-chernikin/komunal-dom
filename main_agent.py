@@ -507,9 +507,22 @@ class MainAgent:
         # Если категория Водоснабжение и тип воды НЕ известен → сразу спрашиваем тип
         if established_filters:
             category = established_filters.get('category', {}).get('value', '')
-            if category == 'Водоснабжение' and txtPrb:
-                txtPrb_lower = txtPrb.lower()
-                water_type_known = any(word in txtPrb_lower for word in ['горяч', 'холод'])
+            if category == 'Водоснабжение':
+                # КРИТИЧЕСКИ ВАЖНО (2026-02-18): Для Водоснабжения СБРАСЫВАЕМ location_type!
+                # ПРИЧИНА: Услуга "Нет горячей воды" имеет localization=Общедомовое,
+                # но LLM определяет location_type=Индивидуальное → услуга отфильтровывается!
+                # РЕШЕНИЕ: Удаляем location_type из established_filters для Водоснабжения
+                if 'location_type' in established_filters:
+                    logger.info(f"[WATER_TYPE_QUICK_CHECK] Удаляем location_type для Водоснабжения (смесь Индивидуальное/Общедомовое)")
+                    # Сохраняем для лога перед удалением
+                    removed_location = established_filters.pop('location_type')
+                    logger.info(f"[WATER_TYPE_QUICK_CHECK] Удален location_type={removed_location}")
+
+                # Проверяем ТРИ источника: txtPrb, message_text, accumulated_fields.source
+                txtPrb_lower = txtPrb.lower() if txtPrb else ''
+                message_lower = message_text.lower()
+                water_type_known = any(word in txtPrb_lower or word in message_lower for word in ['горяч', 'холод'])
+
                 source = accumulated_fields.get('source', '') if accumulated_fields else ''
                 source_lower = source.lower() if source else ''
                 water_type_known = water_type_known or any(word in source_lower for word in ['горяч', 'холод'])
@@ -885,11 +898,16 @@ class MainAgent:
                 # - НЕ спрашиваем если location ЯВНО извлечена из текста ("в зале", "в ванной")
                 # - СПРАШИВАЕМ если location НЕ извлечена (null)
                 location_known = accumulated_fields.get('location') is not None if accumulated_fields else False
-                
+
                 # Проверяем incident_type - Запросы не требуют локации
                 incident_type = established_filters.get('incident_type', {}).get('value', '') if established_filters else ''
-                
-                if not location_known and incident_type != 'Запрос':
+
+                # ИСПРАВЛЕНО (2026-02-18): Для Водоснабжения НЕ спрашиваем локацию!
+                # ПРИЧИНА: Услуги "Нет горячей/холодной воды" уже включают локацию в название
+                category = established_filters.get('category', {}).get('value', '') if established_filters else ''
+                skip_location_check = category == 'Водоснабжение'
+
+                if not location_known and incident_type != 'Запрос' and not skip_location_check:
                     logger.warning(f"[AI-ORCHESTRATOR] SUCCESS но location НЕ известна (accumulated_fields.location=null) - спрашиваем 'Где именно?'")
                     # Генерируем уточняющий вопрос через LLM
                     context = f"Найдена услуга: {orch_result.get('service_name')} (confidence={orch_result.get('confidence', 0.8):.1%}). Нужно уточнить локацию."
