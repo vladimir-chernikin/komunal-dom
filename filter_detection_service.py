@@ -295,14 +295,14 @@ TXT_PRB = "{txtPrb}"
         for obj in self.objects_examples:
             cat = obj.get('category', '')
             if cat and obj['name']:
-                if len(category_examples[cat]) < 6:  # max 6 примеров на категорию
+                if len(category_examples[cat]) < 10:  # max 10 примеров на категорию (было 6)
                     category_examples[cat].append(f'- "{obj["name"]}" → {cat}')
 
         examples_text = "\n## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически)\n"
         for cat in sorted(category_examples.keys()):
             count = len([x for x in self.objects_examples if x.get('category') == cat])
             examples_text += f"\n{cat} ({count} услуг):\n"
-            examples_text += "\n".join(category_examples[cat][:6]) + "\n"
+            examples_text += "\n".join(category_examples[cat][:10]) + "\n"  # Показываем до 10 примеров
 
         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
         try:
@@ -341,18 +341,25 @@ TXT_PRB = "{txtPrb}"
         except Exception as e:
             logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
 
-        # Fallback-промпт (если промпт не найден в БД)
-        logger.warning("[FALLBACK] Используется fallback-промпт для category")
+        # ИСПРАВЛЕНО (2026-02-18): Fallback отключен, используем только боевой промпт
+        # Если промпт не найден в БД - критическая ошибка
+        raise Exception(
+            f"❌ КРИТИЧЕСКАЯ ОШИБКА: Промпт 'filter-category' не найден в БД!\n"
+            f"Создайте промпт в админке: /admin-uk/llm_tester/prompttemplate/\n"
+            f"Slug: 'filter-category'\n"
+            f"Is Active: True\n"
+            f"Шаблон должен содержать плейсхолдер: ## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически)\n"
+            f"Ошибка: {e}"
+        )
 
-        prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
-
-TXT_PRB = "{txtPrb}"
-CATEGORIES = [{categories_str}]
-
-ОПРЕДЕЛИ КАТЕГОРИЮ из списка выше.
-
-Верни JSON: {{"category": "категория", "confidence": 0.7, "reasoning": "обоснование"}}"""
-        return prompt
+        # Fallback-промпт ОТКЛЮЧЕН (2026-02-18) - используем только боевой
+        # logger.warning("[FALLBACK] Используется fallback-промпт для category")
+        # prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
+        # TXT_PRB = "{txtPrb}"
+        # CATEGORIES = [{categories_str}]
+        # ОПРЕДЕЛИ КАТЕГОРИЮ из списка выше.
+        # Верни JSON: {{"category": "категория", "confidence": 0.7, "reasoning": "обоснование"}}"""
+        # return prompt
 
     # ========================================================================
     # ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
