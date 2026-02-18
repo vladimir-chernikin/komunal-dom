@@ -3808,7 +3808,8 @@ JSON:"""
         txtPrb: str = None,
         asked_questions: List[str] = None,
         intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        established_filters: Dict = None  # ИСПРАВЛЕНО (2026-02-18): Установленные фильтры (чтобы не спрашивать известное)
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): Динамическая сборка промпта по стратегии
@@ -3911,6 +3912,22 @@ JSON:"""
 """
         if txtPrb:
             context_block += f"\nНакопленное описание: {txtPrb}"
+
+        # ИСПРАВЛЕНО (2026-02-18): Добавляем established_filters чтобы LLM не спрашивал про известное
+        if established_filters:
+            filters_info = []
+            for filter_name, filter_data in established_filters.items():
+                if isinstance(filter_data, dict) and 'value' in filter_data:
+                    value = filter_data['value']
+                    confidence = filter_data.get('confidence', 0)
+                    filters_info.append(f"- {filter_name}: {value} (confidence: {confidence})")
+
+            if filters_info:
+                context_block += f"""
+
+⛔ УЖЕ ИЗВЕСТНЫЕ ФИЛЬТРЫ (НЕ СПРАШИВАЙ ПРО ЭТО!):
+{chr(10).join(filters_info)}
+"""
 
         # Блок ограничений
         # ИСПРАВЛЕНИЕ (2026-01-11): Усилен Rule 0 - добавлены явные примеры запрещенных вопросов
@@ -4319,7 +4336,8 @@ JSON:"""
                     txtPrb=txtPrb,
                     asked_questions=asked_questions if asked_questions else None,  # ИСПРАВЛЕНО 2026-01-05
                     intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+                    established_filters=established_filters  # ИСПРАВЛЕНО (2026-02-18): Передаем фильтры чтобы не спрашивать известное
                 )
                 logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
             else:
