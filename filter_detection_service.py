@@ -319,11 +319,13 @@ TXT_PRB = "{txtPrb}"
             db_template = await get_db_template()
 
             if db_template:
-                # Подставляем переменные в шаблон из БД
-                prompt = db_template.template.format(
-                    txtPrb=txtPrb,
-                    categories_str=categories_str
-                )
+                # ИСПРАВЛЕНО (2026-02-18): Используем .replace() вместо .format()
+                # чтобы избежать проблем с JSON примерами в промпте
+                prompt = db_template.template
+
+                # Подставляем переменные через replace
+                prompt = prompt.replace('{txtPrb}', txtPrb)
+                prompt = prompt.replace('{categories_str}', categories_str)
 
                 # Добавляем примеры в промпт
                 prompt = prompt.replace(
