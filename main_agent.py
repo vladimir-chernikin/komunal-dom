@@ -816,6 +816,44 @@ class MainAgent:
             # AI Orchestrator вернул решение
             if orch_result.get('status') == 'SUCCESS':
                 # Услуга определена AI Orchestrator'ом
+
+                # ИСПРАВЛЕНО (2026-02-18): Проверка water_type для Водоснабжения
+                candidates = orch_result.get('candidates', [])
+                category = candidates[0].get('category', '') if candidates else ''
+                logger.info(f"[WATER_TYPE_CHECK] category={category}, candidates_count={len(candidates)}")
+
+                if category == 'Водоснабжение':
+                    txtPrb_lower = (txtPrb or '').lower()
+                    water_type_known = any(word in txtPrb_lower for word in ['горяч', 'холод'])
+                    logger.info(f"[WATER_TYPE_CHECK] txtPrb='{txtPrb_lower}', water_type_known={water_type_known}")
+
+                    if not water_type_known:
+                        logger.info(f"[ORCHESTRATOR SUCCESS] category=Водоснабжение, НО тип воды НЕ известен → генерируем уточнение")
+
+                        # Генерируем уточняющий вопрос
+                        context = f"Найдена услуга: {orch_result.get('service_name', 'Unknown')}. Нужно уточнить тип воды (горячая или холодная)."
+                        ai_result = await self._generate_ai_question(
+                            context=context,
+                            dialog_history=dialog_history,
+                            candidates=orch_result.get('candidates', []),
+                            established_filters=established_filters,
+                            txtPrb=txtPrb,
+                            question_type='clarification',
+                            session_id=session_id,
+                            accumulated_fields=accumulated_fields
+                        )
+
+                        result_metadata['ai_orchestrator']['water_type_check'] = 'not_known - asking'
+                        return {
+                            'status': 'AMBIGUOUS',
+                            'candidates': orch_result.get('candidates', []),
+                            'candidate_names': [c.get('service_name') for c in orch_result.get('candidates', [])],
+                            'message': ai_result.get('question', 'Какой воды нет?'),
+                            'needs_clarification': True,
+                            'is_followup': is_followup,
+                            '_metadata': result_metadata
+                        }
+
                 logger.info(f"AI Orchestrator определил услугу: {orch_result.get('service_name')}")
                 
                 # ИСПРАВЛЕНО (2026-02-16): Проверяем location_known ПЕРЕД созданием заявки
@@ -2950,32 +2988,86 @@ class MainAgent:
 
                 # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКОЕ - Проверяем confidence ПЕРЕД генерацией вопроса!
                 # Если confidence >= 90% и location известен → возвращаем SUCCESS БЕЗ вопроса
+                # ИСКЛЮЧЕНИЕ (2026-02-18): Для Водоснабжения проверяем тип воды!
                 if confidence >= 0.9:
-                    logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 90% и location известен → SUCCESS без вопроса")
-                    return {
-                        'candidates': unique_candidates,
-                        'status': 'SUCCESS',
-                        'service_id': candidate['service_id'],
-                        'service_name': candidate['service_name'],
-                        'confidence': confidence,
-                        'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
-                        'needs_clarification': False,
-                        'source': 'orchestrator'
-                    }
+                    # ИСПРАВЛЕНО (2026-02-18): Проверка water_type для Водоснабжения
+                    category = candidate.get('category', '')
+                    if category == 'Водоснабжение':
+                        txtPrb_lower = (txtPrb or '').lower()
+                        water_type_known = any(word in txtPrb_lower for word in ['горяч', 'холод'])
+
+                        if not water_type_known:
+                            logger.info(f"[ORCHESTRATOR] category=Водоснабжение, conf={confidence:.1%} >= 90%, НО тип воды НЕ известен → уточняем")
+                            # НЕ возвращаем SUCCESS, идем дальше к AI-генерации вопроса
+                        else:
+                            logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 90% и location известен → SUCCESS без вопроса")
+                            return {
+                                'candidates': unique_candidates,
+                                'status': 'SUCCESS',
+                                'service_id': candidate['service_id'],
+                                'service_name': candidate['service_name'],
+                                'confidence': confidence,
+                                'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
+                                'needs_clarification': False,
+                                'source': 'orchestrator'
+                            }
+                    else:
+                        # Не Водоснабжение → возвращаем SUCCESS
+                        logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 90% и location известен → SUCCESS без вопроса")
+                        return {
+                            'candidates': unique_candidates,
+                            'status': 'SUCCESS',
+                            'service_id': candidate['service_id'],
+                            'service_name': candidate['service_name'],
+                            'confidence': confidence,
+                            'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
+                            'needs_clarification': False,
+                            'source': 'orchestrator'
+                        }
 
                 # ИСПРАВЛЕНО (2026-02-17): Если confidence 80-90% ПРОВЕРЯЕМ ПЕРЕСЕЧЕНИЕ txtPrb с названием услуги
                 # ПРИЧИНА: "ливнёвка забита листвой" + "Засор ливнёвой канализации" → пересечение "ливнёвка"
                 elif confidence >= 0.8:
-                    service_name_lower = candidate.get('service_name', '').lower()
-                    txtPrb_lower = (txtPrb or '').lower()
+                    # ИСПРАВЛЕНО (2026-02-18): Проверка water_type для Водоснабжения
+                    category = candidate.get('category', '')
+                    if category == 'Водоснабжение':
+                        txtPrb_lower = (txtPrb or '').lower()
+                        water_type_known = any(word in txtPrb_lower for word in ['горяч', 'холод'])
 
-                    # Проверяем пересечение ключевых слов
-                    keywords = ['ливнёв', 'ливнев', 'канализ', 'засор', 'мусоропр']
-                    has_keyword = any(kw in txtPrb_lower and kw in service_name_lower for kw in keywords)
+                        if not water_type_known:
+                            logger.info(f"[ORCHESTRATOR] category=Водоснабжение, conf={confidence:.1%} >= 80%, НО тип воды НЕ известен → уточняем")
+                            # НЕ возвращаем SUCCESS, идем дальше к генерации вопроса
+                        else:
+                            service_name_lower = candidate.get('service_name', '').lower()
+                            txtPrb_lower = (txtPrb or '').lower()
 
-                    if has_keyword:
-                        logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 80% + пересечение txtPrb/услуга → SUCCESS без вопроса")
-                        return {
+                            # Проверяем пересечение ключевых слов
+                            keywords = ['ливнёв', 'ливнев', 'канализ', 'засор', 'мусоропр']
+                            has_keyword = any(kw in txtPrb_lower and kw in service_name_lower for kw in keywords)
+
+                            if has_keyword:
+                                logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 80% + пересечение txtPrb/услуга → SUCCESS без вопроса")
+                                return {
+                                    'candidates': unique_candidates,
+                                    'status': 'SUCCESS',
+                                    'service_id': candidate['service_id'],
+                                    'service_name': candidate['service_name'],
+                                    'confidence': confidence,
+                                    'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
+                                    'needs_clarification': False,
+                                    'source': 'orchestrator'
+                                }
+                    else:
+                        service_name_lower = candidate.get('service_name', '').lower()
+                        txtPrb_lower = (txtPrb or '').lower()
+
+                        # Проверяем пересечение ключевых слов
+                        keywords = ['ливнёв', 'ливнев', 'канализ', 'засор', 'мусоропр']
+                        has_keyword = any(kw in txtPrb_lower and kw in service_name_lower for kw in keywords)
+
+                        if has_keyword:
+                            logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 80% + пересечение txtPrb/услуга → SUCCESS без вопроса")
+                            return {
                             'candidates': unique_candidates,
                             'status': 'SUCCESS',
                             'service_id': candidate['service_id'],

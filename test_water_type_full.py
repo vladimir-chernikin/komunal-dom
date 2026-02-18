@@ -31,11 +31,14 @@ async def test_no_water_full_process():
     agent = MainAgent()
     session_id = "test_water_type_full_20260218"
 
+    # Инициализируем историю диалога
+    dialog_history = []
+
     # ========== ШАГ 1: "нет воды" ==========
     print("\n--- ШАГ 1: 'нет воды' ---")
     result1 = await agent.process_service_detection(
         message_text="нет воды",
-        user_context={'session_id': session_id, 'channel': 'web', 'user_id': 999999}
+        user_context={'session_id': session_id, 'channel': 'web', 'user_id': 999999, 'dialog_history': dialog_history}
     )
 
     print(f"Статус: {result1['status']}")
@@ -47,13 +50,17 @@ async def test_no_water_full_process():
     # LLM может задавать разные вопросы, главное что это не SUCCESS
     print("✅ ПРАВИЛЬНО: Статус AMBIGUOUS (задает вопрос)")
 
+    # Сохраняем в историю
+    dialog_history.append({'role': 'user', 'text': 'нет воды'})
+    dialog_history.append({'role': 'bot', 'text': result1['message'], 'metadata': result1.get('_metadata', {})})
+
     # ========== ШАГ 2: "в квартире" ==========
     print("\n--- ШАГ 2: 'в квартире' ---")
 
-    # Загружаем историю
+    # Передаем историю
     result2 = await agent.process_service_detection(
         message_text="в квартире",
-        user_context={'session_id': session_id, 'channel': 'web', 'user_id': 999999}
+        user_context={'session_id': session_id, 'channel': 'web', 'user_id': 999999, 'dialog_history': dialog_history}
     )
 
     print(f"Статус: {result2['status']}")
@@ -77,9 +84,13 @@ async def test_no_water_full_process():
     # ========== ШАГ 3: "горячей" ==========
     print("\n--- ШАГ 3: 'горячей' ---")
 
+    # Добавляем шаг 2 в историю
+    dialog_history.append({'role': 'user', 'text': 'в квартире'})
+    dialog_history.append({'role': 'bot', 'text': result2['message'], 'metadata': result2.get('_metadata', {})})
+
     result3 = await agent.process_service_detection(
         message_text="горячей",
-        user_context={'session_id': session_id, 'channel': 'web', 'user_id': 999999}
+        user_context={'session_id': session_id, 'channel': 'web', 'user_id': 999999, 'dialog_history': dialog_history}
     )
 
     print(f"Статус: {result3['status']}")
