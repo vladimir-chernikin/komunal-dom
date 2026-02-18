@@ -4324,35 +4324,44 @@ JSON:"""
                 asked_questions = self._extract_asked_questions(dialog_history)
                 logger.info(f"[!] Уже задано вопросов: {len(asked_questions)}")
 
-            # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
-            # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
-            if question_type == 'clarification' and candidates is not None:
-                # Используем новый метод с динамическими промптами по стратегиям
-                prompt = self._build_dynamic_prompt(
-                    strategy=strategy,
-                    context=context,
-                    candidates=candidates,
-                    missing_filter=missing_filter,
-                    txtPrb=txtPrb,
-                    asked_questions=asked_questions if asked_questions else None,  # ИСПРАВЛЕНО 2026-01-05
-                    intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
-                    established_filters=established_filters  # ИСПРАВЛЕНО (2026-02-18): Передаем фильтры чтобы не спрашивать известное
-                )
-                logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
-            else:
-                # Для остальных типов используем старый метод
-                # ИСПРАВЛЕНО (2026-02-16): Добавлен await (теперь _build_question_prompt async)
-                prompt = await self._build_question_prompt(
-                    context=context,
-                    dialog_history=dialog_history,
-                    candidates=candidates,
-                    established_filters=established_filters,
-                    txtPrb=txtPrb,
-                    question_type=question_type,
-                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
-                    txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
-                )
+            # ИСПРАВЛЕНО (2026-01-03): Для типа clarification использовали _build_dynamic_prompt
+            # ИСПРАВЛЕНО (2026-02-18): ОТКЛЮЧЕН Fallback - используем ТОЛЬКО промпт из БД
+            # if question_type == 'clarification' and candidates is not None:
+            #     # Используем новый метод с динамическими промптами по стратегиям
+            #     prompt = self._build_dynamic_prompt(
+            #         strategy=strategy,
+            #         context=context,
+            #         candidates=candidates,
+            #         missing_filter=missing_filter,
+            #         txtPrb=txtPrb,
+            #         asked_questions=asked_questions if asked_questions else None,
+            #         intro_phrase=intro_phrase,
+            #         accumulated_fields=accumulated_fields,
+            #         established_filters=established_filters
+            #     )
+            #     logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
+            # else:
+            #     # Для остальных типов используем промпт из БД
+            #
+            # ВСЕГДА используем промпт из БД (mainagent-orchestrator)
+            # ПЕРЕХОД НА unified approach - один промпт для всех случаев
+            if False:  # Условие отключено - всегда используем промпт из БД
+                # ЗАКОММЕНТИРОВАНО (2026-02-18): Отключен _build_dynamic_prompt (fallback)
+                # Используем ТОЛЬКО промпт из БД (mainagent-orchestrator)
+                pass
+
+            # ИСПРАВЛЕНО (2026-02-18): ВСЕГДА используем промпт из БД (unified approach)
+            prompt = await self._build_question_prompt(
+                context=context,
+                dialog_history=dialog_history,
+                candidates=candidates,
+                established_filters=established_filters,
+                txtPrb=txtPrb,
+                question_type=question_type,
+                accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+                txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
+            )
+            logger.info(f"[BOT] Используется промпт из БД (mainagent-orchestrator), candidates: {len(candidates) if candidates else 0}")
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
             logger.info(f"[BOT] PROMPT ДЛЯ LLM ({question_type}):")
