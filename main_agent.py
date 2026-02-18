@@ -2732,6 +2732,18 @@ class MainAgent:
         if not unique_candidates and established_filters and established_filters.get('category'):
             logger.warning(f"[ORCHESTRATOR] Нет кандидатов с фильтрами! Пробуем БЕЗ category filter...")
             logger.info(f"[ORCHESTRATOR] DEBUG: unique_candidates={len(unique_candidates) if unique_candidates else 0}, category_filter={established_filters.get('category')}")
+
+            # ИСПРАВЛЕНО (2026-02-18): Записываем в файл для отладки
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_path = f"/tmp/_fallback_debug_{timestamp}.txt"
+            with open(log_path, "w") as f:
+                f.write(f"FALLBACK ЗАПУШЕН\n")
+                f.write(f"Время: {datetime.datetime.now()}\n")
+                f.write(f"unique_candidates: {len(unique_candidates) if unique_candidates else 0}\n")
+                f.write(f"established_filters: {established_filters}\n")
+            os.chmod(log_path, 0o644)
+
             # Убираем category filter и перезапускаем поиск
             filters_without_category = {k: v for k, v in established_filters.items() if k != 'category'}
 
