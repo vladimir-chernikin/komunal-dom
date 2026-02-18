@@ -503,6 +503,30 @@ class MainAgent:
         logger.info(f"  [TOOL] accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
         logger.info(f"  [TOOL] established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
 
+        # ИСПРАВЛЕНО (2026-02-18): Быстрая проверка для "нет вод" - БЕЗ LLM!
+        # Если категория Водоснабжение и тип воды НЕ известен → сразу спрашиваем тип
+        if established_filters:
+            category = established_filters.get('category', {}).get('value', '')
+            if category == 'Водоснабжение' and txtPrb:
+                txtPrb_lower = txtPrb.lower()
+                water_type_known = any(word in txtPrb_lower for word in ['горяч', 'холод'])
+                source = accumulated_fields.get('source', '') if accumulated_fields else ''
+                source_lower = source.lower() if source else ''
+                water_type_known = water_type_known or any(word in source_lower for word in ['горяч', 'холод'])
+
+                if not water_type_known:
+                    logger.info(f"[WATER_TYPE_QUICK_CHECK] category=Водоснабжение, water_type_unknown → готовый вопрос")
+                    return {
+                        'status': 'AMBIGUOUS',
+                        'message': 'Какой воды нет — горячей или холодной?',
+                        'candidates': [],
+                        'is_followup': is_followup,
+                        '_metadata': {
+                            'method': 'water_type_quick_check',
+                            'reason': 'Водоснабжение без типа воды'
+                        }
+                    }
+
         # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
         # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
         # ИСПРАВЛЕНО (2026-01-14): Проверяем message_text на недовольство (не только history!)
