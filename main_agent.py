@@ -947,7 +947,8 @@ class MainAgent:
                                 missing_info = []
                                 if not location_known:
                                     missing_info.append("локацию")
-                                if is_leak and not intensity_known:
+                                # ИСПРАВЛЕНО (2026-02-18): Используем is_water_problem вместо неопределенного is_leak
+                                if is_water_problem and has_source and not intensity_known:
                                     missing_info.append("интенсивность (как сильно течет)")
 
                                 context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: {', '.join(missing_info)}."
@@ -1023,6 +1024,19 @@ class MainAgent:
             logger.error(f"Сообщение: '{message_text}'")
             logger.error(f"Контекст: {user_context}")
             logger.error(f"Трассировка:\n{error_trace}")
+
+            # ИСПРАВЛЕНО (2026-02-18): Сохраняем трассировку в файл для отладки
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            traceback_path = f"/tmp/_mainagent_error_{timestamp}.txt"
+            with open(traceback_path, "w") as f:
+                f.write(f"КРИТИЧЕСКАЯ ОШИБКА в process_service_detection\n")
+                f.write(f"Время: {datetime.datetime.now()}\n")
+                f.write(f"Ошибка: {type(e).__name__}: {e}\n")
+                f.write(f"Сообщение: '{message_text}'\n")
+                f.write(f"Трассировка:\n{error_trace}\n")
+            os.chmod(traceback_path, 0o644)
+            logger.error(f"Трассировка сохранена в: {traceback_path}")
 
             # Возвращаем безопасный результат
             return {
@@ -2721,13 +2735,14 @@ class MainAgent:
             filters_without_category = {k: v for k, v in established_filters.items() if k != 'category'}
 
             # Перезапускаем поиск без category
+            # ИСПРАВЛЕНО (2026-02-18): search_text → message_text (переменная не была определена)
             search_tasks = []
             if self.tag_search:
-                search_tasks.append(self._run_tag_search(search_text, filters=filters_without_category))
+                search_tasks.append(self._run_tag_search(message_text, filters=filters_without_category))
             if self.semantic_search:
-                search_tasks.append(self._run_semantic_search(search_text, filters=filters_without_category))
+                search_tasks.append(self._run_semantic_search(message_text, filters=filters_without_category))
             if self.vector_search:
-                search_tasks.append(self._run_vector_search(search_text, filters=filters_without_category))
+                search_tasks.append(self._run_vector_search(message_text, filters=filters_without_category))
 
             if search_tasks:
                 search_results_no_cat = await asyncio.gather(*search_tasks, return_exceptions=True)
