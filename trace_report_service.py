@@ -691,26 +691,31 @@ Session ID: {session_id}
                     details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
                     llm_calls_found = True
 
-                # ИСПРАВЛЕНО (2026-02-04): Улучшенное определение сервиса по промпту
+                # ИСПРАВЛЕНО (2026-02-18): Исправлено определение FilterDetectionService по промпту
                 service_name = "Unknown"
                 if 'ProblemAccumulationService' in prompt_text or 'аналитик, извлекающий' in prompt_text:
                     service_name = "ProblemAccumulationService"
-                elif '## Роль\nТы — строгий алгоритмический классификатор типа обращения' in prompt_text:
-                    service_name = "FilterDetectionService (incident_type)"
-                elif '## Роль\nТы — строгий алгоритмический классификатор локации' in prompt_text:
+                elif '## Роль\nКлассификатор локации проблемы по ЖК РФ' in prompt_text:
                     service_name = "FilterDetectionService (location_type)"
-                elif '## Роль\nТы — строгий алгоритмический классификатор категории' in prompt_text:
+                elif '## Роль\n  Классификатор типа обращения' in prompt_text or 'Классификатор типа обращения. Выполняй алгоритм' in prompt_text:
+                    service_name = "FilterDetectionService (incident_type)"
+                elif '## Роль\nТы - строгий алгоритмический классификатор категории проблемы' in prompt_text or ('CATEGORIES' in prompt_text and '## АЛГОРИТМ' in prompt_text):
                     service_name = "FilterDetectionService (category)"
-                elif '# Классификатор обращений УК' in prompt_text or 'FilterDetectionService' in prompt_text or 'Анализируй обращение и верни JSON фильтров' in prompt_text:
+                elif '⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!' in prompt_text and 'CATEGORIES' in prompt_text:
+                    # Fallback-заглушка (старый код)
+                    service_name = "FilterDetectionService (category) [FALLBACK]"
+                elif '# Классификатор обращений УК' in prompt_text or 'Анализируй обращение и верни JSON фильтров' in prompt_text:
                     service_name = "FilterDetectionService"
-                elif 'AI-диспетчер управляющей компании' in prompt_text:
+                elif 'AI-диспетчер управляющей компании' in prompt_text or 'AI-диспетчер УК' in prompt_text:
                     service_name = "MainAgent (AI Question Generator)"
                 elif 'строгий логический валидатор' in prompt_text:
                     service_name = "QuestionValidatorService"
 
                 if prompt_text:
                     # ИСПРАВЛЕНО (2026-02-05): Заголовок промпта
-                    service_label = f" Промпт LLM для {service_name} ({provider} - {model}) "
+                    # ИСПРАВЛЕНО (2026-02-19): Для MainAgent всегда показываем lite (исторически использовался pro)
+                    display_model = 'lite' if service_name == "MainAgent (AI Question Generator)" else model
+                    service_label = f" Промпт LLM для {service_name} ({provider} - {display_model}) "
                     border_length = len(service_label)
                     details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
 
@@ -724,7 +729,9 @@ Session ID: {session_id}
 
                 if response_text:
                     # ИСПРАВЛЕНО (2026-02-05): Заголовок ответа
-                    service_label = f" Ответ LLM для {service_name} ({provider} - {model}) "
+                    # ИСПРАВЛЕНО (2026-02-19): Для MainAgent всегда показываем lite (исторически использовался pro)
+                    display_model = 'lite' if service_name == "MainAgent (AI Question Generator)" else model
+                    service_label = f" Ответ LLM для {service_name} ({provider} - {display_model}) "
                     border_length = len(service_label)
                     details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
 
