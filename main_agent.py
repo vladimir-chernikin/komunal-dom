@@ -4600,8 +4600,8 @@ JSON:"""
                 # ИСПРАВЛЕНО (2025-12-28): ГИБРИДНАЯ МОДЕЛЬ
                 # - Для вопросов к пользователю: Pro (качество критично!)
                 # - Для остальных задач: используется default (обычно Lite)
-                question_types_requiring_pro = ['clarification', 'what_happened', 'location', 'details']
-                model = 'pro' if question_type in question_types_requiring_pro else 'lite'
+                # ИСПРАВЛЕНО (2026-02-19): Всегда используем lite для экономии
+                model = 'lite'
 
                 # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
