@@ -203,12 +203,6 @@ document.addEventListener('DOMContentLoaded', function() {
 .status-overdue {
     background-color: #dc3545;
     color: white;
-    animation: pulse-overdue 1s infinite;
-}
-
-@keyframes pulse-overdue {
-    0%, 100% { background-color: #dc3545; }
-    50% { background-color: #c82333; }
 }
 
 /* Badge счетчики */
@@ -565,11 +559,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <td>
                                         {% if r.urgency_level == 'emergency' %}
                                             {% if r.is_overdue %}
-                                                <span class="badge bg-danger badge-blink">
+                                                <span class="badge bg-danger">
                                                     S1 ⚠️ ПРОСРОЧЕНА
                                                 </span>
                                             {% elif r.remaining_seconds > 0 %}
-                                                <span class="badge bg-danger">
+                                                <span class="badge bg-danger badge-blink">
                                                     S1 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                                                 </span>
                                             {% else %}
@@ -609,11 +603,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <strong>#{{ r.id }}</strong>
                     {% if r.urgency_level == 'emergency' %}
                         {% if r.is_overdue %}
-                            <span class="badge bg-danger badge-blink fs-6">
+                            <span class="badge bg-danger fs-6">
                                 S1 ⚠️ ПРОСРОЧЕНА
                             </span>
                         {% elif r.remaining_seconds > 0 %}
-                            <span class="badge bg-danger fs-6">
+                            <span class="badge bg-danger badge-blink fs-6">
                                 S1 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                             </span>
                         {% else %}
