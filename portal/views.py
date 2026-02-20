@@ -495,9 +495,14 @@ def executor_dashboard(request):
                 total_seconds = time_diff.total_seconds()
 
                 if total_seconds > 300:  # 5 минут = 300 секунд
-                    # Просрочена
+                    # Просрочена - обновляем статус в БД
                     req['is_overdue'] = True
-                    req['overdue_minutes'] = int(total_seconds / 60)
+                    if req['status'] != 'overdue':
+                        cursor.execute(
+                            "UPDATE bot_service_requests SET status = 'overdue', updated_at = NOW() WHERE id = %s",
+                            [req['id']]
+                        )
+                        req['status'] = 'overdue'
                 else:
                     # Обратный отсчёт
                     req['remaining_seconds'] = int(300 - total_seconds)

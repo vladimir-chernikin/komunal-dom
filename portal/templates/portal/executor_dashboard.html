@@ -200,6 +200,17 @@ document.addEventListener('DOMContentLoaded', function() {
     color: white;
 }
 
+.status-overdue {
+    background-color: #dc3545;
+    color: white;
+    animation: pulse-overdue 1s infinite;
+}
+
+@keyframes pulse-overdue {
+    0%, 100% { background-color: #dc3545; }
+    50% { background-color: #c82333; }
+}
+
 /* Badge счетчики */
 .badge-count {
     font-size: 0.75rem;
@@ -555,7 +566,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         {% if r.urgency_level == 'emergency' %}
                                             {% if r.is_overdue %}
                                                 <span class="badge bg-danger badge-blink">
-                                                    S1 ⚠️ {{ r.overdue_minutes }} мин
+                                                    S1 ⚠️ ПРОСРОЧЕНА
                                                 </span>
                                             {% elif r.remaining_seconds > 0 %}
                                                 <span class="badge bg-danger">
@@ -567,11 +578,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %}">
-                                            {% if r.status == 'new' %}Новые
+                                        <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
+                                            {% if r.status == 'new' %}Новая
                                             {% elif r.status == 'in_work' %}В работе
-                                            {% elif r.status == 'done' %}Выполнены
-                                            {% elif r.status == 'cancelled' %}Отменены
+                                            {% elif r.status == 'done' %}Выполнена
+                                            {% elif r.status == 'cancelled' %}Отменена
+                                            {% elif r.status == 'overdue' %}Просрочена
                                             {% else %}{{ r.status }}{% endif %}
                                         </span>
                                     </td>
@@ -598,7 +610,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     {% if r.urgency_level == 'emergency' %}
                         {% if r.is_overdue %}
                             <span class="badge bg-danger badge-blink fs-6">
-                                S1 ⚠️ {{ r.overdue_minutes }} мин
+                                S1 ⚠️ ПРОСРОЧЕНА
                             </span>
                         {% elif r.remaining_seconds > 0 %}
                             <span class="badge bg-danger fs-6">
@@ -608,11 +620,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="badge bg-danger fs-6">S1</span>
                         {% endif %}
                     {% endif %}
-                    <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %} fs-6">
-                        {% if r.status == 'new' %}Новые
+                    <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
+                        {% if r.status == 'new' %}Новая
                         {% elif r.status == 'in_work' %}В работе
-                        {% elif r.status == 'done' %}Выполнены
-                        {% elif r.status == 'cancelled' %}Отменены
+                        {% elif r.status == 'done' %}Выполнена
+                        {% elif r.status == 'cancelled' %}Отменена
+                        {% elif r.status == 'overdue' %}Просрочена
                         {% else %}{{ r.status }}{% endif %}
                     </span>
                 </div>
