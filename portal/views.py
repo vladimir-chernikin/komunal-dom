@@ -486,8 +486,17 @@ def executor_dashboard(request):
             req['is_overdue'] = False
             req['remaining_seconds'] = 0
             req['remaining_time_formatted'] = ''
-            req['status_display'] = req['status']  # Для отображения в колонке Статус
             req['deadline_at'] = None
+
+            # Маппинг статусов на русский язык
+            status_map = {
+                'new': 'Новая',
+                'in_work': 'Взял в работу',
+                'done': 'Выполнена',
+                'cancelled': 'Отменена',
+                'overdue': 'Просрочена'
+            }
+            req['status_display'] = status_map.get(req['status'], req['status'])
 
             if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
                 now = datetime.now(timezone.utc)
