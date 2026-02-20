@@ -785,7 +785,7 @@ def executor_report(request, request_id):
                 r.user_phone,
                 r.street_name,
                 r.house_number,
-                r.apartment as apartment,
+                r.apartment_number as apartment,
                 r.entrance as address_details,
                 r.description,
                 r.photo_path,
