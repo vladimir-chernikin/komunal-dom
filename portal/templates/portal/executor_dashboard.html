@@ -136,6 +136,12 @@ function completeRequest(requestId) {
     });
 }
 
+function showReport(requestId) {
+    // Открываем отчет в новом окне
+    const reportUrl = '{% url "portal:executor_report" 0 %}'.replace('0', requestId);
+    window.open(reportUrl, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+}
+
 // Форматирование времени "4:32" (для обратного отсчета)
 function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -654,16 +660,21 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 {% endif %}
                                             </div>
                                         {% elif r.assigned_to == request.user.id and r.status == 'done' %}
-                                            <div class="action-buttons">
-                                                {% if r.photo_path %}
-                                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
-                                                    <i class="fas fa-image"></i> Фото
-                                                </a>
-                                                {% else %}
-                                                <button class="btn btn-sm btn-primary" onclick="uploadPhoto({{ r.id }})">
-                                                    <i class="fas fa-camera"></i> Фото
+                                            <div class="d-flex flex-column gap-1">
+                                                <div class="action-buttons">
+                                                    {% if r.photo_path %}
+                                                    <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
+                                                        <i class="fas fa-image"></i> Фото
+                                                    </a>
+                                                    {% else %}
+                                                    <button class="btn btn-sm btn-primary" onclick="uploadPhoto({{ r.id }})">
+                                                        <i class="fas fa-camera"></i> Фото
+                                                    </button>
+                                                    {% endif %}
+                                                </div>
+                                                <button class="btn btn-sm btn-info" onclick="showReport({{ r.id }})" style="width: 60px; height: 40px; font-size: 0.7rem;">
+                                                    <i class="fas fa-file-alt"></i> Отчет
                                                 </button>
-                                                {% endif %}
                                             </div>
                                         {% endif %}
                                     </td>
@@ -777,16 +788,21 @@ document.addEventListener('DOMContentLoaded', function() {
                             <i class="fas fa-map-marker-alt"></i> ПРИБЫЛ НА МЕСТО
                         </button>
                         {% elif r.assigned_to == request.user.id and r.status == 'done' %}
-                            <div class="mobile-action-buttons">
-                                {% if r.photo_path %}
-                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none">
-                                    <i class="fas fa-image"></i> ФОТО
-                                </a>
-                                {% else %}
-                                <button class="btn btn-primary btn-lg" onclick="uploadPhoto({{ r.id }})">
-                                    <i class="fas fa-camera"></i> ФОТО
+                            <div class="d-grid gap-2">
+                                <div class="mobile-action-buttons">
+                                    {% if r.photo_path %}
+                                    <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none">
+                                        <i class="fas fa-image"></i> ФОТО
+                                    </a>
+                                    {% else %}
+                                    <button class="btn btn-primary btn-lg" onclick="uploadPhoto({{ r.id }})">
+                                        <i class="fas fa-camera"></i> ФОТО
+                                    </button>
+                                    {% endif %}
+                                </div>
+                                <button class="btn btn-info btn-lg" onclick="showReport({{ r.id }})">
+                                    <i class="fas fa-file-alt"></i> ОТЧЕТ
                                 </button>
-                                {% endif %}
                             </div>
                         {% elif r.assigned_to == request.user.id and r.status != 'done' %}
                             {% if r.photo_path %}

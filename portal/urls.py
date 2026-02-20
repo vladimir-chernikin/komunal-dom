@@ -17,6 +17,7 @@ urlpatterns = [
     path('executor/arrived/<int:request_id>/', views.executor_arrived_request, name='executor_arrived_request'),
     path('executor/complete/<int:request_id>/', views.executor_complete_request, name='executor_complete_request'),
     path('executor/upload-photo/<int:request_id>/', views.executor_upload_photo, name='executor_upload_photo'),
+    path('executor/report/<int:request_id>/', views.executor_report, name='executor_report'),
     path('dba/', admin_views.dba_page, name='dba_page'),
     # ИСПРАВЛЕНИЕ (2026-02-03): Удален дубликат /admin-uk/users/ - используется /admin/auth/user/
     path('admin-uk/prompts/', admin_views.prompt_management, name='prompt_management'),

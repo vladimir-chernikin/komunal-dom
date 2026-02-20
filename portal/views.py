@@ -766,6 +766,109 @@ def executor_complete_request(request, request_id):
 
 
 @login_required
+def executor_report(request, request_id):
+    """Генерация HTML отчета по выполненной заявке"""
+    from django.http import HttpResponse
+    from django.template import loader
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT
+                r.id,
+                r.created_at,
+                r.updated_at,
+                r.arrived_at,
+                r.status,
+                r.assigned_to,
+                r.user_name,
+                r.user_phone,
+                r.street_name,
+                r.house_number,
+                r.apartment,
+                r.address_details,
+                r.description,
+                r.photo_path,
+                rc.category_name,
+                rst.type_name,
+                u.username as executor_username,
+                u.first_name as executor_first_name,
+                u.last_name as executor_last_name
+            FROM bot_service_requests r
+            LEFT JOIN ref_categories rc ON r.category_id = rc.category_id
+            LEFT JOIN ref_service_types rst ON r.type_id = rst.type_id
+            LEFT JOIN auth_user u ON r.assigned_to = u.id
+            WHERE r.id = %s
+        """, [request_id])
+
+        row = cursor.fetchone()
+
+        if not row:
+            return HttpResponse('<h1>Заявка не найдена</h1>', status=404)
+
+        # Распаковываем данные
+        (req_id, created_at, updated_at, arrived_at, status, assigned_to,
+         user_name, user_phone, street_name, house_number, apartment,
+         address_details, description, photo_path, category_name, type_name,
+         executor_username, executor_first_name, executor_last_name) = row
+
+        # Вычисляем временные интервалы
+        from datetime import timezone
+
+        # Время до прибытия (создание → прибытие)
+        if arrived_at:
+            time_to_arrive = arrived_at - created_at
+            minutes_to_arrive = int(time_to_arrive.total_seconds() / 60)
+        else:
+            minutes_to_arrive = None
+
+        # Время в работе (прибытие → выполнение)
+        if arrived_at:
+            time_work = updated_at - arrived_at
+            minutes_work = int(time_work.total_seconds() / 60)
+        else:
+            minutes_work = None
+
+        # Общее время (создание → выполнение)
+        time_total = updated_at - created_at
+        minutes_total = int(time_total.total_seconds() / 60)
+
+        # Имя исполнителя
+        if executor_first_name or executor_last_name:
+            executor_name = f"{executor_first_name or ''} {executor_last_name or ''}".strip()
+        else:
+            executor_name = executor_username
+
+        # Формируем данные для шаблона
+        report_data = {
+            'request_id': req_id,
+            'created_at': created_at,
+            'updated_at': updated_at,
+            'arrived_at': arrived_at,
+            'status': status,
+            'user_name': user_name,
+            'user_phone': user_phone,
+            'street_name': street_name,
+            'house_number': house_number,
+            'apartment': apartment,
+            'address_details': address_details,
+            'description': description,
+            'photo_path': photo_path,
+            'category_name': category_name,
+            'type_name': type_name,
+            'executor_name': executor_name,
+            'minutes_to_arrive': minutes_to_arrive,
+            'minutes_work': minutes_work,
+            'minutes_total': minutes_total,
+        }
+
+        # Рендерим шаблон
+        template = loader.get_template('portal/executor_report.html')
+        html = template.render(report_data, request)
+
+        return HttpResponse(html)
+
+
+@login_required
 def executor_upload_photo(request, request_id):
     """Загрузить фото выполненной работы"""
     from django.http import JsonResponse

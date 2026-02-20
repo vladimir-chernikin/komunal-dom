@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Отчет по заявке #{{ request_id }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #333;
+            padding: 20px;
+            background: #fff;
+        }
+
+        .report-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .report-header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 20px;
+        }
+
+        .report-header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .report-header p {
+            color: #666;
+        }
+
+        .report-section {
+            margin-bottom: 25px;
+        }
+
+        .report-section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            border-left: 4px solid #007bff;
+            padding-left: 10px;
+        }
+
+        .report-row {
+            display: flex;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+
+        .report-label {
+            font-weight: bold;
+            width: 200px;
+            flex-shrink: 0;
+        }
+
+        .report-value {
+            flex: 1;
+        }
+
+        .timeline {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .timeline-item {
+            display: flex;
+            margin-bottom: 10px;
+            align-items: flex-start;
+        }
+
+        .timeline-time {
+            font-weight: bold;
+            width: 80px;
+            flex-shrink: 0;
+            color: #007bff;
+        }
+
+        .timeline-content {
+            flex: 1;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .stat-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .photo-container {
+            margin-top: 15px;
+        }
+
+        .photo-container img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+
+        .no-photo {
+            color: #999;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        @media print {
+            .no-print {
+                display: none;
+            }
+
+            body {
+                padding: 0;
+            }
+
+            .report-container {
+                max-width: 100%;
+            }
+        }
+
+        .print-button {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .print-button button {
+            padding: 10px 30px;
+            font-size: 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .print-button button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <div class="report-header">
+            <h1>ОТЧЕТ ПО ВЫПОЛНЕНИЮ ЗАЯВКИ #{{ request_id }}</h1>
+            <p>Управляющая компания "Аспект"</p>
+        </div>
+
+        <div class="print-button no-print">
+            <button onclick="window.print()">🖨 Распечатать</button>
+        </div>
+
+        <div class="report-section">
+            <div class="report-section-title">📋 Основная информация</div>
+            <div class="report-row">
+                <div class="report-label">ID заявки:</div>
+                <div class="report-value">#{{ request_id }}</div>
+            </div>
+            <div class="report-row">
+                <div class="report-label">Дата создания:</div>
+                <div class="report-value">{{ created_at|date:"d.m.Y" }} в {{ created_at|date:"H:i" }}</div>
+            </div>
+            <div class="report-row">
+                <div class="report-label">Дата выполнения:</div>
+                <div class="report-value">{{ updated_at|date:"d.m.Y" }} в {{ updated_at|date:"H:i" }}</div>
+            </div>
+            <div class="report-row">
+                <div class="report-label">Статус:</div>
+                <div class="report-value">
+                    {% if status == 'done' %}✅ Выполнена{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="report-section">
+            <div class="report-section-title">📍 Адрес и описание</div>
+            <div class="report-row">
+                <div class="report-label">Адрес:</div>
+                <div class="report-value">
+                    ул. {{ street_name }}, д. {{ house_number }}{% if apartment %}, кв. {{ apartment }}{% endif %}
+                    {% if address_details %}({{ address_details }}){% endif %}
+                </div>
+            </div>
+            <div class="report-row">
+                <div class="report-label">Заявитель:</div>
+                <div class="report-value">{{ user_name|default:"—" }}</div>
+            </div>
+            <div class="report-row">
+                <div class="report-label">Телефон:</div>
+                <div class="report-value">{{ user_phone|default:"—" }}</div>
+            </div>
+            <div class="report-row">
+                <div class="report-label">Описание:</div>
+                <div class="report-value">{{ description }}</div>
+            </div>
+            <div class="report-row">
+                <div class="report-label">Категория:</div>
+                <div class="report-value">{{ category_name|default:"—" }}</div>
+            </div>
+        </div>
+
+        <div class="report-section">
+            <div class="report-section-title">👤 Исполнитель</div>
+            <div class="report-row">
+                <div class="report-label">ФИО:</div>
+                <div class="report-value">{{ executor_name|default:"—" }}</div>
+            </div>
+        </div>
+
+        <div class="report-section">
+            <div class="report-section-title">⏱ Хронология</div>
+            <ul class="timeline">
+                <li class="timeline-item">
+                    <div class="timeline-time">{{ created_at|date:"H:i" }}</div>
+                    <div class="timeline-content">Поступила заявка</div>
+                </li>
+                {% if arrived_at %}
+                <li class="timeline-item">
+                    <div class="timeline-time">{{ arrived_at|date:"H:i" }}</div>
+                    <div class="timeline-content">Исполнитель прибыл на место</div>
+                </li>
+                {% endif %}
+                <li class="timeline-item">
+                    <div class="timeline-time">{{ updated_at|date:"H:i" }}</div>
+                    <div class="timeline-content">Заявка выполнена</div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="report-section">
+            <div class="report-section-title">⏱ Время выполнения</div>
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value">
+                        {% if minutes_to_arrive %}{{ minutes_to_arrive }} мин{% else %}—{% endif %}
+                    </div>
+                    <div class="stat-label">До прибытия</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">
+                        {% if minutes_work %}{{ minutes_work }} мин{% else %}—{% endif %}
+                    </div>
+                    <div class="stat-label">В работе</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">{{ minutes_total }} мин</div>
+                    <div class="stat-label">Общее время</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="report-section">
+            <div class="report-section-title">📸 Фото выполненной работы</div>
+            <div class="photo-container">
+                {% if photo_path %}
+                    <img src="/{{ photo_path }}" alt="Фото выполненной работы">
+                {% else %}
+                    <div class="no-photo">Фото не загружено</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
