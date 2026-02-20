@@ -413,6 +413,7 @@ def executor_dashboard(request):
             r.id,
             r.request_uuid,
             r.created_at,
+            r.updated_at,
             r.user_name,
             r.user_phone,
             r.street_name,
@@ -491,12 +492,26 @@ def executor_dashboard(request):
             # Маппинг статусов на русский язык
             status_map = {
                 'new': 'Новая',
-                'in_work': 'Взял в работу',
+                'in_work': 'В работе',
                 'done': 'Выполнена',
                 'cancelled': 'Отменена',
                 'overdue': 'Просрочена'
             }
             req['status_display'] = status_map.get(req['status'], req['status'])
+
+            # Таймер для заявок "В работе"
+            if req['status'] == 'in_work' and req['updated_at']:
+                now = datetime.now(timezone.utc)
+                time_in_work = now - req['updated_at']
+                total_seconds_work = int(time_in_work.total_seconds())
+                mins_work = total_seconds_work // 60
+                hrs_work = mins_work // 60
+                mins_work = mins_work % 60
+
+                if hrs_work > 0:
+                    req['status_display'] = f"{hrs_work} ч {mins_work} мин в работе"
+                else:
+                    req['status_display'] = f"{mins_work} мин в работе"
 
             if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
                 now = datetime.now(timezone.utc)
@@ -506,6 +521,7 @@ def executor_dashboard(request):
 
                 if total_seconds < 300:  # < 5 минут
                     # Новая, мигает - обратный отсчёт до 5 минут
+                    req['is_take_deadline'] = True
                     req['remaining_seconds'] = int(300 - total_seconds)
                     mins = req['remaining_seconds'] // 60
                     secs = req['remaining_seconds'] % 60
@@ -520,14 +536,6 @@ def executor_dashboard(request):
                     secs = remaining_arrival % 60
                     req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
                     req['status_display'] = req['remaining_time_formatted']
-
-                    # Обновляем статус в БД на overdue
-                    if req['status'] != 'overdue':
-                        cursor.execute(
-                            "UPDATE bot_service_requests SET status = 'overdue', updated_at = NOW() WHERE id = %s",
-                            [req['id']]
-                        )
-                        req['status'] = 'overdue'
                 else:  # > 30 минут
                     # Просрочена прибытие - начинается отсчет опоздания с нуля
                     req['is_overdue'] = True
@@ -540,20 +548,9 @@ def executor_dashboard(request):
                     late_secs = late_seconds % 60
                     req['status_display'] = f"{late_mins}:{late_secs:02d} опоздание"
 
-                    # Обновляем статус в БД на overdue
-                    if req['status'] != 'overdue':
-                        cursor.execute(
-                            "UPDATE bot_service_requests SET status = 'overdue', updated_at = NOW() WHERE id = %s",
-                            [req['id']]
-                        )
-                        req['status'] = 'overdue'
-
             # Вычисляем can_mark_arrived - можно ли нажать кнопку "Прибыл"
-            req['can_mark_arrived'] = (
-                req['assigned_to'] == request.user.id and
-                req['status'] == 'in_work' and
-                not req['is_at_scene']
-            )
+            # Отключено - сразу показываем "Фото" и "Выполнить"
+            req['can_mark_arrived'] = False
 
             requests.append(req)
 
@@ -576,12 +573,24 @@ def executor_dashboard(request):
     my_requests.sort(key=sort_key)
     available_requests.sort(key=sort_key)
 
+    # Считаем счетчики для "Мои заявки"
+    all_requests_count = len(my_requests)
+    status_new_count = len([r for r in my_requests if r['status'] == 'new'])
+    status_in_work_count = len([r for r in my_requests if r['status'] == 'in_work'])
+    status_done_count = len([r for r in my_requests if r['status'] == 'done'])
+    status_cancelled_count = len([r for r in my_requests if r['status'] == 'cancelled'])
+
     context = {
         'user_profile': profile,
         'my_requests': my_requests,
         'available_requests': available_requests,
         'status': status_filter,
         'q': search_query,
+        'all_requests_count': all_requests_count,
+        'status_new_count': status_new_count,
+        'status_in_work_count': status_in_work_count,
+        'status_done_count': status_done_count,
+        'status_cancelled_count': status_cancelled_count,
     }
     return render(request, 'portal/executor_dashboard.html', context)
 
@@ -591,18 +600,6 @@ def executor_take_request(request, request_id):
     """Взять заявку в работу"""
     from django.http import JsonResponse
     from django.db import connection
-
-    try:
-        profile = request.user.userprofile
-    except UserProfile.DoesNotExist:
-        profile = UserProfile.objects.create(user=request.user, role='uk_user')
-
-    # Проверка прав - только исполнители и сотрудники УК могут брать заявки
-    if not profile.is_employee():
-        return JsonResponse({
-            'success': False,
-            'error': 'Только исполнители могут брать заявки в работу'
-        }, status=403)
 
     # Проверяем метод запроса
     if request.method != 'POST':
@@ -657,22 +654,11 @@ def executor_take_request(request, request_id):
     })
 
 
+@login_required
 def executor_arrived_request(request, request_id):
     """Подтвердить прибытие на место"""
     from django.http import JsonResponse
     from django.db import connection
-
-    try:
-        profile = request.user.userprofile
-    except UserProfile.DoesNotExist:
-        profile = UserProfile.objects.create(user=request.user, role='uk_user')
-
-    # Проверка прав - только исполнители и сотрудники УК
-    if not profile.is_employee():
-        return JsonResponse({
-            'success': False,
-            'error': 'Только исполнители могут подтверждать прибытие'
-        }, status=403)
 
     if request.method != 'POST':
         return JsonResponse({
@@ -725,21 +711,11 @@ def executor_arrived_request(request, request_id):
     })
 
 
+@login_required
 def executor_complete_request(request, request_id):
     """Завершить заявку"""
     from django.http import JsonResponse
     from django.db import connection
-
-    try:
-        profile = request.user.userprofile
-    except UserProfile.DoesNotExist:
-        profile = UserProfile.objects.create(user=request.user, role='uk_user')
-
-    if not profile.is_employee():
-        return JsonResponse({
-            'success': False,
-            'error': 'Только исполнители могут завершать заявки'
-        }, status=403)
 
     if request.method != 'POST':
         return JsonResponse({
@@ -790,6 +766,7 @@ def executor_complete_request(request, request_id):
     })
 
 
+@login_required
 def executor_upload_photo(request, request_id):
     """Загрузить фото выполненной работы"""
     from django.http import JsonResponse
@@ -797,17 +774,6 @@ def executor_upload_photo(request, request_id):
     import os
     from django.conf import settings
     from django.core.files.storage import default_storage
-
-    try:
-        profile = request.user.userprofile
-    except UserProfile.DoesNotExist:
-        profile = UserProfile.objects.create(user=request.user, role='uk_user')
-
-    if not profile.is_employee():
-        return JsonResponse({
-            'success': False,
-            'error': 'Только исполнители могут загружать фото'
-        }, status=403)
 
     if request.method != 'POST':
         return JsonResponse({

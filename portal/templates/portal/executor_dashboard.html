@@ -565,7 +565,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button class="btn btn-sm btn-success" onclick="markArrived({{ r.id }})">
                                             <i class="fas fa-map-marker-alt"></i> Прибыл
                                         </button>
-                                        {% elif r.is_at_scene %}
+                                        {% elif r.assigned_to == request.user.id %}
                                             {% if r.photo_path %}
                                             <div>
                                                 <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
@@ -694,7 +694,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button class="btn btn-success btn-lg w-100" onclick="markArrived({{ r.id }})" style="font-size: 1.1rem; padding: 0.75rem; font-weight: 600;">
                             <i class="fas fa-map-marker-alt"></i> ПРИБЫЛ НА МЕСТО
                         </button>
-                        {% elif r.is_at_scene %}
+                        {% elif r.assigned_to == request.user.id %}
                             {% if r.photo_path %}
                             <div class="row g-2">
                                 <div class="col-6">
@@ -809,17 +809,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 <span class="badge status-overdue" style="font-size: 0.875rem;">
                                                     <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-late="true">{{ r.status_display }}</span>
                                                 </span>
-                                            {% elif r.is_arrival_deadline %}
-                                                <span class="badge bg-danger badge-blink" style="font-size: 0.875rem;">
-                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-full-text="true">{{ r.status_display }}</span>
-                                                </span>
                                             {% elif r.is_take_deadline %}
-                                                <span class="badge status-new" style="font-size: 0.875rem;">
-                                                    {{ r.status_display }}
+                                                <span class="badge bg-danger badge-blink" style="font-size: 0.875rem;">
+                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                                                 </span>
                                             {% elif r.remaining_seconds > 0 %}
-                                                <span class="badge bg-danger badge-blink" style="font-size: 0.875rem;">
-                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-full-text="true">{{ r.status_display }}</span>
+                                                <span class="badge bg-danger" style="font-size: 0.875rem;">
+                                                    До прибытия: <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                                                 </span>
                                             {% else %}
                                                 <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}" style="font-size: 0.875rem;">
@@ -868,17 +864,13 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="badge status-overdue fs-6">
                                 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-late="true">{{ r.status_display }}</span>
                             </span>
-                        {% elif r.is_arrival_deadline %}
-                            <span class="badge bg-danger badge-blink fs-6">
-                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-full-text="true">{{ r.status_display }}</span>
-                            </span>
                         {% elif r.is_take_deadline %}
-                            <span class="badge status-new fs-6">
-                                {{ r.status_display }}
+                            <span class="badge bg-danger badge-blink fs-6">
+                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                             </span>
                         {% elif r.remaining_seconds > 0 %}
-                            <span class="badge bg-danger badge-blink fs-6">
-                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-full-text="true">{{ r.status_display }}</span>
+                            <span class="badge bg-danger fs-6">
+                                До прибытия: <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                             </span>
                         {% else %}
                             <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
