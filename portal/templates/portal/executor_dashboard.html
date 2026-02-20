@@ -704,22 +704,30 @@ document.addEventListener('DOMContentLoaded', function() {
                         </button>
                         {% elif r.is_at_scene %}
                             {% if r.photo_path %}
-                            <div class="d-grid gap-2">
-                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg" style="font-size: 1.1rem; padding: 0.75rem; font-weight: 600;">
-                                    <i class="fas fa-image"></i> ФОТО
-                                </a>
-                                <button class="btn btn-success btn-lg" onclick="completeRequest({{ r.id }})" style="font-size: 1.1rem; padding: 0.75rem; font-weight: 600;">
-                                    ВЫПОЛНИТЬ
-                                </button>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg w-100" style="font-size: 1rem; padding: 0.75rem; font-weight: 600;">
+                                        <i class="fas fa-image"></i> ФОТО
+                                    </a>
+                                </div>
+                                <div class="col-6">
+                                    <button class="btn btn-success btn-lg w-100" onclick="completeRequest({{ r.id }})" style="font-size: 1rem; padding: 0.75rem; font-weight: 600;">
+                                        ВЫПОЛНИТЬ
+                                    </button>
+                                </div>
                             </div>
                             {% else %}
-                            <div class="d-grid gap-2">
-                                <button class="btn btn-primary btn-lg" onclick="uploadPhoto({{ r.id }})" style="font-size: 1.1rem; padding: 0.75rem; font-weight: 600;">
-                                    <i class="fas fa-camera"></i> СФОТОГРАФИРОВАТЬ
-                                </button>
-                                <button class="btn btn-success btn-lg" onclick="completeRequest({{ r.id }})" style="font-size: 1.1rem; padding: 0.75rem; font-weight: 600;">
-                                    ВЫПОЛНИТЬ
-                                </button>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <button class="btn btn-primary btn-lg w-100" onclick="uploadPhoto({{ r.id }})" style="font-size: 1rem; padding: 0.75rem; font-weight: 600;">
+                                        <i class="fas fa-camera"></i> СФОТОГРАФИРОВАТЬ
+                                    </button>
+                                </div>
+                                <div class="col-6">
+                                    <button class="btn btn-success btn-lg w-100" onclick="completeRequest({{ r.id }})" style="font-size: 1rem; padding: 0.75rem; font-weight: 600;">
+                                        ВЫПОЛНИТЬ
+                                    </button>
+                                </div>
                             </div>
                             {% endif %}
                         {% endif %}
