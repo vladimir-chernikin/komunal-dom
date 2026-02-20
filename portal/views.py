@@ -517,9 +517,12 @@ def executor_dashboard(request):
                         )
                         req['status'] = 'overdue'
                 else:  # > 30 минут
-                    # Просрочена прибытие
+                    # Просрочена прибытие - показать сколько просрочено
                     req['is_overdue'] = True
-                    req['status_display'] = 'Просрочена прибытие'
+                    overdue_arrival = int(total_seconds - arrival_deadline)  # Сколько просрочено
+                    mins = overdue_arrival // 60
+                    secs = overdue_arrival % 60
+                    req['status_display'] = f"-{mins}:{secs:02d}"  # Например: -5:23
 
                     # Обновляем статус в БД на overdue
                     if req['status'] != 'overdue':
