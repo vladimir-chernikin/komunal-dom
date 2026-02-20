@@ -636,3 +636,226 @@ def executor_take_request(request, request_id):
         'status': updated_row[1],
         'assigned_to': updated_row[2]
     })
+
+
+def executor_arrived_request(request, request_id):
+    """Подтвердить прибытие на место"""
+    from django.http import JsonResponse
+    from django.db import connection
+
+    try:
+        profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=request.user, role='uk_user')
+
+    # Проверка прав - только исполнители и сотрудники УК
+    if not profile.is_employee():
+        return JsonResponse({
+            'success': False,
+            'error': 'Только исполнители могут подтверждать прибытие'
+        }, status=403)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'success': False,
+            'error': 'Метод не поддерживается'
+        }, status=405)
+
+    with connection.cursor() as cursor:
+        # Проверяем существование заявки и что она назначена текущему пользователю
+        cursor.execute("""
+            SELECT id, assigned_to, status, is_at_scene
+            FROM bot_service_requests
+            WHERE id = %s
+        """, [request_id])
+
+        row = cursor.fetchone()
+
+        if not row:
+            return JsonResponse({
+                'success': False,
+                'error': 'Заявка не найдена'
+            }, status=404)
+
+        request_db_id, assigned_to, status, is_at_scene = row
+
+        # Проверяем, что заявка назначена текущему пользователю
+        if assigned_to != request.user.id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Заявка не назначена вам'
+            }, status=400)
+
+        # Устанавливаем флаг прибытия
+        cursor.execute("""
+            UPDATE bot_service_requests
+            SET is_at_scene = TRUE,
+                arrived_at = NOW(),
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, is_at_scene
+        """, [request_id])
+
+        updated_row = cursor.fetchone()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Прибытие подтверждено',
+        'request_id': updated_row[0],
+        'is_at_scene': updated_row[1]
+    })
+
+
+def executor_complete_request(request, request_id):
+    """Завершить заявку"""
+    from django.http import JsonResponse
+    from django.db import connection
+
+    try:
+        profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=request.user, role='uk_user')
+
+    if not profile.is_employee():
+        return JsonResponse({
+            'success': False,
+            'error': 'Только исполнители могут завершать заявки'
+        }, status=403)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'success': False,
+            'error': 'Метод не поддерживается'
+        }, status=405)
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT id, assigned_to, status
+            FROM bot_service_requests
+            WHERE id = %s
+        """, [request_id])
+
+        row = cursor.fetchone()
+
+        if not row:
+            return JsonResponse({
+                'success': False,
+                'error': 'Заявка не найдена'
+            }, status=404)
+
+        request_db_id, assigned_to, status = row
+
+        if assigned_to != request.user.id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Заявка не назначена вам'
+            }, status=400)
+
+        # Завершаем заявку
+        cursor.execute("""
+            UPDATE bot_service_requests
+            SET status = 'done',
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, status
+        """, [request_id])
+
+        updated_row = cursor.fetchone()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Заявка завершена',
+        'request_id': updated_row[0],
+        'status': updated_row[1]
+    })
+
+
+def executor_upload_photo(request, request_id):
+    """Загрузить фото выполненной работы"""
+    from django.http import JsonResponse
+    from django.db import connection
+    import os
+    from django.conf import settings
+    from django.core.files.storage import default_storage
+
+    try:
+        profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=request.user, role='uk_user')
+
+    if not profile.is_employee():
+        return JsonResponse({
+            'success': False,
+            'error': 'Только исполнители могут загружать фото'
+        }, status=403)
+
+    if request.method != 'POST':
+        return JsonResponse({
+            'success': False,
+            'error': 'Метод не поддерживается'
+        }, status=405)
+
+    # Проверяем наличие файла
+    if 'photo' not in request.FILES:
+        return JsonResponse({
+            'success': False,
+            'error': 'Файл не загружен'
+        }, status=400)
+
+    photo_file = request.FILES['photo']
+
+    # Проверяем тип файла
+    allowed_types = ['image/jpeg', 'image/jpg', 'image/png']
+    if photo_file.content_type not in allowed_types:
+        return JsonResponse({
+            'success': False,
+            'error': 'Допустимы только JPG и PNG изображения'
+        }, status=400)
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT id, assigned_to, status
+            FROM bot_service_requests
+            WHERE id = %s
+        """, [request_id])
+
+        row = cursor.fetchone()
+
+        if not row:
+            return JsonResponse({
+                'success': False,
+                'error': 'Заявка не найдена'
+            }, status=404)
+
+        request_db_id, assigned_to, status = row
+
+        if assigned_to != request.user.id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Заявка не назначена вам'
+            }, status=400)
+
+        # Сохраняем файл
+        filename = f'executor_photo_{request_id}_{photo_file.name}'
+        path = default_storage.save(f'executor_photos/{filename}', photo_file)
+        photo_url = default_storage.url(path)
+
+        # Обновляем заявку
+        cursor.execute("""
+            UPDATE bot_service_requests
+            SET photo_path = %s,
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, photo_path
+        """, [path, request_id])
+
+        updated_row = cursor.fetchone()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Фото загружено',
+        'request_id': updated_row[0],
+        'photo_path': updated_row[1],
+        'photo_url': photo_url
+    })
