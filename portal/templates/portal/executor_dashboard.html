@@ -564,22 +564,26 @@ document.addEventListener('DOMContentLoaded', function() {
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
-                                            {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
-                                                {% if r.remaining_seconds > 0 %}
+                                        {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
+                                            {% if r.remaining_seconds > 0 %}
+                                                <span class="badge bg-danger badge-blink" style="font-size: 0.875rem;">
                                                     <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
-                                                {% else %}
-                                                    {{ r.status_display }}
-                                                {% endif %}
+                                                </span>
                                             {% else %}
+                                                <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
+                                                    {{ r.status_display }}
+                                                </span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
                                                 {% if r.status == 'new' %}Новая
                                                 {% elif r.status == 'in_work' %}В работе
                                                 {% elif r.status == 'done' %}Выполнена
                                                 {% elif r.status == 'cancelled' %}Отменена
                                                 {% elif r.status == 'overdue' %}Просрочена
                                                 {% else %}{{ r.status }}{% endif %}
-                                            {% endif %}
-                                        </span>
+                                            </span>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         <button class="btn btn-sm btn-success" onclick="takeRequest({{ r.id }})">
@@ -612,22 +616,26 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="badge bg-danger fs-6">S1</span>
                         {% endif %}
                     {% endif %}
-                    <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
-                        {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
-                            {% if r.remaining_seconds > 0 %}
+                    {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
+                        {% if r.remaining_seconds > 0 %}
+                            <span class="badge bg-danger badge-blink fs-6">
                                 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
-                            {% else %}
-                                {{ r.status_display }}
-                            {% endif %}
+                            </span>
                         {% else %}
+                            <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
+                                {{ r.status_display }}
+                            </span>
+                        {% endif %}
+                    {% else %}
+                        <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
                             {% if r.status == 'new' %}Новая
                             {% elif r.status == 'in_work' %}В работе
                             {% elif r.status == 'done' %}Выполнена
                             {% elif r.status == 'cancelled' %}Отменена
                             {% elif r.status == 'overdue' %}Просрочена
                             {% else %}{{ r.status }}{% endif %}
-                        {% endif %}
-                    </span>
+                        </span>
+                    {% endif %}
                 </div>
                 <div class="request-card-body">
                     <div class="request-card-row">
