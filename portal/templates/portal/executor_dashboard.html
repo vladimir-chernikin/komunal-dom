@@ -559,9 +559,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <td>
                                         {% if r.urgency_level == 'emergency' %}
                                             {% if r.is_overdue %}
-                                                <span class="badge bg-danger">
-                                                    S1 ⚠️ ПРОСРОЧЕНА
-                                                </span>
+                                                <span class="badge bg-danger">S1</span>
                                             {% elif r.remaining_seconds > 0 %}
                                                 <span class="badge bg-danger badge-blink">
                                                     S1 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
@@ -603,9 +601,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <strong>#{{ r.id }}</strong>
                     {% if r.urgency_level == 'emergency' %}
                         {% if r.is_overdue %}
-                            <span class="badge bg-danger fs-6">
-                                S1 ⚠️ ПРОСРОЧЕНА
-                            </span>
+                            <span class="badge bg-danger fs-6">S1</span>
                         {% elif r.remaining_seconds > 0 %}
                             <span class="badge bg-danger badge-blink fs-6">
                                 S1 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
