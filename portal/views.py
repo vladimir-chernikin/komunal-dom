@@ -785,18 +785,18 @@ def executor_report(request, request_id):
                 r.user_phone,
                 r.street_name,
                 r.house_number,
-                r.apartment,
-                r.address_details,
+                r.apartment as apartment,
+                r.entrance as address_details,
                 r.description,
                 r.photo_path,
-                rc.category_name,
-                rst.type_name,
+                COALESCE(sc.scenario_name, r.service_name) as service_name,
+                COALESCE(rc.category_name, '—') as category_name,
                 u.username as executor_username,
                 u.first_name as executor_first_name,
                 u.last_name as executor_last_name
             FROM bot_service_requests r
-            LEFT JOIN ref_categories rc ON r.category_id = rc.category_id
-            LEFT JOIN ref_service_types rst ON r.type_id = rst.type_id
+            LEFT JOIN services_catalog sc ON r.service_id = sc.service_id
+            LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
             LEFT JOIN auth_user u ON r.assigned_to = u.id
             WHERE r.id = %s
         """, [request_id])
@@ -809,7 +809,7 @@ def executor_report(request, request_id):
         # Распаковываем данные
         (req_id, created_at, updated_at, arrived_at, status, assigned_to,
          user_name, user_phone, street_name, house_number, apartment,
-         address_details, description, photo_path, category_name, type_name,
+         address_details, description, photo_path, service_name, category_name,
          executor_username, executor_first_name, executor_last_name) = row
 
         # Вычисляем временные интервалы
@@ -855,7 +855,7 @@ def executor_report(request, request_id):
             'description': description,
             'photo_path': photo_path,
             'category_name': category_name,
-            'type_name': type_name,
+            'service_name': service_name,
             'executor_name': executor_name,
             'minutes_to_arrive': minutes_to_arrive,
             'minutes_work': minutes_work,
