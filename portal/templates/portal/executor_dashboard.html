@@ -382,13 +382,13 @@ document.addEventListener('DOMContentLoaded', function() {
     margin: 0;
 }
 
-/* Кнопки действий - компактные квадратные */
+/* Кнопки действий - компактные прямоугольные */
 .action-buttons .btn {
-    width: 45px;
-    height: 45px;
+    width: 60px;
+    height: 40px;
     text-align: center;
-    padding: 0.3rem 0.2rem !important;
-    font-size: 0.65rem !important;
+    padding: 0.3rem 0.3rem !important;
+    font-size: 0.7rem !important;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -397,25 +397,37 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .action-buttons .btn i {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     margin-bottom: 1px;
 }
 
-/* Мобильные кнопки действий - квадратные */
+.action-buttons .badge {
+    width: 60px;
+    height: 40px;
+    font-size: 0.7rem !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.1;
+    padding: 0.3rem 0.3rem !important;
+}
+
+/* Мобильные кнопки действий - прямоугольные */
 .mobile-action-buttons .btn,
 .mobile-action-buttons .badge {
-    width: 50px;
-    height: 50px;
+    width: 65px;
+    height: 45px;
     display: flex !important;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 0.65rem !important;
+    font-size: 0.75rem !important;
     line-height: 1.1;
 }
 
 .mobile-action-buttons .btn i {
-    font-size: 1rem;
+    font-size: 1.1rem;
     margin-bottom: 2px;
 }
 
@@ -621,10 +633,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 {% endif %}
                                             </div>
                                         {% elif r.assigned_to == request.user.id and r.status == 'done' %}
-                                            <div class="d-flex flex-column gap-1">
+                                            <div class="action-buttons d-flex flex-column gap-1">
+                                                {% if r.photo_path %}
                                                 <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
                                                     <i class="fas fa-image"></i> Фото
                                                 </a>
+                                                {% endif %}
                                                 <span class="badge bg-success text-center" style="font-size: 0.875rem; padding: 0.35rem 0.5rem;">Выполнено</span>
                                             </div>
                                         {% endif %}
