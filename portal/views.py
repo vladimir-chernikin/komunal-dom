@@ -391,6 +391,7 @@ def dialog_report_view_page(request, filename):
 def executor_dashboard(request):
     """Кабинет исполнителя - просмотр заявок"""
     from django.db import connection
+    from datetime import timedelta, timezone
 
     try:
         profile = request.user.userprofile
@@ -477,11 +478,53 @@ def executor_dashboard(request):
                 req['category_badge'] = f'<span class="badge bg-info">{req["service_category"]}</span>'
             else:
                 req['category_badge'] = '—'
+
+            # Вычисляем просрочку для аварийных заявок
+            req['is_overdue'] = False
+            req['overdue_minutes'] = 0
+            req['remaining_seconds'] = 0
+            req['remaining_time_formatted'] = ''
+            req['deadline_at'] = None
+
+            if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
+                now = timezone.now()
+                deadline = req['created_at'] + timedelta(minutes=5)
+                req['deadline_at'] = deadline
+
+                time_diff = now - req['created_at']
+                total_seconds = time_diff.total_seconds()
+
+                if total_seconds > 300:  # 5 минут = 300 секунд
+                    # Просрочена
+                    req['is_overdue'] = True
+                    req['overdue_minutes'] = int(total_seconds / 60)
+                else:
+                    # Обратный отсчёт
+                    req['remaining_seconds'] = int(300 - total_seconds)
+                    mins = req['remaining_seconds'] // 60
+                    secs = req['remaining_seconds'] % 60
+                    req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
+
             requests.append(req)
 
     # Разделяем на "Мои заявки" (assigned_to = current_user_id) и "Доступные"
     my_requests = [r for r in requests if r['assigned_to'] == request.user.id]
     available_requests = [r for r in requests if r['assigned_to'] is None]
+
+    # Сортировка: просроченные аварийные сверху, затем новые аварийные, затем остальные
+    def sort_key(req):
+        # Приоритет 1: просроченные аварийные
+        if req.get('is_overdue'):
+            return (0, req['created_at'])
+        # Приоритет 2: аварийные с обратным отсчётом
+        elif req.get('urgency_level') == 'emergency' and req.get('remaining_seconds', 0) > 0:
+            return (1, req['created_at'])
+        # Приоритет 3: остальные по дате (новые сначала)
+        else:
+            return (2, -req['created_at'].timestamp())
+
+    my_requests.sort(key=sort_key)
+    available_requests.sort(key=sort_key)
 
     context = {
         'user_profile': profile,

@@ -28,6 +28,42 @@ function takeRequest(requestId) {
         alert('Ошибка соединения: ' + error);
     });
 }
+
+// Форматирование времени "4:32"
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Обновление всех таймеров
+function updateTimers() {
+    document.querySelectorAll('[data-remaining]').forEach(el => {
+        let remaining = parseInt(el.dataset.remaining);
+        if (remaining > 0) {
+            remaining--;
+            el.dataset.remaining = remaining;
+            el.textContent = formatTime(remaining);
+
+            // Меняем стиль при < 1 минуте
+            if (remaining < 60) {
+                el.classList.add('text-white', 'bg-danger');
+                el.classList.remove('bg-warning');
+            }
+        } else {
+            // Время вышло - перезагружаем страницу для показа просрочки
+            location.reload();
+        }
+    });
+}
+
+// Запуск таймеров при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+    const timers = document.querySelectorAll('[data-remaining]');
+    if (timers.length > 0) {
+        setInterval(updateTimers, 1000);
+    }
+});
 </script>
 {% endblock %}
 
@@ -517,7 +553,17 @@ function takeRequest(requestId) {
                                     <td>{{ r.category_badge|safe }}</td>
                                     <td>
                                         {% if r.urgency_level == 'emergency' %}
-                                        <span class="badge bg-danger badge-blink">S1</span>
+                                            {% if r.is_overdue %}
+                                                <span class="badge bg-danger badge-blink">
+                                                    S1 ⚠️ {{ r.overdue_minutes }} мин
+                                                </span>
+                                            {% elif r.remaining_seconds > 0 %}
+                                                <span class="badge bg-danger">
+                                                    S1 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-danger">S1</span>
+                                            {% endif %}
                                         {% endif %}
                                     </td>
                                     <td>
@@ -549,6 +595,19 @@ function takeRequest(requestId) {
             <div class="request-card">
                 <div class="request-card-header">
                     <strong>#{{ r.id }}</strong>
+                    {% if r.urgency_level == 'emergency' %}
+                        {% if r.is_overdue %}
+                            <span class="badge bg-danger badge-blink fs-6">
+                                S1 ⚠️ {{ r.overdue_minutes }} мин
+                            </span>
+                        {% elif r.remaining_seconds > 0 %}
+                            <span class="badge bg-danger fs-6">
+                                S1 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                            </span>
+                        {% else %}
+                            <span class="badge bg-danger fs-6">S1</span>
+                        {% endif %}
+                    {% endif %}
                     <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %} fs-6">
                         {% if r.status == 'new' %}Новые
                         {% elif r.status == 'in_work' %}В работе
