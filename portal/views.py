@@ -750,7 +750,6 @@ def executor_complete_request(request, request_id):
         cursor.execute("""
             UPDATE bot_service_requests
             SET status = 'done',
-                completed_at = NOW(),
                 updated_at = NOW()
             WHERE id = %s
             RETURNING id, status
