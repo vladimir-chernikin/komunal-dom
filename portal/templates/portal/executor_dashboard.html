@@ -44,12 +44,6 @@ function updateTimers() {
             remaining--;
             el.dataset.remaining = remaining;
             el.textContent = formatTime(remaining);
-
-            // Меняем стиль при < 1 минуте
-            if (remaining < 60) {
-                el.classList.add('text-white', 'bg-danger');
-                el.classList.remove('bg-warning');
-            }
         } else {
             // Время вышло - перезагружаем страницу для показа просрочки
             location.reload();
