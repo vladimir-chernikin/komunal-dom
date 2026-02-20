@@ -566,7 +566,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <td>
                                         <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
                                             {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
-                                                {{ r.status_display }}
+                                                {% if r.remaining_seconds > 0 %}
+                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                                                {% else %}
+                                                    {{ r.status_display }}
+                                                {% endif %}
                                             {% else %}
                                                 {% if r.status == 'new' %}Новая
                                                 {% elif r.status == 'in_work' %}В работе
@@ -610,7 +614,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     {% endif %}
                     <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
                         {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
-                            {{ r.status_display }}
+                            {% if r.remaining_seconds > 0 %}
+                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                            {% else %}
+                                {{ r.status_display }}
+                            {% endif %}
                         {% else %}
                             {% if r.status == 'new' %}Новая
                             {% elif r.status == 'in_work' %}В работе
