@@ -382,10 +382,20 @@ document.addEventListener('DOMContentLoaded', function() {
     margin: 0;
 }
 
+/* Кнопки действий - одинаковая ширина */
+.action-buttons .btn {
+    min-width: 140px;
+    text-align: center;
+}
+
 /* Адаптивность */
 @media (max-width: 991px) {
     .request-card {
         margin-bottom: 1rem;
+    }
+
+    .action-buttons .btn {
+        min-width: 100px;
     }
 }
 
@@ -566,23 +576,23 @@ document.addEventListener('DOMContentLoaded', function() {
                                             <i class="fas fa-map-marker-alt"></i> Прибыл
                                         </button>
                                         {% elif r.assigned_to == request.user.id %}
-                                            {% if r.photo_path %}
-                                            <div>
-                                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
-                                                    <i class="fas fa-image"></i> Фото
-                                                </a>
-                                                <button class="btn btn-sm btn-success ms-1" onclick="completeRequest({{ r.id }})">
-                                                    Выполнить
-                                                </button>
+                                            <div class="action-buttons d-flex gap-1">
+                                                {% if r.photo_path %}
+                                                    <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
+                                                        <i class="fas fa-image"></i> Фото
+                                                    </a>
+                                                    <button class="btn btn-sm btn-success" onclick="completeRequest({{ r.id }})">
+                                                        Выполнить
+                                                    </button>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-primary" onclick="uploadPhoto({{ r.id }})">
+                                                        <i class="fas fa-camera"></i> Фото
+                                                    </button>
+                                                    <button class="btn btn-sm btn-success" onclick="completeRequest({{ r.id }})">
+                                                        Выполнить
+                                                    </button>
+                                                {% endif %}
                                             </div>
-                                            {% else %}
-                                            <button class="btn btn-sm btn-primary" onclick="uploadPhoto({{ r.id }})">
-                                                <i class="fas fa-camera"></i> Фото
-                                            </button>
-                                            <button class="btn btn-sm btn-success ms-1" onclick="completeRequest({{ r.id }})">
-                                                Выполнить
-                                            </button>
-                                            {% endif %}
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -696,7 +706,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </button>
                         {% elif r.assigned_to == request.user.id %}
                             {% if r.photo_path %}
-                            <div class="row g-2">
+                            <div class="row g-2 action-buttons">
                                 <div class="col-6">
                                     <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg w-100 text-center text-decoration-none" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600; line-height: 1.2; display: flex; align-items: center; justify-content: center;">
                                         <i class="fas fa-image"></i> ФОТО
@@ -709,7 +719,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                             </div>
                             {% else %}
-                            <div class="row g-2">
+                            <div class="row g-2 action-buttons">
                                 <div class="col-6">
                                     <button class="btn btn-primary btn-lg w-100" onclick="uploadPhoto({{ r.id }})" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600; line-height: 1.2; display: flex; align-items: center; justify-content: center;">
                                         <i class="fas fa-camera"></i> СФОТОГРАФИРОВАТЬ
