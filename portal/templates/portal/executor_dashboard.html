@@ -556,11 +556,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             {% endif %}
                                         {% else %}
                                             <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %}">
-                                                {% if r.status == 'new' %}Новые
-                                                {% elif r.status == 'in_work' %}Взял в работу
-                                                {% elif r.status == 'done' %}Выполнены
-                                                {% elif r.status == 'cancelled' %}Отменены
-                                                {% else %}{{ r.status }}{% endif %}
+                                                {{ r.status_display }}
                                             </span>
                                         {% endif %}
                                     </td>
@@ -624,11 +620,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         {% endif %}
                     {% else %}
                         <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %} fs-6">
-                            {% if r.status == 'new' %}Новые
-                            {% elif r.status == 'in_work' %}Взял в работу
-                            {% elif r.status == 'done' %}Выполнены
-                            {% elif r.status == 'cancelled' %}Отменены
-                            {% else %}{{ r.status }}{% endif %}
+                            {{ r.status_display }}
                         </span>
                     {% endif %}
                 </div>
@@ -836,12 +828,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             {% endif %}
                                         {% else %}
                                             <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
-                                                {% if r.status == 'new' %}Новая
-                                                {% elif r.status == 'in_work' %}Взял в работу
-                                                {% elif r.status == 'done' %}Выполнена
-                                                {% elif r.status == 'cancelled' %}Отменена
-                                                {% elif r.status == 'overdue' %}Просрочена
-                                                {% else %}{{ r.status }}{% endif %}
+                                                {{ r.status_display }}
                                             </span>
                                         {% endif %}
                                     </td>
@@ -900,12 +887,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         {% endif %}
                     {% else %}
                         <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
-                            {% if r.status == 'new' %}Новая
-                            {% elif r.status == 'in_work' %}Взял в работу
-                            {% elif r.status == 'done' %}Выполнена
-                            {% elif r.status == 'cancelled' %}Отменена
-                            {% elif r.status == 'overdue' %}Просрочена
-                            {% else %}{{ r.status }}{% endif %}
+                            {{ r.status_display }}
                         </span>
                     {% endif %}
                 </div>
