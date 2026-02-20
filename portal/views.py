@@ -503,7 +503,10 @@ def executor_dashboard(request):
                     # Показать таймер до прибытия (30 минут от создания)
                     req['is_overdue'] = True
                     remaining_arrival = int(arrival_deadline - total_seconds)
-                    req['remaining_time_formatted'] = f"{remaining_arrival // 60}:{remaining_arrival % 60:02d}"
+                    req['remaining_seconds'] = remaining_arrival  # Для JavaScript обновления
+                    mins = remaining_arrival // 60
+                    secs = remaining_arrival % 60
+                    req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
                     req['status_display'] = req['remaining_time_formatted']
 
                     # Обновляем статус в БД на overdue
