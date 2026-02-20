@@ -425,7 +425,10 @@ def executor_dashboard(request):
             r.urgency_level,
             rc.category_name as service_category,
             rst.type_name as incident_type,
-            r.assigned_to
+            r.assigned_to,
+            r.is_at_scene,
+            r.arrived_at,
+            r.photo_path
         FROM bot_service_requests r
         LEFT JOIN services_catalog s ON r.service_id = s.service_id
         LEFT JOIN ref_categories rc ON s.category_id = rc.category_id
@@ -486,16 +489,6 @@ def executor_dashboard(request):
             req['status_display'] = req['status']  # Для отображения в колонке Статус
             req['deadline_at'] = None
 
-            # Маппинг статусов на русский язык
-            status_map = {
-                'new': 'Новая',
-                'in_work': 'Взял в работу',
-                'done': 'Выполнена',
-                'cancelled': 'Отменена',
-                'overdue': 'Просрочена'
-            }
-            req['status_display'] = status_map.get(req['status'], req['status'])
-
             if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
                 now = datetime.now(timezone.utc)
                 time_diff = now - req['created_at']
@@ -545,6 +538,13 @@ def executor_dashboard(request):
                             [req['id']]
                         )
                         req['status'] = 'overdue'
+
+            # Вычисляем can_mark_arrived - можно ли нажать кнопку "Прибыл"
+            req['can_mark_arrived'] = (
+                req['assigned_to'] == request.user.id and
+                req['status'] == 'in_work' and
+                not req['is_at_scene']
+            )
 
             requests.append(req)
 
