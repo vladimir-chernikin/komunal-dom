@@ -770,6 +770,7 @@ def executor_report(request, request_id):
     """Генерация HTML отчета по выполненной заявке"""
     from django.http import HttpResponse
     from django.template import loader
+    from django.db import connection
 
     with connection.cursor() as cursor:
         cursor.execute("""
