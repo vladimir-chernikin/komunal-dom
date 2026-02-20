@@ -391,7 +391,7 @@ def dialog_report_view_page(request, filename):
 def executor_dashboard(request):
     """Кабинет исполнителя - просмотр заявок"""
     from django.db import connection
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     try:
         profile = request.user.userprofile
@@ -487,7 +487,7 @@ def executor_dashboard(request):
             req['deadline_at'] = None
 
             if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
-                now = datetime.now(timezone.utc)
+                now = datetime.utcnow()
                 deadline = req['created_at'] + timedelta(minutes=5)
                 req['deadline_at'] = deadline
 
