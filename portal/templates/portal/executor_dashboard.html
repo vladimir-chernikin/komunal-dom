@@ -382,10 +382,23 @@ document.addEventListener('DOMContentLoaded', function() {
     margin: 0;
 }
 
-/* Кнопки действий - одинаковая ширина */
+/* Кнопки действий - одинаковая ширина и квадратная форма */
 .action-buttons .btn {
-    min-width: 140px;
+    min-width: 100px;
+    max-width: 140px;
     text-align: center;
+    padding: 0.75rem 0.5rem !important;
+    aspect-ratio: 1;
+}
+
+/* Мобильные кнопки действий - квадратная форма */
+.mobile-action-buttons .btn,
+.mobile-action-buttons .badge {
+    aspect-ratio: 1.2;
+    min-height: 60px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Адаптивность */
@@ -395,7 +408,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     .action-buttons .btn {
-        min-width: 100px;
+        min-width: 80px;
+        max-width: 120px;
     }
 }
 
@@ -712,30 +726,30 @@ document.addEventListener('DOMContentLoaded', function() {
                             <i class="fas fa-map-marker-alt"></i> ПРИБЫЛ НА МЕСТО
                         </button>
                         {% elif r.assigned_to == request.user.id and r.status == 'done' %}
-                            <div class="d-grid gap-2">
-                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600;">
+                            <div class="d-grid gap-2 mobile-action-buttons">
+                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none" style="font-size: 1rem; font-weight: 600;">
                                     <i class="fas fa-image"></i> ФОТО
                                 </a>
-                                <div class="badge bg-success d-flex align-items-center justify-content-center" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600;">
+                                <div class="badge bg-success" style="font-size: 1rem; font-weight: 600;">
                                     ВЫПОЛНЕНО
                                 </div>
                             </div>
                         {% elif r.assigned_to == request.user.id and r.status != 'done' %}
                             {% if r.photo_path %}
-                            <div class="d-grid gap-2">
-                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600;">
+                            <div class="d-grid gap-2 mobile-action-buttons">
+                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none" style="font-size: 1rem; font-weight: 600;">
                                     <i class="fas fa-image"></i> ФОТО
                                 </a>
-                                <button class="btn btn-success btn-lg" onclick="completeRequest({{ r.id }})" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600;">
+                                <button class="btn btn-success btn-lg" onclick="completeRequest({{ r.id }})" style="font-size: 1rem; font-weight: 600;">
                                     ВЫПОЛНИТЬ
                                 </button>
                             </div>
                             {% else %}
-                            <div class="d-grid gap-2">
-                                <button class="btn btn-primary btn-lg" onclick="uploadPhoto({{ r.id }})" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600;">
+                            <div class="d-grid gap-2 mobile-action-buttons">
+                                <button class="btn btn-primary btn-lg" onclick="uploadPhoto({{ r.id }})" style="font-size: 1rem; font-weight: 600;">
                                     <i class="fas fa-camera"></i> СФОТОГРАФИРОВАТЬ
                                 </button>
-                                <button class="btn btn-success btn-lg" onclick="completeRequest({{ r.id }})" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600;">
+                                <button class="btn btn-success btn-lg" onclick="completeRequest({{ r.id }})" style="font-size: 1rem; font-weight: 600;">
                                     ВЫПОЛНИТЬ
                                 </button>
                             </div>
