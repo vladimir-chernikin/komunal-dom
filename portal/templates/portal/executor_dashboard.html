@@ -40,13 +40,23 @@ function formatTime(seconds) {
 function updateTimers() {
     document.querySelectorAll('[data-remaining]').forEach(el => {
         let remaining = parseInt(el.dataset.remaining);
-        if (remaining > 0) {
-            remaining--;
+        const isLate = el.dataset.isLate === 'true';  // Опоздание - увеличиваем время
+
+        if (isLate) {
+            // Опоздание - увеличиваем время
+            remaining++;
             el.dataset.remaining = remaining;
             el.textContent = formatTime(remaining);
         } else {
-            // Время вышло - перезагружаем страницу для показа просрочки
-            location.reload();
+            // Обычный таймер - уменьшаем время
+            if (remaining > 0) {
+                remaining--;
+                el.dataset.remaining = remaining;
+                el.textContent = formatTime(remaining);
+            } else {
+                // Время вышло - перезагружаем страницу для показа следующего этапа
+                location.reload();
+            }
         }
     });
 }
@@ -565,7 +575,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </td>
                                     <td>
                                         {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
-                                            {% if r.remaining_seconds > 0 %}
+                                            {% if r.is_late %}
+                                                <span class="badge status-overdue" style="font-size: 0.875rem;">
+                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-late="true">{{ r.remaining_time_formatted }}</span>
+                                                </span>
+                                            {% elif r.remaining_seconds > 0 %}
                                                 <span class="badge bg-danger badge-blink" style="font-size: 0.875rem;">
                                                     <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                                                 </span>
@@ -617,7 +631,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         {% endif %}
                     {% endif %}
                     {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
-                        {% if r.remaining_seconds > 0 %}
+                        {% if r.is_late %}
+                            <span class="badge status-overdue fs-6">
+                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-late="true">{{ r.remaining_time_formatted }}</span>
+                            </span>
+                        {% elif r.remaining_seconds > 0 %}
                             <span class="badge bg-danger badge-blink fs-6">
                                 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                             </span>
