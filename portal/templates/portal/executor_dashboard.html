@@ -565,12 +565,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </td>
                                     <td>
                                         {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
-                                            {% if r.remaining_seconds > 0 %}
+                                            {% if r.remaining_seconds > 0 and r.status == 'new' %}
                                                 <span class="badge bg-danger badge-blink" style="font-size: 0.875rem;">
                                                     <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                                                 </span>
                                             {% else %}
-                                                <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
+                                                <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}" style="font-size: 0.875rem;">
                                                     {{ r.status_display }}
                                                 </span>
                                             {% endif %}
@@ -617,7 +617,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         {% endif %}
                     {% endif %}
                     {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
-                        {% if r.remaining_seconds > 0 %}
+                        {% if r.remaining_seconds > 0 and r.status == 'new' %}
                             <span class="badge bg-danger badge-blink fs-6">
                                 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
                             </span>
