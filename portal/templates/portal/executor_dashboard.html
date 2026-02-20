@@ -638,6 +638,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
                                                     <i class="fas fa-image"></i> Фото
                                                 </a>
+                                                {% else %}
+                                                <button class="btn btn-sm btn-primary" onclick="uploadPhoto({{ r.id }})">
+                                                    <i class="fas fa-camera"></i> Фото
+                                                </button>
                                                 {% endif %}
                                             </div>
                                         {% endif %}
@@ -757,6 +761,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                 <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none">
                                     <i class="fas fa-image"></i> ФОТО
                                 </a>
+                                {% else %}
+                                <button class="btn btn-primary btn-lg" onclick="uploadPhoto({{ r.id }})">
+                                    <i class="fas fa-camera"></i> ФОТО
+                                </button>
                                 {% endif %}
                             </div>
                         {% elif r.assigned_to == request.user.id and r.status != 'done' %}
