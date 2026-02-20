@@ -13,6 +13,7 @@ urlpatterns = [
     path('subscribers/', views.subscriber_page, name='subscriber_page'),
     path('regulatory-chat/', views.regulatory_chat, name='regulatory_chat'),
     path('executor/', views.executor_dashboard, name='executor_dashboard'),
+    path('executor/take/<int:request_id>/', views.executor_take_request, name='executor_take_request'),
     path('dba/', admin_views.dba_page, name='dba_page'),
     # ИСПРАВЛЕНИЕ (2026-02-03): Удален дубликат /admin-uk/users/ - используется /admin/auth/user/
     path('admin-uk/prompts/', admin_views.prompt_management, name='prompt_management'),

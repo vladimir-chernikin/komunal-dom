@@ -2,6 +2,35 @@
 
 {% block title %}Кабинет исполнителя - УК "Аспект"{% endblock %}
 
+{% block extra_js %}
+<script>
+function takeRequest(requestId) {
+    if (!confirm('Взять эту заявку в работу?')) {
+        return;
+    }
+
+    fetch('{% url "portal:executor_take_request" 0 %}'.replace('0', requestId), {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Ошибка соединения: ' + error);
+    });
+}
+</script>
+{% endblock %}
+
 {% block extra_css %}
 <style>
 /* Компактные карточки */
@@ -140,6 +169,16 @@
     font-size: 0.75rem;
     padding: 0.25rem 0.5rem;
     margin-left: 0.5rem;
+}
+
+/* Мигание аварийного бейджа */
+@keyframes blink-fast {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.badge-blink {
+    animation: blink-fast 0.5s ease-in-out infinite;
 }
 
 /* Фильтры */
@@ -299,6 +338,7 @@
                                     <th>Адрес</th>
                                     <th>Описание</th>
                                     <th width="100">Категория</th>
+                                    <th width="100">Срочность</th>
                                     <th width="100">Статус</th>
                                 </tr>
                             </thead>
@@ -317,6 +357,11 @@
                                     </td>
                                     <td title="{{ r.description }}">{{ r.description|truncatewords:10 }}</td>
                                     <td>{{ r.category_badge|safe }}</td>
+                                    <td>
+                                        {% if r.urgency_level == 'emergency' %}
+                                        <span class="badge bg-danger badge-blink">S1</span>
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %}">
                                             {% if r.status == 'new' %}Новые
@@ -450,7 +495,9 @@
                                     <th>Адрес</th>
                                     <th>Описание</th>
                                     <th width="100">Категория</th>
+                                    <th width="100">Срочность</th>
                                     <th width="100">Статус</th>
+                                    <th width="100">Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -469,6 +516,11 @@
                                     <td title="{{ r.description }}">{{ r.description|truncatewords:10 }}</td>
                                     <td>{{ r.category_badge|safe }}</td>
                                     <td>
+                                        {% if r.urgency_level == 'emergency' %}
+                                        <span class="badge bg-danger badge-blink">S1</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
                                         <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %}">
                                             {% if r.status == 'new' %}Новые
                                             {% elif r.status == 'in_work' %}В работе
@@ -476,6 +528,11 @@
                                             {% elif r.status == 'cancelled' %}Отменены
                                             {% else %}{{ r.status }}{% endif %}
                                         </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-success" onclick="takeRequest({{ r.id }})">
+                                            <i class="fas fa-hand-paper"></i> Взять
+                                        </button>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -554,6 +611,9 @@
                     </div>
 
                     <div class="request-card-actions">
+                        <button class="btn btn-success" onclick="takeRequest({{ r.id }})">
+                            <i class="fas fa-hand-paper"></i> Взять
+                        </button>
                         {% if r.user_phone %}
                         <a href="tel:{{ r.user_phone }}" class="btn btn-primary">
                             <i class="fas fa-phone-alt"></i> Позвонить

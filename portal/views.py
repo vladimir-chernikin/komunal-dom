@@ -421,6 +421,7 @@ def executor_dashboard(request):
             r.description,
             r.status,
             r.service_name,
+            r.urgency_level,
             rc.category_name as service_category,
             rst.type_name as incident_type,
             r.assigned_to
@@ -490,3 +491,74 @@ def executor_dashboard(request):
         'q': search_query,
     }
     return render(request, 'portal/executor_dashboard.html', context)
+
+
+@login_required
+def executor_take_request(request, request_id):
+    """Взять заявку в работу"""
+    from django.http import JsonResponse
+    from django.db import connection
+
+    try:
+        profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=request.user, role='uk_user')
+
+    # Проверка прав - только исполнители и сотрудники УК могут брать заявки
+    if not profile.is_employee():
+        return JsonResponse({
+            'success': False,
+            'error': 'Только исполнители могут брать заявки в работу'
+        }, status=403)
+
+    # Проверяем метод запроса
+    if request.method != 'POST':
+        return JsonResponse({
+            'success': False,
+            'error': 'Метод не поддерживается'
+        }, status=405)
+
+    # Проверяем существование заявки и что она свободна
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT id, assigned_to, status
+            FROM bot_service_requests
+            WHERE id = %s
+        """, [request_id])
+
+        row = cursor.fetchone()
+
+        if not row:
+            return JsonResponse({
+                'success': False,
+                'error': 'Заявка не найдена'
+            }, status=404)
+
+        request_db_id, assigned_to, status = row
+
+        # Проверяем, что заявка свободна
+        if assigned_to is not None:
+            return JsonResponse({
+                'success': False,
+                'error': 'Заявка уже взята в работу другим исполнителем'
+            }, status=400)
+
+        # Назначаем заявку текущему пользователю
+        cursor.execute("""
+            UPDATE bot_service_requests
+            SET assigned_to = %s,
+                status = 'in_work',
+                updated_at = NOW()
+            WHERE id = %s
+            RETURNING id, status, assigned_to
+        """, [request.user.id, request_id])
+
+        updated_row = cursor.fetchone()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Заявка успешно взята в работу',
+        'request_id': updated_row[0],
+        'status': updated_row[1],
+        'assigned_to': updated_row[2]
+    })
