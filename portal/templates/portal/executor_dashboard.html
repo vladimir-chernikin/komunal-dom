@@ -571,12 +571,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                     </td>
                                     <td>
                                         <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
-                                            {% if r.status == 'new' %}Новая
-                                            {% elif r.status == 'in_work' %}В работе
-                                            {% elif r.status == 'done' %}Выполнена
-                                            {% elif r.status == 'cancelled' %}Отменена
-                                            {% elif r.status == 'overdue' %}Просрочена
-                                            {% else %}{{ r.status }}{% endif %}
+                                            {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
+                                                {{ r.status_display }}
+                                            {% else %}
+                                                {% if r.status == 'new' %}Новая
+                                                {% elif r.status == 'in_work' %}В работе
+                                                {% elif r.status == 'done' %}Выполнена
+                                                {% elif r.status == 'cancelled' %}Отменена
+                                                {% elif r.status == 'overdue' %}Просрочена
+                                                {% else %}{{ r.status }}{% endif %}
+                                            {% endif %}
                                         </span>
                                     </td>
                                     <td>
@@ -611,12 +615,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         {% endif %}
                     {% endif %}
                     <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
-                        {% if r.status == 'new' %}Новая
-                        {% elif r.status == 'in_work' %}В работе
-                        {% elif r.status == 'done' %}Выполнена
-                        {% elif r.status == 'cancelled' %}Отменена
-                        {% elif r.status == 'overdue' %}Просрочена
-                        {% else %}{{ r.status }}{% endif %}
+                        {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
+                            {{ r.status_display }}
+                        {% else %}
+                            {% if r.status == 'new' %}Новая
+                            {% elif r.status == 'in_work' %}В работе
+                            {% elif r.status == 'done' %}Выполнена
+                            {% elif r.status == 'cancelled' %}Отменена
+                            {% elif r.status == 'overdue' %}Просрочена
+                            {% else %}{{ r.status }}{% endif %}
+                        {% endif %}
                     </span>
                 </div>
                 <div class="request-card-body">

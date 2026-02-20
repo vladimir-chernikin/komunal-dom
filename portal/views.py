@@ -481,34 +481,50 @@ def executor_dashboard(request):
 
             # Вычисляем просрочку для аварийных заявок
             req['is_overdue'] = False
-            req['overdue_minutes'] = 0
             req['remaining_seconds'] = 0
             req['remaining_time_formatted'] = ''
+            req['status_display'] = req['status']  # Для отображения в колонке Статус
             req['deadline_at'] = None
 
             if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
                 now = datetime.now(timezone.utc)
-                deadline = req['created_at'] + timedelta(minutes=5)
-                req['deadline_at'] = deadline
-
                 time_diff = now - req['created_at']
                 total_seconds = time_diff.total_seconds()
+                arrival_deadline = 30 * 60  # 30 минут = 1800 секунд
 
-                if total_seconds > 300:  # 5 минут = 300 секунд
-                    # Просрочена - обновляем статус в БД
+                if total_seconds < 300:  # < 5 минут
+                    # Новая, мигает - обратный отсчёт до 5 минут
+                    req['remaining_seconds'] = int(300 - total_seconds)
+                    mins = req['remaining_seconds'] // 60
+                    secs = req['remaining_seconds'] % 60
+                    req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
+                    req['status_display'] = 'Новая'
+                elif total_seconds < arrival_deadline:  # 5-30 минут
+                    # Показать таймер до прибытия (30 минут от создания)
                     req['is_overdue'] = True
+                    remaining_arrival = int(arrival_deadline - total_seconds)
+                    req['remaining_time_formatted'] = f"{remaining_arrival // 60}:{remaining_arrival % 60:02d}"
+                    req['status_display'] = req['remaining_time_formatted']
+
+                    # Обновляем статус в БД на overdue
                     if req['status'] != 'overdue':
                         cursor.execute(
                             "UPDATE bot_service_requests SET status = 'overdue', updated_at = NOW() WHERE id = %s",
                             [req['id']]
                         )
                         req['status'] = 'overdue'
-                else:
-                    # Обратный отсчёт
-                    req['remaining_seconds'] = int(300 - total_seconds)
-                    mins = req['remaining_seconds'] // 60
-                    secs = req['remaining_seconds'] % 60
-                    req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
+                else:  # > 30 минут
+                    # Просрочена прибытие
+                    req['is_overdue'] = True
+                    req['status_display'] = 'Просрочена прибытие'
+
+                    # Обновляем статус в БД на overdue
+                    if req['status'] != 'overdue':
+                        cursor.execute(
+                            "UPDATE bot_service_requests SET status = 'overdue', updated_at = NOW() WHERE id = %s",
+                            [req['id']]
+                        )
+                        req['status'] = 'overdue'
 
             requests.append(req)
 
