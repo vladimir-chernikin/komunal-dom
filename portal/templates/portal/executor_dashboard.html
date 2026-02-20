@@ -15,7 +15,14 @@ function takeRequest(requestId) {
             'X-CSRFToken': '{{ csrf_token }}'
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert(data.message);
@@ -25,7 +32,7 @@ function takeRequest(requestId) {
         }
     })
     .catch(error => {
-        alert('Ошибка соединения: ' + error);
+        alert('Ошибка: ' + error.message);
     });
 }
 
@@ -72,7 +79,14 @@ function uploadPhoto(requestId) {
                 },
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
                     alert(data.message);
@@ -82,7 +96,7 @@ function uploadPhoto(requestId) {
                 }
             })
             .catch(error => {
-                alert('Ошибка загрузки: ' + error);
+                alert('Ошибка: ' + error.message);
             });
         }
     };
@@ -101,7 +115,14 @@ function completeRequest(requestId) {
             'X-CSRFToken': '{{ csrf_token }}'
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.success) {
             alert(data.message);
@@ -111,7 +132,7 @@ function completeRequest(requestId) {
         }
     })
     .catch(error => {
-        alert('Ошибка соединения: ' + error);
+        alert('Ошибка: ' + error.message);
     });
 }
 
