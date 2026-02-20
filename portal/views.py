@@ -473,9 +473,9 @@ def executor_dashboard(request):
             if req['entrance']:
                 req['address_details'].append(f"Подъезд: {req['entrance']}")
             req['address_details_str'] = ', '.join(req['address_details']) if req['address_details'] else ''
-            # Категория (лёгкая цветная заливка)
+            # Категория
             if req['service_category']:
-                req['category_badge'] = f'<span class="badge bg-light text-dark" style="background-color: #e7f1ff !important; color: #333 !important; font-weight: 500;">{req["service_category"]}</span>'
+                req['category_badge'] = f'<span class="badge bg-info">{req["service_category"]}</span>'
             else:
                 req['category_badge'] = '—'
 
