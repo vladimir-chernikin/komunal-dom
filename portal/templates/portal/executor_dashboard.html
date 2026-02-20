@@ -575,7 +575,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <button class="btn btn-sm btn-success" onclick="markArrived({{ r.id }})">
                                             <i class="fas fa-map-marker-alt"></i> Прибыл
                                         </button>
-                                        {% elif r.assigned_to == request.user.id %}
+                                        {% elif r.assigned_to == request.user.id and r.status != 'done' %}
                                             <div class="action-buttons d-flex gap-1">
                                                 {% if r.photo_path %}
                                                     <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
@@ -593,6 +593,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                                     </button>
                                                 {% endif %}
                                             </div>
+                                        {% elif r.assigned_to == request.user.id and r.status == 'done' %}
+                                            <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary me-1">
+                                                <i class="fas fa-image"></i> Фото
+                                            </a>
+                                            <span class="badge bg-success" style="font-size: 0.875rem; padding: 0.35rem 0.5rem;">Выполнено</span>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -704,7 +709,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button class="btn btn-success btn-lg w-100" onclick="markArrived({{ r.id }})" style="font-size: 1.1rem; padding: 0.75rem; font-weight: 600;">
                             <i class="fas fa-map-marker-alt"></i> ПРИБЫЛ НА МЕСТО
                         </button>
-                        {% elif r.assigned_to == request.user.id %}
+                        {% elif r.assigned_to == request.user.id and r.status == 'done' %}
+                            <div class="row g-2 action-buttons">
+                                <div class="col-6">
+                                    <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg w-100 text-center text-decoration-none" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600; line-height: 1.2; display: flex; align-items: center; justify-content: center;">
+                                        <i class="fas fa-image"></i> ФОТО
+                                    </a>
+                                </div>
+                                <div class="col-6">
+                                    <span class="badge bg-success d-flex align-items-center justify-content-center" style="font-size: 1rem; padding: 0.75rem 0.5rem; font-weight: 600; line-height: 1.2;">
+                                        ВЫПОЛНЕНО
+                                    </span>
+                                </div>
+                            </div>
+                        {% elif r.assigned_to == request.user.id and r.status != 'done' %}
                             {% if r.photo_path %}
                             <div class="row g-2 action-buttons">
                                 <div class="col-6">
