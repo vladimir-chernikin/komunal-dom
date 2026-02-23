@@ -10,7 +10,6 @@ import logging
 import asyncio
 import traceback
 import json
-import os
 from typing import Dict, List, Any, Tuple, Optional
 from dataclasses import dataclass
 from django.db import connection
@@ -238,7 +237,6 @@ class MainAgent:
         session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
         message_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем message_id
         established_filters = None  # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters
-        accumulated_fields = None  # ИСПРАВЛЕНО (2026-02-16): Извлекаем accumulated_fields
         txt_stop_questions = []  # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы)
 
         if user_context:
@@ -247,10 +245,7 @@ class MainAgent:
             session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
             message_id = user_context.get('message_id')  # ИСПРАВЛЕНО (2026-01-06)
             established_filters = user_context.get('established_filters')  # ИСПРАВЛЕНО (2026-01-10)
-            accumulated_fields = user_context.get('accumulated_fields')  # ИСПРАВЛЕНО (2026-02-16)
             txt_stop_questions = user_context.get('txtStopQ', [])  # ИСПРАВЛЕНО (2026-02-04): txtStopQ
-            if accumulated_fields:
-                logger.info(f"[DEBUG] ✅ Получены accumulated_fields из user_context: {accumulated_fields}")
             if txt_stop_questions:
                 logger.info(f"[DEBUG] Получены txtStopQ из user_context: {len(txt_stop_questions)} запрещенных вопросов")
 
@@ -402,22 +397,7 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
                 # Короткие ответы типа "в квартире" важны для контекста!
                 txtPrb = accumulation_result['updated_problem']
-                new_accumulated_fields = accumulation_result.get('fields', {})  # НОВЫЕ поля из сообщения
-
-                # ИСПРАВЛЕНО (2026-02-16): ОБЪЕДИНЯЕМ старые и новые accumulated_fields
-                # Приоритет: НОВЫЕ поля перезаписывают СТАРЫЕ
-                final_accumulated_fields = {}
-                if accumulated_fields:
-                    final_accumulated_fields.update(accumulated_fields)
-                    logger.info(f"[DEBUG] Старые accumulated_fields: {accumulated_fields}")
-                if new_accumulated_fields:
-                    final_accumulated_fields.update(new_accumulated_fields)
-                    logger.info(f"[DEBUG] Новые accumulated_fields: {new_accumulated_fields}")
-                accumulated_fields = final_accumulated_fields
-
-                # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПОСЛЕ объединения accumulated_fields
-                logger.info(f"[CRITICAL DEBUG] ✅ ФИНАЛЬНЫЕ accumulated_fields: {accumulated_fields}")
-                logger.info(f"[CRITICAL DEBUG] txtPrb: {txtPrb}")
+                accumulated_fields = accumulation_result.get('fields', {})  # ИСПРАВЛЕНО (2026-02-14): БРАТЬ fields из результата!
 
                 if accumulation_result['is_meaningful']:
                     logger.info(f"txtPrb обновлен (содержательный): '{txtPrb[:100]}...'")
@@ -503,7 +483,6 @@ class MainAgent:
         logger.info(f"  [TOOL] accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
         logger.info(f"  [TOOL] established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
 
-        # ПРИМЕЧАНИЕ (2026-02-19): Быстрая проверка water_type_quick_check удалена
         # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
         # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
         # ИСПРАВЛЕНО (2026-01-14): Проверяем message_text на недовольство (не только history!)
@@ -824,13 +803,10 @@ class MainAgent:
                 # - НЕ спрашиваем если location ЯВНО извлечена из текста ("в зале", "в ванной")
                 # - СПРАШИВАЕМ если location НЕ извлечена (null)
                 location_known = accumulated_fields.get('location') is not None if accumulated_fields else False
-
+                
                 # Проверяем incident_type - Запросы не требуют локации
                 incident_type = established_filters.get('incident_type', {}).get('value', '') if established_filters else ''
-
-                # ПРИМЕЧАНИЕ (2026-02-19): Хардкод skip_location_check для Водоснабжения УДАЛЕН
-                # Теперь AI Orchestrator сам решает, нужно ли уточнять локацию
-
+                
                 if not location_known and incident_type != 'Запрос':
                     logger.warning(f"[AI-ORCHESTRATOR] SUCCESS но location НЕ известна (accumulated_fields.location=null) - спрашиваем 'Где именно?'")
                     # Генерируем уточняющий вопрос через LLM
@@ -934,25 +910,26 @@ class MainAgent:
                             intensity_known = accumulated_fields.get('intensity') is not None
                             confidence = candidate.get('confidence', 0.8)
 
-                            # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields.source
-                            has_source = accumulated_fields.get('source') is not None
-                            category_confidence = established_filters.get('category', {}).get('confidence', 0.0)
-                            is_water_problem = (
-                                category in ['Водоснабжение', 'Отопление', 'Канализация'] and
-                                category_confidence >= 0.7
+                            # Для протечек (Водоснабжение/Отопление с "теч" или "протеч") нужно знать интенсивность
+                            is_leak = (
+                                category in ['Водоснабжение', 'Отопление'] and
+                                any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
                             )
 
-                            # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
                             # ИСПРАВЛЕНИЕ (2026-02-16): Проверяем incident_type - Запросы не требуют локации
                             incident_type = established_filters.get('incident_type', {}).get('value', '')
-
-                            # ПРИМЕЧАНИЕ (2026-02-19): needs_clarification упрощен - удалена проверка water_type
-                            needs_clarification = (not location_known and incident_type != 'Запрос' and candidate.get('location_type') != 'Общедомовое') or (is_water_problem and has_source and not intensity_known)
+                            needs_clarification = (not location_known and incident_type != 'Запрос') or (is_leak and not intensity_known)
 
                             if needs_clarification:
-                                # ПРИМЕЧАНИЕ (2026-02-19): Хардкод список missing_info УДАЛЕН
-                                # AI сам анализирует accumulated_fields и решает, что нужно уточнить
-                                context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Требуется уточнение деталей."
+                                # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
+                                # Формируем контекст с указанием, что именно нужно уточнить
+                                missing_info = []
+                                if not location_known:
+                                    missing_info.append("локацию")
+                                if is_leak and not intensity_known:
+                                    missing_info.append("интенсивность (как сильно течет)")
+
+                                context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: {', '.join(missing_info)}."
                                 ai_result = await self._generate_ai_question(
                                     context=context,
                                     dialog_history=dialog_history,
@@ -963,7 +940,7 @@ class MainAgent:
                                     session_id=session_id,
                                     accumulated_fields=accumulated_fields
                                 )
-                                message = ai_result.get('question', 'Уточните подробности проблемы.')
+                                message = ai_result.get('question', 'Опишите подробнее, что именно происходит?')
 
                                 # ИСПРАВЛЕНИЕ (2026-02-16): Статус AMBIGUOUS при уточнении, SUCCESS когда всё известно
                                 result = {
@@ -1025,19 +1002,6 @@ class MainAgent:
             logger.error(f"Сообщение: '{message_text}'")
             logger.error(f"Контекст: {user_context}")
             logger.error(f"Трассировка:\n{error_trace}")
-
-            # ИСПРАВЛЕНО (2026-02-18): Сохраняем трассировку в файл для отладки
-            import datetime
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            traceback_path = f"/tmp/_mainagent_error_{timestamp}.txt"
-            with open(traceback_path, "w") as f:
-                f.write(f"КРИТИЧЕСКАЯ ОШИБКА в process_service_detection\n")
-                f.write(f"Время: {datetime.datetime.now()}\n")
-                f.write(f"Ошибка: {type(e).__name__}: {e}\n")
-                f.write(f"Сообщение: '{message_text}'\n")
-                f.write(f"Трассировка:\n{error_trace}\n")
-            os.chmod(traceback_path, 0o644)
-            logger.error(f"Трассировка сохранена в: {traceback_path}")
 
             # Возвращаем безопасный результат
             return {
@@ -1235,44 +1199,14 @@ class MainAgent:
             logger.warning(f"[DEBUG] single_candidate: {clarification_result.get("single_candidate")}")
             logger.warning(f"[DEBUG] message: {clarification_result.get("message", "")[:100]}")
 
-        # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКАЯ ДИАГНОСТИКА - почему не SUCCESS?
-        import datetime
-        debug_path = f"/tmp/_clarification_result_debug_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(debug_path, 'w', encoding='utf-8') as f:
-            f.write(f"=== clarification_result DEBUG ===\n")
-            f.write(f"status: {clarification_result.get('status')}\n")
-            f.write(f"single_candidate: {clarification_result.get('single_candidate')}\n")
-            f.write(f"message: {clarification_result.get('message', '')[:100]}\n")
-            f.write(f"keys: {list(clarification_result.keys())}\n")
-            if clarification_result.get('single_candidate'):
-                candidate = clarification_result['single_candidate']
-                f.write(f"candidate keys: {list(candidate.keys())}\n")
-                f.write(f"candidate confidence: {candidate.get('confidence', 'N/A')}\n")
-        import os
-        os.chmod(debug_path, 0o644)
-        logger.warning(f"[DEBUG] Диагностика clarification_result сохранена в {debug_path}")
-
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
-        # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКАЯ ПРОВЕРКА - почему не заходит в if?
-        status_check = clarification_result.get('status') == 'SUCCESS'
-        single_check = clarification_result.get('single_candidate') is not None
-
-        with open(debug_path, 'a', encoding='utf-8') as f:
-            f.write(f"\n=== CONDITION CHECK ===\n")
-            f.write(f"status == 'SUCCESS': {status_check}\n")
-            f.write(f"single_candidate exists: {single_check}\n")
-            f.write(f"COMBINED condition: {status_check and single_check}\n")
-            f.write(f"SHOULD ENTER SUCCESS BLOCK: {status_check and single_check}\n")
-
-        logger.warning(f"[DEBUG] status_check={status_check}, single_check={single_check}")
-
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
             candidate = clarification_result['single_candidate']
             result = {
                 'status': 'SUCCESS',
                 'service_id': candidate['service_id'],
                 'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
-                'confidence': candidate.get('confidence', 1.0),  # ИСПРАВЛЕНО (2026-02-17): Берем confidence из кандидата, а не захардкодим 1.0!
+                'confidence': 1.0,
                 'source': 'filtered_search',
                 'message': clarification_result['message'],
                 'candidates': candidates_data[:1],
@@ -1616,27 +1550,7 @@ class MainAgent:
         logger.warning(f"[DEBUG] _generate_smart_clarification: кандидатов ДО фильтрации={len(candidates_with_attrs)}")
         logger.warning(f"[DEBUG] Извлеченные фильтры: location={known_location}, category={known_category}, incident={known_incident}")
         for i, c in enumerate(candidates_with_attrs[:5], 1):
-            logger.warning(f"[DEBUG]   {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}, loc={c.get('location_type')}, cat={c.get('category')}, inc={c.get('incident_type')}")
-
-        # ИСПРАВЛЕНО (2026-02-17): Сохраняем диагностику в файл для быстрого доступа
-        import datetime
-        diag_path = f"/tmp/_clarification_diag_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(diag_path, 'w', encoding='utf-8') as f:
-            f.write(f"=== _generate_smart_clarification DIAGNOSTICS ===\n")
-            f.write(f"candidates_with_attrs: {len(candidates_with_attrs)}\n")
-            f.write(f"known_location: {known_location}\n")
-            f.write(f"known_category: {known_category}\n")
-            f.write(f"known_incident: {known_incident}\n")
-            f.write(f"original_message: {original_message[:100]}\n")
-            f.write(f"\nCANDIDATES:\n")
-            for i, c in enumerate(candidates_with_attrs[:5], 1):
-                f.write(f"  {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}\n")
-                f.write(f"     location_type='{c.get('location_type')}'\n")
-                f.write(f"     category='{c.get('category')}'\n")
-                f.write(f"     incident_type='{c.get('incident_type')}'\n")
-        import os
-        os.chmod(diag_path, 0o644)
-        logger.warning(f"[DEBUG] Диагностика сохранена в {diag_path}")
+            logger.warning(f"[DEBUG]   {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}")
 
         logger.info(f"Извлеченные фильтры: location_type={known_location}, category={known_category}, incident_type={known_incident}")
 
@@ -1676,17 +1590,6 @@ class MainAgent:
             logger.info(f"Отфильтровано по incident_type={known_incident}: {len(filtered_candidates)} из {len(candidates_with_attrs)}")
 
         logger.warning(f"[DEBUG] ВСЕГО после фильтрации: {len(filtered_candidates)} кандидатов")
-
-        # ИСПРАВЛЕНО (2026-02-17): Добавляем диагностику ПОСЛЕ фильтрации
-        if len(filtered_candidates) != len(candidates_with_attrs):
-            with open(diag_path, 'a', encoding='utf-8') as f:
-                f.write(f"\n=== AFTER FILTERING ===\n")
-                f.write(f"filtered_candidates: {len(filtered_candidates)}\n")
-                for i, c in enumerate(filtered_candidates[:5], 1):
-                    f.write(f"  {i}. ID={c.get('service_id')}, conf={c.get('confidence', 0):.3f}, name={c.get('service_name', '')[:40]}\n")
-                    f.write(f"     location_type='{c.get('location_type')}'\n")
-                    f.write(f"     category='{c.get('category')}'\n")
-                    f.write(f"     incident_type='{c.get('incident_type')}'\n")
 
         # ИСПРАВЛЕНО (2025-12-25): Ранжирование через LLM вместо хардкода keywords
         # ИСПРАВЛЕНО (2026-01-15): Убрана проверка known_object (ранжируем если >1 кандидата)
@@ -1762,15 +1665,6 @@ class MainAgent:
             # Услуга определена после фильтрации!
             candidate = filtered_candidates[0]
             logger.info(f"После фильтрации остался 1 кандидат: {candidate['service_name']} (ID: {candidate['service_id']})")
-
-            # ИСПРАВЛЕНО (2026-02-17): Диагностика - почему НЕ SUCCESS?
-            with open(diag_path, 'a', encoding='utf-8') as f:
-                f.write(f"\n=== SINGLE CANDIDATE DECISION ===\n")
-                f.write(f"candidate: {candidate['service_name']} (ID: {candidate['service_id']})\n")
-                f.write(f"candidate_confidence: {candidate.get('confidence', 0):.3f}\n")
-                f.write(f"location_known: {accumulated_fields.get('location') is not None}\n")
-                f.write(f"incident_type: {established_filters.get('incident_type', {}).get('value', '')}\n")
-                f.write(f"category: {established_filters.get('category', {}).get('value', '')}\n")
 
             # ИСПРАВЛЕНИЕ (2026-01-06): Проверяем - ВСЕ ЛИ важные фильтры установлены
             # Если у кандидата ЕСТЬ category/location/incident в services_catalog,
@@ -1883,30 +1777,10 @@ class MainAgent:
                 not (severity_known or intensity_known)
             )
 
-            # ИСПРАВЛЕНО (2026-02-17): Диагностика условий (ПЕРЕМЕЩЕНО после объявления переменных)
-            with open(diag_path, 'a', encoding='utf-8') as f:
-                f.write(f"\n=== DECISION LOGIC ===\n")
-                f.write(f"llm_confidence: {llm_confidence:.3f}\n")
-                f.write(f"filter_confidence: {filter_confidence:.3f}\n")
-                f.write(f"candidate_confidence: {candidate_confidence:.3f}\n")
-                f.write(f"actual_confidence: {actual_confidence:.3f}\n")
-                f.write(f"already_asked_confirmation: {already_asked_confirmation}\n")
-                f.write(f"needs_clarification: {needs_clarification}\n")
-                f.write(f"location_known: {location_known}\n")
-                f.write(f"is_incident: {is_incident}\n")
-                f.write(f"is_water_problem: {is_water_problem}\n")
-                f.write(f"needs_severity_clarification: {needs_severity_clarification}\n")
-
             # Формируем сообщение (ИСПРАВЛЕНО: используем LLM вместо fallback!)
             if needs_clarification:
                 # ИСПРАВЛЕНО (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK!
                 logger.warning(f"[LOW CONFIDENCE] actual_conf={actual_confidence:.2%} < 90% → используем LLM для генерации вопроса")
-
-                # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
-                with open(diag_path, 'a', encoding='utf-8') as f:
-                    f.write(f"\n=== RETURN PATH ===\n")
-                    f.write(f"BLOCK: needs_clarification (line 1856)\n")
-                    f.write(f"RETURN: AMBIGUOUS\n")
 
                 # Вызываем _generate_ai_question с новым промптом (НЕ fallback!)
                 ai_result = await self._generate_ai_question(
@@ -1937,18 +1811,11 @@ class MainAgent:
                 }
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО локация НЕ известна - спрашиваем через LLM
-            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
-            if not location_known and candidate.get('location_type') != 'Общедомовое':
+            if not location_known:
                 logger.warning(f"[NO LOCATION] actual_conf={actual_confidence:.2%} >= 90%, НО локация НЕ известна - генерируем контекстный вопрос")
                 # ИСПРАВЛЕНО (2026-02-16): Используем LLM для генерации контекстного вопроса
                 # вместо hardcoded "Где именно это произошло?"
                 context = f"Найдена услуга: {candidate.get('service_name', candidate.get('scenario_name', 'Unknown'))} (confidence={actual_confidence:.1%}). Нужно уточнить локацию."
-
-                # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
-                with open(diag_path, 'a', encoding='utf-8') as f:
-                    f.write(f"\n=== RETURN PATH ===\n")
-                    f.write(f"BLOCK: not location_known (line 1895)\n")
-                    f.write(f"RETURN: AMBIGUOUS\n")
 
                 ai_result = await self._generate_ai_question(
                     context=context,
@@ -1975,7 +1842,6 @@ class MainAgent:
                     'is_followup': is_followup
                 }
 
-            # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО для Инцидента НЕ известны severity/intensity
             if needs_severity_clarification:
                 logger.warning(f"[NO SEVERITY] actual_conf={actual_confidence:.2%} >= 90%, incident_type=Инцидент, НО НЕ известны severity/intensity - спрашиваем")
@@ -1997,12 +1863,6 @@ class MainAgent:
 
                 # OLD: 'message': "Как сильно течёт? Есть затопление?",  # ❌ HARDCODED
 
-                # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
-                with open(diag_path, 'a', encoding='utf-8') as f:
-                    f.write(f"\n=== RETURN PATH ===\n")
-                    f.write(f"BLOCK: needs_severity_clarification (line 1927)\n")
-                    f.write(f"RETURN: AMBIGUOUS\n")
-
                 logger.warning(f"[SEVERITY CLARIFICATION] Возвращаем AMBIGUOUS с вопросом: {message}")
                 return {
                     'candidates': [candidate],
@@ -2020,12 +1880,6 @@ class MainAgent:
 
             # Высокая уверенность И локация известна И (для Инцидентов) известна серьёзность - создаем заявку
             message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
-
-            # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
-            with open(diag_path, 'a', encoding='utf-8') as f:
-                f.write(f"\n=== RETURN PATH ===\n")
-                f.write(f"BLOCK: SUCCESS (line 1965)\n")
-                f.write(f"RETURN: SUCCESS\n")
 
             return {
                 'candidates': [candidate],
@@ -2399,8 +2253,7 @@ class MainAgent:
         attribute_value: str,
         dialog_history: List[Dict],
         txtPrb: str,
-        established_filters: Dict,
-        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
+        established_filters: Dict
     ) -> Dict:
         """
         Генерирует уточняющий вопрос о пропущенном атрибуте через AI
@@ -2505,13 +2358,11 @@ class MainAgent:
 
             # ИСПРАВЛЕНИЕ (2026-01-11): ВАЛИДАЦИЯ вопроса через _llm_validate_question!
             # КРИТИЧЕСКИ ВАЖНО: ЛLM может сгенерировать вопрос с "или" несмотря на запрет в промпте
-            # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации
             question = await self._llm_validate_question(
                 question=question,
                 txtPrb=txtPrb,
                 established_filters=established_filters,
-                asked_questions=[],  # TODO: можно добавить уже заданные вопросы
-                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
+                asked_questions=[]  # TODO: можно добавить уже заданные вопросы
             )
 
             logger.info(f"[AI QUESTION] Сгенерирован вопрос о category: '{question}'")
@@ -2730,85 +2581,8 @@ class MainAgent:
 
         logger.info(f"AI Orchestrator: UNION={len(all_candidates)}, уникальных={len(unique_candidates)}")
 
-        # ИСПРАВЛЕНО (2026-02-17): Если нет кандидатов с фильтрами - пробуем БЕЗ category filter
-        # ПРИЧИНА: Filter Detection может ошибочно определить категорию ("Канализация" vs "Санитария")
-        if not unique_candidates and established_filters and established_filters.get('category'):
-            logger.warning(f"[ORCHESTRATOR] Нет кандидатов с фильтрами! Пробуем БЕЗ category filter...")
-            logger.info(f"[ORCHESTRATOR] DEBUG: unique_candidates={len(unique_candidates) if unique_candidates else 0}, category_filter={established_filters.get('category')}")
-
-            # ИСПРАВЛЕНО (2026-02-18): Записываем в файл для отладки
-            import datetime
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            log_path = f"/tmp/_fallback_debug_{timestamp}.txt"
-            with open(log_path, "w") as f:
-                f.write(f"FALLBACK ЗАПУШЕН\n")
-                f.write(f"Время: {datetime.datetime.now()}\n")
-                f.write(f"unique_candidates: {len(unique_candidates) if unique_candidates else 0}\n")
-                f.write(f"established_filters: {established_filters}\n")
-            os.chmod(log_path, 0o644)
-
-            # Убираем category filter и перезапускаем поиск
-            filters_without_category = {k: v for k, v in established_filters.items() if k != 'category'}
-
-            # Перезапускаем поиск без category
-            # ИСПРАВЛЕНО (2026-02-18): search_text → message_text (переменная не была определена)
-            search_tasks = []
-            if self.tag_search:
-                search_tasks.append(self._run_tag_search(message_text, filters=filters_without_category))
-            if self.semantic_search:
-                search_tasks.append(self._run_semantic_search(message_text, filters=filters_without_category))
-            if self.vector_search:
-                search_tasks.append(self._run_vector_search(message_text, filters=filters_without_category))
-
-            if search_tasks:
-                search_results_no_cat = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-                # Собираем кандидатов
-                all_candidates_no_cat = []
-                for result in search_results_no_cat:
-                    if isinstance(result, Exception):
-                        continue
-                    if not result or not result.get('candidates'):
-                        continue
-                    method = result.get('method', 'search')
-                    for c in result['candidates']:
-                        # ИСПРАВЛЕНО (2026-02-17): Не перезаписываем sources, добавляем к существующим
-                        if 'sources' not in c:
-                            c['sources'] = [method]
-                        all_candidates_no_cat.append(c)
-
-                unique_candidates = self._deduplicate_and_prioritize_candidates(all_candidates_no_cat)
-                logger.info(f"[ORCHESTRATOR] После поиска БЕЗ category: {len(unique_candidates)} кандидатов")
-                if unique_candidates:
-                    logger.info(f"[ORCHESTRATOR] Кандидаты БЕЗ category: {[c.get('service_id') for c in unique_candidates[:5]]}")
-
-                    # ИСПРАВЛЕНО (2026-02-18): Логируем fallback кандидатов в файл
-                    import datetime
-                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    log_path = f"/tmp/_fallback_candidates_{timestamp}.txt"
-                    with open(log_path, "w") as f:
-                        f.write(f"FALLBACK КАНДИДАТЫ ({len(unique_candidates)} шт)\n")
-                        f.write(f"Время: {datetime.datetime.now()}\n\n")
-                        for i, c in enumerate(unique_candidates[:10], 1):
-                            f.write(f"{i}. ID={c.get('service_id')}: {c.get('service_name')}\n")
-                            f.write(f"   Категория: {c.get('category')}, conf={c.get('confidence')}\n")
-                            f.write(f"   Sources: {c.get('sources')}\n\n")
-                    os.chmod(log_path, 0o644)
-                else:
-                    logger.warning(f"[ORCHESTRATOR] fallback БЕЗ category НЕ нашел кандидатов!")
-
         if not unique_candidates:
             # Никто ничего не нашел - спрашиваем что случилось
-            # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ДО вызова _ask_ai_what_happened
-            print(f"=== [CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened ===")
-            print(f"accumulated_fields={accumulated_fields}")
-            print(f"accumulated_fields type={type(accumulated_fields)}")
-            print(f"accumulated_fields is truthy={bool(accumulated_fields)}")
-            logger.info(f"[CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened:")
-            logger.info(f"  accumulated_fields={accumulated_fields}")
-            logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
-            logger.info(f"  accumulated_fields is truthy={bool(accumulated_fields)}")
-
             return {
                 'status': 'AMBIGUOUS',
                 'message': await self._ask_ai_what_happened(
@@ -2828,12 +2602,11 @@ class MainAgent:
             confidence = candidate.get('confidence', 0.0)
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
-            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence
+            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence услуги
             location_known = accumulated_fields.get('location') is not None
 
             # ПРОВЕРЯЕМ: Если локация НЕ известна → проверяем тип обращения
-            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
-            if not location_known and candidate.get('location_type') != 'Общедомовое':
+            if not location_known:
                 # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем incident_type - Запрос или Инцидент?
                 incident_type = established_filters.get('incident_type', {}).get('value', '')
 
@@ -2888,47 +2661,6 @@ class MainAgent:
                 intensity_known = accumulated_fields.get('intensity') is not None
                 confidence = candidate.get('confidence', 0.8)
 
-                # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКОЕ - Проверяем confidence ПЕРЕД генерацией вопроса!
-                # Если confidence >= 90% и location известен → возвращаем SUCCESS БЕЗ вопроса
-                # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
-                if confidence >= 0.9:
-                    logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 90% и location известен → SUCCESS без вопроса")
-                    return {
-                        'candidates': unique_candidates,
-                        'status': 'SUCCESS',
-                        'service_id': candidate['service_id'],
-                        'service_name': candidate['service_name'],
-                        'confidence': confidence,
-                        'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
-                        'needs_clarification': False,
-                        'source': 'orchestrator'
-                    }
-
-                # ИСПРАВЛЕНО (2026-02-17): Если confidence 80-90% ПРОВЕРЯЕМ ПЕРЕСЕЧЕНИЕ txtPrb с названием услуги
-                # ПРИЧИНА: "ливнёвка забита листвой" + "Засор ливнёвой канализации" → пересечение "ливнёвка"
-                # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
-                elif confidence >= 0.8:
-                    service_name_lower = candidate.get('service_name', '').lower()
-                    txtPrb_lower = (txtPrb or '').lower()
-
-                    # Проверяем пересечение ключевых слов
-                    keywords = ['ливнёв', 'ливнев', 'канализ', 'засор', 'мусоропр']
-                    has_keyword = any(kw in txtPrb_lower and kw in service_name_lower for kw in keywords)
-
-                    if has_keyword:
-                        logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 80% + пересечение txtPrb/услуга → SUCCESS без вопроса")
-                        return {
-                            'candidates': unique_candidates,
-                            'status': 'SUCCESS',
-                            'service_id': candidate['service_id'],
-                            'service_name': candidate['service_name'],
-                            'confidence': confidence,
-                            'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
-                            'needs_clarification': False,
-                            'source': 'orchestrator'
-                        }
-
-
                 # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1773)
                 # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
                 # УБРАН HARDCODE keywords - используется accumulated_fields.source
@@ -2957,7 +2689,7 @@ class MainAgent:
                 #         'source': 'orchestrator'
                 #     }
 
-               # Confidence < 90% - уточняем через AI
+               # Низкий confidence - уточняем через AI
                # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
                # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации вопросов
                 return await self._ask_ai_clarification(
@@ -2988,10 +2720,13 @@ class MainAgent:
                 service_name_lower = leader['service_name'].lower()
                 intensity_known = accumulated_fields.get('intensity') is not None
 
-                # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields.source
-                # Проверка is_leak удалена - используется needs_severity_clarification (строка 1773)
+                # Для протечек (Водоснабжение/Отопление с "теч" или "протеч") нужно знать интенсивность
+                is_leak = (
+                    category in ['Водоснабжение', 'Отопление'] and
+                    any(keyword in service_name_lower for keyword in ['теч', 'протеч', 'капа'])
+                )
 
-                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1773)
+                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1783)
                 # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
                 # Если это протечка без интенсивности → спрашиваем
                 # if is_leak and not intensity_known:
@@ -3075,16 +2810,6 @@ class MainAgent:
             session_id: ID сессии для логирования
             accumulated_fields: Извлеченные поля из ProblemAccumulationService
         """
-        # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПРИ ВХОДЕ в метод
-        print(f"=== [CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened ===")
-        print(f"accumulated_fields={accumulated_fields}")
-        print(f"accumulated_fields type={type(accumulated_fields)}")
-        print(f"accumulated_fields is truthy={bool(accumulated_fields)}")
-        logger.info(f"[CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened:")
-        logger.info(f"  accumulated_fields={accumulated_fields}")
-        logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
-        logger.info(f"  accumulated_fields is truthy={bool(accumulated_fields)}")
-
         # Вычисляем dialog_turn
         dialog_turn = len(dialog_history) if dialog_history else 1
 
@@ -3337,22 +3062,6 @@ class MainAgent:
         absolute_facts = []
         if txtPrb:
             absolute_facts.append(f"Описание проблемы: {txtPrb}")
-
-        # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields в absolute_facts для валидатора
-        # КРИТИЧЕСКИ ВАЖНО: Чтобы валидатор видел УЖЕ извлеченные поля и НЕ пропускал вопросы о них!
-        if accumulated_fields:
-            if accumulated_fields.get('source'):
-                absolute_facts.append(f"Объект: {accumulated_fields['source']}")
-            if accumulated_fields.get('location'):
-                absolute_facts.append(f"Локация: {accumulated_fields['location']}")
-            if accumulated_fields.get('problem'):
-                absolute_facts.append(f"Проблема: {accumulated_fields['problem']}")
-            if accumulated_fields.get('severity'):
-                absolute_facts.append(f"Серьезность: {accumulated_fields['severity']}")
-            if accumulated_fields.get('intensity'):
-                absolute_facts.append(f"Интенсивность: {accumulated_fields['intensity']}")
-            if accumulated_fields.get('category'):
-                absolute_facts.append(f"Категория (накопленная): {accumulated_fields['category']}")
 
         if established_filters:
             for filter_name, filter_data in established_filters.items():
@@ -3813,8 +3522,7 @@ JSON:"""
         txtPrb: str = None,
         asked_questions: List[str] = None,
         intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
-        established_filters: Dict = None  # ИСПРАВЛЕНО (2026-02-18): Установленные фильтры (чтобы не спрашивать известное)
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): Динамическая сборка промпта по стратегии
@@ -3918,22 +3626,6 @@ JSON:"""
         if txtPrb:
             context_block += f"\nНакопленное описание: {txtPrb}"
 
-        # ИСПРАВЛЕНО (2026-02-18): Добавляем established_filters чтобы LLM не спрашивал про известное
-        if established_filters:
-            filters_info = []
-            for filter_name, filter_data in established_filters.items():
-                if isinstance(filter_data, dict) and 'value' in filter_data:
-                    value = filter_data['value']
-                    confidence = filter_data.get('confidence', 0)
-                    filters_info.append(f"- {filter_name}: {value} (confidence: {confidence})")
-
-            if filters_info:
-                context_block += f"""
-
-⛔ УЖЕ ИЗВЕСТНЫЕ ФИЛЬТРЫ (НЕ СПРАШИВАЙ ПРО ЭТО!):
-{chr(10).join(filters_info)}
-"""
-
         # Блок ограничений
         # ИСПРАВЛЕНИЕ (2026-01-11): Усилен Rule 0 - добавлены явные примеры запрещенных вопросов
         constraints_block = """
@@ -4001,27 +3693,13 @@ JSON:"""
 Кандидат: {candidate_name}
 """
             else:
-                # Первый раз - задаем уточняющий вопрос
-                # ИСПРАВЛЕНО (2026-02-18): Убрано "Похоже на..." - избыточно
-                logger.info(f"[DEBUG] Первый уточняющий вопрос (без 'Похоже на...')")
+                # Первый раз - задаем уточняющий вопрос (открытый!)
+                logger.info(f"[DEBUG] Первый уточняющий вопрос")
                 task_block = f"""
 БЛОК: ЗАДАЧА
-Услуга определена: {candidate_name}.
-
-⛔ КРИТИЧЕСКИ ВАЖНО:
-- ЗАПРЕЩЕНО говорить "Похоже на..." - это ИЗБЫТОЧНО!
-- ЗАПРЕЩЕНО задавать "да/нет" вопросы
-- ЗАПРЕЩЕНО использовать "или" в вопросах!
-
-Алгоритм:
-1. Проверь txtPrb: указан ли ТИП воды ("горячей", "холодной", "горячая", "холодная")
-2. Если категория "Водоснабжение" И тип НЕ указан в txtPrb:
-   - Сначала спроси локацию
-   - Потом спроси тип открытым вопросом: "Какой воды нет?" или "Уточните тип воды"
-3. Если категория "Водоснабжение" И тип УЖЕ указан в txtPrb:
-   - Спроси только локацию
-   - НЕ уточняй тип - он уже известен!
-4. Для остальных категорий: уточняй только неизвестное
+Услуга определена с вероятностью >90%.
+ЗАПРЕЩЕНО задавать "да/нет" вопросы! Используй открытые вопросы.
+Формула: "Похоже на [описание проблемы]. Опишите подробнее что происходит."
 
 Кандидат: {candidate_name}
 """
@@ -4068,20 +3746,6 @@ JSON:"""
 Не задавай вопрос, который требует значения поля, которого нет в CandidateServices.
 
 # Алгоритм выбора темы вопроса (делай рассуждение внутренне, не выводи его)
-## Шаг 0. КРИТИЧЕСКОЕ ПРАВИЛО ДЛЯ ВОДОСНАБЖЕНИЯ
-ЕСЛИ среди кандидатов есть категория "Водоснабжение":
-- Проверь ProblemText: указан ли ТИП воды ("горячей", "холодной", "горячая", "холодная")
-- Если тип НЕ указан:
-  - Если location НЕ известен → спроси "Где именно нет воды?"
-  - Если location УЖЕ известен → спроси "Какой воды нет?" или "Уточните тип воды"
-  - ⛔⛔⛔ КРИТИЧЕСКИЙ ЗАПРЕТ: НЕ ИСПОЛЬЗУЙ слова из названия услуги-кандидата!
-  - ❌ ПЛОХО: "Какой воды слабый напор: горячей или холодной?"
-  - ❌ ПЛОХО: "Какой воды переток: горячей или холодной?"
-  - ✅ ХОРОШО: "Какой воды нет?" (спрашивает про ProblemText, не про кандидата)
-  - ✅ ХОРОШО: "Уточните тип воды" (общий вопрос БЕЗ слов из кандидата)
-- Если тип УЖЕ указан в ProblemText → НЕ спрашивай про тип, иди к Шагу 2
-- ⛔⛔⛔ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать слово "ИЛИ" в вопросах!
-
 ## Шаг 1. Извлеки «уже известные факты»
 - Из ProblemText выдели факты, которые уже явно указаны пользователем (например: место, объект, система, симптом, контекст).
 - Считай факт «известным», если он уже присутствует в ProblemText или был зафиксирован ранее в диалоге.
@@ -4241,7 +3905,7 @@ JSON:"""
         prompt = f"{system_block}{intro_block}{asked_questions_block}{context_block}{task_block}{constraints_block}"
 
         # Добавляем инструкцию по формату ответа
-        prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"""
+        prompt += "\nВерни только вопрос, без объяснений.\n\nВопрос:"
 
         return prompt
 
@@ -4330,7 +3994,7 @@ JSON:"""
 
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
         logger.info("[SEARCH] _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
-        logger.info(f"  [NOTE] context: {str(context)[:100]}")
+        logger.info(f"  [NOTE] context: '{context[:100]}'")
         logger.info(f"  [TOOL] question_type: {question_type}")
         logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
@@ -4358,7 +4022,7 @@ JSON:"""
                 logger.info(f"[!] Уже задано вопросов: {len(asked_questions)}")
 
             # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
-            # ИСПРАВЛЕНО (2026-02-18): ПЕРЕВКЛЮЧЕН - используем стратегии A/B/C/NONE с established_filters
+            # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb)
             if question_type == 'clarification' and candidates is not None:
                 # Используем новый метод с динамическими промптами по стратегиям
                 prompt = self._build_dynamic_prompt(
@@ -4367,45 +4031,37 @@ JSON:"""
                     candidates=candidates,
                     missing_filter=missing_filter,
                     txtPrb=txtPrb,
-                    asked_questions=asked_questions if asked_questions else None,
-                    intro_phrase=intro_phrase,
-                    accumulated_fields=accumulated_fields,
-                    established_filters=established_filters  # ИСПРАВЛЕНО (2026-02-18): Передаем established_filters
+                    asked_questions=asked_questions if asked_questions else None,  # ИСПРАВЛЕНО 2026-01-05
+                    intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
                 )
-                logger.info(f"[BOT] Используем стратегию {strategy} (кандидатов: {len(candidates) if candidates else 0})")
+                logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
             else:
-                # Для остальных типов используем промпт из БД
-                # ИСПРАВЛЕНО (2026-02-18): ВСЕГДА используем промпт из БД (unified approach)
-                prompt = await self._build_question_prompt(
+                # Для остальных типов используем старый метод
+                prompt = self._build_question_prompt(
                     context=context,
                     dialog_history=dialog_history,
                     candidates=candidates,
                     established_filters=established_filters,
                     txtPrb=txtPrb,
                     question_type=question_type,
-                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторный LLM
+                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
                     txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
                 )
-                logger.info(f"[BOT] Используется промпт из БД (mainagent-orchestrator), candidates: {len(candidates) if candidates else 0}")
 
-
-            # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 + последние 500 символов)
+            # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 символов)
             logger.info(f"[BOT] PROMPT ДЛЯ LLM ({question_type}):")
             logger.info(f"{'=' * 80}")
             logger.info(f"{prompt[:500]}...")
             logger.info(f"{'=' * 80} (полная длина: {len(prompt)} символов)")
-            logger.info(f"[BOT] КОНЕЦ ПРОМПТА (последние 500 символов):")
-            logger.info(f"{'=' * 80}")
-            logger.info(f"...{prompt[-500:]}")
-            logger.info(f"{'=' * 80}")
 
             # Вызываем AI через AIAgentService
             if self.ai_agent:
                 # ИСПРАВЛЕНО (2025-12-28): ГИБРИДНАЯ МОДЕЛЬ
                 # - Для вопросов к пользователю: Pro (качество критично!)
                 # - Для остальных задач: используется default (обычно Lite)
-                # ИСПРАВЛЕНО (2026-02-19): Всегда используем lite для экономии
-                model = 'lite'
+                question_types_requiring_pro = ['clarification', 'what_happened', 'location', 'details']
+                model = 'pro' if question_type in question_types_requiring_pro else 'lite'
 
                 # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
@@ -4471,9 +4127,7 @@ JSON:"""
                 }
 
         except Exception as e:
-            import traceback
             logger.error(f"Ошибка генерации AI вопроса: {e}")
-            logger.error(f"TRACEBACK:\n{traceback.format_exc()}")
             question = self._fallback_question(question_type, context)
             return {
                 'question': question,
@@ -4483,8 +4137,7 @@ JSON:"""
                 'usage': {}
             }
 
-    # ИСПРАВЛЕНО (2026-02-16): Сделал async чтобы можно было await внутри
-    async def _build_question_prompt(
+    def _build_question_prompt(
         self,
         context: str,
         dialog_history: List[Dict] = None,
@@ -4502,7 +4155,8 @@ JSON:"""
         - Атомарные открытые вопросы
         - Запрет на двойные вопросы
         ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM
-        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов"""
+        ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
+        """
 
         # Анализируем что уже известно из истории
         # ИСПРАВЛЕНО (2026-01-21): Передаем accumulated_fields чтобы избежать повторного LLM вызова
@@ -4517,23 +4171,21 @@ JSON:"""
                 recent_dialog += f"{role}: {msg.get('text', '')}\n"
 
         # Формируем JSON кандидатов для промта
-        # ИСПРАВЛЕНО (2026-02-16): Проверяем candidates на None
         candidates_json = ""
         import json
         candidates_list = []
-        if candidates:  # Проверка на None и пустой список
-            for c in candidates[:15]:  # До 15 кандидатов
-                candidate_data = {
-                    "КодУслуги": c.get('service_id', 'Unknown'),
-                    "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),
-                    "Фильтры": {
-                        "Тип": c.get('incident_type', '-'),
-                        "Вид": c.get('location_type', '-'),
-                        "Категория": c.get('category', '-'),
-                        "Объект": c.get('object_type', '-')
-                    }
+        for c in candidates[:15]:  # До 15 кандидатов
+            candidate_data = {
+                "КодУслуги": c.get('service_id', 'Unknown'),
+                "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),
+                "Фильтры": {
+                    "Тип": c.get('incident_type', '-'),
+                    "Вид": c.get('location_type', '-'),
+                    "Категория": c.get('category', '-'),
+                    "Объект": c.get('object_type', '-')
                 }
-                candidates_list.append(candidate_data)
+            }
+            candidates_list.append(candidate_data)
 
         candidates_json = f"\nСПИСОК КАНДИДАТОВ (услуги которые подходят под описание):\n"
         candidates_json += "```json\n"
@@ -4541,7 +4193,6 @@ JSON:"""
         candidates_json += "\n```\n"
 
         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
-        # ИСПРАВЛЕНО (2026-02-18): Убран fallback-хардкод - промпт ДОЛЖЕН быть в БД!
         try:
             from llm_tester.models import PromptTemplate
             from asgiref.sync import sync_to_async
@@ -4553,41 +4204,151 @@ JSON:"""
                     is_active=True
                 ).first()
 
-            # ИСПРАВЛЕНО (2026-02-16): Добавлен await для sync_to_async функции
-            db_template = await get_db_template()
+            db_template = get_db_template()
 
-            if not db_template:
-                # ИСПРАВЛЕНО (2026-02-18): Прямая ошибка с инструкцией - без fallback!
-                logger.error("[DB] Промпт 'mainagent-orchestrator' не найден в БД!")
-                raise Exception(
-                    "КРИТИЧЕСКАЯ ОШИБКА: Промпт 'mainagent-orchestrator' не найден в БД!\n"
-                    "Создайте промпт в админке: /admin-uk/llm_tester/prompttemplate/\n"
-                    "Slug: 'mainagent-orchestrator'\n"
-                    "Is Active: True\n"
-                    "Template: скопируйте из бэкапа или создайте новый"
+            if db_template:
+                # Подставляем переменные в базовую часть шаблона из БД
+                prompt = db_template.template.format(
+                    context=context  # context будет добавлен ниже
                 )
 
-            # Подставляем переменные в базовую часть шаблона из БД
-            # ИСПРАВЛЕНО (2026-02-18): Добавлены все плейсхолдеры с пустыми значениями
-            # (реальные данные добавляются ниже через prompt +=)
-            # ИСПРАВЛЕНО (2026-02-18): Добавлены KNOWLEDGE_BASE и SERVICE_CATALOG для RAG-промпта
-            prompt = db_template.template.format(
-                absolute_facts="",       # Плейсхолдер из БД (заполняется ниже через +=)
-                txtPrb="",               # Плейсхолдер из БД (заполняется ниже через +=)
-                dialog_history="",       # Плейсхолдер из БД (заполняется ниже через +=)
-                established_filters="",  # Плейсхолдер из БД (заполняется ниже через +=)
-                candidates="",           # Плейсхолдер из БД (заполняется ниже через +=)
-                context=context,         # context используется для формирования промпта
-                KNOWLEDGE_BASE="",       # RAG: База знаний (пока пусто, можно заполнить позже)
-                SERVICE_CATALOG=""       # RAG: Каталог услуг (пока пусто, можно заполнить позже)
-            )
-
-            logger.debug(f"[DB] Промпт mainagent-orchestrator загружен из БД (ID: {db_template.id})")
+                logger.debug(f"[DB] Промпт mainagent-orchestrator загружен из БД (ID: {db_template.id})")
+            else:
+                logger.error("[DB] Промпт 'mainagent-orchestrator' не найден в БД!")
+                raise Exception("Промпт не найден в БД")
 
         except Exception as e:
-            # ИСПРАВЛЕНО (2026-02-18): Не скрываем ошибку, поднимаем exception
-            logger.error(f"[DB] КРИТИЧЕСКАЯ ОШИБКА загрузки промпта из БД: {e}", exc_info=True)
-            raise  # ← Падаем сразу, без fallback!
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+            logger.warning("[FALLBACK] Используется захардкоженный промпт")
+
+            # Fallback-промпт (захардкожен)
+            # ПЕРЕРАБОТАНО (2025-12-29): Позитивная инструкция + алгоритм + JSON заявки
+            # ИСПРАВЛЕНО (2026-01-03): Убраны все эмодзи из промта
+            prompt = f"""Ты - AI-диспетчер УК "Аспект".
+
+
+⛔⛔⛔ КРИТИЧЕСКИ ВАЖНЕЙШЕЕ ПРАВИЛО - ДВОЙНЫЕ ВОПРОСЫ ЗАПРЕЩЕНЫ! ⛔⛔⛔
+
+0. (САМОЕ ВАЖНОЕ!) КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ ДВОЙНЫЕ ВОПРОСЫ:
+   ⛔ ЗАПРЕЩЕНО вопросы через "или", "или", "и"
+   ⛔ ЗАПРЕЩЕНО перечислять варианты в скобках или запятыми
+   ⛔ ЗАПРЕЩЕНО закрывать варианты в один вопрос ("Это А или Б?")
+   ⛔ ЗАПРЕЩЕНО вопросы "Является ли...?" (隐式双重问题)
+
+   ПРИМЕРЫ ЗАПРЕЩЕННЫХ ВОПРОСОВ:
+   ❌ "Это прорыв трубы в квартире или общедомовой прорыв?" → ДВОЙНОЙ + "или"
+   ❌ "Что и где именно?" → ДВОЙНОЙ
+   ❌ "Является ли прорыв трубы в квартире общедомовой проблемой?" → ДВОЙНОЙ
+   ❌ "Каков источник протечки: трубы или крыша?" → ДВОЙНОЙ + "или"
+   # ❌ "Уточните, какая система водоснабжения, отопления или канализация затронута?" → ПЕРЕЧИСЛЕНИЕ + "или"  # ЗАКОММЕНТИРОВАНО (2026-02-14): LLM копирует этот пример
+
+   ⛔ ЕСЛИ СГЕНЕРИРУЕШЬ ДВОЙНОЙ ВОПРОС - БУДЕТ АВТОМАТИЧЕСКИ ОТВЕРГНУТ regex-валидатором!
+
+   ПРИМЕРЫ ПРАВИЛЬНЫХ ВОПРОСОВ:
+   ✅ "Где именно это произошло?" (ОДИН параметр - локация)
+   ✅ "Что именно сломалось?" (ОДИН параметр - объект)
+   ✅ "Опишите подробнее, что произошло?" (открытый вопрос БЕЗ вариантов)
+
+══════════════════════════════════════════════════════════════════════════════
+══════════════════════════════════════════════════════════════════════════════
+ГЛАВНАЯ ЗАДАЧА
+══════════════════════════════════════════════════════════════════════════════
+
+Сформировать заявку от абонента в формате JSON:
+
+Этап 1: Определить услугу (поиск в каталоге, получение подтверждения от пользователя)
+Этап 2: Определить адрес (через AddressExtractor)
+Этап 3: Вернуть JSON заявки с полями:
+  - timestamp: время обращения
+  - telegram_user: ник пользователя в ТГ или логин в чате
+  - dialog_id: ID диалога
+  - service_id: ID услуги
+  - address_id: ID объекта обслуживания
+
+══════════════════════════════════════════════════════════════════════════════
+ИНСТРУКЦИЯ ПО ГЕНЕРАЦИИ ВОПРОСА
+══════════════════════════════════════════════════════════════════════════════
+
+Верни уточняющий открытый вопрос, который:
+
+1. СОКРАТИТ список кандидатов до ОДНОЙ услуги
+   ИЛИ
+2. НАЛОЖИТ один из фильтров (Тип/Вид/Категория/Объект) на множество кандидатов
+
+Ограничения:
+- Максимальная длина: 10 слов
+- Только ОДИН вопрос
+- Открытый вопрос (без вариантов ответа)
+- Ответ должен приблизить к однозначному определению услуги
+
+⛔⛔⛔ КРИТИЧЕСКИ ВАЖНО - УЖЕ ИЗВЕСТНЫЕ ФАКТЫ ⛔⛔⛔
+Если есть УЖЕ известная информация - НЕ СПРАШИВАЙ О НЕЙ!
+
+Примеры:
+✅ Если object_description="течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
+✅ Если location="зал" → НЕЛЬЗЯ спрашивать "Где именно?"
+✅ Если category="Отопление" → НЕЛЬЗЯ спрашивать "Это отопление?"
+
+Правильные вопросы при УЖЕ известных фактах:
+- Знаешь: "течёт" + "зал" → спроси: "Опишите детально проблему"
+- Знаешь: "течёт" + "квартира" → спроси: "В какой комнате это происходит?"
+- Знаешь: "сломалось" + "батарея" → спроси: "Опишите подробнее что случилось"
+
+НЕ ПРИМЕНЯЙ:
+- Двойные вопросы ("что и где?")
+- Перечисления вариантов ("например, труба или батарея?")
+- ЗАКРЫТЫЕ ВОПРОСЫ (да/нет) - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО!
+- Слово "например" и любые перечисления через него
+- Внутренние термины "Инцидент/Запрос" - говори по-человечески
+- Вопросы которые НЕ приближают к решению (не позволяют установить фильтр)
+
+ПРИМЕНЯЙ:
+- Открытый вопрос, уточнение одного параметра
+- Учет уже известной информации
+- Анализ истории диалога ниже
+
+══════════════════════════════════════════════════════════════════════════════
+АЛГОРИТМ ПОИСКА УСЛУГИ
+══════════════════════════════════════════════════════════════════════════════
+
+1. Анализируй историю диалога в блоке [ИСТОРИЯ ДИАЛОГА]
+2. Если можешь однозначно определить услугу (вероятность 90%+):
+   → Открытый вопрос: "Похоже на [описание]. Опишите подробнее что происходит."
+3. Если невозможно однозначно определить:
+   → Задай уточняющий вопрос который отфильтрует большинство кандидатов
+   → Ответ пользователя позволит установить фильтр для следующего этапа
+4. Повторяй пока не будет подтверждение услуги (90%+)
+
+══════════════════════════════════════════════════════════════════════════════
+КАК РАБОТАЮТ ФИЛЬТРЫ
+══════════════════════════════════════════════════════════════════════════════
+
+Фильтры сокращают список кандидатов:
+
+- Тип (Инцидент/Запрос):
+  * Инцидент = сломалось, не работает, угроза жизни/здоровью/имуществу
+  * Запрос = нужно выполнить работу, НЕТ угрозы жизни/здоровью/имуществу
+    (улучшение: установка нового унитаза, консультация, замена счетчика и т.д.)
+
+- Вид (Индивидуальное/Общедомовое):
+  * Индивидуальное = проблема в квартире пользователя
+    (квартира состоит из комнат: ванная, зал, кухня, спальня и т.д.)
+    (если пользователь назвал локацию "ванная"/"зал" → проверь может ли она быть в квартире)
+  * Общедомовое = проблема в подъезде, на улице, местах общего пользования
+  Варианты: {', '.join(self._location_types_cache)}
+
+- Категория: {', '.join(self._categories_cache)}
+
+- Объект: {', '.join(self._objects_cache)}
+
+Стратегия: задавай вопросы чтобы установить фильтры и сократить список кандидатов.
+
+══════════════════════════════════════════════════════════════════════════════
+ТЕКУЩАЯ СИТУАЦИЯ
+══════════════════════════════════════════════════════════════════════════════
+
+{context}
+"""
 
         if known_info:
             prompt += f"""
@@ -4615,13 +4376,44 @@ JSON:"""
 {txtPrb}
 """
 
-        # ЗАКОММЕНТИРОВАНО (2026-02-16): Дубликат убран - код теперь перед return prompt
-        # # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
-        # # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ПЕРЕД established_filters!
-        # # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
-        # absolute_facts_list = []
-        # ...
-        # (дубликат кода убран чтобы не было двойного добавления в промт)
+        # ИСПРАВЛЕНО (2026-01-10): Добавляем absolute_facts из established_filters
+        # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
+        if established_filters:
+            absolute_facts_list = []
+
+            # object_description
+            obj_desc = established_filters.get('object_description')
+            if obj_desc and isinstance(obj_desc, dict):
+                obj_value = obj_desc.get('value')
+                obj_conf = obj_desc.get('confidence', 0)
+                if obj_value and obj_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
+
+            # location_type
+            location = established_filters.get('location_type')
+            if location and isinstance(location, dict):
+                loc_value = location.get('value')
+                loc_conf = location.get('confidence', 0)
+                if loc_value and loc_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
+
+            # category
+            category = established_filters.get('category')
+            if category and isinstance(category, dict):
+                cat_value = category.get('value')
+                cat_conf = category.get('confidence', 0)
+                if cat_value and cat_conf >= 0.8:
+                    absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
+
+            if absolute_facts_list:
+                prompt += f"""
+⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
+{''.join(absolute_facts_list)}
+
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом!
+Если известно "проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
+Если известно "локация: зал" → НЕЛЬЗЯ спрашивать "Где именно?"
+"""
 
         if recent_dialog:
             prompt += f"""
@@ -4635,77 +4427,6 @@ JSON:"""
 {self._format_filters_for_prompt(established_filters)}
 
 ВАЖНО: Учитывай эти фильтры при генерации вопроса!
-"""
-
-        # ИСПРАВЛЕНО (2026-02-18): ВОССТАНОВЛЕН код absolute_facts_list!
-        # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
-        # СКОПИРОВАНО из _build_dynamic_prompt (строки 4810-4875)
-        absolute_facts_list = []
-
-        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
-        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
-
-        if accumulated_fields:
-            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
-            if accumulated_fields.get('source'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
-                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
-            if accumulated_fields.get('location'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
-                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
-            if accumulated_fields.get('problem'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
-                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
-            if accumulated_fields.get('severity'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
-            if accumulated_fields.get('intensity'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
-            if accumulated_fields.get('category'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
-                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
-
-            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
-        else:
-            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
-
-        # ПОТОМ established_filters (из FilterDetectionService)
-        if established_filters:
-            # object_description
-            obj_desc = established_filters.get('object_description')
-            if obj_desc and isinstance(obj_desc, dict):
-                obj_value = obj_desc.get('value')
-                obj_conf = obj_desc.get('confidence', 0)
-                if obj_value and obj_conf >= 0.8:
-                    absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
-
-            # location_type
-            # ИСПРАВЛЕНО (2026-02-18): "Индивидуальное/Общедомовое" - это ТИП локации, НЕ ЯВНАЯ локация!
-            # НЕ добавляем в absolute_facts, чтобы LLM спрашивал "Где именно?"
-            location = established_filters.get('location_type')
-            if location and isinstance(location, dict):
-                loc_value = location.get('value')
-                loc_conf = location.get('confidence', 0)
-                # Добавляем ТОЛЬКО если это ЯВНАЯ локация (не Индивидуальное/Общедомовое)
-                if loc_value and loc_conf >= 0.8 and loc_value not in ['Индивидуальное', 'Общедомовое', 'null', 'None']:
-                    absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
-
-            # category
-            category = established_filters.get('category')
-            if category and isinstance(category, dict):
-                cat_value = category.get('value')
-                cat_conf = category.get('confidence', 0)
-                if cat_value and cat_conf >= 0.8:
-                    absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
-
-        # ИСПРАВЛЕНО (2026-02-18): Добавляем absolute_facts_list в промпт!
-        if absolute_facts_list:
-            prompt += f"""
-⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
-{'\\n'.join(absolute_facts_list)}
-
-КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом!
-Если известно "проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
-Если известно "локация: зал" → НЕЛЬЗЯ спрашивать "Где именно?"
 """
 
         if candidates_json:
@@ -4836,19 +4557,14 @@ JSON:"""
 ЗАДАЧА
 ══════════════════════════════════════════════════════════════════════════════
 
-# ИСПРАВЛЕНО (2026-02-16): Задай вопрос для уточнения ТОЛЬКО НЕИЗВЕСТНЫХ деталей
-# КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать про УЖЕ ИЗВЕСТНЫЕ объект, проблему, категорию!
-# Спроси про: локацию, интенсивность или серьезность.
-
-СНАЧАЛА прочитай блок "⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ ⛔⛔⛔" НИЖЕ - там указано что НЕЛЬЗЯ спрашивать!
-После этого задай ОДИН вопрос для уточнения ТОЛЬКО неизвестных деталей (локация, интенсивность).
+Задай ОДИН вопрос чтобы понять что именно случилось.
 
 Ограничения:
 - Один вопрос
 - Открытый вопрос
 - Без перечислений
 - Коротко
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать то, что УЖЕ известно в блоке ниже!
+- НЕ спрашивай то, что УЖЕ известно из фильтров
 
 Вопрос:"""
 
@@ -4908,78 +4624,6 @@ JSON:"""
 - Без союза "и"
 
 Вопрос:"""
-
-        # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields ВСЕГДА (не только в fallback!)
-        # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
-        absolute_facts_list = []
-
-        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
-        # ИСПРАВЛЕНО (2026-02-16): Логируем accumulated_fields для отладки
-        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
-
-        if accumulated_fields:
-            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
-            if accumulated_fields.get('source'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
-                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
-            if accumulated_fields.get('location'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
-                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
-            if accumulated_fields.get('problem'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
-                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
-            if accumulated_fields.get('severity'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
-            if accumulated_fields.get('intensity'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
-            if accumulated_fields.get('category'):
-                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
-                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
-
-            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
-        else:
-            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
-
-        # ПОТОМ established_filters (из FilterDetectionService)
-        if established_filters:
-            # object_description
-            obj_desc = established_filters.get('object_description')
-            if obj_desc and isinstance(obj_desc, dict):
-                obj_value = obj_desc.get('value')
-                obj_conf = obj_desc.get('confidence', 0)
-                if obj_value and obj_conf >= 0.8:
-                    absolute_facts_list.append(f"- Уже известна проблема: {obj_value} (confidence: {obj_conf:.0%})")
-
-            # location_type
-            # ИСПРАВЛЕНО (2026-02-18): "Индивидуальное/Общедомовое" - это ТИП локации, НЕ ЯВНАЯ локация!
-            # НЕ добавляем в absolute_facts, чтобы LLM спрашивал "Где именно?"
-            location = established_filters.get('location_type')
-            if location and isinstance(location, dict):
-                loc_value = location.get('value')
-                loc_conf = location.get('confidence', 0)
-                # Добавляем ТОЛЬКО если это ЯВНАЯ локация (не Индивидуальное/Общедомовое)
-                if loc_value and loc_conf >= 0.8 and loc_value not in ['Индивидуальное', 'Общедомовое', 'null', 'None']:
-                    absolute_facts_list.append(f"- Уже известна локация: {loc_value} (confidence: {loc_conf:.0%})")
-
-            # category
-            category = established_filters.get('category')
-            if category and isinstance(category, dict):
-                cat_value = category.get('value')
-                cat_conf = category.get('confidence', 0)
-                if cat_value and cat_conf >= 0.8:
-                    absolute_facts_list.append(f"- Уже известна категория: {cat_value} (confidence: {cat_conf:.0%})")
-
-        # ИСПРАВЛЕНО (2026-02-16): Проверяем absolute_facts_list ПОСЛЕ обоих блоков (accumulated + established)
-        # ИСПРАВЛЕНО (2026-02-16): Используем '\n'.join() вместо ''.join() чтобы факты были на разных строках!
-        if absolute_facts_list:
-            prompt += f"""
-⛔⛔⛔ УЖЕ ИЗВЕСТНЫЕ ФАКТЫ (КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ!) ⛔⛔⛔
-{'\\n'.join(absolute_facts_list)}
-
-КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО спрашивать об этом!
-Если известно "проблема: течёт" → НЕЛЬЗЯ спрашивать "Что именно происходит?"
-Если известно "локация: зал" → НЕЛЬЗЯ спрашивать "Где именно?"
-"""
 
         return prompt
 

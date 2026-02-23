@@ -503,7 +503,6 @@ class MainAgent:
         logger.info(f"  [TOOL] accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
         logger.info(f"  [TOOL] established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
 
-        # ПРИМЕЧАНИЕ (2026-02-19): Быстрая проверка water_type_quick_check удалена
         # ИСПРАВЛЕНО (2025-12-27): Детект повторяющихся ответов пользователя
         # Если пользователь 2+ раза отвечает одно и то же - меняем стратегию
         # ИСПРАВЛЕНО (2026-01-14): Проверяем message_text на недовольство (не только history!)
@@ -824,13 +823,10 @@ class MainAgent:
                 # - НЕ спрашиваем если location ЯВНО извлечена из текста ("в зале", "в ванной")
                 # - СПРАШИВАЕМ если location НЕ извлечена (null)
                 location_known = accumulated_fields.get('location') is not None if accumulated_fields else False
-
+                
                 # Проверяем incident_type - Запросы не требуют локации
                 incident_type = established_filters.get('incident_type', {}).get('value', '') if established_filters else ''
-
-                # ПРИМЕЧАНИЕ (2026-02-19): Хардкод skip_location_check для Водоснабжения УДАЛЕН
-                # Теперь AI Orchestrator сам решает, нужно ли уточнять локацию
-
+                
                 if not location_known and incident_type != 'Запрос':
                     logger.warning(f"[AI-ORCHESTRATOR] SUCCESS но location НЕ известна (accumulated_fields.location=null) - спрашиваем 'Где именно?'")
                     # Генерируем уточняющий вопрос через LLM
@@ -942,17 +938,21 @@ class MainAgent:
                                 category_confidence >= 0.7
                             )
 
-                            # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
                             # ИСПРАВЛЕНИЕ (2026-02-16): Проверяем incident_type - Запросы не требуют локации
                             incident_type = established_filters.get('incident_type', {}).get('value', '')
-
-                            # ПРИМЕЧАНИЕ (2026-02-19): needs_clarification упрощен - удалена проверка water_type
-                            needs_clarification = (not location_known and incident_type != 'Запрос' and candidate.get('location_type') != 'Общедомовое') or (is_water_problem and has_source and not intensity_known)
+                            needs_clarification = (not location_known and incident_type != 'Запрос') or (is_water_problem and has_source and not intensity_known)
 
                             if needs_clarification:
-                                # ПРИМЕЧАНИЕ (2026-02-19): Хардкод список missing_info УДАЛЕН
-                                # AI сам анализирует accumulated_fields и решает, что нужно уточнить
-                                context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Требуется уточнение деталей."
+                                # ИСПРАВЛЕНО (2026-02-14): Используем LLM вместо hardcoded вопроса
+                                # Формируем контекст с указанием, что именно нужно уточнить
+                                missing_info = []
+                                if not location_known:
+                                    missing_info.append("локацию")
+                                # ИСПРАВЛЕНО (2026-02-18): Используем is_water_problem вместо неопределенного is_leak
+                                if is_water_problem and has_source and not intensity_known:
+                                    missing_info.append("интенсивность (как сильно течет)")
+
+                                context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить: {', '.join(missing_info)}."
                                 ai_result = await self._generate_ai_question(
                                     context=context,
                                     dialog_history=dialog_history,
@@ -963,7 +963,7 @@ class MainAgent:
                                     session_id=session_id,
                                     accumulated_fields=accumulated_fields
                                 )
-                                message = ai_result.get('question', 'Уточните подробности проблемы.')
+                                message = ai_result.get('question', 'Опишите подробнее, что именно происходит?')
 
                                 # ИСПРАВЛЕНИЕ (2026-02-16): Статус AMBIGUOUS при уточнении, SUCCESS когда всё известно
                                 result = {
@@ -1937,8 +1937,7 @@ class MainAgent:
                 }
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО локация НЕ известна - спрашиваем через LLM
-            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
-            if not location_known and candidate.get('location_type') != 'Общедомовое':
+            if not location_known:
                 logger.warning(f"[NO LOCATION] actual_conf={actual_confidence:.2%} >= 90%, НО локация НЕ известна - генерируем контекстный вопрос")
                 # ИСПРАВЛЕНО (2026-02-16): Используем LLM для генерации контекстного вопроса
                 # вместо hardcoded "Где именно это произошло?"
@@ -1975,7 +1974,6 @@ class MainAgent:
                     'is_followup': is_followup
                 }
 
-            # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО для Инцидента НЕ известны severity/intensity
             if needs_severity_clarification:
                 logger.warning(f"[NO SEVERITY] actual_conf={actual_confidence:.2%} >= 90%, incident_type=Инцидент, НО НЕ известны severity/intensity - спрашиваем")
@@ -2832,8 +2830,7 @@ class MainAgent:
             location_known = accumulated_fields.get('location') is not None
 
             # ПРОВЕРЯЕМ: Если локация НЕ известна → проверяем тип обращения
-            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
-            if not location_known and candidate.get('location_type') != 'Общедомовое':
+            if not location_known:
                 # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем incident_type - Запрос или Инцидент?
                 incident_type = established_filters.get('incident_type', {}).get('value', '')
 
@@ -2890,7 +2887,6 @@ class MainAgent:
 
                 # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКОЕ - Проверяем confidence ПЕРЕД генерацией вопроса!
                 # Если confidence >= 90% и location известен → возвращаем SUCCESS БЕЗ вопроса
-                # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
                 if confidence >= 0.9:
                     logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 90% и location известен → SUCCESS без вопроса")
                     return {
@@ -2906,7 +2902,6 @@ class MainAgent:
 
                 # ИСПРАВЛЕНО (2026-02-17): Если confidence 80-90% ПРОВЕРЯЕМ ПЕРЕСЕЧЕНИЕ txtPrb с названием услуги
                 # ПРИЧИНА: "ливнёвка забита листвой" + "Засор ливнёвой канализации" → пересечение "ливнёвка"
-                # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
                 elif confidence >= 0.8:
                     service_name_lower = candidate.get('service_name', '').lower()
                     txtPrb_lower = (txtPrb or '').lower()
@@ -4001,27 +3996,13 @@ JSON:"""
 Кандидат: {candidate_name}
 """
             else:
-                # Первый раз - задаем уточняющий вопрос
-                # ИСПРАВЛЕНО (2026-02-18): Убрано "Похоже на..." - избыточно
-                logger.info(f"[DEBUG] Первый уточняющий вопрос (без 'Похоже на...')")
+                # Первый раз - задаем уточняющий вопрос (открытый!)
+                logger.info(f"[DEBUG] Первый уточняющий вопрос")
                 task_block = f"""
 БЛОК: ЗАДАЧА
-Услуга определена: {candidate_name}.
-
-⛔ КРИТИЧЕСКИ ВАЖНО:
-- ЗАПРЕЩЕНО говорить "Похоже на..." - это ИЗБЫТОЧНО!
-- ЗАПРЕЩЕНО задавать "да/нет" вопросы
-- ЗАПРЕЩЕНО использовать "или" в вопросах!
-
-Алгоритм:
-1. Проверь txtPrb: указан ли ТИП воды ("горячей", "холодной", "горячая", "холодная")
-2. Если категория "Водоснабжение" И тип НЕ указан в txtPrb:
-   - Сначала спроси локацию
-   - Потом спроси тип открытым вопросом: "Какой воды нет?" или "Уточните тип воды"
-3. Если категория "Водоснабжение" И тип УЖЕ указан в txtPrb:
-   - Спроси только локацию
-   - НЕ уточняй тип - он уже известен!
-4. Для остальных категорий: уточняй только неизвестное
+Услуга определена с вероятностью >90%.
+ЗАПРЕЩЕНО задавать "да/нет" вопросы! Используй открытые вопросы.
+Формула: "Похоже на [описание проблемы]. Опишите подробнее что происходит."
 
 Кандидат: {candidate_name}
 """
@@ -4068,20 +4049,6 @@ JSON:"""
 Не задавай вопрос, который требует значения поля, которого нет в CandidateServices.
 
 # Алгоритм выбора темы вопроса (делай рассуждение внутренне, не выводи его)
-## Шаг 0. КРИТИЧЕСКОЕ ПРАВИЛО ДЛЯ ВОДОСНАБЖЕНИЯ
-ЕСЛИ среди кандидатов есть категория "Водоснабжение":
-- Проверь ProblemText: указан ли ТИП воды ("горячей", "холодной", "горячая", "холодная")
-- Если тип НЕ указан:
-  - Если location НЕ известен → спроси "Где именно нет воды?"
-  - Если location УЖЕ известен → спроси "Какой воды нет?" или "Уточните тип воды"
-  - ⛔⛔⛔ КРИТИЧЕСКИЙ ЗАПРЕТ: НЕ ИСПОЛЬЗУЙ слова из названия услуги-кандидата!
-  - ❌ ПЛОХО: "Какой воды слабый напор: горячей или холодной?"
-  - ❌ ПЛОХО: "Какой воды переток: горячей или холодной?"
-  - ✅ ХОРОШО: "Какой воды нет?" (спрашивает про ProblemText, не про кандидата)
-  - ✅ ХОРОШО: "Уточните тип воды" (общий вопрос БЕЗ слов из кандидата)
-- Если тип УЖЕ указан в ProblemText → НЕ спрашивай про тип, иди к Шагу 2
-- ⛔⛔⛔ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать слово "ИЛИ" в вопросах!
-
 ## Шаг 1. Извлеки «уже известные факты»
 - Из ProblemText выдели факты, которые уже явно указаны пользователем (например: место, объект, система, симптом, контекст).
 - Считай факт «известным», если он уже присутствует в ProblemText или был зафиксирован ранее в диалоге.
@@ -4330,7 +4297,7 @@ JSON:"""
 
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ВХОДЯЩИХ параметров
         logger.info("[SEARCH] _generate_ai_question ВХОДЯЩИЕ ПАРАМЕТРЫ:")
-        logger.info(f"  [NOTE] context: {str(context)[:100]}")
+        logger.info(f"  [NOTE] context: '{context[:100]}'")
         logger.info(f"  [TOOL] question_type: {question_type}")
         logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:100] if txtPrb else '(не передан)'}'")
@@ -4357,37 +4324,44 @@ JSON:"""
                 asked_questions = self._extract_asked_questions(dialog_history)
                 logger.info(f"[!] Уже задано вопросов: {len(asked_questions)}")
 
-            # ИСПРАВЛЕНО (2026-01-03): Для типа clarification используем _build_dynamic_prompt
-            # ИСПРАВЛЕНО (2026-02-18): ПЕРЕВКЛЮЧЕН - используем стратегии A/B/C/NONE с established_filters
-            if question_type == 'clarification' and candidates is not None:
-                # Используем новый метод с динамическими промптами по стратегиям
-                prompt = self._build_dynamic_prompt(
-                    strategy=strategy,
-                    context=context,
-                    candidates=candidates,
-                    missing_filter=missing_filter,
-                    txtPrb=txtPrb,
-                    asked_questions=asked_questions if asked_questions else None,
-                    intro_phrase=intro_phrase,
-                    accumulated_fields=accumulated_fields,
-                    established_filters=established_filters  # ИСПРАВЛЕНО (2026-02-18): Передаем established_filters
-                )
-                logger.info(f"[BOT] Используем стратегию {strategy} (кандидатов: {len(candidates) if candidates else 0})")
-            else:
-                # Для остальных типов используем промпт из БД
-                # ИСПРАВЛЕНО (2026-02-18): ВСЕГДА используем промпт из БД (unified approach)
-                prompt = await self._build_question_prompt(
-                    context=context,
-                    dialog_history=dialog_history,
-                    candidates=candidates,
-                    established_filters=established_filters,
-                    txtPrb=txtPrb,
-                    question_type=question_type,
-                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторный LLM
-                    txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
-                )
-                logger.info(f"[BOT] Используется промпт из БД (mainagent-orchestrator), candidates: {len(candidates) if candidates else 0}")
+            # ИСПРАВЛЕНО (2026-01-03): Для типа clarification использовали _build_dynamic_prompt
+            # ИСПРАВЛЕНО (2026-02-18): ОТКЛЮЧЕН Fallback - используем ТОЛЬКО промпт из БД
+            # if question_type == 'clarification' and candidates is not None:
+            #     # Используем новый метод с динамическими промптами по стратегиям
+            #     prompt = self._build_dynamic_prompt(
+            #         strategy=strategy,
+            #         context=context,
+            #         candidates=candidates,
+            #         missing_filter=missing_filter,
+            #         txtPrb=txtPrb,
+            #         asked_questions=asked_questions if asked_questions else None,
+            #         intro_phrase=intro_phrase,
+            #         accumulated_fields=accumulated_fields,
+            #         established_filters=established_filters
+            #     )
+            #     logger.info(f"Используется стратегия {strategy} (кандидатов: {len(candidates) if candidates else 0})")
+            # else:
+            #     # Для остальных типов используем промпт из БД
+            #
+            # ВСЕГДА используем промпт из БД (mainagent-orchestrator)
+            # ПЕРЕХОД НА unified approach - один промпт для всех случаев
+            if False:  # Условие отключено - всегда используем промпт из БД
+                # ЗАКОММЕНТИРОВАНО (2026-02-18): Отключен _build_dynamic_prompt (fallback)
+                # Используем ТОЛЬКО промпт из БД (mainagent-orchestrator)
+                pass
 
+            # ИСПРАВЛЕНО (2026-02-18): ВСЕГДА используем промпт из БД (unified approach)
+            prompt = await self._build_question_prompt(
+                context=context,
+                dialog_history=dialog_history,
+                candidates=candidates,
+                established_filters=established_filters,
+                txtPrb=txtPrb,
+                question_type=question_type,
+                accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+                txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
+            )
+            logger.info(f"[BOT] Используется промпт из БД (mainagent-orchestrator), candidates: {len(candidates) if candidates else 0}")
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем промт (первые 500 + последние 500 символов)
             logger.info(f"[BOT] PROMPT ДЛЯ LLM ({question_type}):")
@@ -4404,8 +4378,8 @@ JSON:"""
                 # ИСПРАВЛЕНО (2025-12-28): ГИБРИДНАЯ МОДЕЛЬ
                 # - Для вопросов к пользователю: Pro (качество критично!)
                 # - Для остальных задач: используется default (обычно Lite)
-                # ИСПРАВЛЕНО (2026-02-19): Всегда используем lite для экономии
-                model = 'lite'
+                question_types_requiring_pro = ['clarification', 'what_happened', 'location', 'details']
+                model = 'pro' if question_type in question_types_requiring_pro else 'lite'
 
                 # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
@@ -4570,16 +4544,13 @@ JSON:"""
             # Подставляем переменные в базовую часть шаблона из БД
             # ИСПРАВЛЕНО (2026-02-18): Добавлены все плейсхолдеры с пустыми значениями
             # (реальные данные добавляются ниже через prompt +=)
-            # ИСПРАВЛЕНО (2026-02-18): Добавлены KNOWLEDGE_BASE и SERVICE_CATALOG для RAG-промпта
             prompt = db_template.template.format(
                 absolute_facts="",       # Плейсхолдер из БД (заполняется ниже через +=)
                 txtPrb="",               # Плейсхолдер из БД (заполняется ниже через +=)
                 dialog_history="",       # Плейсхолдер из БД (заполняется ниже через +=)
                 established_filters="",  # Плейсхолдер из БД (заполняется ниже через +=)
                 candidates="",           # Плейсхолдер из БД (заполняется ниже через +=)
-                context=context,         # context используется для формирования промпта
-                KNOWLEDGE_BASE="",       # RAG: База знаний (пока пусто, можно заполнить позже)
-                SERVICE_CATALOG=""       # RAG: Каталог услуг (пока пусто, можно заполнить позже)
+                context=context          # context используется для формирования промпта
             )
 
             logger.debug(f"[DB] Промпт mainagent-orchestrator загружен из БД (ID: {db_template.id})")

@@ -497,7 +497,7 @@ systemctl status gunicorn-komunal-dom nginx
 
 **Пользователи:**
 - Admin_Aspect / Aspect_Admin_2025 (Администратор Django)
-- Olga / OlagSuper2025 (DBA)
+- Olga / OlgaNeOlga2026 (DBA)
 
 ---
 
