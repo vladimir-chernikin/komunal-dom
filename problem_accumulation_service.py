@@ -202,17 +202,8 @@ class ProblemAccumulationService:
         ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
         Если промпт не найден в БД - использует fallback с сообщением об ошибке.
         ИСПРАВЛЕНО (2026-02-05): Сделан async для работы с Django ORM через sync_to_async.
+        ИСПРАВЛЕНО (2026-02-23): Удален history_context - дублирует current_problem и bot_question.
         """
-
-        # Контекст истории диалога (последние 3 сообщения)
-        history_context = ""
-        if dialog_history and len(dialog_history) > 1:
-            recent_messages = dialog_history[-4:]
-            history_context = "\nПОСЛЕДНИЕ СООБЩЕНИЯ (для контекста):\n"
-            for msg in recent_messages:
-                role = msg.get('role', 'unknown')
-                text = msg.get('text', '')[:100]
-                history_context += f"  {role}: {text}\n"
 
         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
         try:
@@ -234,8 +225,7 @@ class ProblemAccumulationService:
                 prompt = db_template.template.format(
                     message_text=message_text,
                     current_problem=current_problem if current_problem else '(пусто - начало диалога)',
-                    bot_question=bot_question if bot_question else '(первое сообщение в диалоге)',
-                    history_context=history_context
+                    bot_question=bot_question if bot_question else '(первое сообщение в диалоге)'
                 )
 
                 logger.debug(f"[DB] Промпт загружен из БД (ID: {db_template.id})")
