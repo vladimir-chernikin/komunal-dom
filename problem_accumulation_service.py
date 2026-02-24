@@ -183,12 +183,11 @@ class ProblemAccumulationService:
             db_template = await get_db_template()
 
             if db_template:
-                # Подставляем переменные в шаблон из БД
-                prompt = db_template.template.format(
-                    message_text=message_text,
-                    current_problem=current_problem if current_problem else '(пусто - начало диалога)',
-                    bot_question=bot_question if bot_question else '(первое сообщение в диалоге)'
-                )
+                # Подставляем переменные в шаблон из БД (используем replace вместо format для JSON)
+                prompt = db_template.template
+                prompt = prompt.replace('{message_text}', message_text)
+                prompt = prompt.replace('{current_problem}', current_problem if current_problem else '(пусто - начало диалога)')
+                prompt = prompt.replace('{bot_question}', bot_question if bot_question else '(первое сообщение в диалоге)')
 
                 logger.debug(f"[DB] Промпт загружен из БД (ID: {db_template.id})")
                 return prompt
@@ -254,6 +253,8 @@ JSON:"""
             # Валидация полей
             return {
                 'updated_problem': result.get('updated_problem', current_problem),
+                'is_meaningful': result.get('is_meaningful', False),
+                'new_info': result.get('new_info', ''),
                 'is_refusal': False,
                 'refused_service': None,
                 'db_error': False
@@ -265,6 +266,8 @@ JSON:"""
             # Возвращаем текущее состояние без изменений
             return {
                 'updated_problem': current_problem,
+                'is_meaningful': False,
+                'new_info': '',
                 'is_refusal': False,
                 'refused_service': None,
                 'db_error': False
