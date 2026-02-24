@@ -15,7 +15,7 @@ set -e  # Ошибка при любой проблеме
 # Конфигурация
 TMP_DIR="/tmp"
 ARCHIVE_BASE="/var/www/komunal-dom_ru/tmp_archive"
-DELETE_DIR="${TMP_DIR}/Delete"
+DELETE_DIR="${TMP_DIR}/delete"
 PROJECT_DIR="/var/www/komunal-dom_ru"
 LOG_FILE="/var/log/tmp_cleanup.log"
 DATE=$(date +%Y-%m-%d)
@@ -121,7 +121,7 @@ done
 # ЭТАП 3: ФАЙЛЫ СТАРШЕ 90 ДНЕЙ - архивирование в Delete (НЕ УДАЛЕНИЕ!)
 ################################################################################
 
-log "[ЭТАП 3] Архивирование файлов старше 90 дней в папку /tmp/Delete..."
+log "[ЭТАП 3] Архивирование файлов старше 90 дней в папку /tmp/delete..."
 
 # Находим все файлы старше 90 дней
 find "$TMP_DIR" -maxdepth 1 -type f -mtime +90 | while read file; do
@@ -140,7 +140,7 @@ find "$TMP_DIR" -maxdepth 1 -type f -mtime +90 | while read file; do
     # Дата файла
     file_date=$(date -r "$file" +%Y%m%d)
 
-    # ZIP архив для "удаления" (кладем в /tmp/Delete)
+    # ZIP архив для "удаления" (кладем в /tmp/delete)
     delete_zip="${DELETE_DIR}/${category}_${file_date}_${DATETIME}.zip"
 
     # Добавляем файл в ZIP
@@ -192,7 +192,7 @@ if [ -d "$TMP_DIR/_old_files" ]; then
     fi
 
     if [ $dir_age_days -gt 30 ]; then
-        # Сжимаем в ZIP в папку /tmp/Delete
+        # Сжимаем в ZIP в папку /tmp/delete
         zip_file="${DELETE_DIR}/_old_files_${DATETIME}.zip"
         zip -9 -r "$zip_file" "$TMP_DIR/_old_files" -q
         log "  Сжата папка _old_files (возраст ${dir_age_days} дней) → ${zip_file}"
@@ -221,7 +221,7 @@ log ""
 chown -R olga:www-data "$ARCHIVE_BASE"
 chmod -R 775 "$ARCHIVE_BASE"
 
-# Права на папку Delete в /tmp
+# Права на папку delete в /tmp
 chown olga:www-data "$DELETE_DIR"
 chmod 775 "$DELETE_DIR"
 
