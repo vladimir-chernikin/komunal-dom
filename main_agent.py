@@ -238,7 +238,7 @@ class MainAgent:
         session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
         message_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем message_id
         established_filters = None  # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters
-        accumulated_fields = None  # ИСПРАВЛЕНО (2026-02-16): Извлекаем accumulated_fields
+        # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
         txt_stop_questions = []  # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы)
 
         if user_context:
@@ -468,7 +468,7 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ПОСЛЕ накопления
         logger.info("[SEARCH] TXTPrb И ФИЛЬТРЫ ПОСЛЕ накопления:")
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:120] if txtPrb else '(пусто)'}'")
-        logger.info(f"  [TOOL] accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
+        
         logger.info(f"  [TOOL] established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
 
         # ПРИМЕЧАНИЕ (2026-02-19): Быстрая проверка water_type_quick_check удалена
@@ -761,7 +761,6 @@ class MainAgent:
                 txtPrb=txtPrb,  # Накопленное описание проблемы
                 established_filters=established_filters,  # Установленные фильтры
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): ID сессии
-                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): извлеченные поля
             )
 
             # ДОБАВЛЕНО: Сохраняем AI Orchestrator результат в metadata для отчета
@@ -784,7 +783,6 @@ class MainAgent:
                 # ПРИЧИНА: accumulated_fields.location надежнее established_filters.location_type
                 # - НЕ спрашиваем если location ЯВНО извлечена из текста ("в зале", "в ванной")
                 # - СПРАШИВАЕМ если location НЕ извлечена (null)
-                location_known = accumulated_fields.get('location') is not None if accumulated_fields else False
 
                 # Проверяем incident_type - Запросы не требуют локации
                 incident_type = established_filters.get('incident_type', {}).get('value', '') if established_filters else ''
@@ -793,7 +791,6 @@ class MainAgent:
                 # Теперь AI Orchestrator сам решает, нужно ли уточнять локацию
 
                 if not location_known and incident_type != 'Запрос':
-                    logger.warning(f"[AI-ORCHESTRATOR] SUCCESS но location НЕ известна (accumulated_fields.location=null) - спрашиваем 'Где именно?'")
                     # Генерируем уточняющий вопрос через LLM
                     context = f"Найдена услуга: {orch_result.get('service_name')} (confidence={orch_result.get('confidence', 0.8):.1%}). Нужно уточнить локацию."
                     ai_result = await self._generate_ai_question(
@@ -845,9 +842,9 @@ class MainAgent:
                 if orch_candidates:
                     # ИСПРАВЛЕНО (2026-01-10): Передаем session_id и established_filters
                     # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
-                    # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields чтобы избежать повторного LLM
+                    # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
                     result = await self._create_ambiguous_result_from_candidates(
-                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb, accumulated_fields
+                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb
                     )
                     # Сохраняем AI Orchestrator message
                     result['_ai_orchestrator_message'] = orch_result.get('message')
@@ -906,8 +903,8 @@ class MainAgent:
             # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
             # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для умных вопросов
             # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
-            # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields чтобы избежать повторного LLM
-            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb, accumulated_fields)
+            # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
+            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb)
 
             # Добавляем metadata если его нет
             if '_metadata' not in result and 'result_metadata' in locals():
@@ -1661,7 +1658,6 @@ class MainAgent:
                 f.write(f"\n=== SINGLE CANDIDATE DECISION ===\n")
                 f.write(f"candidate: {candidate['service_name']} (ID: {candidate['service_id']})\n")
                 f.write(f"candidate_confidence: {candidate.get('confidence', 0):.3f}\n")
-                f.write(f"location_known: {accumulated_fields.get('location') is not None}\n")
                 f.write(f"incident_type: {established_filters.get('incident_type', {}).get('value', '')}\n")
                 f.write(f"category: {established_filters.get('category', {}).get('value', '')}\n")
 
@@ -1745,19 +1741,14 @@ class MainAgent:
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем серьёзность ПЕРЕД созданием заявки
             # Для Инцидентов с ВОДОЙ/ТЕЧЬЮ нужно знать severity/intensity
             incident_type = established_filters.get('incident_type', {}).get('value', '')
-            severity_known = accumulated_fields.get('severity') is not None
-            intensity_known = accumulated_fields.get('intensity') is not None
             is_incident = incident_type == 'Инцидент'
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем что это проблема с ВОДОЙ/ТЕЧЬЮ
             # Только для водоснабжения и течи спрашиваем про интенсивность
             category = established_filters.get('category', {}).get('value', '')
-            source = (accumulated_fields.get('source') or '').lower()
-            problem = (accumulated_fields.get('problem') or '').lower()
 
             # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields
             # LLM сгенерирует правильный вопрос на основе source/problem из accumulated_fields
-            has_source = accumulated_fields.get('source') is not None
             category_data = established_filters.get('category', {})
             category_confidence = category_data.get('confidence', 0.0)
 
@@ -1808,7 +1799,6 @@ class MainAgent:
                     txtPrb=txtPrb,
                     question_type='clarification',
                     session_id=session_id,
-                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
                 )
                 message = ai_result['question']
                 logger.info(f"[LLM QUESTION] Сгенерирован вопрос: {message}")
@@ -2250,8 +2240,7 @@ class MainAgent:
         attribute_value: str,
         dialog_history: List[Dict],
         txtPrb: str,
-        established_filters: Dict,
-        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
+        established_filters: Dict# ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> Dict:
         """
         Генерирует уточняющий вопрос о пропущенном атрибуте через AI
@@ -2362,7 +2351,6 @@ class MainAgent:
                 txtPrb=txtPrb,
                 established_filters=established_filters,
                 asked_questions=[],  # TODO: можно добавить уже заданные вопросы
-                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
             )
 
             logger.info(f"[AI QUESTION] Сгенерирован вопрос о category: '{question}'")
@@ -2529,9 +2517,7 @@ class MainAgent:
         dialog_history: List[Dict] = None,
         txtPrb: str = None,
         established_filters: Dict = None,
-        session_id: str = None,
-        accumulated_fields: Dict = None
-    ) -> Dict:
+        session_id: str = None) -> Dict:
         """
         Главный АГЕНТ-ОРКЕСТРАТОР: принимает решения на основе результатов микросервисов
 
@@ -2652,13 +2638,8 @@ class MainAgent:
             # Никто ничего не нашел - спрашиваем что случилось
             # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ДО вызова _ask_ai_what_happened
             print(f"=== [CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened ===")
-            print(f"accumulated_fields={accumulated_fields}")
-            print(f"accumulated_fields type={type(accumulated_fields)}")
-            print(f"accumulated_fields is truthy={bool(accumulated_fields)}")
+            
             logger.info(f"[CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened:")
-            logger.info(f"  accumulated_fields={accumulated_fields}")
-            logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
-            logger.info(f"  accumulated_fields is truthy={bool(accumulated_fields)}")
 
             return {
                 'status': 'AMBIGUOUS',
@@ -2667,7 +2648,6 @@ class MainAgent:
                     established_filters=established_filters,  # ИСПРАВЛЕНО: передаем фильтры
                     txtPrb=txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
                     session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): передаем session_id
-                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): передаем accumulated_fields
                 ),
                 'candidates': [],
                 'metadata': {}
@@ -2891,7 +2871,6 @@ class MainAgent:
                 established_filters=established_filters,
                 txtPrb=txtPrb,
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): передаем session_id
-                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): передаем accumulated_fields
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -2903,7 +2882,7 @@ class MainAgent:
     
     async def _ask_ai_what_happened(self, message_text: str, dialog_history: List[Dict],
                                     established_filters: Dict = None, txtPrb: str = None,
-                                    session_id: str = None, accumulated_fields: Dict = None) -> str:
+                                    session_id: str = None) -> str:
         """Спрашивает у AI что случилось и где
 
         ИСПРАВЛЕНО (2025-12-26): Использует CommunicativeScriptsService вместо AI генерации
@@ -2916,17 +2895,11 @@ class MainAgent:
             established_filters: Установленные фильтры с весами
             txtPrb: Накопленное описание проблемы (из ProblemAccumulationService)
             session_id: ID сессии для логирования
-            accumulated_fields: Извлеченные поля из ProblemAccumulationService
         """
         # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПРИ ВХОДЕ в метод
         print(f"=== [CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened ===")
-        print(f"accumulated_fields={accumulated_fields}")
-        print(f"accumulated_fields type={type(accumulated_fields)}")
-        print(f"accumulated_fields is truthy={bool(accumulated_fields)}")
+        
         logger.info(f"[CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened:")
-        logger.info(f"  accumulated_fields={accumulated_fields}")
-        logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
-        logger.info(f"  accumulated_fields is truthy={bool(accumulated_fields)}")
 
         # Вычисляем dialog_turn
         dialog_turn = len(dialog_history) if dialog_history else 1
@@ -2964,7 +2937,6 @@ class MainAgent:
             txtPrb=txtPrb,
             question_type='what_happened',
             session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
         )
 
         question = ai_result['question']
@@ -2982,8 +2954,7 @@ class MainAgent:
         txtPrb: str = None,
         established_filters: Dict = None,
         asked_questions: List[str] = None,
-        txtStopQ: List[str] = None,  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные)
-        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
+        txtStopQ: List[str] = None,  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные)# ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): LLM-валидация вопроса вместо Regex
@@ -3139,32 +3110,7 @@ class MainAgent:
             # ИСПРАВЛЕНО (2026-02-16): Проверяем accumulated_fields.location вместо established_filters.location_type
             # ПРИЧИНА: accumulated_fields надежнее, так как извлекает ТОЛЬКО ЯВНОЕ упоминание из текста
             # established_filters (LLM) может додумывать локацию ("обычно в квартире")
-            #
-            # accumulated_fields.location: "зал" ← ЯВНО в тексте ✅
-            # accumulated_fields.location: null ← НЕ в тексте ✅
-            # established_filters.location_type: "Индивидуальное" ← LLM додумал ❌
-            if accumulated_fields and accumulated_fields.get('location'):
-                location_value = accumulated_fields['location']
-                logger.info(f"[DEBUG] Location ЯВНО извлечена из текста: '{location_value}' - запрещаем спрашивать")
-                forbidden_questions.append('location')
-
-            # ЗАКОММЕНТИРОВАНО (2026-02-16): Старая логика через established_filters.location_type
-            # ПРИЧИНА: LLM может додумывать локацию с высокой уверенностью (1.0) даже если она НЕ указана
-            # Проблема: "нет воды" → location_type="Индивидуальное" (1.0) → бот НЕ спрашивает "Где?"
-            # Решение: использовать accumulated_fields (явное упоминание) вместо LLM-догадок
-            #
-            # if established_filters and established_filters.get('location_type'):
-            #     location_data = established_filters['location_type']
-            #     location_value = location_data.get('value') if isinstance(location_data, dict) else location_data
-            #     location_conf = location_data.get('confidence') if isinstance(location_data, dict) else 0.9
-            #
-            #     if location_conf >= 0.9:
-            #         if location_value == 'Индивидуальное' and re.search(r'(квартира|дом|общедом)', question_lower):
-            #             logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
-            #             forbidden_questions.append('location')
-            #         elif location_value == 'Общедомовое' and re.search(r'(квартира|индивидуа)', question_lower):
-            #             logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
-            #             forbidden_questions.append('location')
+            # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН - используем txtPrb
 
             # ИСПРАВЛЕНО (2026-01-15): Убрана проверка object_description (используется txtPrb)
             # Если txtPrb не пустой → уже известна проблема, не спрашиваем "что именно?"
@@ -3641,8 +3587,7 @@ JSON:"""
         missing_filter: str = None,
         txtPrb: str = None,
         asked_questions: List[str] = None,
-        intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
         established_filters: Dict = None  # ИСПРАВЛЕНО (2026-02-18): Установленные фильтры (чтобы не спрашивать известное)
     ) -> str:
         """
@@ -4264,7 +4209,6 @@ JSON:"""
                     established_filters=established_filters,
                     asked_questions=asked_questions,  # ИСПРАВЛЕНО (2026-01-10)
                     txtStopQ=txtStopQ,  # ИСПРАВЛЕНО (2026-02-04): Накопление запрещенных вопросов
-                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
                 )
 
                 # ИСПРАВЛЕНО (2025-12-29): Отладочный режим - добавляем объяснение к вопросу
@@ -4315,8 +4259,7 @@ JSON:"""
         candidates: List[Dict] = None,
         established_filters: Dict = None,
         txtPrb: str = None,
-        question_type: str = "clarification",
-        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        question_type: str = "clarification",  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
         txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
     ) -> str:
         """Строит промт для генерации вопроса
@@ -4967,8 +4910,7 @@ JSON:"""
         candidates: List[Dict],
         dialog_history: List[Dict],
         established_filters: Dict = None,
-        session_id: str = None,
-        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
+        session_id: str = None# ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> Dict:
         """Спрашивает как уточнить - использует CommunicativeScriptsService
 
@@ -5000,7 +4942,6 @@ JSON:"""
             txtPrb=extracted_txtPrb,
             question_type='clarification',
             session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
         )
 
         ai_question = ai_result['question']
