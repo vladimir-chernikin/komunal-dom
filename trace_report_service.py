@@ -691,23 +691,34 @@ Session ID: {session_id}
                     details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
                     llm_calls_found = True
 
-                # ИСПРАВЛЕНО (2026-02-18): Исправлено определение FilterDetectionService по промпту
+                # ИСПРАВЛЕНО (2026-02-24): Исправлено определение сервисов по промптам из БД
                 service_name = "Unknown"
-                if 'ProblemAccumulationService' in prompt_text or 'аналитик, извлекающий' in prompt_text:
+
+                # ProblemAccumulationService (ID 6)
+                if 'ProblemAccumulationService' in prompt_text or 'аналитик, извлекающий' in prompt_text or 'аналитик, который накапливает описание проблемы' in prompt_text:
                     service_name = "ProblemAccumulationService"
-                elif '## Роль\nКлассификатор локации проблемы по ЖК РФ' in prompt_text:
+
+                # FilterDetectionService: location_type (ID 4)
+                elif 'Ты — классификатор контекста локации' in prompt_text or 'классификатор типа локации' in prompt_text:
                     service_name = "FilterDetectionService (location_type)"
-                elif '## Роль\n  Классификатор типа обращения' in prompt_text or 'Классификатор типа обращения. Выполняй алгоритм' in prompt_text:
+
+                # FilterDetectionService: incident_type (ID 3)
+                elif 'Ты — строгий классификатор типа обращения' in prompt_text or 'Классификатор типа обращения. Выполняй ТОЛЬКО алгоритм' in prompt_text:
                     service_name = "FilterDetectionService (incident_type)"
+
+                # FilterDetectionService: category (ID 5)
                 elif '## Роль\nТы - строгий алгоритмический классификатор категории проблемы' in prompt_text or ('CATEGORIES' in prompt_text and '## АЛГОРИТМ' in prompt_text):
                     service_name = "FilterDetectionService (category)"
+
+                # Fallback для category
                 elif '⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!' in prompt_text and 'CATEGORIES' in prompt_text:
-                    # Fallback-заглушка (старый код)
                     service_name = "FilterDetectionService (category) [FALLBACK]"
-                elif '# Классификатор обращений УК' in prompt_text or 'Анализируй обращение и верни JSON фильтров' in prompt_text:
-                    service_name = "FilterDetectionService"
+
+                # MainAgent (ID 9)
                 elif 'AI-диспетчер управляющей компании' in prompt_text or 'AI-диспетчер УК' in prompt_text:
                     service_name = "MainAgent (AI Question Generator)"
+
+                # QuestionValidatorService
                 elif 'строгий логический валидатор' in prompt_text:
                     service_name = "QuestionValidatorService"
 
@@ -735,8 +746,8 @@ Session ID: {session_id}
                     border_length = len(service_label)
                     details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
 
-                    # Ограничиваем длину ответа для читаемости
-                    response_preview = response_text[:1000] + "..." if len(response_text) > 1000 else response_text
+                    # ИСПРАВЛЕНО (2026-02-24): Показываем полный ответ, но ограничиваем до 5000 символов для читаемости
+                    response_preview = response_text[:5000] + "\n...(ОТВЕТ ОБРЕЗАН - полный текст содержит " + str(len(response_text)) + " символов)" if len(response_text) > 5000 else response_text
                     details += f"{response_preview}\n"
 
         if not llm_calls_found:

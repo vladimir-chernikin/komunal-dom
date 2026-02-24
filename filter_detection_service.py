@@ -131,6 +131,7 @@ class FilterDetectionService:
             examples_text += f"\n\nЗапрос (выборка из БД):\n" + "\n".join(incident_examples["Запрос"][:5])
 
         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
+        # ИСПРАВЛЕНО (2026-02-24): Исправлен fallback - теперь выполняется ТОЛЬКО если промпт не найден
         try:
             from llm_tester.models import PromptTemplate
             from asgiref.sync import sync_to_async
@@ -155,14 +156,9 @@ class FilterDetectionService:
                 return prompt
             else:
                 logger.error(f"[DB] Промпт 'filter-incident-type' не найден в БД!")
-
-        except Exception as e:
-            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
-
-        # Fallback-промпт (если промпт не найден в БД)
-        logger.warning("[FALLBACK] Используется fallback-промпт для incident_type")
-
-        prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
+                # ИСПРАВЛЕНО (2026-02-24): Fallback ТОЛЬКО если не найден
+                logger.warning("[FALLBACK] Используется fallback-промпт для incident_type")
+                prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
 
 TXT_PRB = "{txtPrb}"
 
@@ -171,7 +167,22 @@ TXT_PRB = "{txtPrb}"
 - "Запрос" - если нет угрозы
 
 Верни JSON: {{"incident_type": "Инцидент/Запрос", "confidence": 0.7, "reasoning": "обоснование"}}"""
-        return prompt
+                return prompt
+
+        except Exception as e:
+            logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
+            # ИСПРАВЛЕНО (2026-02-24): Fallback при ошибке
+            logger.warning("[FALLBACK] Используется fallback-промпт для incident_type (ошибка)")
+            prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
+
+TXT_PRB = "{txtPrb}"
+
+ОПРЕДЕЛИ ТИП ОБРАЩЕНИЯ:
+- "Инцидент" - если есть угроза жизни/здоровью/имуществу
+- "Запрос" - если нет угрозы
+
+Верни JSON: {{"incident_type": "Инцидент/Запрос", "confidence": 0.7, "reasoning": "обоснование"}}"""
+            return prompt
 
     # ========================================================================
     # ПРОМПТ 2: location_type (Индивидуальное/Общедомовое)
