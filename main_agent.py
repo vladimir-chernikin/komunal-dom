@@ -402,46 +402,16 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
                 # Короткие ответы типа "в квартире" важны для контекста!
                 txtPrb = accumulation_result['updated_problem']
-                new_accumulated_fields = accumulation_result.get('fields', {})  # НОВЫЕ поля из сообщения
-
-                # ИСПРАВЛЕНО (2026-02-16): ОБЪЕДИНЯЕМ старые и новые accumulated_fields
-                # Приоритет: НОВЫЕ поля перезаписывают СТАРЫЕ
-                final_accumulated_fields = {}
-                if accumulated_fields:
-                    final_accumulated_fields.update(accumulated_fields)
-                    logger.info(f"[DEBUG] Старые accumulated_fields: {accumulated_fields}")
-                if new_accumulated_fields:
-                    final_accumulated_fields.update(new_accumulated_fields)
-                    logger.info(f"[DEBUG] Новые accumulated_fields: {new_accumulated_fields}")
-                accumulated_fields = final_accumulated_fields
-
-                # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПОСЛЕ объединения accumulated_fields
-                logger.info(f"[CRITICAL DEBUG] ✅ ФИНАЛЬНЫЕ accumulated_fields: {accumulated_fields}")
+                # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН - используем только txtPrb
                 logger.info(f"[CRITICAL DEBUG] txtPrb: {txtPrb}")
 
-                if accumulation_result['is_meaningful']:
-                    logger.info(f"txtPrb обновлен (содержательный): '{txtPrb[:100]}...'")
-                    logger.info(f"Извлеченные поля: {accumulated_fields}")
-                else:
-                    logger.info(f"txtPrb обновлен (короткий ответ): '{txtPrb[:100]}...'")
-
-                # ИСПРАВЛЕНО (2026-01-13): Обработка отказа пользователя
                 if accumulation_result.get('is_refusal'):
                     logger.warning(f"[REFUSAL] Пользователь отказался от предложенной услуги")
                     logger.warning(f"[REFUSAL] txtPrb обновлен с пометкой об отказе: '{txtPrb[:100]}...'")
                     logger.warning(f"[REFUSAL] Фильтры БУДУТ пересчитаны из txtPrb (содержит отказ)")
 
-                # Рассчитываем фильтры с весами (ВСЕГДА, даже при отказе!)
-                # ИСПРАВЛЕНО (2026-02-13): ЗДЕСЬ: отключили calculate_filter_confidence
-                # Cause: ProblemAccumulationService определяет location=ОБЩЕДОМОВОЕ (глупо)
-                # Solution: Используем FilterDetectionService (через LLM) → location=Индивидуальное (умно)
-                # established_filters берется от FilterDetectionService (уже есть в коде)
-                if False:  # ВРЕМЕННО: включи для отладки, потом убери
-                    established_filters = self.problem_accumulator.calculate_filter_confidence(
-                        txtPrb, accumulated_fields
-                    )
-                else:
-                    # Нормальный режим: FilterDetectionService был вызван ранее в process_service_detection
+                # ИСПРАВЛЕНО (2026-02-24): calculate_filter_confidence ОТКЛЮЧЁН - accumulated_fields удалён
+                # Нормальный режим: FilterDetectionService был вызван ранее в process_service_detection
                     # established_filters уже содержит правильные фильтры от FilterDetectionService
                     pass
 
@@ -1186,13 +1156,12 @@ class MainAgent:
         # AI не нужен
         return None
 
-    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, txtPrb: str = None, accumulated_fields: Dict = None) -> Dict:
+    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, txtPrb: str = None) -> Dict:
         """
         Создание результата из таблицы кандидатов по ТЗ 3.2.2
 
         ИСПРАВЛЕНО: Сделано async для загрузки атрибутов из БД
         ИСПРАВЛЕНО (2026-01-14): Добавлен параметр txtPrb для определения is_refusal
-        ИСПРАВЛЕНО (2026-01-22): Добавлен параметр accumulated_fields для передачи в _generate_smart_clarification
         """
         # ИСПРАВЛЕНО (2026-01-05): Отладочный лог
         logger.info(f"[DEBUG] _create_ambiguous_result_from_candidates ВХОД: {len(candidates_data)} кандидатов")
@@ -1224,7 +1193,6 @@ class MainAgent:
             established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10)
             session_id=session_id,
             is_refusal=is_refusal,  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
-            accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields
             txtStopQ=txt_stop_questions if 'txt_stop_questions' in locals() else []  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
         )
 
@@ -1503,7 +1471,7 @@ class MainAgent:
 
         return filters
 
-    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False, accumulated_fields: Dict = None, txtStopQ: List[str] = None) -> Dict:
+    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False, txtStopQ: List[str] = None) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -1516,7 +1484,6 @@ class MainAgent:
         ИСПРАВЛЕНО (2025-12-28): Добавлены параметры txtPrb и established_filters для передачи в LLM
         ИСПРАВЛЕНО (2025-12-28): Извлечение txtPrb и established_filters из dialog_history если не переданы
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для формирования intro_phrase
-        ИСПРАВЛЕНО (2026-01-22): Добавлен параметр accumulated_fields для избежания повторного LLM вызова
         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
         """
         # ИСПРАВЛЕНО (2025-12-28): Если txtPrb и established_filters не переданы - извлекаем из истории
@@ -1589,8 +1556,7 @@ class MainAgent:
                 question_type='clarification',
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
                 intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
-            )
+                            )
             return {
                 'status': 'AMBIGUOUS',
                 'message': message,
@@ -2187,7 +2153,7 @@ class MainAgent:
         logger.info(f"Дедуплицировано кандидатов: {len(merged)}")
         return merged
 
-    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, accumulated_fields: Dict = None) -> Dict:
+    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None) -> Dict:
         """
         Создание результата с неопределенностью
 
@@ -2210,7 +2176,6 @@ class MainAgent:
                 established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
                 question_type='clarification',
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -2225,7 +2190,7 @@ class MainAgent:
         candidates_with_attrs = await self._load_candidates_attributes(candidates[:3])
 
         # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
-        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id, accumulated_fields=accumulated_fields)
+        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id)
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
