@@ -61,20 +61,9 @@ class ProblemAccumulationService:
         Returns:
             {
                 'updated_problem': str,  # Обновленное txtPrb
-                'extracted_info': dict,  # Извлеченная информация
-                'is_meaningful': bool,   # Содержит ли сообщение полезную информацию
-                'is_refusal': bool,      # ИСПРАВЛЕНО (2026-01-13): Является ли сообщением отказом
-                'new_info': str,         # Краткое описание новой информации
-                'db_error': bool,        # ИСПРАВЛЕНО (2026-02-05): Ошибка загрузки промпта из БД
-                'fields': {              # Извлеченные поля
-                    'problem': str | None,
-                    'location': str | None,
-                    'source': str | None,
-                    'category': str | None,
-                    'severity': str | None,
-                    'intensity': str | None,
-                    'object': str | None
-                }
+                'is_refusal': bool,      # Является ли сообщением отказом
+                'refused_service': str,  # Отвергнутая услуга (если is_refusal=True)
+                'db_error': bool         # Ошибка загрузки промпта из БД
             }
         """
         # ИСПРАВЛЕНО (2026-01-13): Детектор отказа пользователя
@@ -99,16 +88,8 @@ class ProblemAccumulationService:
                 'is_refusal': True,
                 'new_info': f"пользователь отказался от услуги '{refused_service}'",
                 'db_error': False,  # ИСПРАВЛЕНО (2026-02-05)
-                'fields': {},
                 'refused_service': refused_service
             }
-
-        # ИСПРАВЛЕНО (2025-12-28): Отладочные логи входящих параметров
-        logger.info("[SEARCH] ProblemAccumulationService ВХОДЯЩИЕ ПАРАМЕТРЫ:")
-        logger.info(f"  [NOTE] message_text: '{message_text[:80]}'")
-        logger.info(f"  [NOTE] current_problem: '{current_problem[:80] if current_problem else '(пусто)'}'")
-        logger.info(f"  ❓ bot_question: '{bot_question[:80] if bot_question else '(нет)'}'")
-        logger.info(f"  [LIST] dialog_history: {len(dialog_history) if dialog_history else 0} сообщений")
 
         # Формируем промпт для LLM
         # ИСПРАВЛЕНО (2026-02-05): Добавлен await (функция теперь async)
@@ -150,22 +131,12 @@ class ProblemAccumulationService:
             result['db_error'] = db_error
 
             # ИСПРАВЛЕНО (2026-01-05): КРИТИЧЕСКИ ВАЖНО - если is_meaningful=false, сохраняем current_problem!
-            if not result['is_meaningful']:
-                result['updated_problem'] = current_problem
-                logger.info(f"⚠️ is_meaningful=False → сохраняем текущий txtPrb БЕЗ ИЗМЕНЕНИЙ")
 
             # ИСПРАВЛЕНО (2025-12-28): Детальный лог результата
             logger.info(f"[OK] ProblemAccumulation РЕЗУЛЬТАТ:")
-            logger.info(f"  [SEARCH] is_meaningful: {result['is_meaningful']}")
-            logger.info(f"  [NOTE] new_info: '{result['new_info']}'")
-            logger.info(f"  [NOTE] updated_problem: '{result['updated_problem']}'")
-            logger.info(f"  🔧 fields: {json.dumps(result['fields'], ensure_ascii=False)}")
 
             logger.info(
                 f"ProblemAccumulation: '{message_text[:50]}...' → "
-                f"is_meaningful={result['is_meaningful']}, "
-                f"updated_problem='{result['updated_problem'][:80]}...'"
-            )
 
             return result
 
@@ -292,18 +263,9 @@ JSON:"""
             # Валидация полей
             return {
                 'updated_problem': result.get('updated_problem', current_problem),
-                'extracted_info': {},
-                'is_meaningful': result.get('is_meaningful', False),
-                'new_info': result.get('new_info', ''),
-                'fields': {
-                    'problem': result.get('fields', {}).get('problem'),
-                    'location': result.get('fields', {}).get('location'),
-                    'source': result.get('fields', {}).get('source'),
-                    'category': result.get('fields', {}).get('category'),
-                    'severity': result.get('fields', {}).get('severity'),
-                    'intensity': result.get('fields', {}).get('intensity'),
-                    'object': result.get('fields', {}).get('object')
-                }
+                'is_refusal': False,
+                'refused_service': None,
+                'db_error': False
             }
 
         except json.JSONDecodeError as e:
@@ -312,18 +274,9 @@ JSON:"""
             # Возвращаем текущее состояние без изменений
             return {
                 'updated_problem': current_problem,
-                'extracted_info': {},
-                'is_meaningful': False,
-                'new_info': '',
-                'fields': {
-                    'problem': None,
-                    'location': None,
-                    'source': None,
-                    'category': None,
-                    'severity': None,
-                    'intensity': None,
-                    'object': None
-                }
+                'is_refusal': False,
+                'refused_service': None,
+                'db_error': False
             }
 
     def get_txtPrb_from_metadata(self, dialog_history: List[Dict]) -> str:

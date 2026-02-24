@@ -4255,7 +4255,6 @@ JSON:"""
         question_type: str = "clarification",
         session_id: str = None,
         intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (чтобы избежать повторного LLM)
         txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
     ) -> Dict[str, str]:
         """
@@ -4266,8 +4265,8 @@ JSON:"""
         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля вопроса
         ИСПРАВЛЕНО (2026-01-21): Добавлена защита от зацикливания - после 6 ходов
-        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
+        ИСПРАВЛЕНО (2026-02-23): Удалён параметр accumulated_fields - используем только txtPrb
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -4283,8 +4282,6 @@ JSON:"""
                 - 'details' - детали проблемы
             session_id: ID сессии для сохранения в llm_request_log
             intro_phrase: Вводная фраза для ИИ (факты + отвергнутая услуга) - ИСПРАВЛЕНО 2026-01-13
-            accumulated_fields: Извлеченные поля из ProblemAccumulationService - ИСПРАВЛЕНО 2026-01-21
-                (передается чтобы избежать повторного вызова LLM в _extract_known_info)
             txtStopQ: Список запрещенных вопросов (накопленные глупые вопросы) - ИСПРАВЛЕНО 2026-02-04
 
         Returns:
@@ -4505,8 +4502,8 @@ JSON:"""
         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов"""
 
         # Анализируем что уже известно из истории
-        # ИСПРАВЛЕНО (2026-01-21): Передаем accumulated_fields чтобы избежать повторного LLM вызова
-        known_info = self._extract_known_info(dialog_history, txtPrb, accumulated_fields)
+        # ИСПРАВЛЕНО (2026-02-23): accumulated_fields удалён - используем только txtPrb
+        known_info = self._extract_known_info(dialog_history, txtPrb)
 
         # Собираем контекст из истории
         recent_dialog = ""
@@ -4998,18 +4995,16 @@ JSON:"""
 
         return '\n'.join(lines)
 
-    def _extract_known_info(self, dialog_history: List[Dict] = None, txtPrb: str = None, accumulated_fields: Dict = None) -> str:
+    def _extract_known_info(self, dialog_history: List[Dict] = None, txtPrb: str = None) -> str:
         """
         Извлекает уже известную информацию из диалога
 
         ИСПРАВЛЕНО (2025-12-28): Использует ProblemAccumulationService вместо хардкода
         ИСПРАВЛЕНО (2025-12-28): УБРАН хардкод keywords!
-        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
 
         Args:
             dialog_history: История диалога
             txtPrb: Накопленное описание проблемы
-            accumulated_fields: ИЗВЛЕЧЕННЫЕ поля (чтобы избежать повторного вызова LLM) - ИСПРАВЛЕНО 2026-01-21
 
         Returns:
             str: Список известной информации
@@ -5043,9 +5038,7 @@ JSON:"""
 
         # ИСПРАВЛЕНО (2026-01-21): УБРАНО! Больше НЕ вызываем ProblemAccumulationService здесь!
         # Логика:
-        # - accumulated_fields УЖЕ извлечены выше в extract_and_accumulate() через LLM
         # - Повторный вызов accumulate_problem() здесь = ЛИШНИЙ LLM вызов = деньги + время
-        # - Вместо этого используем accumulated_fields, который передается как параметр
         #
         # Старый код (УДАЛЕН):
         # if self.problem_accumulator and dialog_history:
