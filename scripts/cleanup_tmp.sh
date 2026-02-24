@@ -1,0 +1,199 @@
+#!/bin/bash
+################################################################################
+# Скрипт ежедневной очистки /tmp
+# Автор: Claude Sonnet
+# Дата: 2026-02-24
+#
+# ПРИНЦИП:
+# - НЕ УДАЛЯЕТ файлы, только архивирует
+# - Перемещает старые файлы в архив
+# - Сжимает в ZIP для долгосрочного хранения
+################################################################################
+
+set -e  # Ошибка при любой проблеме
+
+# Конфигурация
+TMP_DIR="/tmp"
+ARCHIVE_BASE="/var/www/komunal-dom_ru/tmp_archive"
+PROJECT_DIR="/var/www/komunal-dom_ru"
+LOG_FILE="/var/log/tmp_cleanup.log"
+DATE=$(date +%Y-%m-%d)
+DATETIME=$(date +%Y-%m-%d_%H%M%S)
+
+# Создание папок (если нет)
+mkdir -p "${ARCHIVE_BASE}"/{reports,debug,scripts,daily,delete}
+
+# Логирование
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+log "=== НАЧАЛО ОЧИСТКИ /tmp ==="
+
+################################################################################
+# ЭТАП 1: ОПЕРАТИВНЫЕ ФАЙЛЫ (7-30 дней) - перенос в архив
+################################################################################
+
+log "[ЭТАП 1] Перенос файлов старше 7 дней в архив..."
+
+# Отчеты трассировки (_tras_diag_*.md)
+find "$TMP_DIR" -maxdepth 1 -type f -name "_tras_diag_*.md" -mtime +7 -mtime -30 | while read file; do
+    target_date=$(date -r "$file" +%Y/%m)
+    target_dir="${ARCHIVE_BASE}/reports/${target_date}"
+    mkdir -p "$target_dir"
+    mv "$file" "$target_dir/"
+    log "  Перенесен отчет: $(basename "$file") → reports/${target_date}/"
+done
+
+# Отчеты анализа (_dialog_analysis_*.md, *_report.md)
+find "$TMP_DIR" -maxdepth 1 -type f \( -name "_dialog_analysis_*.md" -o -name "*_report.md" \) -mtime +7 -mtime -30 | while read file; do
+    target_date=$(date -r "$file" +%Y/%m)
+    target_dir="${ARCHIVE_BASE}/reports/${target_date}"
+    mkdir -p "$target_dir"
+    mv "$file" "$target_dir/"
+    log "  Перенесен анализ: $(basename "$file") → reports/${target_date}/"
+done
+
+# Debug файлы (_fallback_*.txt, *_error_*.txt) - храним 30 дней в архиве
+find "$TMP_DIR" -maxdepth 1 -type f \( -name "_fallback_*.txt" -o -name "*_error_*.txt" \) -mtime +3 -mtime -30 | while read file; do
+    target_date=$(date -r "$file" +%Y/%m)
+    target_dir="${ARCHIVE_BASE}/debug/${target_date}"
+    mkdir -p "$target_dir"
+    mv "$file" "$target_dir/"
+    log "  Перенесен debug: $(basename "$file") → debug/${target_date}/"
+done
+
+# Скрипты (_*.py, _*.sh)
+find "$TMP_DIR" -maxdepth 1 -type f \( -name "_*.py" -o -name "_*.sh" \) -mtime +3 -mtime -30 | while read file; do
+    target_date=$(date -r "$file" +%Y/%m)
+    target_dir="${ARCHIVE_BASE}/scripts/${target_date}"
+    mkdir -p "$target_dir"
+    mv "$file" "$target_dir/"
+    log "  Перенесен скрипт: $(basename "$file") → scripts/${target_date}/"
+done
+
+################################################################################
+# ЭТАП 2: АРХИВНЫЕ ПАПКИ (старше месяца) - сжатие в ZIP
+################################################################################
+
+log "[ЭТАП 2] Сжатие дневных папок старше 30 дней в ZIP..."
+
+# Текущий год и месяц
+CURRENT_YEAR=$(date +%Y)
+CURRENT_MONTH=$(date +%m)
+
+# Находим папки 2026_* и проверяем их возраст
+find "$TMP_DIR" -maxdepth 1 -type d -name "2026_*" | while read dir; do
+    # Проверяем возраст папки (по времени последней модификации)
+    dir_age_days=$(( ($(date +%s) - $(stat -c %Y "$dir")) / 86400 ))
+
+    # Если старше 35 дней (чуть больше месяца)
+    if [ $dir_age_days -gt 35 ]; then
+        dir_name=$(basename "$dir")
+        zip_file="${ARCHIVE_BASE}/daily/${dir_name}.zip"
+
+        # Сжимаем с максимальным сжатием
+        zip -9 -r "$zip_file" "$dir" -q
+        log "  Сжата папка: ${dir_name} → ${zip_file}"
+
+        # Удаляем оригинал ПОСЛЕ успешного сжатия
+        rm -rf "$dir"
+        log "  Удален оригинал: ${dir_name}"
+    fi
+done
+
+################################################################################
+# ЭТАП 3: ФАЙЛЫ СТАРШЕ 90 ДНЕЙ - архивирование в DELETE (НЕ УДАЛЕНИЕ!)
+################################################################################
+
+log "[ЭТАП 3] Архивирование файлов старше 90 дней в папку delete..."
+
+# Находим все файлы старше 90 дней
+find "$TMP_DIR" -maxdepth 1 -type f -mtime +90 | while read file; do
+    # Определяем тип файла
+    filename=$(basename "$file")
+    ext="${filename##*.}"
+
+    # Категория по расширению
+    case "$ext" in
+        md)  category="reports" ;;
+        txt) category="debug" ;;
+        py|sh) category="scripts" ;;
+        *) category="other" ;;
+    esac
+
+    # Дата файла
+    file_date=$(date -r "$file" +%Y%m%d)
+
+    # ZIP архив для удаления
+    delete_zip="${ARCHIVE_BASE}/delete/${category}_${file_date}_${DATETIME}.zip"
+
+    # Добавляем файл в ZIP
+    zip -9 -j "$delete_zip" "$file" -q
+    log "  Архивирован в delete: ${filename} → ${category}_${file_date}.zip"
+
+    # Удаляем оригинал
+    rm -f "$file"
+done
+
+################################################################################
+# ЭТАП 4: УДАЛЕНИЕ ВРЕМЕННЫХ ФАЙЛОВ (старше 1 дня)
+################################################################################
+
+log "[ЭТАП 4] Удаление временных Claude Code файлов старше 1 дня..."
+
+# Claude temp файлы
+find "$TMP_DIR" -maxdepth 1 -type f -name "claude-*-cwd" -mtime +1 -delete
+log "  Удалены claude-*-cwd файлы"
+
+# Временные промпты
+find "$TMP_DIR" -maxdepth 1 -type f \( -name "new_prompt.txt" -o -name "current_prompt.txt" -o -name "current_prompt.txt" \) -mtime +1 -delete
+log "  Удалены временные промпты"
+
+################################################################################
+# ЭТАП 5: ОЧИСТКА PYCACHE (всегда)
+################################################################################
+
+log "[ЭТАП 5] Очистка Python cache..."
+
+if [ -d "$TMP_DIR/pycache" ]; then
+    rm -rf "$TMP_DIR/pycache"
+    log "  Удалена папка pycache"
+fi
+
+################################################################################
+# ЭТАП 6: СПЕЦИАЛЬНАЯ ПАПКА _old_files (если есть)
+################################################################################
+
+if [ -d "$TMP_DIR/_old_files" ]; then
+    dir_age_days=$(( ($(date +%s) - $(stat -c %Y "$TMP_DIR/_old_files")) / 86400 ))
+
+    if [ $dir_age_days -gt 30 ]; then
+        # Сжимаем в ZIP
+        zip_file="${ARCHIVE_BASE}/delete/_old_files_${DATETIME}.zip"
+        zip -9 -r "$zip_file" "$TMP_DIR/_old_files" -q
+        log "  Сжата папка _old_files → ${zip_file}"
+
+        # Удаляем оригинал
+        rm -rf "$TMP_DIR/_old_files"
+        log "  Удален оригинал _old_files"
+    fi
+fi
+
+################################################################################
+# ФИНАЛЬНАЯ СТАТИСТИКА
+################################################################################
+
+log "[СТАТИСТИКА] Результаты очистки:"
+log "  Размер /tmp: $(du -sh $TMP_DIR 2>/dev/null | cut -f1)"
+log "  Файлов в /tmp: $(find $TMP_DIR -maxdepth 1 -type f | wc -l)"
+log "  Размер архива: $(du -sh $ARCHIVE_BASE 2>/dev/null | cut -f1)"
+
+log "=== ОЧИСТКА /tmp ЗАВЕРШЕНА ==="
+log ""
+
+# Права на архивы
+chown -R olga:www-data "$ARCHIVE_BASE"
+chmod -R 775 "$ARCHIVE_BASE"
+
+exit 0

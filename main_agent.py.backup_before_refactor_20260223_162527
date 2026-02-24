@@ -238,7 +238,7 @@ class MainAgent:
         session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
         message_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем message_id
         established_filters = None  # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters
-        # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
+        accumulated_fields = None  # ИСПРАВЛЕНО (2026-02-16): Извлекаем accumulated_fields
         txt_stop_questions = []  # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы)
 
         if user_context:
@@ -247,8 +247,10 @@ class MainAgent:
             session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
             message_id = user_context.get('message_id')  # ИСПРАВЛЕНО (2026-01-06)
             established_filters = user_context.get('established_filters')  # ИСПРАВЛЕНО (2026-01-10)
-            # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН из user_context
+            accumulated_fields = user_context.get('accumulated_fields')  # ИСПРАВЛЕНО (2026-02-16)
             txt_stop_questions = user_context.get('txtStopQ', [])  # ИСПРАВЛЕНО (2026-02-04): txtStopQ
+            if accumulated_fields:
+                logger.info(f"[DEBUG] ✅ Получены accumulated_fields из user_context: {accumulated_fields}")
             if txt_stop_questions:
                 logger.info(f"[DEBUG] Получены txtStopQ из user_context: {len(txt_stop_questions)} запрещенных вопросов")
 
@@ -340,13 +342,13 @@ class MainAgent:
 
         # ИСПРАВЛЕНО (2025-12-26): ProblemAccumulationService - накопление описания проблемы
         txtPrb = ""
-        # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
+        accumulated_fields = {}
         established_filters = {}
 
         # ИСПРАВЛЕНО (2025-12-28): Отладочные логи до накопления
         logger.info("[SEARCH] TXTPrb И ФИЛЬТРЫ ДО накопления:")
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:80] if txtPrb else '(пусто)'}'")
-        # ИСПРАВЛЕНО (2026-02-24): accumulated_fields удалён
+        logger.info(f"  [TOOL] accumulated_fields: {accumulated_fields}")
         logger.info(f"  [TOOL] established_filters: {established_filters}")
 
         # ИСПРАВЛЕНО (2026-01-11): ВСЕГДА вызываем ProblemAccumulationService для ЛЮБОГО сообщения!
@@ -400,16 +402,46 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2025-12-27): ВСЕГДА обновляем txtPrb, даже если is_meaningful=False
                 # Короткие ответы типа "в квартире" важны для контекста!
                 txtPrb = accumulation_result['updated_problem']
-                # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН - используем только txtPrb
+                new_accumulated_fields = accumulation_result.get('fields', {})  # НОВЫЕ поля из сообщения
+
+                # ИСПРАВЛЕНО (2026-02-16): ОБЪЕДИНЯЕМ старые и новые accumulated_fields
+                # Приоритет: НОВЫЕ поля перезаписывают СТАРЫЕ
+                final_accumulated_fields = {}
+                if accumulated_fields:
+                    final_accumulated_fields.update(accumulated_fields)
+                    logger.info(f"[DEBUG] Старые accumulated_fields: {accumulated_fields}")
+                if new_accumulated_fields:
+                    final_accumulated_fields.update(new_accumulated_fields)
+                    logger.info(f"[DEBUG] Новые accumulated_fields: {new_accumulated_fields}")
+                accumulated_fields = final_accumulated_fields
+
+                # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПОСЛЕ объединения accumulated_fields
+                logger.info(f"[CRITICAL DEBUG] ✅ ФИНАЛЬНЫЕ accumulated_fields: {accumulated_fields}")
                 logger.info(f"[CRITICAL DEBUG] txtPrb: {txtPrb}")
 
+                if accumulation_result['is_meaningful']:
+                    logger.info(f"txtPrb обновлен (содержательный): '{txtPrb[:100]}...'")
+                    logger.info(f"Извлеченные поля: {accumulated_fields}")
+                else:
+                    logger.info(f"txtPrb обновлен (короткий ответ): '{txtPrb[:100]}...'")
+
+                # ИСПРАВЛЕНО (2026-01-13): Обработка отказа пользователя
                 if accumulation_result.get('is_refusal'):
                     logger.warning(f"[REFUSAL] Пользователь отказался от предложенной услуги")
                     logger.warning(f"[REFUSAL] txtPrb обновлен с пометкой об отказе: '{txtPrb[:100]}...'")
                     logger.warning(f"[REFUSAL] Фильтры БУДУТ пересчитаны из txtPrb (содержит отказ)")
 
-                # ИСПРАВЛЕНО (2026-02-24): calculate_filter_confidence ОТКЛЮЧЁН - accumulated_fields удалён
-                # Нормальный режим: FilterDetectionService был вызван ранее в process_service_detection
+                # Рассчитываем фильтры с весами (ВСЕГДА, даже при отказе!)
+                # ИСПРАВЛЕНО (2026-02-13): ЗДЕСЬ: отключили calculate_filter_confidence
+                # Cause: ProblemAccumulationService определяет location=ОБЩЕДОМОВОЕ (глупо)
+                # Solution: Используем FilterDetectionService (через LLM) → location=Индивидуальное (умно)
+                # established_filters берется от FilterDetectionService (уже есть в коде)
+                if False:  # ВРЕМЕННО: включи для отладки, потом убери
+                    established_filters = self.problem_accumulator.calculate_filter_confidence(
+                        txtPrb, accumulated_fields
+                    )
+                else:
+                    # Нормальный режим: FilterDetectionService был вызван ранее в process_service_detection
                     # established_filters уже содержит правильные фильтры от FilterDetectionService
                     pass
 
@@ -468,7 +500,7 @@ class MainAgent:
         # ИСПРАВЛЕНО (2025-12-28): Мощные отладочные логи ПОСЛЕ накопления
         logger.info("[SEARCH] TXTPrb И ФИЛЬТРЫ ПОСЛЕ накопления:")
         logger.info(f"  [NOTE] txtPrb: '{txtPrb[:120] if txtPrb else '(пусто)'}'")
-        
+        logger.info(f"  [TOOL] accumulated_fields: {json.dumps(accumulated_fields, ensure_ascii=False)}")
         logger.info(f"  [TOOL] established_filters: {json.dumps(established_filters, ensure_ascii=False)}")
 
         # ПРИМЕЧАНИЕ (2026-02-19): Быстрая проверка water_type_quick_check удалена
@@ -565,7 +597,9 @@ class MainAgent:
                     established_filters=established_filters,
                     txtPrb=txtPrb,
                     question_type=question_type,
-                    session_id=session_id)
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields
+                )
                 message = ai_result.get('question', 'Пожалуйста, уточните: что именно произошло?')
 
                 logger.info("[!] Меняем стратегию: задаем другой вопрос")
@@ -574,6 +608,7 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2026-01-06): Добавляем microservices_results для трассировки
                 result_metadata = {
                     'txtPrb': txtPrb,
+                    'accumulated_fields': accumulated_fields,
                     'established_filters': established_filters,
                     'repeated_answer_detected': True,
                     'repeat_count': repeat_count,
@@ -623,7 +658,9 @@ class MainAgent:
                 established_filters=established_filters,
                 txtPrb=txtPrb,
                 question_type='details',
-                session_id=session_id)
+                session_id=session_id,
+                accumulated_fields=accumulated_fields
+            )
             message = ai_result.get('question', 'Пожалуйста, уточните: что именно произошло?')
 
             logger.info(f"[!] Сгенерирован ответ на недовольство: {message}")
@@ -631,6 +668,7 @@ class MainAgent:
             # Возвращаем результат
             result_metadata = {
                 'txtPrb': txtPrb,
+                'accumulated_fields': accumulated_fields,
                 'established_filters': established_filters,
                 'frustration_detected': True,
                 'frustration_source': 'current_message',
@@ -651,6 +689,7 @@ class MainAgent:
         # Подготавливаем metadata для результата
         result_metadata = {
             'txtPrb': txtPrb,
+            'accumulated_fields': accumulated_fields,
             'established_filters': established_filters,
             'txtStopQ': txt_stop_questions or [],  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы
             'semantic_check': semantic_check_result,  # ИСПРАВЛЕНО (2026-01-03)
@@ -761,6 +800,7 @@ class MainAgent:
                 txtPrb=txtPrb,  # Накопленное описание проблемы
                 established_filters=established_filters,  # Установленные фильтры
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): ID сессии
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): извлеченные поля
             )
 
             # ДОБАВЛЕНО: Сохраняем AI Orchestrator результат в metadata для отчета
@@ -783,13 +823,41 @@ class MainAgent:
                 # ПРИЧИНА: accumulated_fields.location надежнее established_filters.location_type
                 # - НЕ спрашиваем если location ЯВНО извлечена из текста ("в зале", "в ванной")
                 # - СПРАШИВАЕМ если location НЕ извлечена (null)
+                location_known = accumulated_fields.get('location') is not None if accumulated_fields else False
 
                 # Проверяем incident_type - Запросы не требуют локации
                 incident_type = established_filters.get('incident_type', {}).get('value', '') if established_filters else ''
 
-                # ИСПРАВЛЕНО (2026-02-24): Хардкод location_known УДАЛЁН - AI Orchestrator сам решает, нужно ли уточнять локацию
+                # ПРИМЕЧАНИЕ (2026-02-19): Хардкод skip_location_check для Водоснабжения УДАЛЕН
+                # Теперь AI Orchestrator сам решает, нужно ли уточнять локацию
 
-                # Создаем заявку (SUCCESS)
+                if not location_known and incident_type != 'Запрос':
+                    logger.warning(f"[AI-ORCHESTRATOR] SUCCESS но location НЕ известна (accumulated_fields.location=null) - спрашиваем 'Где именно?'")
+                    # Генерируем уточняющий вопрос через LLM
+                    context = f"Найдена услуга: {orch_result.get('service_name')} (confidence={orch_result.get('confidence', 0.8):.1%}). Нужно уточнить локацию."
+                    ai_result = await self._generate_ai_question(
+                        context=context,
+                        dialog_history=dialog_history,
+                        candidates=orch_result.get('candidates', []),
+                        established_filters=established_filters,
+                        txtPrb=txtPrb,
+                        question_type='location',
+                        session_id=session_id,
+                        accumulated_fields=accumulated_fields
+                    )
+                    # Возвращаем AMBIGUOUS вместо SUCCESS, чтобы задать вопрос
+                    return {
+                        'status': 'AMBIGUOUS',
+                        'message': ai_result.get('question', 'Где именно это произошло?'),
+                        'candidates': orch_result.get('candidates', []),
+                        'service_id': orch_result.get('service_id'),
+                        'service_name': orch_result.get('service_name'),
+                        'confidence': orch_result.get('confidence', 0.8),
+                        'is_followup': is_followup,
+                        '_metadata': result_metadata
+                    }
+                
+                # Если локация известна или Запрос - создаем заявку (SUCCESS)
                 result = {
                     'status': 'SUCCESS',
                     'service_id': orch_result.get('service_id'),
@@ -818,9 +886,9 @@ class MainAgent:
                 if orch_candidates:
                     # ИСПРАВЛЕНО (2026-01-10): Передаем session_id и established_filters
                     # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
-                    # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
+                    # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields чтобы избежать повторного LLM
                     result = await self._create_ambiguous_result_from_candidates(
-                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb
+                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb, accumulated_fields
                     )
                     # Сохраняем AI Orchestrator message
                     result['_ai_orchestrator_message'] = orch_result.get('message')
@@ -862,6 +930,68 @@ class MainAgent:
                             service_name_lower = candidate['service_name'].lower()
 
                             # Что нужно уточнить?
+                            location_known = accumulated_fields.get('location') is not None
+                            intensity_known = accumulated_fields.get('intensity') is not None
+                            confidence = candidate.get('confidence', 0.8)
+
+                            # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields.source
+                            has_source = accumulated_fields.get('source') is not None
+                            category_confidence = established_filters.get('category', {}).get('confidence', 0.0)
+                            is_water_problem = (
+                                category in ['Водоснабжение', 'Отопление', 'Канализация'] and
+                                category_confidence >= 0.7
+                            )
+
+                            # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
+                            # ИСПРАВЛЕНИЕ (2026-02-16): Проверяем incident_type - Запросы не требуют локации
+                            incident_type = established_filters.get('incident_type', {}).get('value', '')
+
+                            # ПРИМЕЧАНИЕ (2026-02-19): needs_clarification упрощен - удалена проверка water_type
+                            needs_clarification = (not location_known and incident_type != 'Запрос' and candidate.get('location_type') != 'Общедомовое') or (is_water_problem and has_source and not intensity_known)
+
+                            if needs_clarification:
+                                # ПРИМЕЧАНИЕ (2026-02-19): Хардкод список missing_info УДАЛЕН
+                                # AI сам анализирует accumulated_fields и решает, что нужно уточнить
+                                context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Требуется уточнение деталей."
+                                ai_result = await self._generate_ai_question(
+                                    context=context,
+                                    dialog_history=dialog_history,
+                                    candidates=[candidate],
+                                    established_filters=established_filters,
+                                    txtPrb=txtPrb,
+                                    question_type='clarification',
+                                    session_id=session_id,
+                                    accumulated_fields=accumulated_fields
+                                )
+                                message = ai_result.get('question', 'Уточните подробности проблемы.')
+
+                                # ИСПРАВЛЕНИЕ (2026-02-16): Статус AMBIGUOUS при уточнении, SUCCESS когда всё известно
+                                result = {
+                                    'status': 'AMBIGUOUS',
+                                    'service_id': candidate['service_id'],
+                                    'service_name': candidate['service_name'],
+                                    'confidence': confidence,
+                                    'source': 'ai_agent',
+                                    'message': message,
+                                    'candidates': [candidate],
+                                    'needs_clarification': True,
+                                    '_metadata': result_metadata
+                                }
+                            else:
+                                message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
+                                result = {
+                                    'status': 'SUCCESS',
+                                    'service_id': candidate['service_id'],
+                                    'service_name': candidate['service_name'],
+                                    'confidence': confidence,
+                                    'source': 'ai_agent',
+                                    'message': message,
+                                    'candidates': [candidate],
+                                    'needs_clarification': False,
+                                    '_metadata': result_metadata
+                                }
+                            return self._add_address_to_result(result, address_components)
+
                 # ИСПРАВЛЕНО (2026-02-14): _fallback_service_detection ЗАКОММЕНТИРОВАН (нарушение CLAUDE.md §8)
                 # Fallback - вместо hardcoded keywords используем AI-генерацию вопросов
                 # return await self._fallback_service_detection(message_text, address_components)
@@ -879,8 +1009,8 @@ class MainAgent:
             # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
             # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для умных вопросов
             # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
-            # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
-            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb)
+            # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields чтобы избежать повторного LLM
+            result = await self._create_ambiguous_result_from_candidates(candidates_data, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb, accumulated_fields)
 
             # Добавляем metadata если его нет
             if '_metadata' not in result and 'result_metadata' in locals():
@@ -1056,12 +1186,13 @@ class MainAgent:
         # AI не нужен
         return None
 
-    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, txtPrb: str = None) -> Dict:
+    async def _create_ambiguous_result_from_candidates(self, candidates_data: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, txtPrb: str = None, accumulated_fields: Dict = None) -> Dict:
         """
         Создание результата из таблицы кандидатов по ТЗ 3.2.2
 
         ИСПРАВЛЕНО: Сделано async для загрузки атрибутов из БД
         ИСПРАВЛЕНО (2026-01-14): Добавлен параметр txtPrb для определения is_refusal
+        ИСПРАВЛЕНО (2026-01-22): Добавлен параметр accumulated_fields для передачи в _generate_smart_clarification
         """
         # ИСПРАВЛЕНО (2026-01-05): Отладочный лог
         logger.info(f"[DEBUG] _create_ambiguous_result_from_candidates ВХОД: {len(candidates_data)} кандидатов")
@@ -1093,6 +1224,7 @@ class MainAgent:
             established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10)
             session_id=session_id,
             is_refusal=is_refusal,  # ИСПРАВЛЕНО (2026-01-13): Флаг отказа для комплементарного стиля
+            accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-22): Передаем accumulated_fields
             txtStopQ=txt_stop_questions if 'txt_stop_questions' in locals() else []  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
         )
 
@@ -1371,7 +1503,7 @@ class MainAgent:
 
         return filters
 
-    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False, txtStopQ: List[str] = None) -> Dict:
+    async def _generate_smart_clarification(self, candidates_with_attrs: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, txtPrb: str = None, established_filters: Dict = None, session_id: str = None, is_refusal: bool = False, accumulated_fields: Dict = None, txtStopQ: List[str] = None) -> Dict:
         """
         Генерирует умный уточняющий вопрос на основе анализа атрибутов кандидатов
 
@@ -1384,6 +1516,7 @@ class MainAgent:
         ИСПРАВЛЕНО (2025-12-28): Добавлены параметры txtPrb и established_filters для передачи в LLM
         ИСПРАВЛЕНО (2025-12-28): Извлечение txtPrb и established_filters из dialog_history если не переданы
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр is_refusal для формирования intro_phrase
+        ИСПРАВЛЕНО (2026-01-22): Добавлен параметр accumulated_fields для избежания повторного LLM вызова
         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
         """
         # ИСПРАВЛЕНО (2025-12-28): Если txtPrb и established_filters не переданы - извлекаем из истории
@@ -1456,7 +1589,8 @@ class MainAgent:
                 question_type='clarification',
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
                 intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-                            )
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
+            )
             return {
                 'status': 'AMBIGUOUS',
                 'message': message,
@@ -1634,6 +1768,7 @@ class MainAgent:
                 f.write(f"\n=== SINGLE CANDIDATE DECISION ===\n")
                 f.write(f"candidate: {candidate['service_name']} (ID: {candidate['service_id']})\n")
                 f.write(f"candidate_confidence: {candidate.get('confidence', 0):.3f}\n")
+                f.write(f"location_known: {accumulated_fields.get('location') is not None}\n")
                 f.write(f"incident_type: {established_filters.get('incident_type', {}).get('value', '')}\n")
                 f.write(f"category: {established_filters.get('category', {}).get('value', '')}\n")
 
@@ -1714,17 +1849,24 @@ class MainAgent:
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
             # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence
+            location_known = accumulated_fields.get('location') is not None
+
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем серьёзность ПЕРЕД созданием заявки
             # Для Инцидентов с ВОДОЙ/ТЕЧЬЮ нужно знать severity/intensity
             incident_type = established_filters.get('incident_type', {}).get('value', '')
+            severity_known = accumulated_fields.get('severity') is not None
+            intensity_known = accumulated_fields.get('intensity') is not None
             is_incident = incident_type == 'Инцидент'
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем что это проблема с ВОДОЙ/ТЕЧЬЮ
             # Только для водоснабжения и течи спрашиваем про интенсивность
             category = established_filters.get('category', {}).get('value', '')
+            source = (accumulated_fields.get('source') or '').lower()
+            problem = (accumulated_fields.get('problem') or '').lower()
 
             # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields
             # LLM сгенерирует правильный вопрос на основе source/problem из accumulated_fields
+            has_source = accumulated_fields.get('source') is not None
             category_data = established_filters.get('category', {})
             category_confidence = category_data.get('confidence', 0.0)
 
@@ -1775,6 +1917,7 @@ class MainAgent:
                     txtPrb=txtPrb,
                     question_type='clarification',
                     session_id=session_id,
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
                 )
                 message = ai_result['question']
                 logger.info(f"[LLM QUESTION] Сгенерирован вопрос: {message}")
@@ -1795,6 +1938,43 @@ class MainAgent:
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО локация НЕ известна - спрашиваем через LLM
             # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
+            if not location_known and candidate.get('location_type') != 'Общедомовое':
+                logger.warning(f"[NO LOCATION] actual_conf={actual_confidence:.2%} >= 90%, НО локация НЕ известна - генерируем контекстный вопрос")
+                # ИСПРАВЛЕНО (2026-02-16): Используем LLM для генерации контекстного вопроса
+                # вместо hardcoded "Где именно это произошло?"
+                context = f"Найдена услуга: {candidate.get('service_name', candidate.get('scenario_name', 'Unknown'))} (confidence={actual_confidence:.1%}). Нужно уточнить локацию."
+
+                # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
+                with open(diag_path, 'a', encoding='utf-8') as f:
+                    f.write(f"\n=== RETURN PATH ===\n")
+                    f.write(f"BLOCK: not location_known (line 1895)\n")
+                    f.write(f"RETURN: AMBIGUOUS\n")
+
+                ai_result = await self._generate_ai_question(
+                    context=context,
+                    dialog_history=dialog_history,
+                    candidates=[candidate],
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    question_type='location',
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields
+                )
+
+                return {
+                    'candidates': [candidate],
+                    'status': 'AMBIGUOUS',
+                    'service_id': candidate['service_id'],
+                    'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
+                    'confidence': actual_confidence if actual_confidence > 0 else 1.0,
+                    'source': 'filtered_search_with_llm',
+                    'message': ai_result.get('question', 'Где именно это произошло?'),  # Fallback если LLM недоступен
+                    'single_candidate': candidate,
+                    'filtered_candidates': filtered_candidates,
+                    'needs_clarification': True,
+                    'is_followup': is_followup
+                }
+
             # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
             # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО для Инцидента НЕ известны severity/intensity
             if needs_severity_clarification:
@@ -1809,7 +1989,9 @@ class MainAgent:
                     established_filters=established_filters,
                     txtPrb=txtPrb,
                     question_type='clarification',
-                    session_id=session_id)
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields
+                )
                 message = ai_result.get('question', 'Опишите подробнее степень протечки.')
                 logger.info(f"[LLM SEVERITY QUESTION] Сгенерирован вопрос: {message}")
 
@@ -1930,7 +2112,7 @@ class MainAgent:
             question_type='clarification',
             session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
             intro_phrase=intro_phrase,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
-            # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
+            accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
             txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
         )
 
@@ -2005,7 +2187,7 @@ class MainAgent:
         logger.info(f"Дедуплицировано кандидатов: {len(merged)}")
         return merged
 
-    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None) -> Dict:
+    async def _create_ambiguous_result(self, candidates: List[Dict], original_message: str = "", is_followup: bool = False, dialog_history: List[Dict] = None, session_id: str = None, established_filters: Dict = None, accumulated_fields: Dict = None) -> Dict:
         """
         Создание результата с неопределенностью
 
@@ -2028,6 +2210,7 @@ class MainAgent:
                 established_filters=established_filters,  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
                 question_type='clarification',
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -2042,7 +2225,7 @@ class MainAgent:
         candidates_with_attrs = await self._load_candidates_attributes(candidates[:3])
 
         # ИСПРАВЛЕНО (2026-01-10): Передаем session_id для FilterDetectionService
-        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id)
+        clarification_result = await self._generate_smart_clarification(candidates_with_attrs, original_message, is_followup, dialog_history, session_id=session_id, accumulated_fields=accumulated_fields)
 
         # ИСПРАВЛЕНО: Если после фильтрации остался 1 кандидат - возвращаем SUCCESS
         if clarification_result.get('status') == 'SUCCESS' and clarification_result.get('single_candidate'):
@@ -2216,7 +2399,8 @@ class MainAgent:
         attribute_value: str,
         dialog_history: List[Dict],
         txtPrb: str,
-        established_filters: Dict# ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
+        established_filters: Dict,
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> Dict:
         """
         Генерирует уточняющий вопрос о пропущенном атрибуте через AI
@@ -2327,6 +2511,7 @@ class MainAgent:
                 txtPrb=txtPrb,
                 established_filters=established_filters,
                 asked_questions=[],  # TODO: можно добавить уже заданные вопросы
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
             )
 
             logger.info(f"[AI QUESTION] Сгенерирован вопрос о category: '{question}'")
@@ -2493,7 +2678,9 @@ class MainAgent:
         dialog_history: List[Dict] = None,
         txtPrb: str = None,
         established_filters: Dict = None,
-        session_id: str = None) -> Dict:
+        session_id: str = None,
+        accumulated_fields: Dict = None
+    ) -> Dict:
         """
         Главный АГЕНТ-ОРКЕСТРАТОР: принимает решения на основе результатов микросервисов
 
@@ -2614,8 +2801,13 @@ class MainAgent:
             # Никто ничего не нашел - спрашиваем что случилось
             # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ДО вызова _ask_ai_what_happened
             print(f"=== [CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened ===")
-            
+            print(f"accumulated_fields={accumulated_fields}")
+            print(f"accumulated_fields type={type(accumulated_fields)}")
+            print(f"accumulated_fields is truthy={bool(accumulated_fields)}")
             logger.info(f"[CRITICAL DEBUG] ПЕРЕД _ask_ai_what_happened:")
+            logger.info(f"  accumulated_fields={accumulated_fields}")
+            logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
+            logger.info(f"  accumulated_fields is truthy={bool(accumulated_fields)}")
 
             return {
                 'status': 'AMBIGUOUS',
@@ -2624,6 +2816,7 @@ class MainAgent:
                     established_filters=established_filters,  # ИСПРАВЛЕНО: передаем фильтры
                     txtPrb=txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
                     session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): передаем session_id
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): передаем accumulated_fields
                 ),
                 'candidates': [],
                 'metadata': {}
@@ -2636,6 +2829,8 @@ class MainAgent:
 
             # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
             # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence
+            location_known = accumulated_fields.get('location') is not None
+
             # ПРОВЕРЯЕМ: Если локация НЕ известна → проверяем тип обращения
             # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
             if not location_known and candidate.get('location_type') != 'Общедомовое':
@@ -2669,7 +2864,9 @@ class MainAgent:
                     established_filters=established_filters,
                     txtPrb=txtPrb,
                     question_type='location',
-                    session_id=session_id)
+                    session_id=session_id,
+                    accumulated_fields=accumulated_fields
+                )
 
                 return {
                     'candidates': [candidate],
@@ -2688,6 +2885,7 @@ class MainAgent:
                 service_name_lower = candidate['service_name'].lower()
 
                 # Что нужно уточнить?
+                intensity_known = accumulated_fields.get('intensity') is not None
                 confidence = candidate.get('confidence', 0.8)
 
                 # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКОЕ - Проверяем confidence ПЕРЕД генерацией вопроса!
@@ -2764,7 +2962,8 @@ class MainAgent:
                # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации вопросов
                 return await self._ask_ai_clarification(
                     message_text, unique_candidates, dialog_history, established_filters,
-                    session_id=session_id)
+                    session_id=session_id, accumulated_fields=accumulated_fields
+                )
 
         # Если несколько кандидатов (2-10) - проверяем есть ли явный лидер
         elif len(unique_candidates) <= 10:
@@ -2787,6 +2986,8 @@ class MainAgent:
                 # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем интенсивность для протечек ПЕРЕД созданием заявки
                 category = leader.get('category', '')
                 service_name_lower = leader['service_name'].lower()
+                intensity_known = accumulated_fields.get('intensity') is not None
+
                 # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields.source
                 # Проверка is_leak удалена - используется needs_severity_clarification (строка 1773)
 
@@ -2847,6 +3048,7 @@ class MainAgent:
                 established_filters=established_filters,
                 txtPrb=txtPrb,
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): передаем session_id
+                accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): передаем accumulated_fields
             )
             return {
                 'status': 'AMBIGUOUS',
@@ -2858,7 +3060,7 @@ class MainAgent:
     
     async def _ask_ai_what_happened(self, message_text: str, dialog_history: List[Dict],
                                     established_filters: Dict = None, txtPrb: str = None,
-                                    session_id: str = None) -> str:
+                                    session_id: str = None, accumulated_fields: Dict = None) -> str:
         """Спрашивает у AI что случилось и где
 
         ИСПРАВЛЕНО (2025-12-26): Использует CommunicativeScriptsService вместо AI генерации
@@ -2871,11 +3073,17 @@ class MainAgent:
             established_filters: Установленные фильтры с весами
             txtPrb: Накопленное описание проблемы (из ProblemAccumulationService)
             session_id: ID сессии для логирования
+            accumulated_fields: Извлеченные поля из ProblemAccumulationService
         """
         # ИСПРАВЛЕНО (2026-02-16): КРИТИЧЕСКИЙ лог ПРИ ВХОДЕ в метод
         print(f"=== [CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened ===")
-        
+        print(f"accumulated_fields={accumulated_fields}")
+        print(f"accumulated_fields type={type(accumulated_fields)}")
+        print(f"accumulated_fields is truthy={bool(accumulated_fields)}")
         logger.info(f"[CRITICAL DEBUG] ВНУТРИ _ask_ai_what_happened:")
+        logger.info(f"  accumulated_fields={accumulated_fields}")
+        logger.info(f"  accumulated_fields type={type(accumulated_fields)}")
+        logger.info(f"  accumulated_fields is truthy={bool(accumulated_fields)}")
 
         # Вычисляем dialog_turn
         dialog_turn = len(dialog_history) if dialog_history else 1
@@ -2913,6 +3121,7 @@ class MainAgent:
             txtPrb=txtPrb,
             question_type='what_happened',
             session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторного LLM
         )
 
         question = ai_result['question']
@@ -2930,7 +3139,8 @@ class MainAgent:
         txtPrb: str = None,
         established_filters: Dict = None,
         asked_questions: List[str] = None,
-        txtStopQ: List[str] = None,  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные)# ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
+        txtStopQ: List[str] = None,  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные)
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> str:
         """
         ИСПРАВЛЕНО (2026-01-03): LLM-валидация вопроса вместо Regex
@@ -3086,7 +3296,32 @@ class MainAgent:
             # ИСПРАВЛЕНО (2026-02-16): Проверяем accumulated_fields.location вместо established_filters.location_type
             # ПРИЧИНА: accumulated_fields надежнее, так как извлекает ТОЛЬКО ЯВНОЕ упоминание из текста
             # established_filters (LLM) может додумывать локацию ("обычно в квартире")
-            # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН - используем txtPrb
+            #
+            # accumulated_fields.location: "зал" ← ЯВНО в тексте ✅
+            # accumulated_fields.location: null ← НЕ в тексте ✅
+            # established_filters.location_type: "Индивидуальное" ← LLM додумал ❌
+            if accumulated_fields and accumulated_fields.get('location'):
+                location_value = accumulated_fields['location']
+                logger.info(f"[DEBUG] Location ЯВНО извлечена из текста: '{location_value}' - запрещаем спрашивать")
+                forbidden_questions.append('location')
+
+            # ЗАКОММЕНТИРОВАНО (2026-02-16): Старая логика через established_filters.location_type
+            # ПРИЧИНА: LLM может додумывать локацию с высокой уверенностью (1.0) даже если она НЕ указана
+            # Проблема: "нет воды" → location_type="Индивидуальное" (1.0) → бот НЕ спрашивает "Где?"
+            # Решение: использовать accumulated_fields (явное упоминание) вместо LLM-догадок
+            #
+            # if established_filters and established_filters.get('location_type'):
+            #     location_data = established_filters['location_type']
+            #     location_value = location_data.get('value') if isinstance(location_data, dict) else location_data
+            #     location_conf = location_data.get('confidence') if isinstance(location_data, dict) else 0.9
+            #
+            #     if location_conf >= 0.9:
+            #         if location_value == 'Индивидуальное' and re.search(r'(квартира|дом|общедом)', question_lower):
+            #             logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
+            #             forbidden_questions.append('location')
+            #         elif location_value == 'Общедомовое' and re.search(r'(квартира|индивидуа)', question_lower):
+            #             logger.warning(f"⚠️ DETECTED QUESTION ABOUT KNOWN LOCATION: location уже '{location_value}' (confidence: {location_conf:.0%})")
+            #             forbidden_questions.append('location')
 
             # ИСПРАВЛЕНО (2026-01-15): Убрана проверка object_description (используется txtPrb)
             # Если txtPrb не пустой → уже известна проблема, не спрашиваем "что именно?"
@@ -3105,6 +3340,20 @@ class MainAgent:
 
         # ИСПРАВЛЕНО (2026-02-16): Добавляем accumulated_fields в absolute_facts для валидатора
         # КРИТИЧЕСКИ ВАЖНО: Чтобы валидатор видел УЖЕ извлеченные поля и НЕ пропускал вопросы о них!
+        if accumulated_fields:
+            if accumulated_fields.get('source'):
+                absolute_facts.append(f"Объект: {accumulated_fields['source']}")
+            if accumulated_fields.get('location'):
+                absolute_facts.append(f"Локация: {accumulated_fields['location']}")
+            if accumulated_fields.get('problem'):
+                absolute_facts.append(f"Проблема: {accumulated_fields['problem']}")
+            if accumulated_fields.get('severity'):
+                absolute_facts.append(f"Серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                absolute_facts.append(f"Интенсивность: {accumulated_fields['intensity']}")
+            if accumulated_fields.get('category'):
+                absolute_facts.append(f"Категория (накопленная): {accumulated_fields['category']}")
+
         if established_filters:
             for filter_name, filter_data in established_filters.items():
                 if isinstance(filter_data, dict) and filter_data.get('value'):
@@ -3563,7 +3812,8 @@ JSON:"""
         missing_filter: str = None,
         txtPrb: str = None,
         asked_questions: List[str] = None,
-        intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
         established_filters: Dict = None  # ИСПРАВЛЕНО (2026-02-18): Установленные фильтры (чтобы не спрашивать известное)
     ) -> str:
         """
@@ -4005,6 +4255,7 @@ JSON:"""
         question_type: str = "clarification",
         session_id: str = None,
         intro_phrase: str = None,  # ИСПРАВЛЕНО (2026-01-13): Вводная фраза для комплементарного стиля
+        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (чтобы избежать повторного LLM)
         txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
     ) -> Dict[str, str]:
         """
@@ -4015,8 +4266,8 @@ JSON:"""
         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр session_id для связи с llm_request_log
         ИСПРАВЛЕНО (2026-01-13): Добавлен параметр intro_phrase для комплементарного стиля вопроса
         ИСПРАВЛЕНО (2026-01-21): Добавлена защита от зацикливания - после 6 ходов
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
-        ИСПРАВЛЕНО (2026-02-23): Удалён параметр accumulated_fields - используем только txtPrb
         ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
 
         Args:
@@ -4032,6 +4283,8 @@ JSON:"""
                 - 'details' - детали проблемы
             session_id: ID сессии для сохранения в llm_request_log
             intro_phrase: Вводная фраза для ИИ (факты + отвергнутая услуга) - ИСПРАВЛЕНО 2026-01-13
+            accumulated_fields: Извлеченные поля из ProblemAccumulationService - ИСПРАВЛЕНО 2026-01-21
+                (передается чтобы избежать повторного вызова LLM в _extract_known_info)
             txtStopQ: Список запрещенных вопросов (накопленные глупые вопросы) - ИСПРАВЛЕНО 2026-02-04
 
         Returns:
@@ -4116,6 +4369,7 @@ JSON:"""
                     txtPrb=txtPrb,
                     asked_questions=asked_questions if asked_questions else None,
                     intro_phrase=intro_phrase,
+                    accumulated_fields=accumulated_fields,
                     established_filters=established_filters  # ИСПРАВЛЕНО (2026-02-18): Передаем established_filters
                 )
                 logger.info(f"[BOT] Используем стратегию {strategy} (кандидатов: {len(candidates) if candidates else 0})")
@@ -4128,7 +4382,8 @@ JSON:"""
                     candidates=candidates,
                     established_filters=established_filters,
                     txtPrb=txtPrb,
-                    question_type=question_type,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторный LLM
+                    question_type=question_type,
+                    accumulated_fields=accumulated_fields,  # ИСПРАВЛЕНО (2026-01-21): Передаем чтобы избежать повторный LLM
                     txtStopQ=txtStopQ  # ИСПРАВЛЕНО (2026-02-04): Передаем запрещенные вопросы
                 )
                 logger.info(f"[BOT] Используется промпт из БД (mainagent-orchestrator), candidates: {len(candidates) if candidates else 0}")
@@ -4185,6 +4440,7 @@ JSON:"""
                     established_filters=established_filters,
                     asked_questions=asked_questions,  # ИСПРАВЛЕНО (2026-01-10)
                     txtStopQ=txtStopQ,  # ИСПРАВЛЕНО (2026-02-04): Накопление запрещенных вопросов
+                    accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
                 )
 
                 # ИСПРАВЛЕНО (2025-12-29): Отладочный режим - добавляем объяснение к вопросу
@@ -4235,7 +4491,8 @@ JSON:"""
         candidates: List[Dict] = None,
         established_filters: Dict = None,
         txtPrb: str = None,
-        question_type: str = "clarification",  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
+        question_type: str = "clarification",
+        accumulated_fields: Dict = None,  # ИСПРАВЛЕНО (2026-01-21): Извлеченные поля (избегаем повторный LLM)
         txtStopQ: List[str] = None  # ИСПРАВЛЕНО (2026-02-04): Запрещенные вопросы (накопленные глупые вопросы)
     ) -> str:
         """Строит промт для генерации вопроса
@@ -4248,8 +4505,8 @@ JSON:"""
         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов"""
 
         # Анализируем что уже известно из истории
-        # ИСПРАВЛЕНО (2026-02-23): accumulated_fields удалён - используем только txtPrb
-        known_info = self._extract_known_info(dialog_history, txtPrb)
+        # ИСПРАВЛЕНО (2026-01-21): Передаем accumulated_fields чтобы избежать повторного LLM вызова
+        known_info = self._extract_known_info(dialog_history, txtPrb, accumulated_fields)
 
         # Собираем контекст из истории
         recent_dialog = ""
@@ -4385,8 +4642,33 @@ JSON:"""
         # СКОПИРОВАНО из _build_dynamic_prompt (строки 4810-4875)
         absolute_facts_list = []
 
-        # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
-        # Используем только established_filters (из FilterDetectionService)
+        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
+        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
+
+        if accumulated_fields:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
+            if accumulated_fields.get('source'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
+                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
+            if accumulated_fields.get('location'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
+                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
+            if accumulated_fields.get('problem'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
+                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
+            if accumulated_fields.get('severity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
+            if accumulated_fields.get('category'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
+                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
+
+            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
+        else:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
+
+        # ПОТОМ established_filters (из FilterDetectionService)
         if established_filters:
             # object_description
             obj_desc = established_filters.get('object_description')
@@ -4631,8 +4913,34 @@ JSON:"""
         # КРИТИЧЕСКИ ВАЖНО: Чтобы LLM НЕ спрашивал то, что УЖЕ известно!
         absolute_facts_list = []
 
-        # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
-        # Используем только established_filters (из FilterDetectionService)
+        # СНАЧАЛА accumulated_fields (приоритет - из ProblemAccumulationService)
+        # ИСПРАВЛЕНО (2026-02-16): Логируем accumulated_fields для отладки
+        logger.info(f"[DEBUG accumulated_fields] accumulated_fields={accumulated_fields}, type={type(accumulated_fields)}")
+
+        if accumulated_fields:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is truthy, processing fields...")
+            if accumulated_fields.get('source'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНЫЙ объект: {accumulated_fields['source']}")
+                logger.info(f"[DEBUG accumulated_fields] Added source: {accumulated_fields['source']}")
+            if accumulated_fields.get('location'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА локация: {accumulated_fields['location']}")
+                logger.info(f"[DEBUG accumulated_fields] Added location: {accumulated_fields['location']}")
+            if accumulated_fields.get('problem'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА проблема: {accumulated_fields['problem']}")
+                logger.info(f"[DEBUG accumulated_fields] Added problem: {accumulated_fields['problem']}")
+            if accumulated_fields.get('severity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА интенсивность: {accumulated_fields['intensity']}")
+            if accumulated_fields.get('category'):
+                absolute_facts_list.append(f"- УЖЕ ИЗВЕСТНА категория (из накопления): {accumulated_fields['category']}")
+                logger.info(f"[DEBUG accumulated_fields] Added category: {accumulated_fields['category']}")
+
+            logger.info(f"[DEBUG accumulated_fields] Final absolute_facts_list={absolute_facts_list}")
+        else:
+            logger.info(f"[DEBUG accumulated_fields] accumulated_fields is FALSY (None or empty dict)!")
+
+        # ПОТОМ established_filters (из FilterDetectionService)
         if established_filters:
             # object_description
             obj_desc = established_filters.get('object_description')
@@ -4690,16 +4998,18 @@ JSON:"""
 
         return '\n'.join(lines)
 
-    def _extract_known_info(self, dialog_history: List[Dict] = None, txtPrb: str = None) -> str:
+    def _extract_known_info(self, dialog_history: List[Dict] = None, txtPrb: str = None, accumulated_fields: Dict = None) -> str:
         """
         Извлекает уже известную информацию из диалога
 
         ИСПРАВЛЕНО (2025-12-28): Использует ProblemAccumulationService вместо хардкода
         ИСПРАВЛЕНО (2025-12-28): УБРАН хардкод keywords!
+        ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields для исключения повторного LLM вызова
 
         Args:
             dialog_history: История диалога
             txtPrb: Накопленное описание проблемы
+            accumulated_fields: ИЗВЛЕЧЕННЫЕ поля (чтобы избежать повторного вызова LLM) - ИСПРАВЛЕНО 2026-01-21
 
         Returns:
             str: Список известной информации
@@ -4711,9 +5021,31 @@ JSON:"""
 
         # ИСПРАВЛЕНИЕ (2026-01-21): ПЕРВЫМ ДЕЛОМ используем accumulated_fields!
         # Это ИЗБАВЛЯЕТ от повторного вызова LLM = экономит деньги и время!
+        if accumulated_fields:
+            # Формируем описание из накопленных полей (УЖЕ извлеченных через LLM выше)
+            parts = []
+            if accumulated_fields.get('problem'):
+                parts.append(f"Проблема: {accumulated_fields['problem']}")
+            if accumulated_fields.get('location'):
+                parts.append(f"Локация: {accumulated_fields['location']}")
+            if accumulated_fields.get('source'):
+                parts.append(f"Объект: {accumulated_fields['source']}")
+            if accumulated_fields.get('category'):
+                parts.append(f"Категория: {accumulated_fields['category']}")
+            if accumulated_fields.get('severity'):
+                parts.append(f"Серьезность: {accumulated_fields['severity']}")
+            if accumulated_fields.get('intensity'):
+                parts.append(f"Интенсивность: {accumulated_fields['intensity']}")
+
+            if parts:
+                known.append(' | '.join(parts))
+                logger.info(f"[PERF] ИСПОЛЬЗУЕМ accumulated_fields (избегли повторный LLM!)")
+
         # ИСПРАВЛЕНО (2026-01-21): УБРАНО! Больше НЕ вызываем ProblemAccumulationService здесь!
         # Логика:
+        # - accumulated_fields УЖЕ извлечены выше в extract_and_accumulate() через LLM
         # - Повторный вызов accumulate_problem() здесь = ЛИШНИЙ LLM вызов = деньги + время
+        # - Вместо этого используем accumulated_fields, который передается как параметр
         #
         # Старый код (УДАЛЕН):
         # if self.problem_accumulator and dialog_history:
@@ -4886,7 +5218,8 @@ JSON:"""
         candidates: List[Dict],
         dialog_history: List[Dict],
         established_filters: Dict = None,
-        session_id: str = None# ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
+        session_id: str = None,
+        accumulated_fields: Dict = None  # ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> Dict:
         """Спрашивает как уточнить - использует CommunicativeScriptsService
 
@@ -4918,6 +5251,7 @@ JSON:"""
             txtPrb=extracted_txtPrb,
             question_type='clarification',
             session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
+            accumulated_fields=accumulated_fields  # ИСПРАВЛЕНО (2026-02-16): Передаем accumulated_fields
         )
 
         ai_question = ai_result['question']
