@@ -83,22 +83,35 @@ CURRENT_YEAR=$(date +%Y)
 CURRENT_MONTH=$(date +%m)
 
 # Находим папки 2026_* и проверяем их возраст
-find "$TMP_DIR" -maxdepth 1 -type d -name "2026_*" | while read dir; do
-    # Проверяем возраст папки (по времени последней модификации)
-    dir_age_days=$(( ($(date +%s) - $(stat -c %Y "$dir")) / 86400 ))
+find "$TMP_DIR" -maxdepth 1 -type d -name "2026_*" | sort | while read dir; do
+    # Извлекаем дату из имени папки (формат 2026_MM_DD)
+    dir_name=$(basename "$dir")
 
-    # Если старше 35 дней (чуть больше месяца)
-    if [ $dir_age_days -gt 35 ]; then
-        dir_name=$(basename "$dir")
-        zip_file="${ARCHIVE_BASE}/daily/${dir_name}.zip"
+    # Парсим дату из имени папки
+    if [[ $dir_name =~ ^([0-9]{4})_([0-9]{2})_([0-9]{2})$ ]]; then
+        dir_year="${BASH_REMATCH[1]}"
+        dir_month="${BASH_REMATCH[2]}"
+        dir_day="${BASH_REMATCH[3]}"
 
-        # Сжимаем с максимальным сжатием
-        zip -9 -r "$zip_file" "$dir" -q
-        log "  Сжата папка: ${dir_name} → ${zip_file}"
+        # Вычисляем возраст папки в днях
+        dir_date=$(date -d "${dir_year}-${dir_month}-${dir_day}" +%s 2>/dev/null || echo "0")
+        current_date=$(date +%s)
+        dir_age_days=$(( ($current_date - $dir_date) / 86400 ))
 
-        # Удаляем оригинал ПОСЛЕ успешного сжатия
-        rm -rf "$dir"
-        log "  Удален оригинал: ${dir_name}"
+        # Если старше 35 дней (чуть больше месяца)
+        if [ $dir_age_days -gt 35 ]; then
+            zip_file="${ARCHIVE_BASE}/daily/${dir_name}.zip"
+
+            # Сжимаем с максимальным сжатием
+            zip -9 -r "$zip_file" "$dir" -q
+            log "  Сжата папка: ${dir_name} (возраст ${dir_age_days} дней) → ${zip_file}"
+
+            # Удаляем оригинал ПОСЛЕ успешного сжатия
+            rm -rf "$dir"
+            log "  Удален оригинал: ${dir_name}"
+        else
+            log "  Пропущена папка: ${dir_name} (возраст ${dir_age_days} дней, младше 35)"
+        fi
     fi
 done
 
@@ -166,17 +179,27 @@ fi
 ################################################################################
 
 if [ -d "$TMP_DIR/_old_files" ]; then
-    dir_age_days=$(( ($(date +%s) - $(stat -c %Y "$TMP_DIR/_old_files")) / 86400 ))
+    # Проверяем возраст по самому старому файлу в папке
+    oldest_file=$(find "$TMP_DIR/_old_files" -type f -printf '%T@\n' | sort | head -1)
+    current_time=$(date +%s)
+
+    if [ -n "$oldest_file" ]; then
+        dir_age_days=$(( ($current_time - ${oldest_file%.*}) / 86400 ))
+    else
+        dir_age_days=0
+    fi
 
     if [ $dir_age_days -gt 30 ]; then
         # Сжимаем в ZIP
         zip_file="${ARCHIVE_BASE}/delete/_old_files_${DATETIME}.zip"
         zip -9 -r "$zip_file" "$TMP_DIR/_old_files" -q
-        log "  Сжата папка _old_files → ${zip_file}"
+        log "  Сжата папка _old_files (возраст ${dir_age_days} дней) → ${zip_file}"
 
         # Удаляем оригинал
         rm -rf "$TMP_DIR/_old_files"
         log "  Удален оригинал _old_files"
+    else
+        log "  Папка _old_files пропущена (возраст ${dir_age_days} дней, младше 30)"
     fi
 fi
 
