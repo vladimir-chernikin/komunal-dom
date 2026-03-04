@@ -241,6 +241,12 @@ class MainAgent:
         # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
         txt_stop_questions = []  # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы)
 
+        # ИСПРАВЛЕНО (2026-03-04): Извлекаем PerformanceTracer из user_context
+        tracer = None
+        if user_context and 'performance_tracer' in user_context:
+            tracer = user_context['performance_tracer']
+            logger.info("[PERF] PerformanceTracer получен из user_context")
+
         if user_context:
             original_message = user_context.get('original_message', message_text)
             dialog_history = user_context.get('dialog_history', [])
@@ -371,6 +377,10 @@ class MainAgent:
 
                 # Накапливаем информацию из текущего сообщения
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
+                # ИСПРАВЛЕНО (2026-03-04): Замер ProblemAccumulationService
+                if tracer:
+                    tracer.start("problem_accumulation")
+
                 accumulation_result = await self.problem_accumulator.extract_and_accumulate(
                     message_text=message_text,
                     current_problem=txtPrb,
@@ -379,6 +389,9 @@ class MainAgent:
                     session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
                     message_id=message_id   # ИСПРАВЛЕНО (2026-01-06)
                 )
+
+                if tracer:
+                    tracer.end("problem_accumulation")
 
                 # ИСПРАВЛЕНО (2026-02-05): Проверка на ошибку загрузки промпта из БД
                 if accumulation_result.get('db_error'):
@@ -425,6 +438,10 @@ class MainAgent:
         if self.filter_detection and self.ai_agent and txtPrb:
             try:
                 logger.info("Запускаем SemanticPreCheck для извлечения фильтров...")
+                # ИСПРАВЛЕНО (2026-03-04): Замер FilterDetectionService
+                if tracer:
+                    tracer.start("filter_detection")
+
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
                 # ИСПРАВЛЕНО (2026-01-10): Используем txtPrb вместо search_text (полный контекст!)
                 # ИСПРАВЛЕНО (2026-01-15): Убрано absolute_facts (используется txtPrb + established_filters)
@@ -435,6 +452,9 @@ class MainAgent:
                     session_id=session_id,
                     message_id=message_id
                 )
+
+                if tracer:
+                    tracer.end("filter_detection")
 
                 if semantic_check_result.get('filters'):
                     logger.info(f"SemanticPreCheck найден {len(semantic_check_result['filters'])} фильтров:")
@@ -673,10 +693,17 @@ class MainAgent:
                 search_tasks.append(self._run_vector_search(search_text, filters=established_filters))
 
             # Ждем результаты от быстрых микросервисов
+            # ИСПРАВЛЕНО (2026-03-04): Замер времени выполнения микросервисов
+            if tracer:
+                tracer.start("microservices_search")
+
             if search_tasks:
                 search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
             else:
                 return self._create_error_result("Нет доступных микросервисов")
+
+            if tracer:
+                tracer.end("microservices_search")
 
             # ===== ШАГ 2: Анализируем результаты быстрых сервисов по ТЗ =====
             # Работаем с множествами service_id от каждого сервиса

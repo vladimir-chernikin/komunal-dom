@@ -83,6 +83,11 @@ class MessageHandlerService:
                 }
         """
         try:
+            # ИСПРАВЛЕНО (2026-03-04): Инициализируем PerformanceTracer для трекинга времени
+            from performance_tracer import PerformanceTracer
+            tracer = PerformanceTracer(session_id=session_id)
+            tracer.start("total_request")
+
             # Генерируем уникальные ID если не переданы
             if not message_id:
                 message_id = f"{channel}_{uuid.uuid4().hex[:16]}"
@@ -226,7 +231,9 @@ class MessageHandlerService:
                         'cleaned_message': search_text,  # Добавляем очищенное сообщение
                         'established_filters': established_filters,  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
                         # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
-                        'txtStopQ': txt_stop_questions  # ИСПРАВЛЕНО (2026-02-04): ПЕРЕДАЕМ ЗАПРЕЩЕННЫЕ ВОПРОСЫ!
+                        'txtStopQ': txt_stop_questions,  # ИСПРАВЛЕНО (2026-02-04): ПЕРЕДАЕМ ЗАПРЕЩЕННЫЕ ВОПРОСЫ!
+                        # ИСПРАВЛЕНО (2026-03-04): PerformanceTracer для замера времени
+                        'performance_tracer': tracer
                     }
                 )
 
@@ -287,6 +294,16 @@ class MessageHandlerService:
 
                 # ИСПРАВЛЕНО (2026-01-06): Логируем outbound для ВСЕХ каналов
                 # КРИТИЧЕСКИ ВАЖНО: test_bot_simulator и другие каналы тоже нуждаются в логировании!
+
+                # ИСПРАВЛЕНО (2026-03-04): Завершаем трекинг ДО логирования outbound
+                tracer.end("total_request")
+                performance_data = tracer.save_to_metadata()
+
+                # Добавляем performance данные в outbound_metadata
+                if performance_data and 'performance' in performance_data:
+                    outbound_metadata['performance'] = performance_data['performance']
+                    logger.info(f"[DEBUG] ✅ Performance данные добавлены в outbound_metadata: {len(performance_data.get('performance', {}).get('stages', []))} этапов")
+
                 await self._log_message(
                     text=bot_response,
                     user_id=user_id,
@@ -310,7 +327,8 @@ class MessageHandlerService:
                 'message_log_id': message_log.get('id') if isinstance(message_log, dict) else None,
                 'session_id': session_id,
                 'service_detected': result.get('service_id') if result.get('status') == 'SUCCESS' else None,
-                '_metadata': result.get('_metadata', {})  # ИСПРАВЛЕНО (2026-02-17): Передаем metadata в финальный ответ
+                '_metadata': result.get('_metadata', {}),  # ИСПРАВЛЕНО (2026-02-17): Передаем metadata в финальный ответ
+                'performance': performance_data.get('performance', {})  # ИСПРАВЛЕНО (2026-03-04): Добавляем performance данные
             }
 
         except Exception as e:
