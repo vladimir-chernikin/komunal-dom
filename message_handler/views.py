@@ -218,3 +218,163 @@ def get_dialogs_list(request):
             'status': 'error',
             'error': str(e)
         }, status=500)
+
+
+# ИСПРАВЛЕНО (2026-02-24): Добавлен внешний API для интеграций
+from django.conf import settings
+from django.http import HttpResponseForbidden
+
+# API токены для внешних интеграций (можно вынести в БД или settings)
+API_TOKENS = getattr(settings, 'EXTERNAL_API_TOKENS', {
+    'v1979v': 'asterisk_integration',  # Основной токен для Asterisk
+    'dev_test_token_2024': 'dev_system',
+})
+
+# IP whitelist (опционально)
+ALLOWED_IPS = getattr(settings, 'EXTERNAL_API_ALLOWED_IPS', [])
+
+
+@require_http_methods(["POST"])
+@csrf_exempt
+def send_message_external(request):
+    """
+    API endpoint для внешних систем (Asterisk, CRM, мобильные приложения и т.д.)
+
+    Аутентификация:
+        - API token в JSON body (поле "token")
+        - Опционально: IP whitelist
+
+    Headers:
+        Content-Type: application/json
+
+    Body:
+    {
+        "token": "v1979v",
+        "message": "текст сообщения",
+        "session_id": "api_client_123",
+        "user_id": "external_user_456"
+    }
+
+    Response:
+    {
+        "status": "success" | "error",
+        "response": "текст ответа бота",
+        "service_detected": id_услуги или null,
+        "session_id": "api_client_123"
+    }
+
+    Пример использования:
+    curl -X POST http://komunal-dom.ru/chat/api/external/ \\
+      -H "Content-Type: application/json" \\
+      -d '{"token": "v1979v", "message": "У меня течет труба", "session_id": "test_123"}'
+    """
+    # Проверка IP whitelist (если настроен)
+    if ALLOWED_IPS:
+        client_ip = get_client_ip(request)
+        if client_ip not in ALLOWED_IPS:
+            logger.warning(f"Попытка доступа с запрещенного IP: {client_ip}")
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Forbidden - IP not allowed'
+            }, status=403)
+
+    try:
+        # Парсим JSON из request body
+        data = json.loads(request.body)
+
+        # Проверка API токена в JSON body
+        token = data.get('token')
+        if not token:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Unauthorized - Missing token'
+            }, status=401)
+
+        if token not in API_TOKENS:
+            logger.warning(f"Попытка доступа с неверным токеном: {token[:10]}...")
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Unauthorized - Invalid token'
+            }, status=401)
+
+        # Токен валиден
+        client_system = API_TOKENS[token]
+        logger.info(f"[EXTERNAL API] Запрос от {client_system} (token: {token[:10]}...)")
+
+        message_text = data.get('message', '').strip()
+        session_id = data.get('session_id')
+        user_id = data.get('user_id', f'external_{client_system}_user')
+
+        if not message_text:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Empty message'
+            }, status=400)
+
+        if not session_id:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Missing session_id'
+            }, status=400)
+
+        # Импортируем сервисы
+        from message_handler_service import MessageHandlerService
+        from main_agent import MainAgent
+
+        # Инициализируем сервисы
+        main_agent = MainAgent()
+        message_handler = MessageHandlerService(main_agent=main_agent)
+
+        # Обрабатываем сообщение через MessageHandlerService
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            result = loop.run_until_complete(
+                message_handler.handle_incoming_message(
+                    text=message_text,
+                    user_id=user_id,
+                    channel='api',  # НОВЫЙ канал для внешних систем
+                    session_id=session_id,
+                    django_user_id=None  # Внешние системы без Django auth
+                )
+            )
+        finally:
+            loop.close()
+
+        # Формируем ответ для клиента
+        response_data = {
+            'status': result.get('status', 'error'),
+            'response': result.get('response', ''),
+            'service_detected': result.get('service_detected'),
+            'session_id': session_id
+        }
+
+        logger.info(f"[EXTERNAL API] Ответ: {response_data['status']}")
+        return JsonResponse(response_data)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[EXTERNAL API] Ошибка парсинга JSON: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'error': 'Invalid JSON format'
+        }, status=400)
+
+    except Exception as e:
+        logger.error(f"[EXTERNAL API] Ошибка обработки: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': 'Internal server error'
+        }, status=500)
+
+
+def get_client_ip(request):
+    """Получает реальный IP клиента с учётом X-Forwarded-For"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
