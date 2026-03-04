@@ -806,39 +806,22 @@ class MainAgent:
 
             elif orch_result.get('status') == 'AMBIGUOUS':
                 # AI Orchestrator требует уточнения
-                # ИСПРАВЛЕНО (2026-01-05): НЕ возвращаем сразу! Передаем в _create_ambiguous_result_from_candidates
-                # для применения фильтров (known_location, known_incident, known_object)
+                # ИСПРАВЛЕНО (2026-02-24): Убрано дублирование LLM-вызовов!
+                # _orchestrate_microservices САМ сгенерировал вопрос, возвращаем его СРАЗУ
+                # СТАРАЯ ЛОГИКА (РУДИМЕНТ): вызывала _create_ambiguous_result_from_candidates
+                # которая генерировала вопрос ПОВТОРНО (+0.5-1 руб лишних затрат)
                 logger.info(f"AI Orchestrator требует уточнения: {orch_result.get('message')}")
-                logger.info(f"Передаем {len(orch_result.get('candidates', []))} кандидатов в _create_ambiguous_result_from_candidates для фильтрации")
 
-                # Получаем кандидатов от AI Orchestrator
-                orch_candidates = orch_result.get('candidates', [])
-
-                # Если есть кандидаты - фильтруем их
-                if orch_candidates:
-                    # ИСПРАВЛЕНО (2026-01-10): Передаем session_id и established_filters
-                    # ИСПРАВЛЕНО (2026-01-14): Передаем txtPrb для определения is_refusal
-                    # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
-                    result = await self._create_ambiguous_result_from_candidates(
-                        orch_candidates, original_message, is_followup, dialog_history, session_id, established_filters, txtPrb
-                    )
-                    # Сохраняем AI Orchestrator message
-                    result['_ai_orchestrator_message'] = orch_result.get('message')
-                    # Добавляем metadata если нет
-                    if '_metadata' not in result:
-                        result['_metadata'] = result_metadata
-                    return result
-                else:
-                    # Нет кандидатов - возвращаем сообщение AI Orchestrator
-                    return {
-                        'status': 'AMBIGUOUS',
-                        'candidates': [],
-                        'candidate_names': [],
-                        'message': orch_result.get('message'),
-                        'needs_clarification': True,
-                        'is_followup': is_followup,
-                        '_metadata': result_metadata
-                    }
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': orch_result.get('message'),
+                    'candidates': orch_result.get('candidates', []),
+                    'needs_clarification': True,
+                    'is_followup': is_followup,
+                    '_metadata': result_metadata,
+                    '_ai_metadata': orch_result.get('_ai_metadata', {}),
+                    '_ai_orchestrator_message': orch_result.get('message')
+                }
 
             # Если AI Orchestrator не смог - пробуем старую логику
             logger.warning("AI Orchestrator не смог определить, используем fallback")
@@ -1712,36 +1695,7 @@ class MainAgent:
 
             logger.info(f"[DECISION] llm_conf={llm_confidence:.2%}, filter_conf={filter_confidence:.2%}, candidate_conf={candidate_confidence:.2%}, actual_conf={actual_confidence:.2%}, needs_clar={needs_clarification}")
 
-            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
-            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence
-            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем серьёзность ПЕРЕД созданием заявки
-            # Для Инцидентов с ВОДОЙ/ТЕЧЬЮ нужно знать severity/intensity
-            incident_type = established_filters.get('incident_type', {}).get('value', '')
-            is_incident = incident_type == 'Инцидент'
-
-            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем что это проблема с ВОДОЙ/ТЕЧЬЮ
-            # Только для водоснабжения и течи спрашиваем про интенсивность
-            category = established_filters.get('category', {}).get('value', '')
-
-            # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields
-            # LLM сгенерирует правильный вопрос на основе source/problem из accumulated_fields
-            category_data = established_filters.get('category', {})
-            category_confidence = category_data.get('confidence', 0.0)
-
-            is_water_problem = (
-                category in ['Водоснабжение', 'Отопление', 'Канализация'] and
-                category_confidence >= 0.7
-            )
-
-            # Для Инцидентов с водой: если есть source но нет severity/intensity → уточняем
-            needs_severity_clarification = (
-                is_incident and
-                is_water_problem and
-                has_source and
-                not (severity_known or intensity_known)
-            )
-
-            # ИСПРАВЛЕНО (2026-02-17): Диагностика условий (ПЕРЕМЕЩЕНО после объявления переменных)
+            # ИСПРАВЛЕНО (2026-02-17): Диагностика условий
             with open(diag_path, 'a', encoding='utf-8') as f:
                 f.write(f"\n=== DECISION LOGIC ===\n")
                 f.write(f"llm_confidence: {llm_confidence:.3f}\n")
@@ -1750,12 +1704,8 @@ class MainAgent:
                 f.write(f"actual_confidence: {actual_confidence:.3f}\n")
                 f.write(f"already_asked_confirmation: {already_asked_confirmation}\n")
                 f.write(f"needs_clarification: {needs_clarification}\n")
-                f.write(f"location_known: {location_known}\n")
-                f.write(f"is_incident: {is_incident}\n")
-                f.write(f"is_water_problem: {is_water_problem}\n")
-                f.write(f"needs_severity_clarification: {needs_severity_clarification}\n")
 
-            # Формируем сообщение (ИСПРАВЛЕНО: используем LLM вместо fallback!)
+            # Формируем сообщение
             if needs_clarification:
                 # ИСПРАВЛЕНО (2026-01-16): ИСПЛЬЗУЕМ LLM ГЕНЕРАЦИЮ ВМЕСТO FALLBACK!
                 logger.warning(f"[LOW CONFIDENCE] actual_conf={actual_confidence:.2%} < 90% → используем LLM для генерации вопроса")
@@ -1793,56 +1743,13 @@ class MainAgent:
                     'is_followup': is_followup
                 }
 
-            # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО локация НЕ известна - спрашиваем через LLM
-            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
-            # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
-            # ИСПРАВЛЕНИЕ (2026-02-14): Если высокая уверенность НО для Инцидента НЕ известны severity/intensity
-            if needs_severity_clarification:
-                logger.warning(f"[NO SEVERITY] actual_conf={actual_confidence:.2%} >= 90%, incident_type=Инцидент, НО НЕ известны severity/intensity - спрашиваем")
-
-                # ИСПРАВЛЕНО (2026-02-16): Используем LLM вместо hardcoded вопроса
-                context = f"Найдена услуга: {candidate['service_name']} (confidence={actual_confidence:.1%}). Нужно уточнить СТЕПЕНЬ ПРОТЕЧКИ (как сильно течет/протекает)."
-                ai_result = await self._generate_ai_question(
-                    context=context,
-                    dialog_history=dialog_history,
-                    candidates=[candidate],
-                    established_filters=established_filters,
-                    txtPrb=txtPrb,
-                    question_type='clarification',
-                    session_id=session_id)
-                message = ai_result.get('question', 'Опишите подробнее степень протечки.')
-                logger.info(f"[LLM SEVERITY QUESTION] Сгенерирован вопрос: {message}")
-
-                # OLD: 'message': "Как сильно течёт? Есть затопление?",  # ❌ HARDCODED
-
-                # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
-                with open(diag_path, 'a', encoding='utf-8') as f:
-                    f.write(f"\n=== RETURN PATH ===\n")
-                    f.write(f"BLOCK: needs_severity_clarification (line 1927)\n")
-                    f.write(f"RETURN: AMBIGUOUS\n")
-
-                logger.warning(f"[SEVERITY CLARIFICATION] Возвращаем AMBIGUOUS с вопросом: {message}")
-                return {
-                    'candidates': [candidate],
-                    'status': 'AMBIGUOUS',
-                    'service_id': candidate['service_id'],
-                    'service_name': candidate.get('service_name', candidate.get('scenario_name', 'Unknown')),
-                    'confidence': actual_confidence if actual_confidence > 0 else 1.0,
-                    'source': 'filtered_search_with_llm',
-                    'message': message,
-                    'single_candidate': candidate,
-                    'filtered_candidates': filtered_candidates,
-                    'needs_clarification': True,
-                    'is_followup': is_followup
-                }
-
-            # Высокая уверенность И локация известна И (для Инцидентов) известна серьёзность - создаем заявку
+            # Высокая уверенность - создаем заявку (AI Orchestrator сам решает, нужно ли уточнение)
             message = f"Заявка создана: {candidate['service_name']}. Создаю заявку."
 
             # ИСПРАВЛЕНО (2026-02-17): Диагностика - какой return сработал
             with open(diag_path, 'a', encoding='utf-8') as f:
                 f.write(f"\n=== RETURN PATH ===\n")
-                f.write(f"BLOCK: SUCCESS (line 1965)\n")
+                f.write(f"BLOCK: SUCCESS (line 1832)\n")
                 f.write(f"RETURN: SUCCESS\n")
 
             return {
@@ -2311,10 +2218,12 @@ class MainAgent:
 Верни ТОЛЬКО текст вопроса (без кавычек и пояснений)."""
 
             # Вызываем LLM
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
-                model='lite'
+                model='lite',
+                service_name='MainAgent'
             )
 
             question = response.strip().strip('\'"').strip()
@@ -2634,67 +2543,44 @@ class MainAgent:
             candidate = unique_candidates[0]
             confidence = candidate.get('confidence', 0.0)
 
-            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем локацию ПЕРЕД созданием заявки
-            # Если локация НЕ известна - спрашиваем, БЕЗУСЛОВНО на confidence
-            # ПРОВЕРЯЕМ: Если локация НЕ известна → проверяем тип обращения
-            # ИСПРАВЛЕНО (2026-02-18): НЕ спрашиваем локацию для услуг с localization=Общедомовое
-            if not location_known and candidate.get('location_type') != 'Общедомовое':
-                # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем incident_type - Запрос или Инцидент?
-                incident_type = established_filters.get('incident_type', {}).get('value', '')
+            # ИСПРАВЛЕНО (2026-02-24): Удалён hardcoded location_known - AI Orchestrator сам решает
 
-                if incident_type == 'Запрос':
-                    # ИСПРАВЛЕНИЕ (2026-02-14): Консультационный запрос - создаем заявку БЕЗ локации
-                    logger.info(f"[DEBUG] Это Запрос - создаем заявку БЕЗ вопроса о локации")
-                    return {
-                        'candidates': [candidate],
-                        'status': 'SUCCESS',
-                        'service_id': candidate['service_id'],
-                        'service_name': candidate['service_name'],
-                        'confidence': confidence,
-                        'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
-                        'needs_clarification': False,
-                        'source': 'orchestrator'
-                    }
+            # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем интенсивность для протечек
+            category = candidate.get('category', '')
+            service_name_lower = candidate['service_name'].lower()
 
-                # Инцидент - спрашиваем локацию через LLM (контекстный вопрос)
-                logger.info(f"[DEBUG] Это Инцидент без локации - генерируем контекстный вопрос 'Где именно?'")
-                # ИСПРАВЛЕНО (2026-02-16): Используем LLM для генерации контекстного вопроса
-                # вместо hardcoded "Где именно это произошло?"
-                context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить локацию."
+            # Что нужно уточнить?
+            confidence = candidate.get('confidence', 0.8)
 
-                ai_result = await self._generate_ai_question(
-                    context=context,
-                    dialog_history=dialog_history,
-                    candidates=[candidate],
-                    established_filters=established_filters,
-                    txtPrb=txtPrb,
-                    question_type='location',
-                    session_id=session_id)
-
+            # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКОЕ - Проверяем confidence ПЕРЕД генерацией вопроса!
+            # Если confidence >= 90% и location известен → возвращаем SUCCESS БЕЗ вопроса
+            # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
+            if confidence >= 0.9:
+                logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 90% и location известен → SUCCESS без вопроса")
                 return {
-                    'candidates': [candidate],
-                    'status': 'AMBIGUOUS',
+                    'candidates': unique_candidates,
+                    'status': 'SUCCESS',
                     'service_id': candidate['service_id'],
                     'service_name': candidate['service_name'],
                     'confidence': confidence,
-                    'message': ai_result.get('question', 'Где именно это произошло?'),  # Fallback если LLM недоступен
-                    'needs_clarification': True,
+                    'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
+                    'needs_clarification': False,
                     'source': 'orchestrator'
                 }
-            else:
-                # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем интенсивность для протечек
-                candidate = unique_candidates[0]
-                category = candidate.get('category', '')
-                service_name_lower = candidate['service_name'].lower()
 
-                # Что нужно уточнить?
-                confidence = candidate.get('confidence', 0.8)
+            # ИСПРАВЛЕНО (2026-02-17): Если confidence 80-90% ПРОВЕРЯЕМ ПЕРЕСЕЧЕНИЕ txtPrb с названием услуги
+            # ПРИЧИНА: "ливнёвка забита листвой" + "Засор ливнёвой канализации" → пересечение "ливнёвка"
+            # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
+            elif confidence >= 0.8:
+                service_name_lower = candidate.get('service_name', '').lower()
+                txtPrb_lower = (txtPrb or '').lower()
 
-                # ИСПРАВЛЕНО (2026-02-17): КРИТИЧЕСКОЕ - Проверяем confidence ПЕРЕД генерацией вопроса!
-                # Если confidence >= 90% и location известен → возвращаем SUCCESS БЕЗ вопроса
-                # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
-                if confidence >= 0.9:
-                    logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 90% и location известен → SUCCESS без вопроса")
+                # Проверяем пересечение ключевых слов
+                keywords = ['ливнёв', 'ливнев', 'канализ', 'засор', 'мусоропр']
+                has_keyword = any(kw in txtPrb_lower and kw in service_name_lower for kw in keywords)
+
+                if has_keyword:
+                    logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 80% + пересечение txtPrb/услуга → SUCCESS без вопроса")
                     return {
                         'candidates': unique_candidates,
                         'status': 'SUCCESS',
@@ -2706,65 +2592,28 @@ class MainAgent:
                         'source': 'orchestrator'
                     }
 
-                # ИСПРАВЛЕНО (2026-02-17): Если confidence 80-90% ПРОВЕРЯЕМ ПЕРЕСЕЧЕНИЕ txtPrb с названием услуги
-                # ПРИЧИНА: "ливнёвка забита листвой" + "Засор ливнёвой канализации" → пересечение "ливнёвка"
-                # ПРИМЕЧАНИЕ (2026-02-19): Проверка water_type для Водоснабжения удалена
-                elif confidence >= 0.8:
-                    service_name_lower = candidate.get('service_name', '').lower()
-                    txtPrb_lower = (txtPrb or '').lower()
 
-                    # Проверяем пересечение ключевых слов
-                    keywords = ['ливнёв', 'ливнев', 'канализ', 'засор', 'мусоропр']
-                    has_keyword = any(kw in txtPrb_lower and kw in service_name_lower for kw in keywords)
-
-                    if has_keyword:
-                        logger.info(f"[ORCHESTRATOR] 1 кандидат с confidence={confidence:.1%} >= 80% + пересечение txtPrb/услуга → SUCCESS без вопроса")
-                        return {
-                            'candidates': unique_candidates,
-                            'status': 'SUCCESS',
-                            'service_id': candidate['service_id'],
-                            'service_name': candidate['service_name'],
-                            'confidence': confidence,
-                            'message': f"Заявка создана: {candidate['service_name']}. Создаю заявку.",
-                            'needs_clarification': False,
-                            'source': 'orchestrator'
-                        }
-
-
-                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1773)
-                # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
-                # УБРАН HARDCODE keywords - используется accumulated_fields.source
-                # if is_leak and not intensity_known:
-                #     logger.info(f"[DEBUG] Это водная проблема без интенсивности - спрашиваем через LLM")
-                #     context = f"Найдена услуга: {candidate['service_name']} (confidence={confidence:.1%}). Нужно уточнить детали."
-                #     ai_result = await self._generate_ai_question(
-                #         context=context,
-                #         dialog_history=dialog_history,
-                #         candidates=unique_candidates,
-                #         established_filters=established_filters,
-                #         txtPrb=txtPrb,
-                #         question_type='clarification',
-                #         session_id=session_id,
-                #         accumulated_fields=accumulated_fields
-                #     )
-                #     message = ai_result.get('question', 'Какова степень протечки?')
-                #     return {
-                #         'candidates': unique_candidates,
-                #         'status': 'AMBIGUOUS',
-                #         'service_id': candidate['service_id'],
-                #         'service_name': candidate['service_name'],
-                #         'confidence': confidence,
-                #         'message': message,
-                #         'needs_clarification': True,
-                #         'source': 'orchestrator'
-                #     }
-
-               # Confidence < 90% - уточняем через AI
-               # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
-               # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации вопросов
+            # Confidence < 80% - уточняем через AI
+            # ИСПРАВЛЕНО (2026-01-05): Передаем established_filters
+            # ИСПРАВЛЕНО (2026-02-16): ПЕРЕДАЕМ accumulated_fields для корректной валидации вопросов
+            # ИСПРАВЛЕНО (2026-02-24): Добавлен try-except для предотвращения возврата None
+            # ИСПРАВЛЕНО (2026-02-24): ИСПРАВЛЕН ОТСТУП - блок должен быть ВНЕ if/elif!
+            try:
                 return await self._ask_ai_clarification(
                     message_text, unique_candidates, dialog_history, established_filters,
                     session_id=session_id)
+            except Exception as e:
+                import traceback
+                logger.error(f"❌ ОШИБКА в _ask_ai_clarification: {e}")
+                logger.error(f"TRACEBACK:\n{traceback.format_exc()}")
+                # Возвращаем fallback вместо None
+                return {
+                    'status': 'AMBIGUOUS',
+                    'message': 'Опишите подробнее проблему.',
+                    'candidates': unique_candidates,
+                    'needs_clarification': True,
+                    'source': 'orchestrator-fallback'
+                }
 
         # Если несколько кандидатов (2-10) - проверяем есть ли явный лидер
         elif len(unique_candidates) <= 10:
@@ -2785,38 +2634,7 @@ class MainAgent:
             # НОВЫЙ ПОРОГ (2026-01-23): confidence > 0.80 (упрощен после удаления штрафов/бонусов)
             if leader_conf > 0.80:
                 # ИСПРАВЛЕНИЕ (2026-02-14): Проверяем интенсивность для протечек ПЕРЕД созданием заявки
-                category = leader.get('category', '')
-                service_name_lower = leader['service_name'].lower()
-                # ИСПРАВЛЕНО (2026-02-16): УБРАН HARDCODE keywords! Используем accumulated_fields.source
-                # Проверка is_leak удалена - используется needs_severity_clarification (строка 1773)
-
-                # ИСПРАВЛЕНО (2026-02-16): ЗАКОММЕНТИРОВАНО - дублирует needs_severity_clarification (строка 1773)
-                # Оставлена ЕДИНСТВЕННАЯ проверка в _process_single_candidate_response
-                # Если это протечка без интенсивности → спрашиваем
-                # if is_leak and not intensity_known:
-                #     logger.info(f"[DEBUG] ЯВНЫЙ ЛИДЕР - это протечка без интенсивности, спрашиваем")
-                #     context = f"Найдена услуга: {leader['service_name']} (confidence={leader_conf:.1%}). Нужно уточнить: СТЕПЕНЬ ПРОТЕЧКИ (как сильно течет)."
-                #     ai_result = await self._generate_ai_question(
-                #         context=context,
-                #         dialog_history=dialog_history,
-                #         candidates=[leader],
-                #         established_filters=established_filters,
-                #         txtPrb=txtPrb,
-                #         question_type='clarification',
-                #         session_id=session_id,
-                #         accumulated_fields=accumulated_fields
-                #     )
-                #     message = ai_result.get('question', 'Какова степень протечки?')
-                #     return {
-                #         'candidates': [leader],
-                #         'status': 'AMBIGUOUS',
-                #         'service_id': leader['service_id'],
-                #         'service_name': leader['service_name'],
-                #         'confidence': leader_conf,
-                #         'message': message,
-                #         'needs_clarification': True,
-                #         'source': 'orchestrator'
-                #     }
+                # ИСПРАВЛЕНО (2026-02-24): Удалены severity_known/intensity_known и закомментированные блоки
 
                 logger.info(f"ЯВНЫЙ ЛИДЕР: service_id={leader['service_id']}, conf={leader_conf:.3f}, второй={second_conf:.3f}, разница={leader_conf - second_conf:.3f}")
                 return {
@@ -2836,18 +2654,40 @@ class MainAgent:
                 # СТАРЫЙ ВАРИАНТ (2025-12-27): Используем AI для анализа кандидатов
                 # вместо CommunicativeScriptsService
                 # ИСПРАВЛЕНО (2025-12-27): Передаем established_filters для сужения кандидатов
-                return await self._ask_ai_clarification_with_candidates(
-                    message_text, unique_candidates, dialog_history, established_filters
-                )
+                # ИСПРАВЛЕНО (2026-02-24): Добавлен try-except для предотвращения возврата None
+                try:
+                    return await self._ask_ai_clarification_with_candidates(
+                        message_text, unique_candidates, dialog_history, established_filters
+                    )
+                except Exception as e:
+                    import traceback
+                    logger.error(f"❌ ОШИБКА в _ask_ai_clarification_with_candidates: {e}")
+                    logger.error(f"TRACEBACK:\n{traceback.format_exc()}")
+                    # Возвращаем fallback вместо None
+                    return {
+                        'status': 'AMBIGUOUS',
+                        'message': 'Опишите подробнее проблему.',
+                        'candidates': unique_candidates,
+                        'needs_clarification': True,
+                        'source': 'orchestrator-fallback'
+                    }
 
         # Много кандидатов (>10) - нужно задать уточняющий вопрос
         else:
-            question = await self._ask_ai_what_happened(
-                message_text, dialog_history,
-                established_filters=established_filters,
-                txtPrb=txtPrb,
-                session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): передаем session_id
-            )
+            # ИСПРАВЛЕНО (2026-02-24): Добавлен try-except для предотвращения падения
+            try:
+                question = await self._ask_ai_what_happened(
+                    message_text, dialog_history,
+                    established_filters=established_filters,
+                    txtPrb=txtPrb,
+                    session_id=session_id,  # ИСПРАВЛЕНО (2026-01-21): передаем session_id
+                )
+            except Exception as e:
+                import traceback
+                logger.error(f"❌ ОШИБКА в _ask_ai_what_happened: {e}")
+                logger.error(f"TRACEBACK:\n{traceback.format_exc()}")
+                question = "Опишите подробнее проблему."
+
             return {
                 'status': 'AMBIGUOUS',
                 'message': question,
@@ -3217,10 +3057,12 @@ JSON:"""
 
         try:
             # Вызываем YandexGPT Lite для валидации
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
-                model='lite'
+                model='lite',
+                service_name='MainAgent'
             )
 
             import json
@@ -4060,11 +3902,13 @@ JSON:"""
             #     'usage': {}
             # }
             # ИСПРАВЛЕНО (2026-02-14): Вместо hardcoded fallback используем ИИ для генерации финального сообщения
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             final_context = f"После {dialog_turn} сообщений не удалось определить проблему. Пользователь: {context.get('original_message', '')[:200]}"
             ai_result = await self.ai_agent.call_llm(
                 prompt=f"Сгенерируй вежливый ответ для пользователя: {final_context}\n\nОтвет должен быть кратким, без эмодзи.",
                 provider='yandexgpt',
-                model='lite'
+                model='lite',
+                service_name='MainAgent'
             )
             final_message = ai_result[0].strip() if ai_result else "Пожалуйста, опишите проблему другими словами или свяжитесь с оператором."
             return {
@@ -4155,12 +3999,14 @@ JSON:"""
                 # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
                 # ИСПРАВЛЕНО (2026-01-10): Передаем message_id для логирования в llm_request_log
+                # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания микросервиса
                 response, usage = await self.ai_agent.call_llm(
                     prompt=prompt,
                     provider='yandexgpt',  # Можно менять на 'gigachat'
                     model=model,
                     session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-                    message_id=self.current_message_id  # ИСПРАВЛЕНО (2026-01-10)
+                    message_id=self.current_message_id,  # ИСПРАВЛЕНО (2026-01-10)
+                    service_name='MainAgent'  # ИСПРАВЛЕНО (2026-02-24)
                 )
                 question = response.strip()
 
@@ -4857,8 +4703,7 @@ JSON:"""
             established_filters=established_filters,
             txtPrb=extracted_txtPrb,  # ИСПРАВЛЕНО: передаем txtPrb
             question_type='clarification',
-            session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-            accumulated_fields=None  # ИСПРАВЛЕНО (2026-01-21): Нет accumulated_fields в этом контексте
+            session_id=session_id  # ИСПРАВЛЕНО (2026-01-06)
         )
 
         ai_question = ai_result['question']
