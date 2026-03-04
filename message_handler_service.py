@@ -631,7 +631,8 @@ class MessageHandlerService:
             service_name = result.get('service_name', 'услуга')
             message = result.get('message')
 
-            if message:
+            # ИСПРАВЛЕНО (2026-03-04): Проверка на строку "null"
+            if message and message != "null":
                 return message
             # ИСПРАВЛЕНИЕ (2026-01-12): По правилу 7 CLAUDE.md - только открытые вопросы!
             # ЗАПРЕЩЕНО: "Это правильно?" - закрытый вопрос
@@ -640,7 +641,8 @@ class MessageHandlerService:
         elif status == 'CONFIRMED':
             # ИСПРАВЛЕНО (2025-12-25): Пользователь подтвердил услугу
             message = result.get('message')
-            if message:
+            # ИСПРАВЛЕНО (2026-03-04): Проверка на строку "null"
+            if message and message != "null":
                 return message
 
             service_name = result.get('service_name', 'услуга')
@@ -649,17 +651,21 @@ class MessageHandlerService:
         elif status == 'REJECTED':
             # ИСПРАВЛЕНО (2025-12-25): Пользователь отрицал
             message = result.get('message')
-            if message:
+            # ИСПРАВЛЕНО (2026-03-04): Проверка на строку "null"
+            if message and message != "null":
                 return message
             return "Понял, уточните пожалуйста что именно у вас проблема?"
 
         elif status == 'AMBIGUOUS':
             # Нужен уточняющий вопрос
             message = result.get('message')
-            if message:
+
+            # ИСПРАВЛЕНО (2026-03-04): Проверка на строку "null" (JSON null при чтении из БД)
+            # PostgreSQL JSONB ->> operator возвращает "null" как строку для JSON null
+            if message and message != "null":
                 return message
 
-            # Если нет message, используем список кандидатов
+            # Если нет message или message == "null", используем список кандидатов
             candidates = result.get('candidates', [])
             if candidates:
                 # ИСПРАВЛЕНИЕ (2026-01-12): По правилу 7 CLAUDE.md - только открытые вопросы!
