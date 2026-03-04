@@ -16,4 +16,5 @@ urlpatterns = [
     path('api/external/', views.send_message_external, name='send_message_external'),  # ИСПРАВЛЕНО (2026-02-24)
     path('api/history/', views.get_chat_history, name='get_chat_history'),
     path('api/dialogs-list/', views.get_dialogs_list, name='get_dialogs_list'),
+    path('api/performance-report/', views.get_performance_report, name='get_performance_report'),  # ИСПРАВЛЕНО (2026-03-04)
 ]

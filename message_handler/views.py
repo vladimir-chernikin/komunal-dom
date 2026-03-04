@@ -378,3 +378,64 @@ def get_client_ip(request):
     else:
         ip = request.META.get('REMOTE_ADDR')
     return ip
+
+
+@require_http_methods(["GET"])
+@csrf_exempt  # ИСПРАВЛЕНО (2026-03-04): Убран @login_required для тестирования через API
+def get_performance_report(request):
+    """
+    API endpoint для получения отчета производительности (карта отработки запроса)
+
+    Args:
+        request: Django GET request с параметром session_id
+
+    Returns:
+        JsonResponse: HTML отчет или ошибка
+    """
+    try:
+        from performance_report_service import PerformanceReportService
+        from message_handler.models import MessageLog
+
+        session_id = request.GET.get('session_id')
+        if not session_id:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'Missing session_id parameter'
+            }, status=400)
+
+        # Загружаем performance данные из metadata последнего сообщения
+        messages = MessageLog.objects.filter(
+            session_id=session_id
+        ).order_by('-timestamp')[:10]
+
+        performance_data = None
+        for msg in messages:
+            if msg.metadata and isinstance(msg.metadata, dict):
+                if 'performance' in msg.metadata:
+                    performance_data = msg.metadata['performance']
+                    break
+
+        if performance_data:
+            # Генерируем HTML отчет
+            html = PerformanceReportService.generate_html_report(performance_data)
+
+            return JsonResponse({
+                'status': 'success',
+                'html': html
+            })
+        else:
+            # Данные производительности не найдены
+            html = PerformanceReportService.generate_from_session_id(session_id)
+
+            return JsonResponse({
+                'status': 'success',
+                'html': html,
+                'message': 'Performance data not available for this session'
+            })
+
+    except Exception as e:
+        logger.error(f"Ошибка генерации performance отчета: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
