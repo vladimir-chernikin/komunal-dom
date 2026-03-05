@@ -504,38 +504,64 @@ class PerformanceReportService:
 
     @staticmethod
     def _generate_waterfall_html(stages: List[Dict], total_duration: float) -> str:
-        """Генерирует waterfall диаграмму"""
+        """Генерирует waterfall диаграмму с относительным позиционированием"""
         if not stages or total_duration is None or total_duration == 0:
             return ""
 
+        # Находим минимальное время старта
+        min_start_time = min(
+            (s.get('start_time', 0) for s in stages if s.get('start_time') is not None),
+            default=0
+        )
+
         bars = ""
         for i, stage in enumerate(stages):
-            start_time = stage.get('start_time', 0)
-            duration = stage.get('duration_ms', 0)
+            start_time = stage.get('start_time')
+            duration = stage.get('duration_ms')
+            name = stage.get('name', 'N/A')
 
             if start_time is None or duration is None:
                 continue
 
-            # Нормализуем время относительно начала
-            # Это упрощенно - нужно хранить абсолютное время старта
-            left = (i * 5) % 80  # Простая визуализация
-            width = min((duration / total_duration) * 100, 100 - left)
+            # Вычисляем относительное время в миллисекундах (perf_counter)
+            start_offset_ms = (start_time - min_start_time) * 1000  # Конвертируем в мс
 
-            name = stage.get('name', 'N/A')
+            # Вычисляем позицию в процентах от общего времени
+            left_percent = (start_offset_ms / total_duration) * 100 if total_duration > 0 else 0
+            width_percent = (duration / total_duration) * 100 if total_duration > 0 else 0
+
+            # Ограничиваем чтобы не выходило за границы
+            left_percent = min(left_percent, 95)
+            width_percent = min(width_percent, 100 - left_percent - 5)
+
+            # Цвет в зависимости от типа этапа (из metadata)
+            color = "#667eea"  # Default purple
+            if 'filter' in name.lower():
+                color = "#f59e0b"  # Orange
+            elif 'search' in name.lower():
+                color = "#10b981"  # Green
+            elif 'problem' in name.lower():
+                color = "#8b5cf6"  # Violet
 
             bars += f"""
             <div class="waterfall-stage"
-                 style="left: {left}%; width: {width}%; top: {i * 35 + 40}px;"
-                 data-details="{name}: {duration:.2f}мс">
+                 style="left: {left_percent}%; width: {width_percent}%; top: {i * 35 + 40}px; background: {color};"
+                 data-details="{name}: {duration:.2f}мс (начало: {start_offset_ms:.0f}мс)">
                 {name}
             </div>
             <div class="waterfall-label" style="top: {i * 35 + 45}px;">{name}</div>
             """
 
+        # Добавляем временную шкалу
+        total_height = len(stages) * 35 + 80
+
         return f"""
         <div class="section">
-            <h2>Waterfall диаграмма</h2>
-            <div class="waterfall">
+            <h2>Waterfall диаграмма (временная шкала)</h2>
+            <div class="waterfall" style="height: {total_height}px;">
+                <div style="position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 12px; color: #999;">
+                    0мс ←———— {total_duration/1000:.1f}с ————→
+                </div>
                 {bars}
             </div>
         </div>

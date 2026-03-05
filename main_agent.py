@@ -3106,6 +3106,13 @@ JSON:"""
                 else:
                     reason = result.get('reason', 'неизвестно')
                     fixed = result.get('fixed_question', question)
+
+                    # ИСПРАВЛЕНО (2026-03-04): Проверка на строку "null" от LLM валидатора
+                    # Если валидатор вернул "null" как fixed_question, используем fallback
+                    if not fixed or fixed == "null":
+                        logger.warning(f"LLM-валидация: валидатор вернул 'null', используем fallback")
+                        fixed = self._fallback_question('clarification', question)
+
                     logger.warning(f"LLM-валидация: обнаружена ошибка - {reason}")
                     logger.info(f"LLM-валидация: исправленный вопрос - {fixed}")
                     return fixed

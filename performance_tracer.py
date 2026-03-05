@@ -105,7 +105,9 @@ class PerformanceTracer:
             timing['error'] = str(error)
 
     def track_llm_call(self, provider: str, model: str, prompt_tokens: int,
-                       completion_tokens: int, cost_rub: float, service_name: str):
+                       completion_tokens: int, cost_rub: float, service_name: str,
+                       duration_ms: float = None, prompt_length: int = 0,
+                       response_length: int = 0):
         """
         Регистрация LLM вызова
 
@@ -116,6 +118,9 @@ class PerformanceTracer:
             completion_tokens: Токены в ответе
             cost_rub: Стоимость в рублях
             service_name: Какой микросервис вызвал LLM
+            duration_ms: Время выполнения вызова в миллисекундах
+            prompt_length: Длина промпта в символах
+            response_length: Длина ответа в символах
         """
         self._llm_calls.append({
             'timestamp': datetime.now().isoformat(),
@@ -125,7 +130,10 @@ class PerformanceTracer:
             'completion_tokens': completion_tokens,
             'total_tokens': prompt_tokens + completion_tokens,
             'cost_rub': cost_rub,
-            'service_name': service_name
+            'service_name': service_name,
+            'duration_ms': duration_ms,
+            'prompt_length': prompt_length,
+            'response_length': response_length
         })
 
     def track_microservice(self, name: str, duration_ms: float,
@@ -218,6 +226,7 @@ class PerformanceTracer:
         """
         report = []
 
+        # Добавляем основные этапы
         for timing in self._timings.values():
             report.append({
                 'name': timing['name'],
@@ -226,7 +235,8 @@ class PerformanceTracer:
                 'duration_ms': timing['duration_ms'],
                 'metadata': timing['metadata'],
                 'result_summary': timing.get('result_summary', ''),
-                'error': timing.get('error')
+                'error': timing.get('error'),
+                'type': 'stage'
             })
 
         # Добавляем микросервисы
@@ -235,18 +245,22 @@ class PerformanceTracer:
                 'name': ms['name'],
                 'duration_ms': ms['duration_ms'],
                 'metadata': ms['metadata'],
+                'candidates_count': ms.get('candidates_count', 0),
                 'type': 'microservice'
             })
 
-        # Добавляем LLM вызовы
+        # Добавляем LLM вызовы с duration_ms
         for llm in self._llm_calls:
             report.append({
-                'name': f"LLM: {llm['service_name']} ({llm['provider']}/{llm['model']})",
-                'duration_ms': None,  # LLM вызовы идут внутри этапов
+                'name': f"{llm['service_name']} ({llm['provider']}/{llm['model']})",
+                'duration_ms': llm.get('duration_ms'),
                 'metadata': llm,
-                'type': 'llm_call'
+                'type': 'llm_call',
+                'tokens': llm.get('total_tokens', 0),
+                'cost': llm.get('cost_rub', 0)
             })
 
+        # Сортируем по start_time если есть, иначе по индексу
         return sorted(report, key=lambda x: x.get('start_time', 0))
 
     def save_to_metadata(self) -> Dict:
