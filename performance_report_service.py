@@ -319,6 +319,97 @@ class PerformanceReportService:
             overflow: hidden;
             text-overflow: ellipsis;
         }}
+
+        /* ИСПРАВЛЕНО (2026-03-05): Дерево выполнения */
+        .tree-container {{
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            padding: 20px;
+        }}
+
+        .tree-node {{
+            position: relative;
+            padding: 10px 0 10px 20px;
+            border-left: 2px solid #e0e0e0;
+        }}
+
+        .tree-node::before {{
+            content: '';
+            position: absolute;
+            left: -2px;
+            top: 20px;
+            width: 20px;
+            height: 2px;
+            background: #e0e0e0;
+        }}
+
+        .tree-root {{
+            border-left: none;
+            padding-left: 0;
+        }}
+
+        .tree-root::before {{
+            display: none;
+        }}
+
+        .tree-content {{
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            transition: all 0.2s;
+        }}
+
+        .tree-content:hover {{
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }}
+
+        .tree-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }}
+
+        .tree-title {{
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }}
+
+        .tree-duration {{
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-weight: bold;
+            font-size: 16px;
+        }}
+
+        .tree-duration.fast {{ color: #10b981; }}
+        .tree-duration.medium {{ color: #f59e0b; }}
+        .tree-duration.slow {{ color: #ef4444; }}
+
+        .tree-details {{
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #dee2e6;
+        }}
+
+        .tree-badge {{
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 8px;
+        }}
+
+        .tree-badge-stage {{ background: #e3f2fd; color: #1976d2; }}
+        .tree-badge-llm {{ background: #fff3e0; color: #f57c00; }}
+        .tree-badge-microservice {{ background: #f3e5f5; color: #7b1fa2; }}
     </style>
 </head>
 <body>
@@ -351,6 +442,8 @@ class PerformanceReportService:
         </div>
 
         {stages_html}
+
+        {tree_html}
 
         {microservices_html}
 
@@ -567,6 +660,140 @@ class PerformanceReportService:
         </div>
         """
 
+    @staticmethod
+    def _generate_tree_html(stages: List[Dict], microservices: List[Dict], llm_calls: List[Dict]) -> str:
+        """Генерирует дерево выполнения с вложенностью
+
+        ИСПРАВЛЕНО (2026-03-05): Добавлено визуальное дерево выполнения запроса
+        """
+        if not stages and not microservices and not llm_calls:
+            return ""
+
+        # Группируем по типу
+        tree_items = []
+
+        # 1. Главный этап total_request (корень)
+        total_stage = next((s for s in stages if s.get('name') == 'total_request'), None)
+        if total_stage:
+            duration = total_stage.get('duration_ms', 0)
+            tree_items.append({
+                'name': 'Обработка запроса',
+                'duration': duration,
+                'badge': 'Весь запрос',
+                'badge_class': 'tree-badge-stage',
+                'details': f'Полное время обработки запроса от начала до конца',
+                'level': 0
+            })
+
+        # 2. Этапы обработки
+        for stage in stages:
+            name = stage.get('name', 'N/A')
+            if name == 'total_request':
+                continue
+
+            duration = stage.get('duration_ms', 0)
+
+            # Определяем badge
+            if 'filter' in name.lower():
+                badge = 'Фильтр'
+                badge_class = 'tree-badge-stage'
+            elif 'problem' in name.lower():
+                badge = 'Накопление'
+                badge_class = 'tree-badge-stage'
+            elif 'search' in name.lower():
+                badge = 'Поиск'
+                badge_class = 'tree-badge-stage'
+            else:
+                badge = 'Этап'
+                badge_class = 'tree-badge-stage'
+
+            result = stage.get('result_summary', '')
+            details = f"Результат: {result[:80]}..." if len(result) > 80 else f"Результат: {result}"
+
+            tree_items.append({
+                'name': name,
+                'duration': duration,
+                'badge': badge,
+                'badge_class': badge_class,
+                'details': details,
+                'level': 1
+            })
+
+        # 3. LLM вызовы
+        for llm in llm_calls:
+            service = llm.get('service_name', 'Unknown')
+            provider = llm.get('provider', 'unknown')
+            model = llm.get('model', 'unknown')
+            duration = llm.get('duration_ms', 0)
+            tokens = llm.get('total_tokens', 0)
+            cost = llm.get('cost_rub', 0)
+
+            tree_items.append({
+                'name': f'{service} ({provider}/{model})',
+                'duration': duration,
+                'badge': 'LLM',
+                'badge_class': 'tree-badge-llm',
+                'details': f'{tokens} токенов, стоимость: {cost:.4f} руб',
+                'level': 2
+            })
+
+        # 4. Микросервисы
+        for ms in microservices:
+            name = ms.get('name', 'Unknown')
+            duration = ms.get('duration_ms', 0)
+            candidates = ms.get('candidates_count', 0)
+
+            tree_items.append({
+                'name': name,
+                'duration': duration,
+                'badge': 'Сервис',
+                'badge_class': 'tree-badge-microservice',
+                'details': f'Найдено кандидатов: {candidates}',
+                'level': 2
+            })
+
+        # Генерируем HTML дерева
+        tree_html = ""
+        for i, item in enumerate(tree_items):
+            duration = item.get('duration', 0)
+            if duration is None:
+                duration_str = "N/A"
+                duration_class = ""
+            else:
+                duration_str = f"{duration:.2f}"
+                if duration < 100:
+                    duration_class = "fast"
+                elif duration < 1000:
+                    duration_class = "medium"
+                else:
+                    duration_class = "slow"
+
+            level_class = "tree-root" if item['level'] == 0 else "tree-node"
+
+            tree_html += f"""
+            <div class="{level_class}">
+                <div class="tree-content">
+                    <div class="tree-header">
+                        <div>
+                            <span class="tree-title">{item['name']}</span>
+                            <span class="tree-badge {item['badge_class']}">{item['badge']}</span>
+                        </div>
+                        <div class="tree-duration {duration_class}">{duration_str} мс</div>
+                    </div>
+                    <div class="tree-details">{item['details']}</div>
+                </div>
+            </div>
+            """
+
+        return f"""
+        <div class="section">
+            <h2>Дерево выполнения запроса</h2>
+            <div class="tree-container">
+                {tree_html}
+            </div>
+        </div>
+        """
+
     @classmethod
     def generate_html_report(cls, performance_data: Dict) -> str:
         """
@@ -592,6 +819,7 @@ class PerformanceReportService:
         microservices_html = cls._generate_microservices_html(microservices)
         llm_calls_html = cls._generate_llm_calls_html(llm_calls)
         waterfall_html = cls._generate_waterfall_html(stages, total_duration)
+        tree_html = cls._generate_tree_html(stages, microservices, llm_calls)  # ИСПРАВЛЕНО (2026-03-05)
 
         return cls.HTML_TEMPLATE.format(
             session_id=session_id,
@@ -601,6 +829,7 @@ class PerformanceReportService:
             llm_total_cost_rub=llm_cost or 0,
             llm_total_tokens=llm_tokens or 0,
             stages_html=stages_html,
+            tree_html=tree_html,  # ИСПРАВЛЕНО (2026-03-05)
             microservices_html=microservices_html,
             llm_calls_html=llm_calls_html,
             waterfall_html=waterfall_html

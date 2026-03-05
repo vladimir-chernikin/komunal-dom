@@ -111,7 +111,13 @@ class MessageHandlerService:
                 f"User: {user_id} | Session: {session_id} | Text: '{text[:50]}...'"
             )
 
-            # 1. Логируем входящее сообщение в БД
+            # ИСПРАВЛЕНО (2026-03-05): Логируем входящий metadata для отладки
+            if metadata:
+                logger.info(f"[DEBUG] Входящий metadata: {list(metadata.keys())}, api_info={metadata.get('api_info')}")
+            else:
+                logger.warning(f"[DEBUG] Входящий metadata ПОУСТО!")
+
+            # 1. Логируем входящее сообщение в БD
             message_log = await self._log_message(
                 text=text,
                 user_id=user_id,
@@ -122,6 +128,20 @@ class MessageHandlerService:
                 metadata=metadata or {},
                 django_user_id=django_user_id
             )
+
+            # ИСПРАВЛЕНО (2026-03-05): Явно сохраняем api_info и client_system в metadata сразу после логирования
+            # Это гарантирует что эти поля не потеряются при последующих обновлениях через MainAgent
+            inbound_message_id = message_log.get('id') if isinstance(message_log, dict) else None
+            if metadata and isinstance(metadata, dict) and inbound_message_id:
+                preserved_fields = {}
+                if 'api_info' in metadata:
+                    preserved_fields['api_info'] = metadata['api_info']
+                if 'client_system' in metadata:
+                    preserved_fields['client_system'] = metadata['client_system']
+
+                if preserved_fields:
+                    logger.info(f"[DEBUG] Сохраняем api_info/client_system в metadata id={inbound_message_id}: {list(preserved_fields.keys())}")
+                    await self._update_message_metadata(inbound_message_id, preserved_fields)
 
             # 2. Получаем историю диалога для контекста
             dialog_history = await self._get_dialog_history(session_id, limit=10)
