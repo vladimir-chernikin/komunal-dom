@@ -811,7 +811,9 @@ class PerformanceReportService:
         llm_cost = performance_data.get('llm_total_cost_rub', 0)
         llm_tokens = performance_data.get('llm_total_tokens', 0)
 
-        stages = performance_data.get('timings', [])
+        # ИСПРАВЛЕНО (2026-03-05): Исправляем несоответствие ключей
+        # В metadata используется 'stages', а не 'timings'
+        stages = performance_data.get('stages', performance_data.get('timings', []))
         microservices = performance_data.get('microservices', [])
         llm_calls = performance_data.get('llm_calls', [])
 
