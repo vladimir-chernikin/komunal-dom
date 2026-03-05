@@ -272,22 +272,35 @@ class PerformanceTracer:
         """
         report = self.get_report()
 
+        # ИСПРАВЛЕНО (2026-03-05): Добавляем start_time для waterfall диаграммы
+        # Конвертируем perf_counter значения в относительное время от первого этапа
+        timings = report['timings']
+        if timings:
+            min_start = min(t.get('start_time', 0) for t in timings if t.get('start_time') is not None)
+
+            stages = []
+            for t in timings:
+                if t['duration_ms'] is not None:
+                    stage_data = {
+                        'name': t['name'],
+                        'duration_ms': t['duration_ms'],
+                        'metadata': t.get('metadata', {}),
+                        'result': t.get('result_summary', '')
+                    }
+                    # Добавляем start_time если есть (для waterfall)
+                    if t.get('start_time') is not None:
+                        stage_data['start_time'] = t['start_time']
+                    stages.append(stage_data)
+        else:
+            stages = []
+
         return {
             'performance': {
                 'total_duration_ms': report['total_duration_ms'],
                 'microservices_total_ms': report['microservices_total_ms'],
                 'llm_total_cost_rub': report['llm_total_cost_rub'],
                 'llm_total_tokens': report['llm_total_tokens'],
-                'stages': [
-                    {
-                        'name': t['name'],
-                        'duration_ms': t['duration_ms'],
-                        'metadata': t.get('metadata', {}),
-                        'result': t.get('result_summary', '')
-                    }
-                    for t in report['timings']
-                    if t['duration_ms'] is not None
-                ],
+                'stages': stages,
                 'microservices': report['microservices'],
                 'llm_calls': report['llm_calls']
             }
