@@ -1759,6 +1759,11 @@ class MainAgent:
             # Раньше считали только llm_confidence и filter_confidence (могли быть 0.0)
             candidate_confidence = candidate.get('confidence', 0.0)
 
+            # ДИАГНОСТИКА (2026-03-05): Почему candidate_confidence может быть < 0.9 при 100% от TagSearch?
+            logger.warning(f"[DIAG] candidate_confidence={candidate_confidence:.3f} (type: {type(candidate_confidence).__name__}), candidate['service_name']={candidate.get('service_name', 'N/A')}")
+            logger.warning(f"[DIAG] candidate keys: {list(candidate.keys())}")
+            logger.warning(f"[DIAG] candidate dict: {candidate}")
+
             # ИСПРАВЛЕНИЕ (2026-01-12): Согласно правилу 7 CLAUDE.md - ЗАПРЕЩЕНЫ закрытые вопросы!
             # Логика:
             # - confidence >= 0.9 (LLM ИЛИ фильтры ИЛИ кандидат): просто сообщаем что услуга определена
@@ -4932,14 +4937,20 @@ JSON:"""
             final_priority = min(max_priority + source_bonus + confidence_bonus, 1.0)
 
             # Формируем итогового кандидата
-            # ИСПРАВЛЕНО (2025-12-28): Копируем location_type, incident_type, category из all_data[0]
-            # ИСПРАВЛЕНО (2026-01-23): Используем max(conf * priority) вместо среднего
-            # ПРИЧИНА: max() НЕ штрафует за наличие нескольких источников
+            # ИСПРАВЛЕНО (2026-03-05): НЕ ПЕРЕЗАПИСЫВАЕМ confidence! Используем МАКСИМУМ из всех источников
+            # ПРИЧИНА: Если TagSearch вернул 100%, а priority = 0.5, то final_priority = 0.5
+            # НО confidence должен остаться 100%, иначе теряем информацию!
+            # СТАРЫЙ ВАРИАНТ (БАГ): 'confidence': final_priority превратил 100% в 50%
+            # НОВЫЙ ВАРИАНТ: confidence = max(confidences) - сохраняем максимум из всех источников
+
+            # final_priority используем только для сортировки, НЕ для confidence!
+            max_confidence = max(confidences) if confidences else 0.0
+
             final_candidate = {
                 'service_id': sid,
                 'service_name': c.get('service_name'),
-                'confidence': final_priority,  # ЛУЧШИЙ conf * priority + бонусы
-                'priority': final_priority,  # Максимум + бонусы
+                'confidence': max_confidence,  # ИСПРАВЛЕНО: МАКСИМУМ из всех источников (НЕ final_priority!)
+                'priority': final_priority,  # Для сортировки
                 'sources': list(c['sources']),
                 'all_data': c['all_data'],
                 '_debug_info': {  # Для отладки
@@ -4947,7 +4958,9 @@ JSON:"""
                     'avg_confidence': avg_confidence,  # Для отладки: средняя уверенность
                     'source_bonus': source_bonus,
                     'confidence_bonus': confidence_bonus,
-                    'source_count': source_count
+                    'source_count': source_count,
+                    'max_confidence': max_confidence,  # ИСПРАВЛЕНО (2026-03-05)
+                    'final_priority': final_priority  # ИСПРАВЛЕНО (2026-03-05)
                 }
             }
 
