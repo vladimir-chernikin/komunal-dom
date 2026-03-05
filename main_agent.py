@@ -3107,11 +3107,18 @@ JSON:"""
                     reason = result.get('reason', 'неизвестно')
                     fixed = result.get('fixed_question', question)
 
-                    # ИСПРАВЛЕНО (2026-03-04): Проверка на строку "null" от LLM валидатора
-                    # Если валидатор вернул "null" как fixed_question, используем fallback
+                    # ИСПРАВЛЕНО (2026-03-05): Проверка на строку "null" от LLM валидатора
+                    # Если валидатор вернул "null" - добавляем в txtStopQ и возвращаем исходный вопрос
+                    # MainAgent сам перегенерирует с обновленным списком запрещенных вопросов
                     if not fixed or fixed == "null":
-                        logger.warning(f"LLM-валидация: валидатор вернул 'null', используем fallback")
-                        fixed = self._fallback_question('clarification', question)
+                        logger.warning(f"LLM-валидация: валидатор вернул 'null', добавляем в txtStopQ")
+                        # Добавляем исходный вопрос в txtStopQ
+                        if txtStopQ is not None:
+                            txtStopQ.append(question)
+                            logger.warning(f"❌ ДОБАВЛЕНО В txtStopQ (null от валидатора): '{question[:50]}...'")
+                            logger.warning(f"❌ Размер txtStopQ: {len(txtStopQ)} вопросов")
+                        # Возвращаем исходный вопрос - MainAgent перегенерирует
+                        return question
 
                     logger.warning(f"LLM-валидация: обнаружена ошибка - {reason}")
                     logger.info(f"LLM-валидация: исправленный вопрос - {fixed}")
