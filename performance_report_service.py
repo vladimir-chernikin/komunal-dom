@@ -905,5 +905,6 @@ class PerformanceReportService:
             stages_html="<div class='section'><p>Данные производительности будут доступны после следующего запроса</p></div>",
             microservices_html="",
             llm_calls_html="",
-            waterfall_html=""
+            waterfall_html="",
+            tree_html=""  # ИСПРАВЛЕНО (2026-03-05): Добавлен недостающий параметр
         )
