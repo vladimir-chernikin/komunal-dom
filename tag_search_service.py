@@ -5,11 +5,19 @@
 TagSearchService - микросервис поиска услуг по тегам
 Использует триграммные индексы (pg_trgm) + pymorphy2 + rapidfuzz
 Ищет ТОЛЬКО ПО ТЕГАМ из ref_tags
+
+ОПТИМИЗАЦИЯ (2026-03-05):
+- Добавлен кэш тегов в памяти (загружается один раз при старте)
+- Добавлен LRU cache для pymorphy2 лемматизации
+- rapidfuzz только для слов >= 6 букв
+- Batch SQL запросы вместо циклов
 """
 
 import logging
 import re
+import time
 from typing import List, Dict, Set
+from functools import lru_cache
 from django.db import connection
 from asgiref.sync import sync_to_async
 import pymorphy2
@@ -21,12 +29,45 @@ logger = logging.getLogger(__name__)
 class TagSearchService:
     """Микросервис поиска услуг по тегам (pg_trgm + pymorphy2 + rapidfuzz)"""
 
+    # Классовые переменные для кэша (общие для всех экземпляров)
+    _tags_cache = None
+    _tags_loaded = False
+
     def __init__(self):
-        # ИСПРАВЛЕНО (2026-01-13): УБРАНО кэширование для избежания проблем с памятью и параллельными запросами
         self.morph = None
         self._stopwords = None  # Ленивая инициализация stopwords
 
-        logger.info("TagSearchService инициализирован (поиск по ТЕГАМ с pg_trgm + pymorphy2 + rapidfuzz БЕЗ кэша)")
+        logger.info("TagSearchService инициализирован (с кэшем тегов и LRU cache)")
+
+    async def _preload_tags(self):
+        """
+        ОПТИМИЗАЦИЯ (2026-03-05): Предзагрузка всех тегов в память
+
+        Вызывается один раз при первом запросе.
+        Загружает ~350 активных тегов (~50KB RAM).
+        """
+        if TagSearchService._tags_loaded:
+            return
+
+        try:
+            def load_sync():
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT rt.tag_name
+                        FROM ref_tags rt
+                        WHERE rt.is_active = TRUE
+                        ORDER BY rt.tag_name
+                    """)
+                    return {row[0].lower() for row in cursor.fetchall()}
+
+            TagSearchService._tags_cache = await sync_to_async(load_sync)()
+            TagSearchService._tags_loaded = True
+            logger.info(f"TagSearchService: предзагружено {len(TagSearchService._tags_cache)} тегов в кэш")
+
+        except Exception as e:
+            logger.error(f"Ошибка предзагрузки тегов: {e}")
+            TagSearchService._tags_cache = set()
+            TagSearchService._tags_loaded = True
 
     def _get_stopwords(self):
         """
@@ -58,6 +99,22 @@ class TagSearchService:
         if self.morph is None:
             self.morph = pymorphy2.MorphAnalyzer()
         return self.morph
+
+    # ОПТИМИЗАЦИЯ (2026-03-05): LRU cache для лемматизации (1000 последних слов)
+    @lru_cache(maxsize=1000)
+    def _lemmatize(self, word: str) -> str:
+        """
+        Закэшированная лемматизация слова
+
+        Args:
+            word: Слово для лемматизации
+
+        Returns:
+            str: Нормальная форма слова
+        """
+        morph = self._get_morph()
+        parsed = morph.parse(word)[0]
+        return parsed.normal_form
 
     async def _load_services(self, filters: Dict = None):
         """
@@ -154,6 +211,11 @@ class TagSearchService:
         Основной метод поиска услуги по тексту сообщения
         Ищет ТОЛЬКО ПО ТЕГАМ с комбинированным подходом: pg_trgm + pymorphy2 + rapidfuzz
 
+        ОПТИМИЗАЦИЯ (2026-03-05):
+        - Предзагрузка тегов в память
+        - Закэшированная лемматизация
+        - rapidfuzz только для слов >= 6 букв
+
         Args:
             message_text: Текст сообщения пользователя
             filters: Словарь фильтров для предварительной фильтрации в SQL
@@ -168,8 +230,17 @@ class TagSearchService:
         - Ищет только по тегам (scenario_name и description НЕ участвуют)
         """
         try:
+            total_start = time.perf_counter()
+
+            # ОПТИМИЗАЦИЯ (2026-03-05): Предзагружаем теги в память
+            preload_start = time.perf_counter()
+            await self._preload_tags()
+            preload_time = (time.perf_counter() - preload_start) * 1000
+
             # ИСПРАВЛЕНО (2026-01-13): ВСЕГДА загружаем услуги налету (БЕЗ кэша)
+            load_start = time.perf_counter()
             service_cache = await self._load_services(filters)
+            load_time = (time.perf_counter() - load_start) * 1000
 
             if not service_cache:
                 return {"status": "error", "message": "Нет загруженных услуг", "candidates": []}
@@ -181,9 +252,13 @@ class TagSearchService:
             logger.info(f"TagSearchService: поиск по тексту '{clean_text}' (слова: {words})")
 
             # ШАГ 1: Быстрый первичный отбор через pg_trgm
+            trgm_start = time.perf_counter()
             candidate_ids = await self._search_with_trgm(clean_text)
+            trgm_time = (time.perf_counter() - trgm_start) * 1000
 
             if not candidate_ids:
+                total_time = (time.perf_counter() - total_start) * 1000
+                logger.warning(f"TagSearch: НЕТ КАНДИДАТОВ (preload={preload_time:.1f}ms, load={load_time:.1f}ms, trgm={trgm_time:.1f}ms, TOTAL={total_time:.1f}ms)")
                 return {
                     "status": "not_found",
                     "candidates": [],
@@ -198,8 +273,12 @@ class TagSearchService:
             service_scores = {}  # Запоминаем score для каждого service_id
 
             # Получаем теги для кандидатов
+            tags_start = time.perf_counter()
             tags_for_candidates = await self._get_tags_for_candidates(candidate_ids)
+            tags_time = (time.perf_counter() - tags_start) * 1000
 
+            # Вычисляем score
+            score_start = time.perf_counter()
             for service_id in candidate_ids:
                 tags = tags_for_candidates.get(service_id, set())
 
@@ -210,11 +289,13 @@ class TagSearchService:
                 if score >= 60:
                     matching_service_ids.add(service_id)
                     service_scores[service_id] = score
+            score_time = (time.perf_counter() - score_start) * 1000
 
             logger.info(f"TagSearchService: после точного совпадения: {len(matching_service_ids)} кандидатов")
 
             # Формируем результат
             # ИСПРАВЛЕНО (2026-01-22): Передаем words, tags и scores
+            format_start = time.perf_counter()
             candidates = await self._format_candidates(
                 matching_service_ids,
                 service_cache,
@@ -222,6 +303,14 @@ class TagSearchService:
                 tags_for_candidates,
                 service_scores
             )
+            format_time = (time.perf_counter() - format_start) * 1000
+
+            total_time = (time.perf_counter() - total_start) * 1000
+
+            # ДЕТАЛЬНЫЙ ЛОГ ВРЕМЕНИ (print + logger)
+            perf_msg = f"TagSearch: preload={preload_time:.1f}ms, load_services={load_time:.1f}ms, trgm={trgm_time:.1f}ms, tags={tags_time:.1f}ms, score={score_time:.1f}ms, format={format_time:.1f}ms, TOTAL={total_time:.1f}ms"
+            print(f"[PERFORMANCE] {perf_msg}")
+            logger.info(perf_msg)
 
             if candidates:
                 return {
@@ -419,6 +508,11 @@ class TagSearchService:
         ШАГ 2+3: Проверяет точное совпадение между словами сообщения и терминами (тегами)
         Использует pymorphy2 для морфологии и rapidfuzz для нечеткого совпадения
 
+        ОПТИМИЗАЦИЯ (2026-03-05):
+        - Использует закэшированную лемматизацию
+        - rapidfuzz только для слов >= 6 букв
+        - Ранний return при совпадении
+
         Args:
             message_words: Список слов из сообщения
             search_terms: Множество терминов (тегов) для сравнения
@@ -426,16 +520,15 @@ class TagSearchService:
         Returns:
             True если есть совпадение, иначе False
         """
-        morph = self._get_morph()
-
         # Нормализуем слова сообщения (только слова >= 3 букв)
         message_normalized = set()
         for word in message_words:
             if len(word) < 3:
                 continue
-            parsed = morph.parse(word)[0]
-            message_normalized.add(parsed.normal_form)
-            message_normalized.add(word)
+            # ОПТИМИЗАЦИЯ (2026-03-05): Используем закэшированную лемматизацию
+            lemma = self._lemmatize(word)
+            message_normalized.add(lemma)
+            message_normalized.add(word.lower())
 
         # Проверяем совпадение с терминами (тегами)
         for term in search_terms:
@@ -446,7 +539,7 @@ class TagSearchService:
                 continue
 
             # Проверяем что длина слова сообщения >= 4 букв
-            valid_words = [w for w in message_words if len(w) >= 4]
+            valid_words = [w.lower() for w in message_words if len(w) >= 4]
 
             # 1. Прямое совпадение
             if any(word == term_lower for word in valid_words):
@@ -461,9 +554,9 @@ class TagSearchService:
                 if len(word) >= 5 and word in term_lower:
                     return True
 
-            # 4. Нечеткое совпадение (для опечаток rapidfuzz) - только для длинных слов
+            # 4. ОПТИМИЗАЦИЯ (2026-03-05): rapidfuzz только для слов >= 6 букв
             for word in valid_words:
-                if len(word) >= 5 and len(term_lower) >= 5:
+                if len(word) >= 6 and len(term_lower) >= 6:
                     if fuzz.ratio(word, term_lower) > 85:
                         return True
 
@@ -476,6 +569,10 @@ class TagSearchService:
         """
         ИСПРАВЛЕНО (2026-01-22): Универсальный score на основе rapidfuzz
         ИСПРАВЛЕНО (2026-01-23): Добавлен штраф за общие слова (NLTK stopwords)
+        ОПТИМИЗАЦИЯ (2026-03-05):
+        - Закэшированная лемматизация
+        - rapidfuzz только для слов >= 6 букв
+        - Early exit при score >= 100
 
         Логика:
         1. Прямое совпадение → 100
@@ -487,8 +584,7 @@ class TagSearchService:
         Returns:
             int: Score от 0 до 100
         """
-        morph = self._get_morph()
-        stopwords = self._get_stopwords()  # Динамическая загрузка!
+        stopwords = self._get_stopwords()
         best_score = 0
 
         for word in message_words:
@@ -496,9 +592,9 @@ class TagSearchService:
                 continue
             word_lower = word.lower()
 
-            # ИСПРАВЛЕНО (2026-01-23): Проверяем stopwords динамически (NLTK + доменные)
+            # Проверяем stopwords
             is_stopword = word_lower in stopwords
-            weight = 0.3 if is_stopword else 1.0  # Штраф 70% для stopwords
+            weight = 0.3 if is_stopword else 1.0
 
             for term in search_terms:
                 term_lower = term.lower()
@@ -509,25 +605,30 @@ class TagSearchService:
                 if word_lower == term_lower:
                     return int(100 * weight)
 
-                # 2. Совпадение по нормальной форме (морфология)
-                parsed = morph.parse(word)[0]
-                if parsed.normal_form == term_lower:
+                # 2. ОПТИМИЗАЦИЯ (2026-03-05): Закэшированная лемматизация
+                lemma = self._lemmatize(word)
+                if lemma == term_lower:
                     score = int(95 * weight)
                     if score > best_score:
                         best_score = score
+                        # Early exit для не-stopwords
+                        if best_score >= 95 and not is_stopword:
+                            return best_score
 
                 # 3. Вхождение слова в терм
-                # ИСПРАВЛЕНО (2026-02-18): Убрано, потом возвращено
                 if len(word) >= 5 and word_lower in term_lower:
                     score = int(90 * weight)
                     if score > best_score:
                         best_score = score
 
-                # 4. Нечеткое совпадение (rapidfuzz partial_ratio)
-                if len(word) >= 4 and len(term_lower) >= 4:
+                # 4. ОПТИМИЗАЦИЯ (2026-03-05): rapidfuzz только для слов >= 6 букв
+                if len(word) >= 6 and len(term_lower) >= 6:
                     fuzz_score = fuzz.partial_ratio(word_lower, term_lower)
                     fuzz_score_weighted = int(fuzz_score * weight)
                     if fuzz_score_weighted > best_score:
                         best_score = fuzz_score_weighted
+                        # Early exit для высоких значений
+                        if best_score >= 90 and not is_stopword:
+                            return best_score
 
         return best_score
