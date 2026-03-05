@@ -430,12 +430,14 @@ TXT_PRB = "{txtPrb}"
             logger.info(f"{'=' * 80} (длина: {len(prompt)} символов)")
 
             # Вызываем LLM
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, usage_info = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
                 model='lite',
                 session_id=session_id,
-                message_id=message_id
+                message_id=message_id,
+                service_name='FilterDetectionService'
             )
 
             logger.info(f"🤖 FilterDetection [{filter_name}] ОТВЕТ LLM:")
@@ -886,11 +888,13 @@ JSON:"""
 
             logger.info(f"FilterDetectionService: отправляем промпт ранжирования (длина: {len(prompt)} символов)")
 
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, usage_info = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
                 model='lite',
-                session_id=session_id
+                session_id=session_id,
+                service_name='FilterDetectionService'
             )
 
             if not response:

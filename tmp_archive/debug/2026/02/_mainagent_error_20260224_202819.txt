@@ -1,0 +1,11 @@
+КРИТИЧЕСКАЯ ОШИБКА в process_service_detection
+Время: 2026-02-24 20:28:19.092919
+Ошибка: AttributeError: 'NoneType' object has no attribute 'get'
+Сообщение: 'У меня капает'
+Трассировка:
+Traceback (most recent call last):
+  File "/var/www/komunal-dom_ru/main_agent.py", line 768, in process_service_detection
+    'status': orch_result.get('status', 'unknown'),
+              ^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'get'
+

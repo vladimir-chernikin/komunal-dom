@@ -1,0 +1,4 @@
+FALLBACK ЗАПУШЕН
+Время: 2026-02-23 04:03:56.836953
+unique_candidates: 0
+established_filters: {'incident_type': {'value': 'Инцидент', 'confidence': 0.7}, 'location_type': {'value': 'Индивидуальное', 'confidence': 0.8}, 'category': {'value': 'Конструктив', 'confidence': 0.7}}

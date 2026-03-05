@@ -275,6 +275,12 @@ async function loadSessions() {
             const sessionIdShort = session.session_id ? session.session_id.substring(0, 30) : 'Нет ID';
             const messageCount = session.message_count || 0;
 
+            // ИСПРАВЛЕНО (2026-03-05): Добавлено отображение пользователя
+            let userInfoHtml = '';
+            if (session.user_info) {
+                userInfoHtml = `<br><small class="text-primary"><i class="fas fa-user"></i> ${session.user_info}</small>`;
+            }
+
             html += `
                 <div class="list-group-item session-item" onclick="loadTrace('${session.session_id || ''}')">
                     <div class="d-flex justify-content-between align-items-center">
@@ -284,6 +290,7 @@ async function loadSessions() {
                             <small class="text-muted">
                                 <i class="fas fa-envelope"></i> ${messageCount} сообщ.
                             </small>
+                            ${userInfoHtml}
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation(); generatePerformanceReport('${session.session_id || ''}')" title="Карта производительности">

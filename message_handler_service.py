@@ -280,6 +280,18 @@ class MessageHandlerService:
                 # Формируем metadata для outbound сообщения
                 outbound_metadata = {'service_result': result}
 
+                # ИСПРАВЛЕНО (2026-03-05): Сохраняем api_info и client_system из исходного metadata
+                if metadata and isinstance(metadata, dict):
+                    logger.info(f"[DEBUG] metadata на входе: {list(metadata.keys())}")
+                    if 'api_info' in metadata:
+                        outbound_metadata['api_info'] = metadata['api_info']
+                        logger.info(f"[DEBUG] ✅ api_info скопирован: {metadata['api_info']}")
+                    if 'client_system' in metadata:
+                        outbound_metadata['client_system'] = metadata['client_system']
+                        logger.info(f"[DEBUG] ✅ client_system скопирован: {metadata['client_system']}")
+                else:
+                    logger.warning(f"[DEBUG] ⚠️ metadata отсутствует или не dict: type={type(metadata)}, value={metadata}")
+
                 # Добавляем txtPrb если есть в result
                 if '_metadata' in result and 'txtPrb' in result['_metadata']:
                     outbound_metadata['txtPrb'] = result['_metadata']['txtPrb']
@@ -460,8 +472,18 @@ class MessageHandlerService:
                     session_hash = hashlib.md5(session_id.encode()).hexdigest()
                     final_dialog_id = f"{session_hash[:8]}-{session_hash[8:12]}-{session_hash[12:16]}-{session_hash[16:20]}-{session_hash[20:32]}"
 
+            # ИСПРАВЛЕНО (2026-03-05): Отладочный вывод metadata
+            final_metadata = {
+                **(metadata or {}),
+                'channel': channel,
+                'message_id': message_id,
+                'django_user_id': django_user_id
+            }
+            logger.info(f"[DEBUG] _log_message: metadata keys={list(final_metadata.keys())}, api_info={final_metadata.get('api_info')}")
+
             # Логируем через DialogLoggerService
             # ИСПРАВЛЕНО (2026-01-06): Получаем реальный ID созданной записи
+            # ИСПРАВЛЕНО (2026-03-05): Используем final_metadata (с api_info)
             record_id = await dialog_logger.log_message(
                 dialog_id=final_dialog_id,  # ИСПРАВЛЕНО: гарантированно UUID
                 user_id=user_id_int,
@@ -475,12 +497,7 @@ class MessageHandlerService:
                 llm_model=llm_model,
                 tokens_used=tokens_used,
                 cost_rub=cost_rub,
-                metadata={
-                    **(metadata or {}),
-                    'channel': channel,
-                    'message_id': message_id,
-                    'django_user_id': django_user_id
-                },
+                metadata=final_metadata,  # ИСПРАВЛЕНО (2026-03-05): final_metadata вместо {}
                 # ИСПРАВЛЕНО (2026-01-05): session_id, channel, direction, message_id ДОЛЖНЫ быть отдельными параметрами!
                 session_id=session_id,
                 channel=channel,
@@ -529,6 +546,14 @@ class MessageHandlerService:
 
                     import json
                     existing_metadata = json.loads(row[0]) if row[0] else {}
+
+                    # ИСПРАВЛЕНО (2026-03-05): Сохраняем api_info и client_system при обновлении metadata
+                    # Если новые метаданные не содержат эти поля, сохраняем их из существующих
+                    preserved_fields = ['api_info', 'client_system']
+                    for field in preserved_fields:
+                        if field in existing_metadata and field not in metadata:
+                            metadata[field] = existing_metadata[field]
+                            logger.info(f"[DEBUG] Сохранен {field} при обновлении metadata")
 
                     # Объединяем метаданные
                     existing_metadata.update(metadata)

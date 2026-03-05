@@ -474,10 +474,12 @@ class MessageCleanerService:
 
 Исправленный текст:"""
 
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, _ = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
-                model='lite'
+                model='lite',
+                service_name='MessageCleanerService'
             )
 
             corrected = response.strip()

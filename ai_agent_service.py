@@ -167,7 +167,8 @@ class AIAgentService:
         temperature: float = 0.7,
         max_tokens: int = 1000,
         session_id: Optional[str] = None,
-        message_id: Optional[int] = None
+        message_id: Optional[int] = None,
+        service_name: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         ЕДИНЫЙ МЕТОД ДЛЯ ВСЕХ LLM ЗАПРОСОВ
@@ -175,6 +176,8 @@ class AIAgentService:
         ИСПРАВЛЕНО (2026-01-06):
         - Добавлен параметр session_id для связи с dialog_logs
         - Добавлен параметр message_id для надежной связи с сообщением
+        ИСПРАВЛЕНО (2026-02-24):
+        - Добавлен параметр service_name для отслеживания микросервиса
 
         Args:
             prompt: Промпт для LLM
@@ -184,6 +187,7 @@ class AIAgentService:
             max_tokens: Максимальное количество токенов
             session_id: ID сессии диалога (для сохранения в llm_request_log)
             message_id: ID сообщения из dialog_logs (для надежной связи)
+            service_name: Имя микросервиса (FilterDetectionService, MainAgent, и т.д.)
 
         Returns:
             (response_text, usage_info)
@@ -206,10 +210,11 @@ class AIAgentService:
 
         # Вызываем соответствующий провайдер
         # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id в методы
+        # ИСПРАВЛЕНО (2026-02-24): Передаем service_name в методы
         if provider == 'yandexgpt':
-            return await self._call_yandexgpt(prompt, model, temperature, max_tokens, session_id, message_id)
+            return await self._call_yandexgpt(prompt, model, temperature, max_tokens, session_id, message_id, service_name)
         elif provider == 'gigachat':
-            return await self._call_gigachat(prompt, model, temperature, max_tokens, session_id, message_id)
+            return await self._call_gigachat(prompt, model, temperature, max_tokens, session_id, message_id, service_name)
         else:
             raise ValueError(f"Неверный провайдер: {provider}. Доступно: yandexgpt, gigachat")
 
@@ -220,7 +225,8 @@ class AIAgentService:
         temperature: float = 0.7,
         max_tokens: int = 1000,
         session_id: Optional[str] = None,
-        message_id: Optional[int] = None
+        message_id: Optional[int] = None,
+        service_name: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Вызов YandexGPT API
@@ -228,6 +234,8 @@ class AIAgentService:
         ИСПРАВЛЕНО (2026-01-06):
         - Добавлен параметр session_id для связи с dialog_logs
         - Добавлен параметр message_id для надежной связи с сообщением
+        ИСПРАВЛЕНО (2026-02-24):
+        - Добавлен параметр service_name для отслеживания микросервиса
         """
 
         if not self.yandexgpt_available:
@@ -334,6 +342,7 @@ class AIAgentService:
 
                         # Сохраняем в БД
                         # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для связи с dialog_logs
+                        # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания микросервиса
                         await self._save_statistics_to_db(
                             provider='yandexgpt',
                             model=model,
@@ -341,7 +350,8 @@ class AIAgentService:
                             response=response_text,
                             usage_info=usage_info,
                             session_id=session_id,
-                            message_id=message_id
+                            message_id=message_id,
+                            service_name=service_name
                         )
 
                         return response_text, usage_info
@@ -360,7 +370,8 @@ class AIAgentService:
         temperature: float = 0.7,
         max_tokens: int = 1000,
         session_id: Optional[str] = None,
-        message_id: Optional[int] = None
+        message_id: Optional[int] = None,
+        service_name: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Вызов GigaChat API
@@ -368,6 +379,8 @@ class AIAgentService:
         ИСПРАВЛЕНО (2026-01-06):
         - Добавлен параметр session_id для связи с dialog_logs
         - Добавлен параметр message_id для надежной связи с сообщением
+        ИСПРАВЛЕНО (2026-02-24):
+        - Добавлен параметр service_name для отслеживания микросервиса
         """
         if not self.gigachat_available:
             raise Exception("GigaChat недоступен (не настроен Client ID или Auth Key)")
@@ -451,6 +464,7 @@ class AIAgentService:
 
                     # Сохраняем в БД
                     # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для связи с dialog_logs
+                    # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания микросервиса
                     await self._save_statistics_to_db(
                         provider='gigachat',
                         model=model,
@@ -458,7 +472,8 @@ class AIAgentService:
                         response=response_text,
                         usage_info=usage_info,
                         session_id=session_id,
-                        message_id=message_id
+                        message_id=message_id,
+                        service_name=service_name
                     )
 
                     return response_text, usage_info
@@ -546,7 +561,8 @@ class AIAgentService:
         response: str,
         usage_info: Dict[str, Any],
         session_id: Optional[str] = None,
-        message_id: Optional[int] = None
+        message_id: Optional[int] = None,
+        service_name: Optional[str] = None
     ):
         """
         Сохранить статистику запроса в БД
@@ -555,6 +571,7 @@ class AIAgentService:
         - Добавлен параметр session_id для связи с dialog_logs
         - Добавлен параметр message_id для надежной связи с сообщением
         ИСПРАВЛЕНО (2026-02-16): Добавлены отладочные логи для response_text
+        ИСПРАВЛЕНО (2026-02-24): Добавлен параметр service_name для отслеживания микросервиса
         """
         # ИСПРАВЛЕНО (2026-02-16): Отладочные логи для проверки response
         response_len = len(response) if response else 0
@@ -584,9 +601,10 @@ class AIAgentService:
                             cost_rub,
                             session_id,
                             message_id,
+                            service_name,
                             created_at
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                         )
                     """, [
                         str(uuid.uuid4()),
@@ -599,7 +617,8 @@ class AIAgentService:
                         usage_info['total_tokens'],
                         usage_info['cost_rub'],
                         session_id,  # ИСПРАВЛЕНО (2026-01-06): session_id
-                        message_id   # ИСПРАВЛЕНО (2026-01-06): message_id
+                        message_id,  # ИСПРАВЛЕНО (2026-01-06): message_id
+                        service_name  # ИСПРАВЛЕНО (2026-02-24): Имя микросервиса
                     ])
 
             await sync_to_async(save_sync)()

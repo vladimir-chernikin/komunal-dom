@@ -111,12 +111,14 @@ class ProblemAccumulationService:
         try:
             # Вызываем LLM через публичный метод call_llm
             # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для логирования
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания микросервиса
             response_text, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
                 model='lite',
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
-                message_id=message_id   # ИСПРАВЛЕНО (2026-01-06)
+                message_id=message_id,  # ИСПРАВЛЕНО (2026-01-06)
+                service_name='ProblemAccumulationService'  # ИСПРАВЛЕНО (2026-02-24)
             )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем ответ
@@ -343,10 +345,12 @@ JSON:"""
 
 JSON:"""
 
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, _ = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider='yandexgpt',
-                model='lite'
+                model='lite',
+                service_name='ProblemAccumulationService'
             )
 
             # ИСПРАВЛЕНО (2026-01-15): Передаем current_problem=None (нет в контексте _is_refusal)

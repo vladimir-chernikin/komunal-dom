@@ -140,9 +140,10 @@ def dialog_trace_api(request):
 @login_required
 @csrf_exempt  # ИСПРАВЛЕНО (2026-01-06): Отключаем CSRF для API (используем сессионную авторизацию)
 def api_dialog_sessions(request):
-    """API для получения списка сессий (v3.0 - dialog_logs)"""
+    """API для получения списка сессий (v.3.1 - с информацией о пользователе)"""
     from django.http import JsonResponse
     from django.db import connection
+    from django.contrib.auth.models import User
 
     try:
         profile = request.user.userprofile
@@ -153,19 +154,25 @@ def api_dialog_sessions(request):
     if not profile.has_admin_access():
         return JsonResponse({'error': 'Доступ запрещен'}, status=403)
 
-    # ИСПРАВЛЕНО (2026-01-05): Используем dialog_logs вместо message_handler_messagelog
-    # ИСПРАВЛЕНО (2026-02-04): Добавлен django_user_id для показа пользователя
-    # Запрос к БД - получаем уникальные сессии с информацией о последнем сообщении
+    # ИСПРАВЛЕНО (2026-03-05): Добавлена информация о пользователе (username, telegram login, API NOMER)
+    # Запрос к БД - получаем уникальные сессии с информацией о последнем сообщении и metadata
     with connection.cursor() as cursor:
         cursor.execute("""
             SELECT
-                session_id,
-                channel,
+                dl.session_id,
+                dl.channel,
                 COUNT(*) as message_count,
-                MAX(timestamp) as last_message,
-                MAX(django_user_id) as django_user_id
-            FROM dialog_logs
-            GROUP BY session_id, channel
+                MAX(dl.timestamp) as last_message,
+                MAX(dl.django_user_id) as django_user_id,
+                (
+                    SELECT metadata
+                    FROM dialog_logs
+                    WHERE session_id = dl.session_id AND channel = dl.channel
+                    AND metadata IS NOT NULL
+                    LIMIT 1
+                ) as sample_metadata
+            FROM dialog_logs dl
+            GROUP BY dl.session_id, dl.channel
             ORDER BY last_message DESC
             LIMIT 100
         """)
@@ -173,7 +180,52 @@ def api_dialog_sessions(request):
         columns = [col[0] for col in cursor.description]
         sessions = []
         for row in cursor.fetchall():
-            sessions.append(dict(zip(columns, row)))
+            session = dict(zip(columns, row))
+
+            # Парсим metadata если есть
+            metadata = session.get('sample_metadata')
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except:
+                    metadata = {}
+
+            # Определяем информацию о пользователе
+            user_info = None
+
+            if session['channel'] == 'web':
+                # Для web - получаем username из django_user_id
+                if session.get('django_user_id'):
+                    try:
+                        user = User.objects.get(id=session['django_user_id'])
+                        user_info = user.username
+                    except User.DoesNotExist:
+                        user_info = f"UserID:{session['django_user_id']}"
+
+            elif session['channel'] == 'telegram':
+                # Для telegram - пробуем получить username из metadata
+                if isinstance(metadata, dict):
+                    telegram_info = metadata.get('telegram_info', {})
+                    if isinstance(telegram_info, dict):
+                        user_info = telegram_info.get('username') or telegram_info.get('first_name')
+                # Fallback: показываем django_user_id если есть
+                if not user_info and session.get('django_user_id'):
+                    user_info = f"UserID:{session['django_user_id']}"
+
+            elif session['channel'] == 'api':
+                # Для API - получаем NOMER из metadata
+                if isinstance(metadata, dict):
+                    api_info = metadata.get('api_info', {})
+                    if isinstance(api_info, dict):
+                        user_info = api_info.get('nomer')
+
+            # Добавляем user_info в сессию
+            session['user_info'] = user_info
+
+            # Удаляем sample_metadata (не нужен на фронтенде)
+            del session['sample_metadata']
+
+            sessions.append(session)
 
     return JsonResponse({
         'success': True,

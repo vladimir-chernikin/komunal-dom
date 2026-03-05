@@ -304,6 +304,7 @@ def send_message_external(request):
         message_text = data.get('message', '').strip()
         session_id = data.get('session_id')
         user_id = data.get('user_id', f'external_{client_system}_user')
+        nomer = data.get('nomer')  # ИСПРАВЛЕНО (2026-03-05): Параметр NOMER для идентификации абонента
 
         if not message_text:
             return JsonResponse({
@@ -331,6 +332,15 @@ def send_message_external(request):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
+        # ИСПРАВЛЕНО (2026-03-05): Формируем metadata с информацией об API вызове
+        api_metadata = {
+            'client_system': client_system  # УБРАЛИ 'channel' - он добавляется в MessageHandlerService
+        }
+        if nomer:
+            api_metadata['api_info'] = {'nomer': nomer}
+            logger.info(f"[EXTERNAL API] Передан NOMER: {nomer}")
+        logger.info(f"[EXTERNAL API] api_metadata: {api_metadata}")
+
         try:
             result = loop.run_until_complete(
                 message_handler.handle_incoming_message(
@@ -338,7 +348,8 @@ def send_message_external(request):
                     user_id=user_id,
                     channel='api',  # НОВЫЙ канал для внешних систем
                     session_id=session_id,
-                    django_user_id=None  # Внешние системы без Django auth
+                    django_user_id=None,  # Внешние системы без Django auth
+                    metadata=api_metadata  # Передаем metadata с NOMER
                 )
             )
         finally:

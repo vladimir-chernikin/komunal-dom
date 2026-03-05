@@ -38,6 +38,12 @@ class PromptTemplate(models.Model):
         verbose_name='Тип промпта',
         help_text='Какой микросервис использует этот промпт'
     )
+    microservice = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name='Микросервис',
+        help_text='Имя микросервиса для связки с логами (FilterDetectionService, MainAgent, ProblemAccumulationService и т.д.)'
+    )
     template = models.TextField(
         verbose_name='Шаблон промпта',
         help_text='Текст промпта с переменными в формате {variable_name}'

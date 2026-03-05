@@ -1,0 +1,14 @@
+КРИТИЧЕСКАЯ ОШИБКА в process_service_detection
+Время: 2026-02-24 16:43:25.663018
+Ошибка: NameError: name 'location_known' is not defined
+Сообщение: 'у меня капает'
+Трассировка:
+Traceback (most recent call last):
+  File "/var/www/komunal-dom_ru/main_agent.py", line 757, in process_service_detection
+    orch_result = await self._orchestrate_microservices(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/www/komunal-dom_ru/main_agent.py", line 2641, in _orchestrate_microservices
+    if not location_known and candidate.get('location_type') != 'Общедомовое':
+           ^^^^^^^^^^^^^^
+NameError: name 'location_known' is not defined
+

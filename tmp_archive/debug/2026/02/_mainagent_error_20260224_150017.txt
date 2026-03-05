@@ -1,0 +1,17 @@
+КРИТИЧЕСКАЯ ОШИБКА в process_service_detection
+Время: 2026-02-24 15:00:17.457806
+Ошибка: TypeError: MainAgent._generate_ai_question() got an unexpected keyword argument 'accumulated_fields'
+Сообщение: 'У меня течь'
+Трассировка:
+Traceback (most recent call last):
+  File "/var/www/komunal-dom_ru/main_agent.py", line 757, in process_service_detection
+    orch_result = await self._orchestrate_microservices(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/www/komunal-dom_ru/main_agent.py", line 2839, in _orchestrate_microservices
+    return await self._ask_ai_clarification_with_candidates(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/var/www/komunal-dom_ru/main_agent.py", line 4853, in _ask_ai_clarification_with_candidates
+    ai_result = await self._generate_ai_question(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: MainAgent._generate_ai_question() got an unexpected keyword argument 'accumulated_fields'
+
