@@ -107,7 +107,7 @@ class PerformanceTracer:
     def track_llm_call(self, provider: str, model: str, prompt_tokens: int,
                        completion_tokens: int, cost_rub: float, service_name: str,
                        duration_ms: float = None, prompt_length: int = 0,
-                       response_length: int = 0):
+                       response_length: int = 0, prompt: str = None, response: str = None):
         """
         Регистрация LLM вызова
 
@@ -121,8 +121,10 @@ class PerformanceTracer:
             duration_ms: Время выполнения вызова в миллисекундах
             prompt_length: Длина промпта в символах
             response_length: Длина ответа в символах
+            prompt: Текст промпта (опционально, для детализации)
+            response: Текст ответа (опционально, для детализации)
         """
-        self._llm_calls.append({
+        llm_call_data = {
             'timestamp': datetime.now().isoformat(),
             'provider': provider,
             'model': model,
@@ -134,7 +136,15 @@ class PerformanceTracer:
             'duration_ms': duration_ms,
             'prompt_length': prompt_length,
             'response_length': response_length
-        })
+        }
+
+        # ИСПРАВЛЕНО (2026-03-05): Сохраняем промпт и ответ если есть (для детализации)
+        if prompt is not None:
+            llm_call_data['prompt'] = prompt
+        if response is not None:
+            llm_call_data['response'] = response
+
+        self._llm_calls.append(llm_call_data)
 
     def track_microservice(self, name: str, duration_ms: float,
                           candidates_count: int = 0, metadata: Dict = None):

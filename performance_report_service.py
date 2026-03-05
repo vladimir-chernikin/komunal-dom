@@ -727,13 +727,36 @@ class PerformanceReportService:
             duration = llm.get('duration_ms', 0)
             tokens = llm.get('total_tokens', 0)
             cost = llm.get('cost_rub', 0)
+            prompt_tokens = llm.get('prompt_tokens', 0)
+            completion_tokens = llm.get('completion_tokens', 0)
+
+            # ИСПРАВЛЕНО (2026-03-05): Добавляем промпт и ответ в детали
+            prompt_text = llm.get('prompt', '')
+            response_text = llm.get('response', '')
+
+            details_parts = [
+                f'{tokens} токенов (in: {prompt_tokens}, out: {completion_tokens})',
+                f'стоимость: {cost:.4f} руб'
+            ]
+
+            # Добавляем промпт если есть
+            if prompt_text:
+                prompt_preview = prompt_text[:100] + '...' if len(prompt_text) > 100 else prompt_text
+                details_parts.append(f'Промпт: {prompt_preview}')
+
+            # Добавляем ответ если есть
+            if response_text:
+                response_preview = response_text[:100] + '...' if len(response_text) > 100 else response_text
+                details_parts.append(f'Ответ: {response_preview}')
+
+            details = ' | '.join(details_parts)
 
             tree_items.append({
                 'name': f'{service} ({provider}/{model})',
                 'duration': duration,
                 'badge': 'LLM',
                 'badge_class': 'tree-badge-llm',
-                'details': f'{tokens} токенов, стоимость: {cost:.4f} руб',
+                'details': details,
                 'level': 2
             })
 
@@ -742,13 +765,35 @@ class PerformanceReportService:
             name = ms.get('name', 'Unknown')
             duration = ms.get('duration_ms', 0)
             candidates = ms.get('candidates_count', 0)
+            metadata = ms.get('metadata', {})
+
+            # ИСПРАВЛЕНО (2026-03-05): Добавляем детализацию по метаданным
+            details_parts = [f'Найдено кандидатов: {candidates}']
+
+            # Добавляем метод если есть
+            if 'method' in metadata:
+                details_parts.append(f"Метод: {metadata['method']}")
+
+            # Добавляем search_text если есть (для понимания что искали)
+            if 'search_text' in metadata:
+                search_text = metadata['search_text']
+                if len(search_text) > 50:
+                    search_text = search_text[:50] + '...'
+                details_parts.append(f"Запрос: {search_text}")
+
+            # Добавляем фильтры если есть
+            if 'filters' in metadata and isinstance(metadata['filters'], list):
+                filters_str = ', '.join(metadata['filters'])
+                details_parts.append(f"Фильтры: {filters_str}")
+
+            details = ' | '.join(details_parts)
 
             tree_items.append({
                 'name': name,
                 'duration': duration,
                 'badge': 'Сервис',
                 'badge_class': 'tree-badge-microservice',
-                'details': f'Найдено кандидатов: {candidates}',
+                'details': details,
                 'level': 2
             })
 

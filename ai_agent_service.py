@@ -21,6 +21,7 @@ import logging
 import json
 import re
 import uuid
+import time  # ИСПРАВЛЕНО (2026-03-05): Для замера времени LLM вызовов
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from decouple import config
@@ -62,13 +63,14 @@ class AIAgentService:
         'text-search-doc': 0.10  # Приблизительно (обычно дешевле LLM)
     }
 
-    def __init__(self, provider: str = 'gigachat', default_model: Optional[str] = None):
+    def __init__(self, provider: str = 'gigachat', default_model: Optional[str] = None, tracer=None):
         """
         Инициализация сервиса
 
         Args:
             provider: Провайдер по умолчанию (yandexgpt | gigachat)
             default_model: Модель по умолчанию (если None, используется из конфига)
+            tracer: PerformanceTracer для трекинга производительности
         """
         # Параметры YandexGPT
         self.yandexgpt_api_key = config('YANDEX_API_KEY', default=None)
@@ -84,6 +86,9 @@ class AIAgentService:
         # Текущий провайдер и модель
         self.provider = provider
         self.default_model = default_model or self._get_default_model()
+
+        # ИСПРАВЛЕНО (2026-03-05): Performance tracer
+        self.tracer = tracer
 
         # Проверка доступности
         self.yandexgpt_available = bool(self.yandexgpt_api_key and self.yandexgpt_folder_id)
@@ -286,6 +291,9 @@ class AIAgentService:
             # Логирование промпта
             logger.debug(f"AIAgentService: YandexGPT PROMPT:\n{prompt}")
 
+            # ИСПРАВЛЕНО (2026-03-05): Замер времени LLM вызова
+            llm_start = time.perf_counter()
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     url,
@@ -316,6 +324,25 @@ class AIAgentService:
                         input_cost = (input_tokens / 1000) * price_input
                         output_cost = (output_tokens / 1000) * price_output
                         total_cost = input_cost + output_cost
+
+                        # ИСПРАВЛЕНО (2026-03-05): Вычисляем время выполнения
+                        duration_ms = (time.perf_counter() - llm_start) * 1000
+
+                        # ИСПРАВЛЕНО (2026-03-05): Регистрируем LLM вызов в PerformanceTracer
+                        if self.tracer:
+                            self.tracer.track_llm_call(
+                                provider='yandexgpt',
+                                model=model,
+                                prompt_tokens=input_tokens,
+                                completion_tokens=output_tokens,
+                                cost_rub=total_cost,
+                                service_name=service_name or 'AIAgentService',
+                                duration_ms=duration_ms,
+                                prompt_length=len(prompt),
+                                response_length=len(response_text),
+                                prompt=prompt[:500],  # ИСПРАВЛЕНО (2026-03-05): Сохраняем первые 500 символов
+                                response=response_text[:500]  # ИСПРАВЛЕНО (2026-03-05): Сохраняем первые 500 символов
+                            )
 
                         # Формируем usage_info
                         usage_info = {

@@ -11,6 +11,7 @@ import asyncio
 import traceback
 import json
 import os
+import time  # ИСПРАВЛЕНО (2026-03-05): Для perf_counter в трекинге микросервисов
 from typing import Dict, List, Any, Tuple, Optional
 from dataclasses import dataclass
 from django.db import connection
@@ -246,6 +247,9 @@ class MainAgent:
         if user_context and 'performance_tracer' in user_context:
             tracer = user_context['performance_tracer']
             logger.info("[PERF] PerformanceTracer получен из user_context")
+            # ИСПРАВЛЕНО (2026-03-05): Передаем tracer в AIAgentService для трекинга LLM
+            if self.ai_agent:
+                self.ai_agent.tracer = tracer
 
         if user_context:
             original_message = user_context.get('original_message', message_text)
@@ -439,6 +443,7 @@ class MainAgent:
             try:
                 logger.info("Запускаем SemanticPreCheck для извлечения фильтров...")
                 # ИСПРАВЛЕНО (2026-03-04): Замер FilterDetectionService
+                filter_start = time.perf_counter()  # ИСПРАВЛЕНО (2026-03-05): Для track_microservice
                 if tracer:
                     tracer.start("filter_detection")
 
@@ -454,7 +459,18 @@ class MainAgent:
                 )
 
                 if tracer:
+                    duration_ms = (time.perf_counter() - filter_start) * 1000
                     tracer.end("filter_detection")
+                    # Регистрируем FilterDetectionService как микросервис
+                    tracer.track_microservice(
+                        name="FilterDetectionService",
+                        duration_ms=duration_ms,
+                        candidates_count=len(semantic_check_result.get('filters', {})),
+                        metadata={
+                            "filters": list(semantic_check_result.get('filters', {}).keys()),
+                            "method": "LLM-based"
+                        }
+                    )
 
                 if semantic_check_result.get('filters'):
                     logger.info(f"SemanticPreCheck найден {len(semantic_check_result['filters'])} фильтров:")
@@ -681,16 +697,47 @@ class MainAgent:
         try:
             # ===== ШАГ 1: Параллельно запускаем БЫСТРЫЕ микросервисы =====
             # ИСПРАВЛЕНО (2026-01-10): Передаем established_filters для фильтрации candidates
+            # ИСПРАВЛЕНО (2026-03-05): Добавлен детальный трекинг каждого микросервиса
+
+            # Обертка для трекинга отдельного микросервиса
+            async def run_with_tracking(service_name, search_func):
+                """Запуск микросервиса с трекингом производительности"""
+                if tracer:
+                    tracer.start(service_name, {"search_text": search_text[:50]})
+
+                start_time = time.perf_counter()
+                try:
+                    result = await search_func
+                    duration = (time.perf_counter() - start_time) * 1000
+
+                    if tracer:
+                        tracer.end(service_name, result)
+                        # Регистрируем микросервис
+                        tracer.track_microservice(
+                            name=service_name,
+                            duration_ms=duration,
+                            candidates_count=len(result.get('candidates', [])),
+                            metadata={"method": result.get('method', 'unknown')}
+                        )
+
+                    return result
+                except Exception as e:
+                    duration = (time.perf_counter() - start_time) * 1000
+                    if tracer:
+                        tracer.end(service_name, error=e)
+                    raise
+
+            # Создаем задачи с трекингом
             search_tasks = []
 
             if self.tag_search:
-                search_tasks.append(self._run_tag_search(search_text, filters=established_filters))
+                search_tasks.append(run_with_tracking("TagSearch", self._run_tag_search(search_text, filters=established_filters)))
 
             if self.semantic_search:
-                search_tasks.append(self._run_semantic_search(search_text, filters=established_filters))
+                search_tasks.append(run_with_tracking("SemanticSearch", self._run_semantic_search(search_text, filters=established_filters)))
 
             if self.vector_search:
-                search_tasks.append(self._run_vector_search(search_text, filters=established_filters))
+                search_tasks.append(run_with_tracking("VectorSearch", self._run_vector_search(search_text, filters=established_filters)))
 
             # Ждем результаты от быстрых микросервисов
             # ИСПРАВЛЕНО (2026-03-04): Замер времени выполнения микросервисов
