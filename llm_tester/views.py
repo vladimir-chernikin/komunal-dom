@@ -12,7 +12,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from asgiref.sync import async_to_sync
+from asgiref.sync import sync_to_async  # ИСПРАВЛЕНО (2026-03-07): Заменен async_to_sync
 from django.core.paginator import Paginator
 from django.db import models
 
@@ -98,9 +98,10 @@ def test_prompt(request, template_slug):
 
 @require_http_methods(["POST"])
 @login_required
-def send_llm_request(request):
+async def send_llm_request(request):
     """
     Отправка запроса в LLM
+    ИСПРАВЛЕНО (2026-03-07): Сделан async для исправления "Event loop is closed"
     """
     try:
         # Получаем данные из запроса
@@ -111,7 +112,8 @@ def send_llm_request(request):
         variables = data.get('variables', {})
 
         # Получаем шаблон
-        template = get_object_or_404(PromptTemplate, id=template_id, is_active=True)
+        from asgiref.sync import sync_to_async
+        template = await sync_to_async(get_object_or_404)(PromptTemplate, id=template_id, is_active=True)
 
         # Подставляем переменные в шаблон
         try:
@@ -128,15 +130,15 @@ def send_llm_request(request):
         # Создаем сервис и отправляем запрос
         ai_service = AIAgentService(provider=provider)
 
-        # Используем async_to_sync для вызова async метода
-        response, usage_info = async_to_sync(ai_service.call_llm)(
+        # ИСПРАВЛЕНО (2026-03-07): Прямой async вызов без async_to_sync
+        response, usage_info = await ai_service.call_llm(
             prompt=prompt_text,
             provider=provider,
             model=model
         )
 
-        # Сохраняем результат
-        result = LLMTestResult.objects.create(
+        # Сохраняем результат (ORM операция в sync_to_async)
+        result = await sync_to_async(LLMTestResult.objects.create)(
             provider=provider,
             model=model,
             prompt_text=prompt_text,
