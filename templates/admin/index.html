@@ -97,29 +97,71 @@
     </div>
     {% endif %}
 
-    <!-- ИСПРАВЛЕНО (2026-03-05): Быстрые ссылки на чат и трассировку -->
+    <!-- ИСПРАВЛЕНО (2026-03-05): Быстрые ссылки на чаты и трассировку -->
+    <!-- ИСПРАВЛЕНО (2026-03-07): Добавлена ссылка на LLM Tester -->
+    <!-- ИСПРАВЛЕНО (2026-03-07): Добавлена ссылка на Базу промптов -->
     <div class="card card-secondary card-outline mb-3">
         <div class="card-header">
             <h3 class="card-title">Быстрые ссылки</h3>
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <a href="/regulatory-chat/" target="_blank" class="btn btn-warning btn-lg w-100">
+            <!-- Ряд 1: 4 кнопки -->
+            <div class="row mb-3">
+                <!-- Кнопка 1: Создать заявку (/chat/) -->
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <a href="/chat/" target="_blank" class="btn btn-warning btn-lg w-100">
                         <i class="fas fa-plus-circle"></i>
-                        Оставить заявку
+                        Создать заявку
                     </a>
                     <small class="text-muted d-block mt-2 text-center">
-                        Создать заявку через AI-чат (генерирует _tras_diag_*.md)
+                        WebChat с трассировкой (_tras_diag_*.md)
                     </small>
                 </div>
-                <div class="col-md-6">
+
+                <!-- Кнопка 2: Открыть чат с консультантом (/regulatory-chat/) -->
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <a href="/regulatory-chat/" target="_blank" class="btn btn-info btn-lg w-100">
+                        <i class="fas fa-comments"></i>
+                        Открыть чат с консультантом
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        AI-чат для консультаций
+                    </small>
+                </div>
+
+                <!-- Кнопка 3: Трассировка диалогов -->
+                <div class="col-md-3 col-sm-6 mb-3">
                     <a href="/admin-uk/dialog-trace/" target="_blank" class="btn btn-success btn-lg w-100">
                         <i class="fas fa-history"></i>
                         Трассировка диалогов
                     </a>
                     <small class="text-muted d-block mt-2 text-center">
                         История диалогов и производительность
+                    </small>
+                </div>
+
+                <!-- Кнопка 4: Тестирование запросов (LLM Tester) -->
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <a href="/llm-tester/" target="_blank" class="btn btn-primary btn-lg w-100">
+                        <i class="fas fa-vial"></i>
+                        Тестирование запросов
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        Тестирование AI промптов и моделей
+                    </small>
+                </div>
+            </div>
+
+            <!-- Ряд 2: 1 кнопка по центру -->
+            <div class="row">
+                <div class="col-md-6 offset-md-3">
+                    <!-- Кнопка 5: База промптов -->
+                    <a href="/llm-tester/" target="_blank" class="btn btn-secondary btn-lg w-100">
+                        <i class="fas fa-database"></i>
+                        База промптов
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        Просмотр и редактирование всех промптов
                     </small>
                 </div>
             </div>
