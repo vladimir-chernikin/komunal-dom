@@ -17,8 +17,8 @@ urlpatterns = [
     # База промптов (все версии)
     path('prompts/', views.prompt_list, name='prompt_list'),
 
-    # Тестирование промпта
-    path('test/<int:template_id>/', views.test_prompt, name='test_prompt'),
+    # Тестирование промпта (по slug)
+    path('test/<slug:template_slug>/', views.test_prompt, name='test_prompt'),
 
     # Отправка запроса в LLM
     path('api/send-request/', views.send_llm_request, name='send_request'),

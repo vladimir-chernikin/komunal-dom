@@ -3,6 +3,10 @@
 {% block content_inner %}
 {% csrf_token %}
 <script>
+// ИСПРАВЛЕНО (2026-03-07): Текущий slug промпта для AJAX запросов
+const currentTemplateSlug = '{{ template.slug }}';
+const currentTemplateId = {{ template.id }};
+
 // Функция для получения CSRF токена из cookie
 function getCSRFToken() {
     const cookies = document.cookie.split(';');
@@ -226,9 +230,9 @@ document.getElementById('save-template-btn')?.addEventListener('click', function
             statusDiv.innerHTML = `<span style="color: green;">✓ ${data.message}. Перенаправление на новую версию...</span>`;
             statusDiv.style.display = 'block';
             setTimeout(() => {
-                // ИСПРАВЛЕНО (2026-03-07): Перенаправляем на НОВУЮ версию, а не перезагружаем страницу
-                if (data.new_template_id) {
-                    window.location.href = `/llm-tester/test/${data.new_template_id}/`;
+                // ИСПРАВЛЕНО (2026-03-07): Перенаправляем на slug вместо ID
+                if (data.new_template_slug) {
+                    window.location.href = `/llm-tester/test/${data.new_template_slug}/`;
                 } else {
                     location.reload();
                 }

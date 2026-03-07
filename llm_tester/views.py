@@ -56,11 +56,12 @@ def prompt_list(request):
 
 
 @login_required
-def test_prompt(request, template_id):
+def test_prompt(request, template_slug):
     """
     Страница тестирования конкретного промпта
+    ИСПРАВЛЕНО (2026-03-07): Используем slug вместо ID для более читабельных URL
     """
-    template = get_object_or_404(PromptTemplate, id=template_id, is_active=True)
+    template = get_object_or_404(PromptTemplate, slug=template_slug, is_active=True)
 
     # Получаем все версии этого промпта
     all_versions = PromptTemplate.objects.filter(
@@ -229,7 +230,7 @@ def update_template(request):
             'status': 'success',
             'message': f'Создана версия {new_version_number}',
             'version_number': new_version_number,
-            'new_template_id': new_version.id
+            'new_template_slug': new_version.slug  # ИСПРАВЛЕНО (2026-03-07): Возвращаем slug вместо ID
         })
 
     except Exception as e:

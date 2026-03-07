@@ -11,7 +11,7 @@
             {% for template in templates %}
             <div class="template-card">
                 <h4>
-                    <a href="{% url 'llm_tester:test_prompt' template.id %}" style="text-decoration: none; color: #333;">
+                    <a href="{% url 'llm_tester:test_prompt' template.slug %}" style="text-decoration: none; color: #333;">
                         {{ template.name }}
                     </a>
                 </h4>
@@ -21,7 +21,7 @@
                     </span>
                 </p>
                 <p style="margin: 10px 0;">{{ template.description|truncatewords:20 }}</p>
-                <a href="{% url 'llm_tester:test_prompt' template.id %}" class="btn btn-primary">
+                <a href="{% url 'llm_tester:test_prompt' template.slug %}" class="btn btn-primary">
                     Тестировать
                 </a>
             </div>
