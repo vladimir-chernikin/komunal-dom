@@ -1,6 +1,22 @@
 {% extends "llm_tester/base.html" %}
 
 {% block content_inner %}
+{% csrf_token %}
+<script>
+// Функция для получения CSRF токена из cookie
+function getCSRFToken() {
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'csrftoken') {
+            return decodeURIComponent(value);
+        }
+    }
+    // Пробуем получить из скрытого поля
+    const input = document.querySelector('[name=csrfmiddlewaretoken]');
+    return input ? input.value : '';
+}
+</script>
 <div class="llm-tester-container">
     <h1 style="margin-bottom: 20px;">
         <a href="{% url 'llm_tester:dashboard' %}" style="text-decoration: none; color: #417690;">&larr; LLM Tester</a>
@@ -18,7 +34,15 @@
     <!-- Шаблон промпта -->
     <div class="llm-tester-card">
         <h3>1. Текст промпта (с переменными)</h3>
-        <textarea id="prompt-template" class="form-control" rows="10" readonly>{{ template.template }}</textarea>
+        <textarea id="prompt-template" class="form-control" rows="15">{{ template.template }}</textarea>
+        <div style="margin-top: 10px;">
+            <button id="save-template-btn" class="btn btn-success" style="margin-right: 10px;">
+                Сохранить изменения в БД
+            </button>
+            <button id="reset-template-btn" class="btn btn-secondary">
+                Сбросить изменения
+            </button>
+        </div>
         <p style="margin-top: 10px; color: #666; font-size: 13px;">
             <strong>Переменные в шаблоне:</strong>
             {% if variables %}
@@ -27,6 +51,48 @@
                 Нет переменных
             {% endif %}
         </p>
+        <div id="save-status" style="margin-top: 10px; display: none;"></div>
+
+        <!-- Версии промпта -->
+        {% if all_versions.count > 1 %}
+        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
+            <h4 style="margin-top: 0; font-size: 14px; color: #666;">История версий:</h4>
+            <table class="table table-sm table-bordered" style="font-size: 12px;">
+                <thead>
+                    <tr style="background: #f8f9fa;">
+                        <th style="width: 60px;">Версия</th>
+                        <th style="width: 100px;">Статус</th>
+                        <th style="width: 140px;">Создана</th>
+                        <th>Действие</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ver in all_versions %}
+                    <tr {% if not ver.is_active %}style="background: #f5f5f5;"{% endif %}>
+                        <td>v{{ ver.version_number }}</td>
+                        <td>
+                            {% if ver.is_active %}
+                                <span class="badge badge-success" style="background-color: #28a745;">Активна</span>
+                            {% else %}
+                                <span class="badge badge-secondary" style="background-color: #6c757d;">Архив</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ ver.created_at|date:"d.m.Y H:i" }}</td>
+                        <td>
+                            {% if ver.id != template.id %}
+                                <a href="#" class="load-version-link" data-version-id="{{ ver.id }}" style="font-size: 11px;">
+                                    Загрузить в редактор
+                                </a>
+                            {% else %}
+                                <span style="color: #999; font-size: 11px;">Текущая</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Переменные -->
@@ -128,6 +194,114 @@
 
 <script>
 const templateId = {{ template.id }};
+// Убрана опасная подстановка template (может сломать JavaScript)
+const originalTemplateJs = `{{ template.template|escapejs }}`;
+
+// Сохранение шаблона в БД
+document.getElementById('save-template-btn')?.addEventListener('click', function() {
+    const newTemplate = document.getElementById('prompt-template').value;
+
+    if (!confirm('Вы уверены, что хотите сохранить изменения в БД?\n\nЭто создаст НОВУЮ ВЕРСЮЮ промпта!\nТекущая версия перейдёт в архив.')) {
+        return;
+    }
+
+    this.disabled = true;
+    this.textContent = 'Сохранение...';
+
+    fetch("{% url 'llm_tester:update_template' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+        },
+        body: JSON.stringify({
+            template_id: templateId,
+            template: newTemplate
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const statusDiv = document.getElementById('save-status');
+        if (data.status === 'success') {
+            statusDiv.innerHTML = `<span style="color: green;">✓ ${data.message}. Перенаправление на новую версию...</span>`;
+            statusDiv.style.display = 'block';
+            setTimeout(() => {
+                // ИСПРАВЛЕНО (2026-03-07): Перенаправляем на НОВУЮ версию, а не перезагружаем страницу
+                if (data.new_template_id) {
+                    window.location.href = `/llm-tester/test/${data.new_template_id}/`;
+                } else {
+                    location.reload();
+                }
+            }, 1500);
+        } else {
+            statusDiv.innerHTML = '<span style="color: red;">✗ Ошибка: ' + data.error + '</span>';
+            statusDiv.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        const statusDiv = document.getElementById('save-status');
+        statusDiv.innerHTML = '<span style="color: red;">✗ Ошибка: ' + error + '</span>';
+        statusDiv.style.display = 'block';
+    })
+    .finally(() => {
+        document.getElementById('save-template-btn').disabled = false;
+        document.getElementById('save-template-btn').textContent = 'Сохранить изменения в БД';
+    });
+});
+
+// Сброс изменений
+document.getElementById('reset-template-btn')?.addEventListener('click', function() {
+    if (confirm('Сбросить все изменения и вернуться к версии из БД?')) {
+        document.getElementById('prompt-template').value = originalTemplateJs;
+        const statusDiv = document.getElementById('save-status');
+        statusDiv.innerHTML = '<span style="color: #666;">↺ Изменения сброшены</span>';
+        statusDiv.style.display = 'block';
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 2000);
+    }
+});
+
+// Загрузка старой версии в редактор
+document.querySelectorAll('.load-version-link').forEach(link => {
+    link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const versionId = this.getAttribute('data-version-id');
+
+        if (!confirm('Загрузить эту версию в редактор?\n\nТекущие несохраненные изменения будут потеряны!')) {
+            return;
+        }
+
+        this.textContent = 'Загрузка...';
+
+        fetch(`{% url 'llm_tester:load_template_version' 0 %}`.replace('0', versionId), {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': getCSRFToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                document.getElementById('prompt-template').value = data.template;
+                const statusDiv = document.getElementById('save-status');
+                statusDiv.innerHTML = `<span style="color: #666;">↺ Загружена версия v${data.version_number} от ${data.created_at}</span>`;
+                statusDiv.style.display = 'block';
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+            } else {
+                alert('Ошибка загрузки: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Ошибка: ' + error);
+        })
+        .finally(() => {
+            this.textContent = 'Загрузить в редактор';
+        });
+    });
+});
 
 // Обновление списка моделей при смене провайдера
 document.getElementById('provider-select').addEventListener('change', function() {
@@ -166,7 +340,7 @@ document.getElementById('preset-select')?.addEventListener('change', function() 
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            'X-CSRFToken': getCSRFToken()
         },
         body: JSON.stringify({preset_id: presetId})
     })
@@ -214,7 +388,7 @@ document.getElementById('confirm-save-preset-btn').addEventListener('click', fun
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            'X-CSRFToken': getCSRFToken()
         },
         body: JSON.stringify({
             template_id: templateId,
@@ -236,7 +410,13 @@ document.getElementById('confirm-save-preset-btn').addEventListener('click', fun
 });
 
 // Отправка запроса в LLM
-document.getElementById('send-request-btn').addEventListener('click', function() {
+const sendBtn = document.getElementById('send-request-btn');
+if (!sendBtn) {
+    console.error('❌ Кнопка send-request-btn не найдена!');
+} else {
+    console.log('✓ Кнопка send-request-btn найдена');
+}
+sendBtn?.addEventListener('click', function() {
     const provider = document.getElementById('provider-select').value;
     const model = document.getElementById('model-select').value;
 
@@ -247,6 +427,9 @@ document.getElementById('send-request-btn').addEventListener('click', function()
         variables[varName] = input.value;
     });
 
+    // Запоминаем время начала
+    const startTime = Date.now();
+
     // Показываем загрузку
     document.getElementById('send-btn-text').textContent = 'Отправка запроса...';
     document.getElementById('send-btn-loading').style.display = 'inline-block';
@@ -256,7 +439,7 @@ document.getElementById('send-request-btn').addEventListener('click', function()
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            'X-CSRFToken': getCSRFToken()
         },
         body: JSON.stringify({
             template_id: templateId,
@@ -267,6 +450,10 @@ document.getElementById('send-request-btn').addEventListener('click', function()
     })
     .then(response => response.json())
     .then(data => {
+        // Вычисляем время выполнения
+        const endTime = Date.now();
+        const duration = ((endTime - startTime) / 1000).toFixed(2);
+
         // Скрываем загрузку
         document.getElementById('send-btn-text').textContent = '4. Отправить запрос в LLM';
         document.getElementById('send-btn-loading').style.display = 'none';
@@ -285,6 +472,7 @@ document.getElementById('send-request-btn').addEventListener('click', function()
                 <p><strong>Токенов (выход):</strong> ${usageInfo.completion_tokens || 0}</p>
                 <p><strong>Всего токенов:</strong> ${usageInfo.total_tokens || 0}</p>
                 <p><strong>Стоимость:</strong> ${usageInfo.cost_rub || 0} руб.</p>
+                <p><strong>Время выполнения:</strong> ${duration} сек.</p>
             `;
             document.getElementById('usage-details').innerHTML = usageHtml;
             document.getElementById('usage-info').style.display = 'block';

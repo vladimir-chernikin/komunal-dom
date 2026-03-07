@@ -14,6 +14,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from asgiref.sync import async_to_sync
 from django.core.paginator import Paginator
+from django.db import models
 
 from .models import PromptTemplate, PromptPreset, LLMTestResult
 
@@ -40,11 +41,31 @@ def llm_tester_dashboard(request):
 
 
 @login_required
+def prompt_list(request):
+    """
+    Список всех промптов (включая неактивные и старые версии)
+    """
+    # Получаем ВСЕ шаблоны (включая неактивные)
+    all_templates = PromptTemplate.objects.all().order_by('slug', '-version_number', '-is_active')
+
+    context = {
+        'all_templates': all_templates,
+        'title': 'LLM Tester - База промптов',
+    }
+    return render(request, 'llm_tester/prompt_list.html', context)
+
+
+@login_required
 def test_prompt(request, template_id):
     """
     Страница тестирования конкретного промпта
     """
     template = get_object_or_404(PromptTemplate, id=template_id, is_active=True)
+
+    # Получаем все версии этого промпта
+    all_versions = PromptTemplate.objects.filter(
+        slug=template.slug
+    ).order_by('-version_number')
 
     # Получаем пресеты для этого шаблона
     presets = template.presets.filter(is_active=True)
@@ -54,6 +75,7 @@ def test_prompt(request, template_id):
 
     context = {
         'template': template,
+        'all_versions': all_versions,
         'presets': presets,
         'variables': variables,
         'title': f'Тестирование: {template.name}',
@@ -139,6 +161,105 @@ def send_llm_request(request):
 
     except Exception as e:
         logger.error(f"LLM Tester ошибка: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@require_http_methods(["POST"])
+@login_required
+def update_template(request):
+    """
+    Создание новой версии шаблона промпта в БД
+    (старая версия деактивируется, новая активируется)
+    """
+    try:
+        data = json.loads(request.body)
+        template_id = data.get('template_id')
+        new_template = data.get('template')
+
+        if not template_id or not new_template:
+            return JsonResponse({
+                'status': 'error',
+                'error': 'template_id и template обязательны'
+            }, status=400)
+
+        old_template = get_object_or_404(PromptTemplate, id=template_id, is_active=True)
+
+        # Проверяем, изменился ли текст
+        if old_template.template == new_template:
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Шаблон не изменился',
+                'version_number': old_template.version_number
+            })
+
+        # Деактивируем старую версию
+        old_template.is_active = False
+        old_template.save()
+
+        # Определяем номер новой версии
+        # Ищем все версии этого промпта (по slug)
+        all_versions = PromptTemplate.objects.filter(slug=old_template.slug)
+        max_version = all_versions.aggregate(models.Max('version_number'))['version_number__max'] or 0
+        new_version_number = max_version + 1
+
+        # Создаём новую версию
+        new_version = PromptTemplate.objects.create(
+            name=old_template.name,
+            slug=old_template.slug,
+            prompt_type=old_template.prompt_type,
+            microservice=old_template.microservice,
+            template=new_template,
+            description=old_template.description,
+            parent_version=old_template,
+            version_number=new_version_number,
+            is_active=True
+        )
+
+        logger.info(
+            f"LLM Tester: создана новая версия {new_version_number} шаблона '{old_template.name}' "
+            f"(старая версия: {old_template.version_number}, ID: {old_template.id} -> {new_version.id}) "
+            f"пользователем {request.user.username}. "
+            f"Длина: {len(old_template.template)} -> {len(new_template)} символов"
+        )
+
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Создана версия {new_version_number}',
+            'version_number': new_version_number,
+            'new_template_id': new_version.id
+        })
+
+    except Exception as e:
+        logger.error(f"LLM Tester ошибка создания версии шаблона: {e}")
+        return JsonResponse({
+            'status': 'error',
+            'error': str(e)
+        }, status=500)
+
+
+@require_http_methods(["GET"])
+@login_required
+def load_template_version(request, template_id):
+    """
+    Загрузка конкретной версии шаблона для редактирования
+    """
+    try:
+        template = get_object_or_404(PromptTemplate, id=template_id)
+
+        # Возвращаем данные версии
+        return JsonResponse({
+            'status': 'success',
+            'template': template.template,
+            'version_number': template.version_number,
+            'is_active': template.is_active,
+            'created_at': template.created_at.strftime('%d.%m.%Y %H:%M:%S')
+        })
+
+    except Exception as e:
+        logger.error(f"LLM Tester ошибка загрузки версии: {e}")
         return JsonResponse({
             'status': 'error',
             'error': str(e)
