@@ -28,9 +28,10 @@ class PromptTemplate(models.Model):
     )
     slug = models.SlugField(
         max_length=100,
-        unique=True,
+        # ИСПРАВЛЕНО (2026-03-07): unique=True убрано для версионирования
+        # Уникальность обеспечивается через slug + is_active=True
         verbose_name='Slug',
-        help_text='Уникальный идентификатор для URL'
+        help_text='Идентификатор промпта (может быть несколько версий с одинаковым slug)'
     )
     prompt_type = models.CharField(
         max_length=50,
@@ -54,6 +55,20 @@ class PromptTemplate(models.Model):
         blank=True,
         verbose_name='Описание',
         help_text='Для чего используется этот шаблон'
+    )
+    parent_version = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='versions',
+        verbose_name='Предыдущая версия',
+        help_text='Предыдущая версия этого промпта (для версионирования)'
+    )
+    version_number = models.IntegerField(
+        default=1,
+        verbose_name='Номер версии',
+        help_text='Порядковый номер версии (1, 2, 3, ...)'
     )
     is_active = models.BooleanField(
         default=True,
