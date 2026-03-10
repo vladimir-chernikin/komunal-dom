@@ -27,8 +27,8 @@ class AdminAccessMiddleware:
                             else:
                                 return redirect('portal:welcome')
                 except UserProfile.DoesNotExist:
-                    # Если профиля нет, создаем и перенаправляем
-                    UserProfile.objects.create(user=request.user, role='resident')
+                    # Если профиля нет, создаем с timezone по умолчанию
+                    UserProfile.objects.create(user=request.user, role='resident', timezone='Europe/Moscow')
                     return redirect('portal:welcome')
 
         response = self.get_response(request)

@@ -44,13 +44,52 @@ class UserProfile(models.Model):
         ('uk_user', 'Пользователь УК'),
         ('dba', 'DBA - менеджер данных'),
         ('django_admin', 'Администратор Django (ИТ)'),
+        ('executor', 'Исполнитель'),
+        ('resident', 'Житель'),
+    ]
+
+    TIMEZONE_CHOICES = [
+        ('Europe/Moscow', 'Москва (UTC+3)'),
+        ('Europe/Kaliningrad', 'Калининград (UTC+2)'),
+        ('Europe/Samara', 'Самара (UTC+4)'),
+        ('Asia/Yekaterinburg', 'Екатеринбург (UTC+5)'),
+        ('Asia/Omsk', 'Омск (UTC+6)'),
+        ('Asia/Krasnoyarsk', 'Красноярск (UTC+7)'),
+        ('Asia/Irkutsk', 'Иркутск (UTC+8)'),
+        ('Asia/Yakutsk', 'Якутск (UTC+9)'),
+        ('Asia/Vladivostok', 'Владивосток (UTC+10)'),
+        ('Asia/Magadan', 'Магадан (UTC+11)'),
+        ('Asia/Kamchatka', 'Камчатка (UTC+12)'),
     ]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name="Пользователь")
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='uk_user', verbose_name="Роль")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='resident', verbose_name="Роль")
+    timezone = models.CharField(max_length=50, choices=TIMEZONE_CHOICES, default='Europe/Moscow', verbose_name="Часовой пояс")
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Телефон")
     address = models.TextField(blank=True, null=True, verbose_name="Адрес")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+
+    # Дополнительные поля для сотрудников
+    specialization = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        choices=[(None, 'Не указана'), ('plumber', 'Сантехник'), ('electrician', 'Электрик'), ('general_worker', 'Разнорабочий')],
+        verbose_name='Специализация исполнителя'
+    )
+    job_title = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        choices=[(None, 'Не указана'), ('manager', 'Менеджер УК'), ('dispatcher', 'Диспетчер'), ('chief_engineer', 'Главный инженер')],
+        verbose_name='Должность'
+    )
+    responsibilities = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Описание обязанностей сотрудника',
+        verbose_name='Обязанности'
+    )
 
     class Meta:
         verbose_name = "Профиль пользователя"
