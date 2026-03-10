@@ -51,9 +51,11 @@ class AIAgentService:
     }
 
     # Цены GigaChat (руб за 1000 токенов)
+    # GigaChat-2: синхронный режим
+    # ИСПРАВЛЕНО (2026-03-10): GigaChat-2 Lite не существует, удален
     GIGACHAT_PRICES = {
         'GigaChat': 0.50,
-        'GigaChat-2': 1.50,
+        'GigaChat-2': 1.50,  # Синхронный режим
         'GigaChat-Plus': 3.00,
         'GigaChat-2.1': 1.80
     }
@@ -63,15 +65,23 @@ class AIAgentService:
         'text-search-doc': 0.10  # Приблизительно (обычно дешевле LLM)
     }
 
-    def __init__(self, provider: str = 'gigachat', default_model: Optional[str] = None, tracer=None):
+    # Class variables for connection pooling (ОПТИМИЗАЦИЯ 2026-03-05)
+    _yandex_session = None
+    _gigachat_client = None
+
+    def __init__(self, provider: str = None, default_model: Optional[str] = None, tracer=None):
         """
         Инициализация сервиса
 
         Args:
-            provider: Провайдер по умолчанию (yandexgpt | gigachat)
+            provider: Провайдер по умолчанию (yandexgpt | gigachat), если None - из env (DEFAULT_LLM_PROVIDER)
             default_model: Модель по умолчанию (если None, используется из конфига)
             tracer: PerformanceTracer для трекинга производительности
         """
+        # ИСПРАВЛЕНО (2026-03-10): Читаем провайдера из env если не указан
+        if provider is None:
+            provider = config('DEFAULT_LLM_PROVIDER', default='gigachat')
+
         # Параметры YandexGPT
         self.yandexgpt_api_key = config('YANDEX_API_KEY', default=None)
         self.yandexgpt_folder_id = config('YANDEX_FOLDER_ID', default=None)
@@ -116,7 +126,7 @@ class AIAgentService:
             f"AIAgentService инициализирован: "
             f"provider={provider}, model={self.default_model}, "
             f"yandexgpt={self.yandexgpt_available}, gigachat={self.gigachat_available}, "
-            f"embeddings=True (Yandex)"
+            f"embeddings=True (Yandex), connection_pool=True"
         )
 
     def _get_default_model(self) -> str:
@@ -125,6 +135,69 @@ class AIAgentService:
             return self.gigachat_default_model
         else:
             return self.yandexgpt_default_model
+
+    @classmethod
+    async def _get_yandex_session(cls):
+        """
+        Получить или создать aiohttp сессию для Yandex API (ОПТИМИЗАЦИЯ 2026-03-05)
+
+        Connection Pool с Keep-Alive для переиспользования TCP соединений
+        """
+        if cls._yandex_session is None or cls._yandex_session.closed:
+            import aiohttp
+            # Создаем сессию с connection pooling
+            connector = aiohttp.TCPConnector(
+                limit=100,  # Максимальное количество соединений
+                limit_per_host=20,  # Максимальное соединений на хост
+                ttl_dns_cache=300,  # Кеширование DNS 5 минут
+                keepalive_timeout=60,  # Keep-Alive 60 секунд
+                enable_cleanup_closed=True  # Очистка закрытых соединений
+            )
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            cls._yandex_session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                raise_for_status=False
+            )
+            logger.info("AIAgentService: создана новая aiohttp сессия с connection pooling")
+        return cls._yandex_session
+
+    @classmethod
+    async def _get_gigachat_client(cls):
+        """
+        Получить или создать httpx клиент для GigaChat (ОПТИМИЗАЦИЯ 2026-03-05)
+
+        Connection Pool с Keep-Alive для переиспользования TCP соединений
+        """
+        if cls._gigachat_client is None:
+            import httpx
+            # Создаем клиент с connection pooling
+            limits = httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=20,
+                keepalive_expiry=60
+            )
+            cls._gigachat_client = httpx.AsyncClient(
+                verify=False,
+                timeout=30.0,
+                limits=limits
+            )
+            logger.info("AIAgentService: создан новый httpx клиент с connection pooling")
+        return cls._gigachat_client
+
+    @classmethod
+    async def close_connections(cls):
+        """
+        Закрыть все connection pools (ОПТИМИЗАЦИЯ 2026-03-05)
+
+        Вызывать при graceful shutdown
+        """
+        if cls._yandex_session and not cls._yandex_session.closed:
+            await cls._yandex_session.close()
+            logger.info("AIAgentService: aiohttp сессия закрыта")
+        if cls._gigachat_client:
+            await cls._gigachat_client.aclose()
+            logger.info("AIAgentService: httpx клиент закрыт")
 
     async def _load_services(self) -> List[Dict]:
         """Асинхронная загрузка списка услуг для промпта"""
@@ -294,97 +367,97 @@ class AIAgentService:
             # ИСПРАВЛЕНО (2026-03-05): Замер времени LLM вызова
             llm_start = time.perf_counter()
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url,
-                    headers=headers,
-                    json=data,
-                    timeout=aiohttp.ClientTimeout(total=30)
-                ) as response:
-                    logger.info(f"AIAgentService: YandexGPT API response: {response.status} (model: {model})")
+            # ОПТИМИЗАЦИЯ (2026-03-05): Используем connection pool вместо новой сессии
+            session = await self._get_yandex_session()
+            async with session.post(
+                url,
+                headers=headers,
+                json=data
+            ) as response:
+                logger.info(f"AIAgentService: YandexGPT API response: {response.status} (model: {model})")
 
-                    if response.status == 200:
-                        result = await response.json()
-                        logger.debug(f"AIAgentService: YandexGPT RESPONSE JSON: {result}")
+                if response.status == 200:
+                    result = await response.json()
+                    logger.debug(f"AIAgentService: YandexGPT RESPONSE JSON: {result}")
 
-                        # Извлекаем ответ
-                        alternatives = result.get('result', {}).get('alternatives', [])
-                        if not alternatives:
-                            raise Exception("Пустой ответ от YandexGPT")
+                    # Извлекаем ответ
+                    alternatives = result.get('result', {}).get('alternatives', [])
+                    if not alternatives:
+                        raise Exception("Пустой ответ от YandexGPT")
 
-                        response_text = alternatives[0]['message']['text']
+                    response_text = alternatives[0]['message']['text']
 
-                        # Извлекаем информацию о токенах
-                        usage = result.get('result', {}).get('usage', {})
-                        input_tokens = int(usage.get('inputTextTokens', 0) or 0)
-                        output_tokens = int(usage.get('completionTokens', 0) or 0)
-                        total_tokens = int(usage.get('totalTokens', input_tokens + output_tokens) or 0)
+                    # Извлекаем информацию о токенах
+                    usage = result.get('result', {}).get('usage', {})
+                    input_tokens = int(usage.get('inputTextTokens', 0) or 0)
+                    output_tokens = int(usage.get('completionTokens', 0) or 0)
+                    total_tokens = int(usage.get('totalTokens', input_tokens + output_tokens) or 0)
 
-                        # Рассчитываем стоимость
-                        input_cost = (input_tokens / 1000) * price_input
-                        output_cost = (output_tokens / 1000) * price_output
-                        total_cost = input_cost + output_cost
+                    # Рассчитываем стоимость
+                    input_cost = (input_tokens / 1000) * price_input
+                    output_cost = (output_tokens / 1000) * price_output
+                    total_cost = input_cost + output_cost
 
-                        # ИСПРАВЛЕНО (2026-03-05): Вычисляем время выполнения
-                        duration_ms = (time.perf_counter() - llm_start) * 1000
+                    # ИСПРАВЛЕНО (2026-03-05): Вычисляем время выполнения
+                    duration_ms = (time.perf_counter() - llm_start) * 1000
 
-                        # ИСПРАВЛЕНО (2026-03-05): Регистрируем LLM вызов в PerformanceTracer
-                        if self.tracer:
-                            self.tracer.track_llm_call(
-                                provider='yandexgpt',
-                                model=model,
-                                prompt_tokens=input_tokens,
-                                completion_tokens=output_tokens,
-                                cost_rub=total_cost,
-                                service_name=service_name or 'AIAgentService',
-                                duration_ms=duration_ms,
-                                prompt_length=len(prompt),
-                                response_length=len(response_text),
-                                prompt=prompt[:500],  # ИСПРАВЛЕНО (2026-03-05): Сохраняем первые 500 символов
-                                response=response_text[:500]  # ИСПРАВЛЕНО (2026-03-05): Сохраняем первые 500 символов
-                            )
-
-                        # Формируем usage_info
-                        usage_info = {
-                            'provider': 'yandexgpt',
-                            'model': model,
-                            'prompt_tokens': input_tokens,
-                            'completion_tokens': output_tokens,
-                            'total_tokens': total_tokens,
-                            'cost_rub': round(total_cost, 4),
-                            'input_cost': round(input_cost, 4),
-                            'output_cost': round(output_cost, 4)
-                        }
-
-                        # Логирование ответа
-                        logger.debug(f"AIAgentService: YandexGPT RESPONSE:\n{response_text}")
-                        logger.info(
-                            f"AIAgentService: YandexGPT завершен. "
-                            f"Токенов: {total_tokens} (in: {input_tokens}, out: {output_tokens}), "
-                            f"стоимость: {total_cost:.4f} руб."
-                        )
-
-                        # Обновляем статистику
-                        self._update_statistics('yandexgpt', total_tokens, total_cost)
-
-                        # Сохраняем в БД
-                        # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для связи с dialog_logs
-                        # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания микросервиса
-                        await self._save_statistics_to_db(
+                    # ИСПРАВЛЕНО (2026-03-05): Регистрируем LLM вызов в PerformanceTracer
+                    if self.tracer:
+                        self.tracer.track_llm_call(
                             provider='yandexgpt',
                             model=model,
-                            prompt=prompt,
-                            response=response_text,
-                            usage_info=usage_info,
-                            session_id=session_id,
-                            message_id=message_id,
-                            service_name=service_name
+                            prompt_tokens=input_tokens,
+                            completion_tokens=output_tokens,
+                            cost_rub=total_cost,
+                            service_name=service_name or 'AIAgentService',
+                            duration_ms=duration_ms,
+                            prompt_length=len(prompt),
+                            response_length=len(response_text),
+                            prompt=prompt[:500],  # ИСПРАВЛЕНО (2026-03-05): Сохраняем первые 500 символов
+                            response=response_text[:500]  # ИСПРАВЛЕНО (2026-03-05): Сохраняем первые 500 символов
                         )
 
-                        return response_text, usage_info
-                    else:
-                        error_text = await response.text()
-                        raise Exception(f"YandexGPT API error {response.status}: {error_text}")
+                    # Формируем usage_info
+                    usage_info = {
+                        'provider': 'yandexgpt',
+                        'model': model,
+                        'prompt_tokens': input_tokens,
+                        'completion_tokens': output_tokens,
+                        'total_tokens': total_tokens,
+                        'cost_rub': round(total_cost, 4),
+                        'input_cost': round(input_cost, 4),
+                        'output_cost': round(output_cost, 4)
+                    }
+
+                    # Логирование ответа
+                    logger.debug(f"AIAgentService: YandexGPT RESPONSE:\n{response_text}")
+                    logger.info(
+                        f"AIAgentService: YandexGPT завершен. "
+                        f"Токенов: {total_tokens} (in: {input_tokens}, out: {output_tokens}), "
+                        f"стоимость: {total_cost:.4f} руб."
+                    )
+
+                    # Обновляем статистику
+                    self._update_statistics('yandexgpt', total_tokens, total_cost)
+
+                    # Сохраняем в БД
+                    # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id для связи с dialog_logs
+                    # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания микросервиса
+                    await self._save_statistics_to_db(
+                        provider='yandexgpt',
+                        model=model,
+                        prompt=prompt,
+                        response=response_text,
+                        usage_info=usage_info,
+                        session_id=session_id,
+                        message_id=message_id,
+                        service_name=service_name
+                    )
+
+                    return response_text, usage_info
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"YandexGPT API error {response.status}: {error_text}")
 
         except Exception as e:
             logger.error(f"Ошибка при вызове YandexGPT: {e}")
@@ -446,6 +519,9 @@ class AIAgentService:
             # Логирование промпта
             logger.debug(f"AIAgentService: GigaChat PROMPT:\n{prompt}")
 
+            # ИСПРАВЛЕНО (2026-03-10): Замер времени LLM вызова
+            llm_start = time.perf_counter()
+
             async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
                 response = await client.post(url, headers=headers, json=payload)
                 logger.info(f"AIAgentService: GigaChat API response: {response.status_code} (model: {model})")
@@ -466,6 +542,25 @@ class AIAgentService:
                     # Рассчитываем стоимость
                     cost_per_1k = self.GIGACHAT_PRICES[model]
                     total_cost = (total_tokens / 1000) * cost_per_1k
+
+                    # ИСПРАВЛЕНО (2026-03-10): Вычисляем время выполнения
+                    duration_ms = (time.perf_counter() - llm_start) * 1000
+
+                    # ИСПРАВЛЕНО (2026-03-10): Регистрируем LLM вызов в PerformanceTracer
+                    if self.tracer:
+                        self.tracer.track_llm_call(
+                            provider='gigachat',
+                            model=model,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            cost_rub=total_cost,
+                            service_name=service_name or 'AIAgentService',
+                            duration_ms=duration_ms,
+                            prompt_length=len(prompt),
+                            response_length=len(response_text),
+                            prompt=prompt[:500],  # ИСПРАВЛЕНО (2026-03-10): Сохраняем первые 500 символов
+                            response=response_text[:500]  # ИСПРАВЛЕНО (2026-03-10): Сохраняем первые 500 символов
+                        )
 
                     # Формируем usage_info
                     usage_info = {

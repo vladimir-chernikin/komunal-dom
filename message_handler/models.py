@@ -317,3 +317,142 @@ class CommunicativeScript(models.Model):
 
     def __str__(self):
         return f"{self.script_name} ({self.get_script_type_display()})"
+
+
+class APIErrorLog(models.Model):
+    """
+    Лог ошибочных запросов к внешнему API
+
+    ИСПОЛЬЗОВАНИЕ (2026-03-05):
+    - Логирование всех ошибок в send_message_external
+    - Поиск по дате, IP, session_id, client_system
+    - Анализ проблем с интеграциями
+    """
+
+    # Типы ошибок
+    ERROR_TYPE_CHOICES = [
+        ('auth', 'Ошибка аутентификации'),
+        ('validation', 'Ошибка валидации'),
+        ('processing', 'Ошибка обработки'),
+        ('timeout', 'Таймаут'),
+        ('internal', 'Внутренняя ошибка'),
+    ]
+
+    # Тип ошибки
+    error_type = models.CharField(
+        max_length=50,
+        choices=ERROR_TYPE_CHOICES,
+        db_index=True,
+        verbose_name='Тип ошибки'
+    )
+
+    # HTTP статус код
+    status_code = models.IntegerField(
+        db_index=True,
+        verbose_name='HTTP статус'
+    )
+
+    # Краткое описание ошибки
+    error_message = models.CharField(
+        max_length=500,
+        db_index=True,
+        verbose_name='Ошибка'
+    )
+
+    # Детали ошибки (traceback)
+    error_details = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name='Детали ошибки'
+    )
+
+    # Идентификаторы запроса
+    session_id = models.CharField(
+        max_length=255,
+        db_index=True,
+        null=True,
+        blank=True,
+        verbose_name='Session ID'
+    )
+
+    request_id = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name='Request ID'
+    )
+
+    # Клиентская информация
+    client_ip = models.GenericIPAddressField(
+        db_index=True,
+        null=True,
+        blank=True,
+        verbose_name='IP клиента'
+    )
+
+    client_system = models.CharField(
+        max_length=100,
+        db_index=True,
+        null=True,
+        blank=True,
+        verbose_name='Клиентская система'
+    )
+
+    token_preview = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name='Токен (первые символы)'
+    )
+
+    # Данные запроса
+    request_data = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name='Данные запроса',
+        help_text='JSON тело запроса'
+    )
+
+    message_preview = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name='Сообщение (первые символы)'
+    )
+
+    # Дополнительная информация
+    user_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name='User ID'
+    )
+
+    nomer = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name='NOMER (абонент)'
+    )
+
+    # Время
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        verbose_name='Время ошибки'
+    )
+
+    class Meta:
+        verbose_name = 'Лог ошибок API'
+        verbose_name_plural = 'Логи ошибок API'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['timestamp', 'status_code']),
+            models.Index(fields=['client_ip', 'timestamp']),
+            models.Index(fields=['session_id', 'timestamp']),
+            models.Index(fields=['client_system', 'timestamp']),
+            models.Index(fields=['error_type', 'timestamp']),
+            models.Index(fields=['nomer']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_error_type_display()} | {self.client_ip} | {self.timestamp.strftime('%Y-%m-%d %H:%M')}"

@@ -2300,8 +2300,8 @@ class MainAgent:
             # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
-                provider='yandexgpt',
-                model='lite',
+                provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
+                model=None,  # Используем модель по умолчанию из .env
                 service_name='MainAgent'
             )
 
@@ -3123,8 +3123,8 @@ JSON:"""
             # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
-                provider='yandexgpt',
-                model='lite',
+                provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
+                model=None,  # Используем модель по умолчанию из .env
                 service_name='MainAgent'
             )
 
@@ -3977,8 +3977,8 @@ JSON:"""
             final_context = f"После {dialog_turn} сообщений не удалось определить проблему. Пользователь: {context.get('original_message', '')[:200]}"
             ai_result = await self.ai_agent.call_llm(
                 prompt=f"Сгенерируй вежливый ответ для пользователя: {final_context}\n\nОтвет должен быть кратким, без эмодзи.",
-                provider='yandexgpt',
-                model='lite',
+                provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
+                model=None,  # Используем модель по умолчанию из .env
                 service_name='MainAgent'
             )
             final_message = ai_result[0].strip() if ai_result else "Пожалуйста, опишите проблему другими словами или свяжитесь с оператором."
@@ -4064,8 +4064,8 @@ JSON:"""
                 # ИСПРАВЛЕНО (2025-12-28): ГИБРИДНАЯ МОДЕЛЬ
                 # - Для вопросов к пользователю: Pro (качество критично!)
                 # - Для остальных задач: используется default (обычно Lite)
-                # ИСПРАВЛЕНО (2026-02-19): Всегда используем lite для экономии
-                model = 'lite'
+                # ИСПРАВЛЕНО (2026-03-09): Переведено на GigaChat, модель из env
+                model = None  # Используем модель по умолчанию из .env (GIGACHAT_MODEL)
 
                 # ИСПРАВЛЕНО (2025-12-28): Используем универсальный метод call_llm
                 # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
@@ -4073,8 +4073,8 @@ JSON:"""
                 # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания микросервиса
                 response, usage = await self.ai_agent.call_llm(
                     prompt=prompt,
-                    provider='yandexgpt',  # Можно менять на 'gigachat'
-                    model=model,
+                    provider=None,  # ИСПРАВЛЕНО (2026-03-10): Используем провайдер из env
+                    model=model,  # model=None, берется из env (YANDEXGPT_MODEL или GIGACHAT_MODEL)
                     session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
                     message_id=self.current_message_id,  # ИСПРАВЛЕНО (2026-01-10)
                     service_name='MainAgent'  # ИСПРАВЛЕНО (2026-02-24)
@@ -4178,11 +4178,15 @@ JSON:"""
 
         # Формируем JSON кандидатов для промта
         # ИСПРАВЛЕНО (2026-02-16): Проверяем candidates на None
+        # ИСПРАВЛЕНО (2026-03-10): Добавлена проверка типа для предотвращения AttributeError
         candidates_json = ""
         import json
         candidates_list = []
-        if candidates:  # Проверка на None и пустой список
+        if candidates and isinstance(candidates, list):  # Проверка на None и тип
             for c in candidates[:15]:  # До 15 кандидатов
+                if not isinstance(c, dict):  # ИСПРАВЛЕНО (2026-03-10): Проверка типа элемента
+                    logger.warning(f"[WARNING] candidates[?] не dict: {type(c)} = {c}")
+                    continue
                 candidate_data = {
                     "КодУслуги": c.get('service_id', 'Unknown'),
                     "Наименование": c.get('service_name', c.get('scenario_name', 'Unknown')),

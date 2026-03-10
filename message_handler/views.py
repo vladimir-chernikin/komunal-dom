@@ -13,8 +13,37 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count
 import json
 import logging
+import uuid
+import os
 
 logger = logging.getLogger(__name__)
+
+
+@login_required
+def web_chat(request):
+    """
+    Web Chat страница с трассировкой (_tras_diag_*.md)
+
+    ИСПОЛЬЗОВАНИЕ (2026-03-05):
+    - Основной WebChat для создания заявок
+    - Использует MainAgent (как Telegram и API)
+    - Генерирует отчеты трассировки в /tmp/_tras_diag_*.md
+    - Канал: 'web'
+
+    URL: /chat/
+    """
+    from portal.models import UserProfile
+
+    try:
+        profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        profile = UserProfile.objects.create(user=request.user, role='resident')
+
+    context = {
+        'user_profile': profile,
+        'user': request.user,
+    }
+    return render(request, 'message_handler/web_chat.html', context)
 
 
 @require_http_methods(["POST"])
@@ -78,11 +107,39 @@ def send_message(request):
         finally:
             loop.close()
 
+        # ИСПРАВЛЕНО (2026-03-05): Генерируем отчет трассировки для WebChat
+        trace_file = None
+        try:
+            from trace_report_service import TraceReportService
+            import os
+
+            # Создаем новый event loop для генерации отчета
+            trace_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(trace_loop)
+
+            try:
+                # Генерируем отчет
+                trace_file = trace_loop.run_until_complete(
+                    TraceReportService.generate_trace_report(session_id)
+                )
+            finally:
+                trace_loop.close()
+
+            # Устанавливаем права 644 для веб-доступа
+            if trace_file and os.path.exists(trace_file):
+                os.chmod(trace_file, 0o644)
+                logger.info(f"[WEB_CHAT] Сгенерирован отчет трассировки: {trace_file}")
+
+        except Exception as trace_error:
+            logger.warning(f"[WEB_CHAT] Не удалось сгенерировать отчет трассировки: {trace_error}")
+            # Не прерываем работу, если отчет не создался
+
         # Формируем ответ для клиента
         response_data = {
             'status': result.get('status', 'error'),
             'response': result.get('response', ''),
-            'service_detected': result.get('service_detected')
+            'service_detected': result.get('service_detected'),
+            'trace_file': os.path.basename(trace_file) if trace_file else None  # ИСПРАВЛЕНО (2026-03-05)
         }
 
         return JsonResponse(response_data)
@@ -234,6 +291,62 @@ API_TOKENS = getattr(settings, 'EXTERNAL_API_TOKENS', {
 ALLOWED_IPS = getattr(settings, 'EXTERNAL_API_ALLOWED_IPS', [])
 
 
+def log_api_error(error_type, status_code, error_message, error_details=None,
+                  session_id=None, request_id=None, client_ip=None, client_system=None,
+                  token_preview=None, request_data=None, message_preview=None,
+                  user_id=None, nomer=None):
+    """
+    Логирование ошибок API в модель APIErrorLog
+
+    ИСПОЛЬЗОВАНИЕ (2026-03-05):
+    - Вызов из send_message_external при любых ошибках
+    - Сохранение полной информации о запросе для дебага
+
+    Args:
+        error_type: Тип ошибки (auth, validation, processing, timeout, internal)
+        status_code: HTTP статус код
+        error_message: Краткое описание ошибки
+        error_details: Детали ошибки (traceback)
+        session_id: ID сессии
+        request_id: Уникальный ID запроса
+        client_ip: IP клиента
+        client_system: Клиентская система
+        token_preview: Первые символы токена
+        request_data: JSON тело запроса
+        message_preview: Первые символы сообщения
+        user_id: User ID
+        nomer: NOMER (абонент)
+    """
+    from message_handler.models import APIErrorLog
+
+    try:
+        # Генерируем request_id если не передан
+        if not request_id:
+            request_id = str(uuid.uuid4())[:8]
+
+        APIErrorLog.objects.create(
+            error_type=error_type,
+            status_code=status_code,
+            error_message=error_message[:500],  # Обрезаем до 500 символов
+            error_details=error_details[:2000] if error_details else None,  # Обрезаем до 2000 символов
+            session_id=session_id[:255] if session_id else None,
+            request_id=request_id,
+            client_ip=client_ip,
+            client_system=client_system[:100] if client_system else None,
+            token_preview=token_preview[:20] if token_preview else '',
+            request_data=request_data,
+            message_preview=message_preview[:200] if message_preview else '',
+            user_id=user_id[:100] if user_id else None,
+            nomer=nomer[:20] if nomer else None,
+        )
+        logger.info(f"[API ERROR] Logged: {error_type} | {status_code} | {request_id}")
+    except Exception as e:
+        logger.error(f"[API ERROR] Failed to log error: {e}", exc_info=True)
+
+
+
+
+
 @require_http_methods(["POST"])
 @csrf_exempt
 def send_message_external(request):
@@ -268,11 +381,38 @@ def send_message_external(request):
       -H "Content-Type: application/json" \\
       -d '{"token": "v1979v", "message": "У меня течет труба", "session_id": "test_123"}'
     """
+    # ИСПРАВЛЕНО (2026-03-05): Генерируем request_id для трассировки
+    request_id = str(uuid.uuid4())[:8]
+    client_ip = get_client_ip(request)
+
+    # ИСПРАВЛЕНО (2026-03-05): Инициализируем переменные для логирования
+    token = None
+    client_system = None
+    data = {}
+    session_id = None
+    user_id = None
+    nomer = None
+    message_text = None
+
     # Проверка IP whitelist (если настроен)
     if ALLOWED_IPS:
-        client_ip = get_client_ip(request)
         if client_ip not in ALLOWED_IPS:
             logger.warning(f"Попытка доступа с запрещенного IP: {client_ip}")
+            # Логируем ошибку
+            try:
+                request_data = json.loads(request.body)
+            except:
+                request_data = {}
+
+            log_api_error(
+                error_type='auth',
+                status_code=403,
+                error_message='Forbidden - IP not allowed',
+                error_details=f'IP {client_ip} not in whitelist',
+                request_id=request_id,
+                client_ip=client_ip,
+                request_data=request_data
+            )
             return JsonResponse({
                 'status': 'error',
                 'error': 'Forbidden - IP not allowed'
@@ -285,6 +425,16 @@ def send_message_external(request):
         # Проверка API токена в JSON body
         token = data.get('token')
         if not token:
+            # Логируем ошибку отсутствия токена
+            log_api_error(
+                error_type='auth',
+                status_code=401,
+                error_message='Unauthorized - Missing token',
+                error_details='Token field is missing in request body',
+                request_id=request_id,
+                client_ip=client_ip,
+                request_data=data
+            )
             return JsonResponse({
                 'status': 'error',
                 'error': 'Unauthorized - Missing token'
@@ -292,6 +442,17 @@ def send_message_external(request):
 
         if token not in API_TOKENS:
             logger.warning(f"Попытка доступа с неверным токеном: {token[:10]}...")
+            # Логируем ошибку неверного токена
+            log_api_error(
+                error_type='auth',
+                status_code=401,
+                error_message='Unauthorized - Invalid token',
+                error_details=f'Token {token[:20]} not found in API_TOKENS',
+                request_id=request_id,
+                client_ip=client_ip,
+                token_preview=token[:20],
+                request_data=data
+            )
             return JsonResponse({
                 'status': 'error',
                 'error': 'Unauthorized - Invalid token'
@@ -307,12 +468,41 @@ def send_message_external(request):
         nomer = data.get('nomer')  # ИСПРАВЛЕНО (2026-03-05): Параметр NOMER для идентификации абонента
 
         if not message_text:
+            # Логируем ошибку пустого сообщения
+            log_api_error(
+                error_type='validation',
+                status_code=400,
+                error_message='Empty message',
+                error_details='Message field is empty or missing',
+                request_id=request_id,
+                client_ip=client_ip,
+                client_system=client_system,
+                token_preview=token[:20],
+                request_data=data,
+                user_id=user_id,
+                nomer=nomer
+            )
             return JsonResponse({
                 'status': 'error',
                 'error': 'Empty message'
             }, status=400)
 
         if not session_id:
+            # Логируем ошибку отсутствующего session_id
+            log_api_error(
+                error_type='validation',
+                status_code=400,
+                error_message='Missing session_id',
+                error_details='session_id field is missing in request body',
+                request_id=request_id,
+                client_ip=client_ip,
+                client_system=client_system,
+                token_preview=token[:20],
+                request_data=data,
+                user_id=user_id,
+                nomer=nomer,
+                message_preview=message_text[:200]
+            )
             return JsonResponse({
                 'status': 'error',
                 'error': 'Missing session_id'
@@ -341,6 +531,7 @@ def send_message_external(request):
             logger.info(f"[EXTERNAL API] Передан NOMER: {nomer}")
         logger.info(f"[EXTERNAL API] api_metadata: {api_metadata}")
 
+        loop_closed = False
         try:
             result = loop.run_until_complete(
                 message_handler.handle_incoming_message(
@@ -352,8 +543,31 @@ def send_message_external(request):
                     metadata=api_metadata  # Передаем metadata с NOMER
                 )
             )
-        finally:
+        except Exception as processing_error:
+            # Логируем ошибку обработки сообщения
+            import traceback
+            error_details = traceback.format_exc()
+            log_api_error(
+                error_type='processing',
+                status_code=500,
+                error_message=f'Error processing message: {str(processing_error)[:200]}',
+                error_details=error_details[:2000],
+                request_id=request_id,
+                client_ip=client_ip,
+                client_system=client_system,
+                token_preview=token[:20] if token else None,
+                request_data=data,
+                user_id=user_id,
+                nomer=nomer,
+                message_preview=message_text[:200] if message_text else None,
+                session_id=session_id
+            )
             loop.close()
+            loop_closed = True
+            raise  # Перебрасываем исключение для обработки в основном except
+        finally:
+            if not loop_closed:
+                loop.close()
 
         # Формируем ответ для клиента
         response_data = {
@@ -368,6 +582,16 @@ def send_message_external(request):
 
     except json.JSONDecodeError as e:
         logger.error(f"[EXTERNAL API] Ошибка парсинга JSON: {e}")
+        # Логируем ошибку парсинга JSON
+        log_api_error(
+            error_type='validation',
+            status_code=400,
+            error_message='Invalid JSON format',
+            error_details=str(e),
+            request_id=request_id,
+            client_ip=client_ip,
+            request_data={'raw_body': str(request.body)[:500]}
+        )
         return JsonResponse({
             'status': 'error',
             'error': 'Invalid JSON format'
@@ -375,6 +599,17 @@ def send_message_external(request):
 
     except Exception as e:
         logger.error(f"[EXTERNAL API] Ошибка обработки: {e}", exc_info=True)
+        # Логируем общую внутреннюю ошибку (если ещё не залогировали)
+        import traceback
+        error_details = traceback.format_exc()
+        log_api_error(
+            error_type='internal',
+            status_code=500,
+            error_message=f'Internal server error: {str(e)[:200]}',
+            error_details=error_details[:2000],
+            request_id=request_id,
+            client_ip=client_ip
+        )
         return JsonResponse({
             'status': 'error',
             'error': 'Internal server error'

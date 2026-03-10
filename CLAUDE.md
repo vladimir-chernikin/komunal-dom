@@ -498,6 +498,22 @@ object_name   VARCHAR  -- 'Квартира', 'Подъезд'
 
 **База данных:** PostgreSQL 16, `aspect_objects_db`, пользователь `aspect_db`, хост localhost:5432
 
+**⚠️ КРИТИЧЕСКИ ВАЖНО: Правильный пароль БД**
+
+```bash
+# ПРАВИЛЬНЫЙ пароль (из .env):
+PGPASSWORD="DB_Aspect_2025"
+
+# НЕПРАВИЛЬНЫЙ пароль (НЕ ИСПОЛЬЗОВАТЬ!):
+# PGPASSWORD="Aspect_Admin_2025"  # ❌ ЭТО ДЖАНГО ПАРОЛЬ, НЕ БД!
+# PGPASSWORD="OlgaNeOlga2026"      # ❌ ЭТО ДЖАНГО ПАРОЛЬ!
+
+# Пример правильного запроса:
+PGPASSWORD="DB_Aspect_2025" psql -h localhost -U aspect_db -d aspect_objects_db -c "SELECT 1;"
+```
+
+**ПРОВЕРКА ПЕРЕД КАЖДЫМ SQL ЗАПРОСОМ:** Я использую `DB_Aspect_2025`? Если нет - ИСПРАВИТЬ!
+
 **Django:** проект `komunal_dom`, версия 6.0, виртуальное окружение `venv`
 
 **Управление:**

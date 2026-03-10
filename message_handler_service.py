@@ -331,10 +331,18 @@ class MessageHandlerService:
                 tracer.end("total_request")
                 performance_data = tracer.save_to_metadata()
 
+                # ИСПРАВЛЕНО (2026-03-10): Отладочный лог для проверки performance_data
+                logger.info(f"[DEBUG] performance_data keys: {list(performance_data.keys()) if performance_data else 'None'}")
+                logger.info(f"[DEBUG] performance в performance_data: {'performance' in performance_data if performance_data else False}")
+                if performance_data and 'performance' in performance_data:
+                    logger.info(f"[DEBUG] performance ключи: {list(performance_data['performance'].keys())}")
+
                 # Добавляем performance данные в outbound_metadata
                 if performance_data and 'performance' in performance_data:
                     outbound_metadata['performance'] = performance_data['performance']
                     logger.info(f"[DEBUG] ✅ Performance данные добавлены в outbound_metadata: {len(performance_data.get('performance', {}).get('stages', []))} этапов")
+                else:
+                    logger.warning(f"[WARNING] ⚠️ Performance данные НЕ добавлены: performance_data={performance_data}")
 
                 await self._log_message(
                     text=bot_response,

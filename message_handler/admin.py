@@ -7,7 +7,7 @@ import asyncio
 import numpy as np
 import inspect
 from datetime import datetime
-from .models import MessageLog, CommunicativeScript
+from .models import MessageLog, CommunicativeScript, APIErrorLog
 
 
 # ========================================
@@ -2216,3 +2216,118 @@ class CommunicativeScriptAdmin(admin.ModelAdmin):
         return '-'
     text_preview.short_description = 'Текст скрипта'
     text_preview.allow_tags = True
+
+
+@admin.register(APIErrorLog)
+class APIErrorLogAdmin(admin.ModelAdmin):
+    """
+    Админ-интерфейс для логирования ошибок API
+
+    ИСПОЛЬЗОВАНИЕ (2026-03-05):
+    - Просмотр и фильтрация ошибок по дате, IP, UUID
+    - Поиск по session_id, request_id, nomer, client_ip
+    - Анализ проблем с интеграциями
+    """
+
+    # Отображение в списке
+    list_display = [
+        'timestamp',
+        'error_type',
+        'status_code',
+        'client_ip',
+        'client_system',
+        'session_id_preview',
+        'error_message_preview',
+        'nomer'
+    ]
+
+    # Фильтры
+    list_filter = [
+        'error_type',
+        'status_code',
+        'client_system',
+        'timestamp',
+    ]
+
+    # Поля поиска
+    search_fields = [
+        'session_id',
+        'request_id',
+        'error_message',
+        'user_id',
+        'nomer',
+        'client_ip',
+    ]
+
+    # Иерархия по дате
+    date_hierarchy = 'timestamp'
+
+    # Сортировка
+    ordering = ['-timestamp']
+
+    # Поля только для чтения (логи нельзя редактировать)
+    readonly_fields = [
+        'error_type',
+        'status_code',
+        'error_message',
+        'error_details',
+        'session_id',
+        'request_id',
+        'client_ip',
+        'client_system',
+        'token_preview',
+        'request_data',
+        'message_preview',
+        'user_id',
+        'nomer',
+        'timestamp',
+    ]
+
+    # Кнопка действий отключена (нельзя редактировать логи)
+    actions = None
+
+    # Пагинация
+    list_per_page = 50
+
+    # Запрет на добавление/редактирование/удаление
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def session_id_preview(self, obj):
+        """Предпросмотр session_id"""
+        if obj.session_id:
+            return obj.session_id[:30] + '...' if len(obj.session_id) > 30 else obj.session_id
+        return '-'
+    session_id_preview.short_description = 'Session ID'
+
+    def error_message_preview(self, obj):
+        """Предпросмотр сообщения об ошибке"""
+        if obj.error_message:
+            return obj.error_message[:50] + '...' if len(obj.error_message) > 50 else obj.error_message
+        return '-'
+    error_message_preview.short_description = 'Ошибка'
+
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('timestamp', 'error_type', 'status_code', 'error_message')
+        }),
+        ('Детали ошибки', {
+            'fields': ('error_details', 'request_id')
+        }),
+        ('Идентификаторы', {
+            'fields': ('session_id', 'user_id', 'nomer')
+        }),
+        ('Информация о клиенте', {
+            'fields': ('client_ip', 'client_system', 'token_preview')
+        }),
+        ('Данные запроса', {
+            'fields': ('request_data', 'message_preview'),
+            'classes': ('collapse',)
+        }),
+    )

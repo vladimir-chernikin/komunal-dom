@@ -114,8 +114,8 @@ class ProblemAccumulationService:
             # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания микросервиса
             response_text, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
-                provider='yandexgpt',
-                model='lite',
+                provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
+                model=None,  # Используем модель по умолчанию из .env
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
                 message_id=message_id,  # ИСПРАВЛЕНО (2026-01-06)
                 service_name='ProblemAccumulationService'  # ИСПРАВЛЕНО (2026-02-24)
@@ -348,8 +348,8 @@ JSON:"""
             # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, _ = await self.ai_agent.call_llm(
                 prompt=prompt,
-                provider='yandexgpt',
-                model='lite',
+                provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
+                model=None,  # Используем модель по умолчанию из .env
                 service_name='ProblemAccumulationService'
             )
 

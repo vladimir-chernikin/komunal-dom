@@ -115,21 +115,8 @@ class FilterDetectionService:
         Создание промпта для определения incident_type
 
         ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
+        ИСПРАВЛЕНО (2026-03-06): Убрано формирование examples (Ольга добавляла тупо).
         """
-        # Формируем примеры из БД (группируем по incident_type)
-        incident_examples = {"Инцидент": [], "Запрос": []}
-        for obj in self.objects_examples:
-            incident = obj.get('incident', 'Запрос')  # default - Запрос
-            if incident and obj['name']:
-                if len(incident_examples[incident]) < 5:  # max 5 примеров на тип
-                    incident_examples[incident].append(f'- "{obj["name"]}" → {incident}')
-
-        examples_text = ""
-        if incident_examples["Инцидент"]:
-            examples_text += f"\nИнцидент (выборка из БД):\n" + "\n".join(incident_examples["Инцидент"][:5])
-        if incident_examples["Запрос"]:
-            examples_text += f"\n\nЗапрос (выборка из БД):\n" + "\n".join(incident_examples["Запрос"][:5])
-
         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
         # ИСПРАВЛЕНО (2026-02-24): Исправлен fallback - теперь выполняется ТОЛЬКО если промпт не найден
         try:
@@ -147,10 +134,7 @@ class FilterDetectionService:
 
             if db_template:
                 # Подставляем переменные в шаблон из БД
-                prompt = db_template.template.format(
-                    txtPrb=txtPrb,
-                    examples=examples_text
-                )
+                prompt = db_template.template.format(txtPrb=txtPrb)
 
                 logger.debug(f"[DB] Промпт filter-incident-type загружен из БД (ID: {db_template.id})")
                 return prompt
@@ -158,31 +142,18 @@ class FilterDetectionService:
                 logger.error(f"[DB] Промпт 'filter-incident-type' не найден в БД!")
                 # ИСПРАВЛЕНО (2026-02-24): Fallback ТОЛЬКО если не найден
                 logger.warning("[FALLBACK] Используется fallback-промпт для incident_type")
-                prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
-
-TXT_PRB = "{txtPrb}"
-
-ОПРЕДЕЛИ ТИП ОБРАЩЕНИЯ:
-- "Инцидент" - если есть угроза жизни/здоровью/имуществу
-- "Запрос" - если нет угрозы
-
-Верни JSON: {{"incident_type": "Инцидент/Запрос", "confidence": 0.7, "reasoning": "обоснование"}}"""
-                return prompt
-
+                raise Exception(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Промпт 'filter-incident-type' не найден в БД!\n"
+                    f"Создайте промпт в админке: /admin-uk/llm_tester/prompttemplate/\n"
+                    f"Slug: 'filter-incident-type'\n"
+                    f"Is Active: True"
+                )
         except Exception as e:
             logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
-            # ИСПРАВЛЕНО (2026-02-24): Fallback при ошибке
-            logger.warning("[FALLBACK] Используется fallback-промпт для incident_type (ошибка)")
-            prompt = f"""⚠️ ТЕХНИЧЕСКАЯ ОШИБКА: Промпт не найден в базе данных!
-
-TXT_PRB = "{txtPrb}"
-
-ОПРЕДЕЛИ ТИП ОБРАЩЕНИЯ:
-- "Инцидент" - если есть угроза жизни/здоровью/имуществу
-- "Запрос" - если нет угрозы
-
-Верни JSON: {{"incident_type": "Инцидент/Запрос", "confidence": 0.7, "reasoning": "обоснование"}}"""
-            return prompt
+            raise Exception(
+                f"❌ КРИТИЧЕСКАЯ ОШИБКА: Промпт 'filter-incident-type' не загружен!\n"
+                f"Ошибка: {e}"
+            )
 
     # ========================================================================
     # ПРОМПТ 2: location_type (Индивидуальное/Общедомовое)
@@ -193,38 +164,8 @@ TXT_PRB = "{txtPrb}"
         Создание промпта для определения location_type
 
         ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
+        ИСПРАВЛЕНО (2026-03-06): Убрано формирование examples (Ольга добавляла тупо).
         """
-        # ИСПРАВЛЕНО (2026-02-13): ПЕРЕМЕШИВАЕМ примеры, чтобы не было перекоса к Общедомовому
-        # Формируем примеры из БД (группируем по localization)
-        location_examples = {"Общедомовое": [], "Индивидуальное": []}
-        # Разбиваем на два списка для перемешивания
-        individual_objs = []
-        common_objs = []
-        for obj in self.objects_examples:
-            loc = obj.get('localization', 'Индивидуальное')
-            if loc and obj['name']:
-                if loc == 'Индивидуальное':
-                    individual_objs.append(obj)
-                elif loc == 'Общедомовое':
-                    common_objs.append(obj)
-        # Заполняем примеры вперемешку (чередуем: Индивидуальное, Общедомовое, Индивидуальное, ...)
-        max_examples = 10
-        # ИСПРАВЛЕНО (2026-02-13): берем по 10 каждого типа, а не 10 всего
-        for i in range(max_examples * 2):  # max 20 итерации (10 каждого типа)
-            # Чередуем: Индивидуальное, Общедомовое, Индивидуальное, ...
-            if i % 2 == 0 and i // 2 < len(individual_objs):
-                obj = individual_objs[i // 2]
-                location_examples['Индивидуальное'].append(f'- "{obj["name"]}" → Индивидуальное')
-            elif i % 2 == 1 and i // 2 < len(common_objs):
-                obj = common_objs[i // 2]
-                location_examples['Общедомовое'].append(f'- "{obj["name"]}" → Общедомовое')
-
-        examples_text = ""
-        if location_examples["Общедомовое"]:
-            examples_text += f"\nОБЩЕДОМОВОЕ (выборка из БД):\n" + "\n".join(location_examples["Общедомовое"][:10])
-        if location_examples["Индивидуальное"]:
-            examples_text += f"\n\nИНДИВИДУАЛЬНОЕ (выборка из БД):\n" + "\n".join(location_examples["Индивидуальное"][:10])
-
         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
         try:
             from llm_tester.models import PromptTemplate
@@ -241,51 +182,24 @@ TXT_PRB = "{txtPrb}"
 
             if db_template:
                 # Подставляем переменные в шаблон из БД
-                prompt = db_template.template.format(
-                    txtPrb=txtPrb,
-                    examples=examples_text
-                )
+                prompt = db_template.template.format(txtPrb=txtPrb)
 
                 logger.debug(f"[DB] Промпт filter-location-type загружен из БД (ID: {db_template.id})")
                 return prompt
             else:
                 logger.error(f"[DB] Промпт 'filter-location-type' не найден в БД!")
-
+                raise Exception(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Промпт 'filter-location-type' не найден в БД!\n"
+                    f"Создайте промпт в админке: /admin-uk/llm_tester/prompttemplate/\n"
+                    f"Slug: 'filter-location-type'\n"
+                    f"Is Active: True"
+                )
         except Exception as e:
             logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
-
-        # Fallback-промпт (если промпт не найден в БД)
-        logger.warning("[FALLBACK] Используется fallback-промпт для location_type")
-
-        prompt = f"""## Роль
-Ты — классификатор типа локации. Определи ИНДИВИДУАЛЬНОЕ или ОБЩЕДОМОВОЕ.
-
-## Входные данные
-TXT_PRB = "{txtPrb}"
-
-## ЛОГИКА
-**ВАЖНОЕ ПРАВИЛО:** "в доме/кВАРТИРЕ" ≠ ОБЩЕДОМОВОЕ!
-
-Если проблема УЖЕ ЕСТЬ (запах, течет, сломалось) → ИНДИВИДУАЛЬНОЕ
-  - Запах газа в дому → ИНДИВИДУАЛЬНОЕ (газ в квартире!)
-  - Течет труба в дому → ИНДИВИДУАЛЬНОЕ (в вашем помещении!)
-  - Нет света в дому → ОБЩЕДОМОВОЕ (весь дом)
-  - Нет воды в дому → ОБЩЕДОМОВОЕ (весь дом)
-
-Ключевые слова ИНДИВИДУАЛЬНОЕ:
-- Запах (газа, гари, сырост), дым
-- Течет (труба, кран, батарея)
-- Прорвало (трубу)
-- Квартира, ванн, кухн, зал, спальн
-
-Ключевые слова ОБЩЕДОМОВОЕ:
-- Нет (свет/вод) во всём доме
-- Во подъезде/подвале/на крыше
-- Лифт, домофон, фасад, двор
-
-## Вывод
-Верни JSON: {{"location_type": "Индивидуальное/Общедомовое", "confidence": 0.8, "reasoning": "обоснование"}}"""
-        return prompt
+            raise Exception(
+                f"❌ КРИТИЧЕСКАЯ ОШИБКА: Промпт 'filter-location-type' не загружен!\n"
+                f"Ошибка: {e}"
+            )
 
     # ========================================================================
     # ПРОМПТ 3: category (категория проблемы)
@@ -296,24 +210,10 @@ TXT_PRB = "{txtPrb}"
         Создание промпта для определения category
 
         ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
+        ИСПРАВЛЕНО (2026-03-07): Убрано формирование examples (Ольга добавляла тупо).
         """
         # Формируем список категорий
         categories_str = ", ".join([f'"{cat}"' for cat in self.categories_list])
-
-        # Формируем примеры из БД (группируем по category)
-        from collections import defaultdict
-        category_examples = defaultdict(list)
-        for obj in self.objects_examples:
-            cat = obj.get('category', '')
-            if cat and obj['name']:
-                if len(category_examples[cat]) < 10:  # max 10 примеров на категорию (было 6)
-                    category_examples[cat].append(f'- "{obj["name"]}" → {cat}')
-
-        examples_text = "\n## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически)\n"
-        for cat in sorted(category_examples.keys()):
-            count = len([x for x in self.objects_examples if x.get('category') == cat])
-            examples_text += f"\n{cat} ({count} услуг):\n"
-            examples_text += "\n".join(category_examples[cat][:10]) + "\n"  # Показываем до 10 примеров
 
         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
         try:
@@ -330,38 +230,26 @@ TXT_PRB = "{txtPrb}"
             db_template = await get_db_template()
 
             if db_template:
-                # ИСПРАВЛЕНО (2026-02-18): Используем .replace() вместо .format()
-                # чтобы избежать проблем с JSON примерами в промпте
-                prompt = db_template.template
-
                 # Подставляем переменные через replace
-                prompt = prompt.replace('{txtPrb}', txtPrb)
+                prompt = db_template.template.replace('{txtPrb}', txtPrb)
                 prompt = prompt.replace('{categories_str}', categories_str)
-
-                # Добавляем примеры в промпт
-                prompt = prompt.replace(
-                    '## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически)',
-                    f'## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически){examples_text}'
-                )
 
                 logger.debug(f"[DB] Промпт filter-category загружен из БД (ID: {db_template.id})")
                 return prompt
             else:
                 logger.error(f"[DB] Промпт 'filter-category' не найден в БД!")
-
+                raise Exception(
+                    f"❌ КРИТИЧЕСКАЯ ОШИБКА: Промпт 'filter-category' не найден в БД!\n"
+                    f"Создайте промпт в админке: /admin-uk/llm_tester/prompttemplate/\n"
+                    f"Slug: 'filter-category'\n"
+                    f"Is Active: True"
+                )
         except Exception as e:
             logger.error(f"[DB] Ошибка загрузки промпта из БД: {e}")
-
-        # ИСПРАВЛЕНО (2026-02-18): Fallback отключен, используем только боевой промпт
-        # Если промпт не найден в БД - критическая ошибка
-        raise Exception(
-            f"❌ КРИТИЧЕСКАЯ ОШИБКА: Промпт 'filter-category' не найден в БД!\n"
-            f"Создайте промпт в админке: /admin-uk/llm_tester/prompttemplate/\n"
-            f"Slug: 'filter-category'\n"
-            f"Is Active: True\n"
-            f"Шаблон должен содержать плейсхолдер: ## ПРИМЕРЫ ИЗ БАЗЫ ДАННЫХ (загружены динамически)\n"
-            f"Ошибка: {e}"
-        )
+            raise Exception(
+                f"❌ КРИТИЧЕСКАЯ ОШИБКА: Промпт 'filter-category' не загружен!\n"
+                f"Ошибка: {e}"
+            )
 
         # Fallback-промпт ОТКЛЮЧЕН (2026-02-18) - используем только боевой
         # logger.warning("[FALLBACK] Используется fallback-промпт для category")
@@ -429,15 +317,17 @@ TXT_PRB = "{txtPrb}"
             logger.info(f"{prompt[:500]}...")
             logger.info(f"{'=' * 80} (длина: {len(prompt)} символов)")
 
+            # ИСПРАВЛЕНО (2026-03-07): Формируем уникальный service_name для каждого фильтра
+            service_name = f"FilterDetectionService ({filter_name})"
+
             # Вызываем LLM
-            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, usage_info = await self.ai_agent.call_llm(
                 prompt=prompt,
-                provider='yandexgpt',
-                model='lite',
+                provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
+                model=None,  # Используем модель по умолчанию из .env
                 session_id=session_id,
                 message_id=message_id,
-                service_name='FilterDetectionService'
+                service_name=service_name
             )
 
             logger.info(f"🤖 FilterDetection [{filter_name}] ОТВЕТ LLM:")
@@ -573,22 +463,32 @@ TXT_PRB = "{txtPrb}"
             problem_description = txtPrb if txtPrb else message_text
 
             # ====================================================================
-            # ВЫЗЫВАЕМ 3 ПРОМПТА ПАРАЛЛЕЛЬНО
+            # ВЫЗЫВАЕМ 2 ПРОМПТА ПАРАЛЛЕЛЬНО (category ОТКЛЮЧЕН - заглушка)
             # ====================================================================
-            logger.info(f"FilterDetectionService: запускаем 3 промпта параллельно...")
+            logger.info(f"FilterDetectionService: запускаем 2 промпта параллельно (category - заглушка)...")
 
             # Создаем промпты
             # ИСПРАВЛЕНО (2026-02-05): Добавлен await (методы теперь async)
             prompt_incident = await self._create_incident_type_prompt(problem_description)
             prompt_location = await self._create_location_type_prompt(problem_description)
-            prompt_category = await self._create_category_prompt(problem_description)
+            # ИСПРАВЛЕНО (2026-03-05): category ОТКЛЮЧЕН для оптимизации
+            # prompt_category = await self._create_category_prompt(problem_description)
 
-            # Вызываем LLM для каждого фильтра
-            incident_result, location_result, category_result = await asyncio.gather(
+            # Вызываем LLM для каждого фильтра (кроме category - заглушка)
+            # ИСПРАВЛЕНО (2026-03-07): Передаём уникальный service_name для каждого фильтра
+            incident_result, location_result = await asyncio.gather(
                 self._call_llm_for_filter(prompt_incident, 'incident_type', session_id, message_id),
-                self._call_llm_for_filter(prompt_location, 'location_type', session_id, message_id),
-                self._call_llm_for_filter(prompt_category, 'category', session_id, message_id)
+                self._call_llm_for_filter(prompt_location, 'location_type', session_id, message_id)
+                # ИСПРАВЛЕНО (2026-03-05): category ОТКЛЮЧЕН для оптимизации
+                # self._call_llm_for_filter(prompt_category, 'category', session_id, message_id)
             )
+
+            # ИСПРАВЛЕНО (2026-03-05): Заглушка для category
+            category_result = {
+                'value': None,
+                'confidence': 1.0,
+                'reasoning': 'Заглушка (отключено для оптимизации)'
+            }
 
             # ====================================================================
             # СОБИРАЕМ ИТОГОВЫЙ JSON
@@ -599,11 +499,12 @@ TXT_PRB = "{txtPrb}"
                 'category': category_result['value']
             }
 
-            # Общая уверенность = минимум из трёх
+            # Общая уверенность = минимум из двух (без category)
             confidence = min(
                 incident_result['confidence'],
-                location_result['confidence'],
-                category_result['confidence']
+                location_result['confidence']
+                # ИСПРАВЛЕНО (2026-03-05): category исключен
+                # category_result['confidence']
             )
 
             # Объединяем reasoning
@@ -891,8 +792,8 @@ JSON:"""
             # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
             response, usage_info = await self.ai_agent.call_llm(
                 prompt=prompt,
-                provider='yandexgpt',
-                model='lite',
+                provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
+                model=None,  # Используем модель по умолчанию из .env
                 session_id=session_id,
                 service_name='FilterDetectionService'
             )
