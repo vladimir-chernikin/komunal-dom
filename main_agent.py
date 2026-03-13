@@ -268,6 +268,8 @@ class MainAgent:
 
             # ИСПРАВЛЕНО (2026-01-10): Устанавливаем current_message_id для логирования LLM вызовов
             self.current_message_id = message_id
+            # ИСПРАВЛЕНО (2026-03-13): Сохраняем session_id для логирования LLM вызовов
+            self.current_session_id = session_id
 
             if is_followup and dialog_history:
                 logger.info(f"Главный Агент обрабатывает уточняющее сообщение: '{original_message}' (история: {len(dialog_history)} сообщений)")
@@ -2298,10 +2300,13 @@ class MainAgent:
 
             # Вызываем LLM
             # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
+            # ИСПРАВЛЕНО (2026-03-13): Передаем session_id и message_id для логирования в llm_request_log
             response, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
                 model=None,  # Используем модель по умолчанию из .env
+                session_id=getattr(self, 'current_session_id', None),
+                message_id=getattr(self, 'current_message_id', None),
                 service_name='MainAgent'
             )
 
@@ -3121,10 +3126,13 @@ JSON:"""
         try:
             # Вызываем YandexGPT Lite для валидации
             # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
+            # ИСПРАВЛЕНО (2026-03-13): Передаем session_id и message_id для логирования в llm_request_log
             response, usage = await self.ai_agent.call_llm(
                 prompt=prompt,
                 provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
                 model=None,  # Используем модель по умолчанию из .env
+                session_id=getattr(self, 'current_session_id', None),
+                message_id=getattr(self, 'current_message_id', None),
                 service_name='MainAgent'
             )
 
@@ -3974,11 +3982,14 @@ JSON:"""
             # }
             # ИСПРАВЛЕНО (2026-02-14): Вместо hardcoded fallback используем ИИ для генерации финального сообщения
             # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
+            # ИСПРАВЛЕНО (2026-03-13): Передаем session_id и message_id для логирования в llm_request_log
             final_context = f"После {dialog_turn} сообщений не удалось определить проблему. Пользователь: {context.get('original_message', '')[:200]}"
             ai_result = await self.ai_agent.call_llm(
                 prompt=f"Сгенерируй вежливый ответ для пользователя: {final_context}\n\nОтвет должен быть кратким, без эмодзи.",
                 provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
                 model=None,  # Используем модель по умолчанию из .env
+                session_id=getattr(self, 'current_session_id', None),
+                message_id=getattr(self, 'current_message_id', None),
                 service_name='MainAgent'
             )
             final_message = ai_result[0].strip() if ai_result else "Пожалуйста, опишите проблему другими словами или свяжитесь с оператором."

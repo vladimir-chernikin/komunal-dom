@@ -345,6 +345,7 @@ class TraceReportService:
                 try:
                     with conn.cursor() as cursor:
                         # ИСПРАВЛЕНО (2026-01-06): Загружаем по session_id и связываем с message_id
+                        # ИСПРАВЛЕНО (2026-03-13): Добавлено поле service_name
                         cursor.execute("""
                             SELECT
                                 id,
@@ -359,7 +360,8 @@ class TraceReportService:
                                 created_at,
                                 status,
                                 error_message,
-                                message_id
+                                message_id,
+                                service_name
                             FROM llm_request_log
                             WHERE session_id = %s
                             ORDER BY created_at ASC
@@ -367,7 +369,7 @@ class TraceReportService:
 
                         columns = ['id', 'provider', 'model', 'prompt_text', 'response_text',
                                    'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_rub',
-                                   'created_at', 'status', 'error_message', 'message_id']
+                                   'created_at', 'status', 'error_message', 'message_id', 'service_name']
 
                         all_llm_logs = []
                         for row in cursor.fetchall():
