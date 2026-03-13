@@ -11,8 +11,6 @@ class KladrObjectType(models.Model):
         (3, 'Город'),
         (4, 'Населенный пункт'),
         (5, 'Улица'),
-        (6, 'Здание'),
-        (7, 'Помещение'),
     ]
 
     code = models.CharField(max_length=10, unique=True, verbose_name="Код типа")
