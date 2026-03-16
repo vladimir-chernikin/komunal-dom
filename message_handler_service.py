@@ -211,6 +211,9 @@ class MessageHandlerService:
                 # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters из последнего bot сообщения
                 # КРИТИЧЕСКИ ВАЖНО: established_filters должны передаваться между вызовами MainAgent!
                 established_filters = None
+                # ИСПРАВЛЕНО (2026-03-16): Извлекаем txtPrb из последнего bot сообщения
+                # КРИТИЧЕСКИ ВАЖНО: txtPrb должен накапливаться между сообщениями!
+                txtPrb = None
                 # ИСПРАВЛЕНО (2026-02-16): Извлекаем accumulated_fields из последнего bot сообщения
                 # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы) из последнего bot сообщения
                 # КРИТИЧЕСКИ ВАЖНО: txtStopQ накапливает глупые вопросы чтобы не повторять их!
@@ -225,6 +228,10 @@ class MessageHandlerService:
                                 if 'established_filters' in metadata:
                                     established_filters = metadata['established_filters']
                                     logger.info(f"[DEBUG] Извлечены established_filters из истории: {list(established_filters.keys()) if established_filters else 'None'}")
+                                # ИСПРАВЛЕНО (2026-03-16): Извлекаем txtPrb - КРИТИЧЕСКИ ВАЖНО!
+                                if 'txtPrb' in metadata:
+                                    txtPrb = metadata['txtPrb']
+                                    logger.info(f"[DEBUG] Извлечен txtPrb из истории: '{txtPrb[:80] if txtPrb else '(пусто)'}...'")
                                 # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН - используем только txtPrb
                                 # Извлекаем txtStopQ (запрещенные вопросы)
                                 if 'txtStopQ' in metadata:
@@ -250,6 +257,8 @@ class MessageHandlerService:
                         'is_followup': is_followup,  # Флаг для объединения контекста
                         'cleaned_message': search_text,  # Добавляем очищенное сообщение
                         'established_filters': established_filters,  # ИСПРАВЛЕНО (2026-01-10): ПЕРЕДАЕМ ФИЛЬТРЫ!
+                        # ИСПРАВЛЕНО (2026-03-16): ПЕРЕДАЕМ txtPrb - КРИТИЧЕСКИ ВАЖНО!
+                        'txtPrb': txtPrb,
                         # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
                         'txtStopQ': txt_stop_questions,  # ИСПРАВЛЕНО (2026-02-04): ПЕРЕДАЕМ ЗАПРЕЩЕННЫЕ ВОПРОСЫ!
                         # ИСПРАВЛЕНО (2026-03-04): PerformanceTracer для замера времени

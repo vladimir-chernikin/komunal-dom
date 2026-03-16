@@ -239,6 +239,7 @@ class MainAgent:
         session_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем session_id
         message_id = None  # ИСПРАВЛЕНО (2026-01-06): Извлекаем message_id
         established_filters = None  # ИСПРАВЛЕНО (2026-01-10): Извлекаем established_filters
+        txtPrb = None  # ИСПРАВЛЕНО (2026-03-16): Извлекаем txtPrb из истории
         # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН
         txt_stop_questions = []  # ИСПРАВЛЕНО (2026-02-04): Извлекаем txtStopQ (запрещенные вопросы)
 
@@ -257,6 +258,9 @@ class MainAgent:
             session_id = user_context.get('session_id')  # ИСПРАВЛЕНО (2026-01-06)
             message_id = user_context.get('message_id')  # ИСПРАВЛЕНО (2026-01-06)
             established_filters = user_context.get('established_filters')  # ИСПРАВЛЕНО (2026-01-10)
+            txtPrb = user_context.get('txtPrb')  # ИСПРАВЛЕНО (2026-03-16): Извлекаем txtPrb из истории
+            if txtPrb:
+                logger.info(f"[DEBUG] Получен txtPrb из user_context: '{txtPrb[:80] if txtPrb else '(пусто)'}...'")
             # ИСПРАВЛЕНО (2026-02-24): accumulated_fields УДАЛЁН из user_context
             txt_stop_questions = user_context.get('txtStopQ', [])  # ИСПРАВЛЕНО (2026-02-04): txtStopQ
             if txt_stop_questions:
