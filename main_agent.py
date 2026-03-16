@@ -924,7 +924,15 @@ class MainAgent:
                 # ИСПРАВЛЕНО (2026-02-14): _fallback_service_detection ЗАКОММЕНТИРОВАН (нарушение CLAUDE.md §8)
                 # Fallback - вместо hardcoded keywords используем AI-генерацию вопросов
                 # return await self._fallback_service_detection(message_text, address_components)
-                return await self._create_ambiguous_result([])
+                # ИСПРАВЛЕНО (2026-03-13): Передаем все параметры включая session_id
+                return await self._create_ambiguous_result(
+                    candidates=[],
+                    original_message=original_message,
+                    is_followup=is_followup,
+                    dialog_history=dialog_history,
+                    session_id=session_id,
+                    established_filters=established_filters
+                )
 
             # Есть кандидаты, но нет однозначного пересечения
             candidates_data = [service_results_map[sid] for sid in all_service_ids]
