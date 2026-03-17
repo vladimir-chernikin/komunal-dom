@@ -454,8 +454,8 @@ class EnhancedAspectBot:
 
         try:
             # Шаг 1: Извлекаем адресные компоненты из текущего сообщения
-            # Импортируем AddressExtractor локально чтобы избежать circular import
-            from service_detection_modules import AddressExtractor
+            # ИСПРАВЛЕНО (2026-03-13): Используем новый AddressExtractor на Django ORM
+            from address_extractor_service import AddressExtractor
             extractor = AddressExtractor()
 
             # Объединяем с сохраненными компонентами (накопление по частям!)
@@ -579,33 +579,31 @@ class EnhancedAspectBot:
     async def show_streets(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показывает список улиц на обслуживании"""
         try:
-            from django.db import connection
+            # ИСПРАВЛЕНО (2026-03-13): Используем Django ORM + новую модель
+            from kladr.models import KladrAddressObject
 
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT DISTINCT ao.name, ao.type_name
-                    FROM kladr_address_objects ao
-                    JOIN buildings b ON ao.ao_id = b.parent_ao_id
-                    ORDER BY ao.name
-                    LIMIT 50
-                """)
+            # НОВАЯ МОДЕЛЬ: Django ORM
+            streets_qs = KladrAddressObject.objects.filter(
+                type__level=5,  # Только улицы
+                building__isnull=False  # Есть здания
+            ).distinct().order_by('name')[:50]
 
-                streets = cursor.fetchall()
+            streets = [(obj.name, obj.type.short_name) for obj in streets_qs]
 
-                if streets:
-                    text = "📍 **Улицы в зоне обслуживания УК 'Аспект':**\n\n"
-                    for i, (name, type_name) in enumerate(streets, 1):
-                        text += f"{i}. {type_name} {name}\n"
+            if streets:
+                text = "📍 **Улицы в зоне обслуживания УК 'Аспект':**\n\n"
+                for i, (name, type_name) in enumerate(streets, 1):
+                    text += f"{i}. {type_name} {name}\n"
 
-                    text += f"\nВсего: {len(streets)} улиц\n\n"
-                    text += "Отправьте адрес для проверки (например: ул. Ленина, д. 5)"
+                text += f"\nВсего: {len(streets)} улиц\n\n"
+                text += "Отправьте адрес для проверки (например: ул. Ленина, д. 5)"
 
-                    if len(text) > 4000:
-                        text = text[:3950] + "...\n\n(и еще улицы)"
+                if len(text) > 4000:
+                    text = text[:3950] + "...\n\n(и еще улицы)"
 
-                    await update.message.reply_text(text, parse_mode='Markdown')
-                else:
-                    await update.message.reply_text("📍 Улицы не найдены в базе данных")
+                await update.message.reply_text(text, parse_mode='Markdown')
+            else:
+                await update.message.reply_text("📍 Улицы не найдены в базе данных")
 
         except Exception as e:
             logger.error(f"Ошибка при получении списка улиц: {e}")
@@ -614,38 +612,35 @@ class EnhancedAspectBot:
     async def check_address_with_ai(self, update: Update, context: ContextTypes.DEFAULT_TYPE, address_text):
         """Проверяет адрес с использованием AI и базы КЛАДР"""
         try:
-            # Проверяем есть ли адрес в КЛАДР
-            from django.db import connection
+            # ИСПРАВЛЕНО (2026-03-13): Используем Django ORM + новую модель
+            from kladr.models import KladrAddressObject
+            from django.db.models import Count, Q
 
-            with connection.cursor() as cursor:
-                # Нормализуем и ищем адрес
-                normalized_address = address_text.strip().lower()
+            normalized_address = address_text.strip().lower()
 
-                # Ищем улицы
-                cursor.execute("""
-                    SELECT DISTINCT ao.name, ao.type_name, COUNT(*) as building_count
-                    FROM kladr_address_objects ao
-                    LEFT JOIN buildings b ON ao.ao_id = b.parent_ao_id
-                    WHERE LOWER(ao.name) LIKE %s
-                       OR LOWER(ao.name || ' ' || b.house_number) LIKE %s
-                    GROUP BY ao.ao_id, ao.name, ao.type_name
-                    ORDER BY building_count DESC, ao.name
-                    LIMIT 10
-                """, [f'%{normalized_address}%', f'%{normalized_address}%'])
+            # НОВАЯ МОДЕЛЬ: Django ORM с поиском по улице или адресу
+            streets_qs = KladrAddressObject.objects.filter(
+                type__level=5  # Только улицы
+            ).annotate(
+                building_count=Count('building')
+            ).filter(
+                Q(name__icontains=normalized_address) |
+                Q(building__house_number__icontains=normalized_address)
+            ).distinct().order_by('-building_count', 'name')[:10]
 
-                results = cursor.fetchall()
+            results = [(obj.name, obj.type.short_name, obj.building_count) for obj in streets_qs]
 
-                if results:
-                    text = f"🔍 **Результаты поиска адреса:**\n\n"
+            if results:
+                text = f"🔍 **Результаты поиска адреса:**\n\n"
 
-                    for name, type_name, count in results[:5]:
-                        text += f"📍 {type_name} {name}"
-                        if count > 0:
-                            text += f" ({count} домов)"
-                        text += "\n"
+                for name, type_name, count in results[:5]:
+                    text += f"📍 {type_name} {name}"
+                    if count > 0:
+                        text += f" ({count} домов)"
+                    text += "\n"
 
-                    # Используем AI для детального анализа
-                    ai_prompt = f"""
+                # Используем AI для детального анализа
+                ai_prompt = f"""
 Проанализируй адрес: "{address_text}"
 
 Найденные варианты в базе:
@@ -657,15 +652,15 @@ class EnhancedAspectBot:
 3. Какие рекомендации?
 """
 
-                    ai_response = await self.ask_yandexgpt(ai_prompt, 200)
+                ai_response = await self.ask_yandexgpt(ai_prompt, 200)
 
-                    if ai_response:
-                        text += f"\n\n🤖 **Анализ AI:**\n{ai_response}"
+                if ai_response:
+                    text += f"\n\n🤖 **Анализ AI:**\n{ai_response}"
 
-                    await update.message.reply_text(text, parse_mode='Markdown')
-                else:
-                    # Если не найдено, используем только AI
-                    ai_prompt = f"""
+                await update.message.reply_text(text, parse_mode='Markdown')
+            else:
+                # Если не найдено, используем только AI
+                ai_prompt = f"""
 Пользователь ищет адрес: "{address_text}"
 
 Это адрес в г. Россия? Проверь правильность написания.
@@ -675,10 +670,10 @@ class EnhancedAspectBot:
 3. Это вообще адрес?
 """
 
-                    ai_response = await self.ask_yandexgpt(ai_prompt, 250)
+                ai_response = await self.ask_yandexgpt(ai_prompt, 250)
 
-                    text = f"🔍 **Анализ адреса:**\n\n{ai_response}"
-                    await update.message.reply_text(text, parse_mode='Markdown')
+                text = f"🔍 **Анализ адреса:**\n\n{ai_response}"
+                await update.message.reply_text(text, parse_mode='Markdown')
 
         except Exception as e:
             logger.error(f"Ошибка при проверке адреса: {e}")

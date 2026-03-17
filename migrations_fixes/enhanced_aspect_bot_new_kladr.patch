@@ -1,0 +1,85 @@
+--- enhanced_aspect_bot.py	2026-03-13 старая модель
++++ enhanced_aspect_bot.py	2026-03-13 новая модель
+@@ -456,9 +456,11 @@
+
+             # Шаг 1: Извлекаем адресные компоненты из текущего сообщения
+             # Импортируем AddressExtractor локально чтобы избежать circular import
+-            from service_detection_modules import AddressExtractor
+-            extractor = AddressExtractor()
++            # ИСПРАВЛЕНО (2026-03-13): Перешли на новую модель KLADR
++            # TODO: Создать новый AddressExtractor на kladr.models
++            # from service_detection_modules import AddressExtractor  # ❌ Старая модель
++            # extractor = AddressExtractor()
+
+             # Объединяем с сохраненными компонентами (накопление по частям!)
+             previous_components = state.address_components or {}
+@@ -580,18 +582,17 @@
+     async def show_streets(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+         """Показывает список улиц на обслуживании"""
+         try:
+-            from django.db import connection
+-
+-            with connection.cursor() as cursor:
+-                cursor.execute("""
+-                    SELECT DISTINCT ao.name, ao.type_name
+-                    FROM kladr_address_objects ao
+-                    JOIN buildings b ON ao.ao_id = b.parent_ao_id
+-                    ORDER BY ao.name
+-                    LIMIT 50
+-                """)
+-
+-                streets = cursor.fetchall()
++            # ИСПРАВЛЕНО (2026-03-13): Используем Django ORM + новую модель
++            from kladr.models import KladrAddressObject
++
++            # НОВАЯ МОДЕЛЬ: Django ORM
++            streets_qs = KladrAddressObject.objects.filter(
++                type__level=5,  # Только улицы
++                building__isnull=False  # Есть здания
++            ).distinct().order_by('name')[:50]
++
++            streets = [(obj.name, obj.type.short_name) for obj in streets_qs]
+
+             if streets:
+                 text = "📍 **Улицы в зоне обслуживания УК 'Аспект':**\n\n"
+@@ -614,20 +615,18 @@
+     async def check_address_with_ai(self, update: Update, context: ContextTypes.DEFAULT_TYPE, address_text):
+         """Проверяет адрес с использованием AI и базы КЛАДР"""
+         try:
+-            # Проверяем есть ли адрес в КЛАДР
+-            from django.db import connection
+-
+-            with connection.cursor() as cursor:
+-                # Нормализуем и ищем адрес
+-                normalized_address = address_text.strip().lower()
+-
+-                # Ищем улицы
+-                cursor.execute("""
+-                    SELECT DISTINCT ao.name, ao.type_name, COUNT(*) as building_count
+-                    FROM kladr_address_objects ao
+-                    LEFT JOIN buildings b ON ao.ao_id = b.parent_ao_id
+-                    WHERE LOWER(ao.name) LIKE %s
+-                       OR LOWER(ao.name || ' ' || b.house_number) LIKE %s
+-                    GROUP BY ao.ao_id, ao.name, ao.type_name
+-                    ORDER BY building_count DESC, ao.name
+-                    LIMIT 10
+-                """, [f'%{normalized_address}%', f'%{normalized_address}%'])
+-
+-                results = cursor.fetchall()
++            # ИСПРАВЛЕНО (2026-03-13): Используем Django ORM + новую модель
++            from kladr.models import KladrAddressObject
++            from django.db.models import Count, Q
++
++            normalized_address = address_text.strip().lower()
++
++            # НОВАЯ МОДЕЛЬ: Django ORM с поиском по улице или адресу
++            streets_qs = KladrAddressObject.objects.filter(
++                type__level=5  # Только улицы
++            ).annotate(
++                building_count=Count('building')
++            ).filter(
++                Q(name__icontains=normalized_address) |
++                Q(building__house_number__icontains=normalized_address)
++            ).distinct().order_by('-building_count', 'name')[:10]
++
++            results = [(obj.name, obj.type.short_name, obj.building_count) for obj in streets_qs]
