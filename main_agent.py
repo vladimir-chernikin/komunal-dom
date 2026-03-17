@@ -378,11 +378,13 @@ class MainAgent:
                     logger.info("Первое сообщение - начинаем накопление txtPrb")
 
                 # Определяем последний вопрос бота
+                # ИСПРАВЛЕНО (2026-03-16): Убрана проверка на '?', т.к. fallback-вопросы могут быть без ?
                 last_bot_question = None
                 if dialog_history:
                     for msg in reversed(dialog_history[-3:]):
-                        if msg.get('role') == 'bot' and '?' in msg.get('text', ''):
+                        if msg.get('role') == 'bot':
                             last_bot_question = msg.get('text', '')
+                            logger.info(f"[DEBUG] Извлечен last_bot_question: '{last_bot_question[:80] if last_bot_question else '(пусто)'}...'")
                             break
 
                 # Накапливаем информацию из текущего сообщения
@@ -2319,7 +2321,7 @@ class MainAgent:
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=getattr(self, 'current_session_id', None),
                 message_id=getattr(self, 'current_message_id', None),
-                service_name='MainAgent'
+                service_name='MainAgent: ClarifyAttribute'  # ИСПРАВЛЕНО (2026-03-16): Детализация
             )
 
             question = response.strip().strip('\'"').strip()
@@ -3145,7 +3147,7 @@ JSON:"""
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=getattr(self, 'current_session_id', None),
                 message_id=getattr(self, 'current_message_id', None),
-                service_name='MainAgent'
+                service_name='MainAgent: ValidateQuestion'  # ИСПРАВЛЕНО (2026-03-16): Детализация
             )
 
             import json
@@ -4002,7 +4004,7 @@ JSON:"""
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=getattr(self, 'current_session_id', None),
                 message_id=getattr(self, 'current_message_id', None),
-                service_name='MainAgent'
+                service_name='MainAgent: AntiLoopFallback'  # ИСПРАВЛЕНО (2026-03-16): Детализация
             )
             final_message = ai_result[0].strip() if ai_result else "Пожалуйста, опишите проблему другими словами или свяжитесь с оператором."
             return {
@@ -4100,7 +4102,7 @@ JSON:"""
                     model=model,  # model=None, берется из env (YANDEXGPT_MODEL или GIGACHAT_MODEL)
                     session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
                     message_id=self.current_message_id,  # ИСПРАВЛЕНО (2026-01-10)
-                    service_name='MainAgent'  # ИСПРАВЛЕНО (2026-02-24)
+                    service_name=f'MainAgent: GenerateQuestion ({question_type})'  # ИСПРАВЛЕНО (2026-03-16): Детализация
                 )
                 question = response.strip()
 
