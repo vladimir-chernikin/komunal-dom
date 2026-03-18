@@ -23,7 +23,7 @@ def admin_page(request):
     """
     Главная страница административного интерфейса УК
     """
-    # Проверка прав доступа (доступно для DBA и django_admin)
+    # Проверка прав доступа (доступно для Директора УК и django_admin)
     if not request.user.userprofile.has_admin_access():
         messages.error(request, 'Доступ запрещен!')
         return redirect('portal:welcome')
@@ -34,7 +34,7 @@ def admin_page(request):
     context = {
         'total_users': user_stats['total'],
         'django_admin_count': users.filter(userprofile__role='django_admin').count(),
-        'dba_count': users.filter(userprofile__role='dba').count(),
+        'director_count': users.filter(userprofile__role='direktor_uk').count(),
         'executor_count': users.filter(userprofile__role='executor').count(),
         'resident_count': users.filter(userprofile__role='resident').count(),
         'user_stats': user_stats,
@@ -47,11 +47,11 @@ def admin_page(request):
 
 
 @login_required
-def dba_page(request):
+def director_page(request):
     """
-    Отдельная страница для DBA менеджера данных
+    Отдельная страница для Директора УК
     """
-    # Проверка прав доступа (доступно для DBA и django_admin)
+    # Проверка прав доступа (доступно для Директора УК и django_admin)
     if not request.user.userprofile.has_admin_access():
         messages.error(request, 'Доступ запрещен!')
         return redirect('portal:welcome')
@@ -62,7 +62,7 @@ def dba_page(request):
     context = {
         'total_users': user_stats['total'],
         'django_admin_count': users.filter(userprofile__role='django_admin').count(),
-        'dba_count': users.filter(userprofile__role='dba').count(),
+        'director_count': users.filter(userprofile__role='direktor_uk').count(),
         'executor_count': users.filter(userprofile__role='executor').count(),
         'resident_count': users.filter(userprofile__role='resident').count(),
         'user_stats': user_stats,
@@ -71,7 +71,7 @@ def dba_page(request):
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
     }
 
-    return render(request, 'portal/dba_page.html', context)
+    return render(request, 'portal/director_page.html', context)
 
 
 def get_user_statistics():

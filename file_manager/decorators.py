@@ -7,7 +7,7 @@ from functools import wraps
 def file_access_required(view_func):
     """
     Декоратор для проверки прав доступа к файловому менеджеру
-    Разрешает доступ: УК-пользователь, DBA, Django-админ
+    Разрешает доступ: УК-пользователь, Директор УК, Django-админ
     """
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
@@ -17,7 +17,7 @@ def file_access_required(view_func):
         try:
             profile = request.user.userprofile
             # Разрешаем доступ для всех ролей кроме жителей (включая пустую роль)
-            if profile.role and profile.role not in ['uk_user', 'dba', 'django_admin']:
+            if profile.role and profile.role not in ['uk_user', 'direktor_uk', 'django_admin']:
                 return HttpResponseForbidden("Недостаточно прав для доступа к файловому менеджеру")
         except:
             # Если профиля нет, запрещаем доступ
@@ -29,7 +29,7 @@ def file_access_required(view_func):
 def admin_access_required(view_func):
     """
     Декоратор для проверки административных прав
-    Разрешает доступ: DBA, Django-админ
+    Разрешает доступ: Директор УК, Django-админ
     """
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):

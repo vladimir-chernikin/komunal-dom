@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'kladr.apps.KladrConfig',
     'message_handler.apps.MessageHandlerConfig',  # Логирование сообщений из всех каналов
     'llm_tester.apps.LlmTesterConfig',  # LLM Tester - тестирование промптов
+    'database_viewer.apps.DatabaseViewerConfig',  # СУБД SQL интерфейс
 ]
 
 MIDDLEWARE = [
@@ -205,9 +206,14 @@ JAZZMIN_SETTINGS = {
     # Кастомные ссылки в меню пользователя
     'usermenu_links': [
         {
-            'name': 'Кабинет DBA',
-            'url': '/dba/',
+            'name': 'СУБД SQL',
+            'url': '/db-sql/',
             'icon': 'fas fa-database',
+        },
+        {
+            'name': 'Кабинет директора',
+            'url': '/director/',
+            'icon': 'fas fa-user-tie',
         },
     ],
 }

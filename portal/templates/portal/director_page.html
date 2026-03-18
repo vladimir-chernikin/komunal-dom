@@ -1,0 +1,264 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Кабинет директора УК - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Стили специфичные для страницы Директора УК */
+
+/* Переопределение padding для карточек страницы директора */
+.card-header {
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 1rem;
+}
+
+.card-footer {
+    padding: 0.75rem 1rem;
+}
+
+.card-body h4 {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.card-body h6 {
+    font-size: 0.9rem;
+}
+
+/* Информационная карточка */
+.info-card {
+    background: #f8f9fa;
+    border-left: 3px solid #0d6efd;
+    transition: none;
+}
+
+.info-card:hover {
+    transform: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.info-card-text {
+    font-size: 0.9rem;
+}
+
+/* Статистические иконки и цифры */
+.stat-icon-lg {
+    font-size: 1.5rem;
+}
+
+.stat-number-lg {
+    font-size: 1.3rem;
+}
+
+/* Профильная карточка */
+.profile-card {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.profile-avatar {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #374151 0%, #111827 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 0.75rem;
+}
+
+.profile-avatar i {
+    font-size: 1.75rem;
+    color: white;
+}
+
+/* Быстрые ссылки */
+.quick-links .list-group-item {
+    border: none;
+    border-bottom: 1px solid #f0f0f0;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.quick-links .list-group-item:hover {
+    background-color: #f8f9fa;
+    padding-left: 1rem;
+}
+
+.quick-links .list-group-item i {
+    margin-right: 0.5rem;
+    width: 18px;
+    text-align: center;
+}
+
+/* Адаптивность */
+@media (max-width: 991px) {
+    .quick-links .list-group-item {
+        font-size: 0.85rem;
+        padding: 0.5rem 0.6rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .profile-avatar {
+        width: 50px;
+        height: 50px;
+    }
+
+    .profile-avatar i {
+        font-size: 1.5rem;
+    }
+
+    .stats-count {
+        font-size: 1.1rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .quick-links .list-group-item {
+        padding: 0.4rem 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-2">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h1 class="h5 mb-0">
+                    <i class="fas fa-database"></i>
+                    Кабинет директора УК
+                </h1>
+            </div>
+        </div>
+    </div>
+
+    <!-- Профиль и быстрые ссылки -->
+    <div class="row mb-2">
+        <div class="col-md-4">
+            <div class="d-flex flex-column gap-2">
+                <!-- Профиль пользователя -->
+                <div class="card profile-card">
+                    <div class="card-body text-center">
+                        <div class="profile-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <h6 class="mb-1">{{ user.get_full_name|default:user.username }}</h6>
+                        <p class="text-muted mb-2 small">{{ user.email|default:"-" }}</p>
+                        <span class="badge bg-warning text-dark fs-6">
+                            Директор УК
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Статистика пользователей -->
+                <div class="card profile-card">
+                    <div class="card-body">
+                        <h6 class="mb-2 small">
+                            <i class="fas fa-users text-primary"></i> Пользователи
+                        </h6>
+                        <div class="small">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Всего:</span>
+                                <strong>{{ user_stats.total }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span><i class="fas fa-database text-warning"></i> Директоров:</span>
+                                <strong>{{ director_count }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span><i class="fas fa-tools text-info"></i> Исполнителей:</span>
+                                <strong>{{ executor_count }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span><i class="fas fa-home text-secondary"></i> Жителей:</span>
+                                <strong>{{ resident_count }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <!-- Быстрые ссылки -->
+            <div class="card profile-card h-100">
+                <div class="card-header bg-transparent">
+                    <h6 class="mb-0">
+                        <i class="fas fa-link"></i>
+                        Быстрые ссылки
+                    </h6>
+                </div>
+                <div class="list-group list-group-flush quick-links">
+                    <a href="{% url 'portal:prompt_management' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-robot text-dark"></i>
+                        AI Промпты
+                    </a>
+                    <a href="{% url 'file_manager:file_list' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-folder text-warning"></i>
+                        Файлы
+                    </a>
+                    <a href="{% url 'portal:kladr_management' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-map text-success"></i>
+                        КЛАДР
+                    </a>
+                    <a href="{% url 'portal:dialog_trace' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-binoculars text-primary"></i>
+                        Трассировка диалогов
+                    </a>
+                    <a href="/subscribers/" class="list-group-item list-group-item-action">
+                        <i class="fas fa-users text-info"></i>
+                        Кабинет жителя
+                    </a>
+                    <a href="{% url 'portal:executor_dashboard' %}" class="list-group-item list-group-item-action">
+                        <i class="fas fa-tools text-primary"></i>
+                        Кабинет исполнителя
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Системная информация -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light border-bottom">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle text-primary"></i> Системная информация
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <small>
+                                <strong>Telegram бот:</strong> <span class="badge bg-success">Активен</span> Проверка адресов<br>
+                                <strong>AI:</strong> <span class="badge bg-primary">YandexGPT</span>
+                            </small>
+                        </div>
+                        <div class="col-md-6">
+                            <small>
+                                <strong>БД:</strong> PostgreSQL 16
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

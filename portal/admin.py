@@ -57,8 +57,8 @@ class UserAdmin(BaseUserAdmin):
             profile = obj.userprofile
             if profile.role == 'django_admin':
                 return mark_safe('<span class="badge bg-danger">Администратор Django</span>')
-            elif profile.role == 'dba':
-                return mark_safe('<span class="badge bg-warning">DBA</span>')
+            elif profile.role == 'direktor_uk':
+                return mark_safe('<span class="badge bg-warning">Директор УК</span>')
             elif profile.role == 'uk_user':
                 return mark_safe('<span class="badge bg-info">Пользователь УК</span>')
             else:

@@ -21,9 +21,9 @@ class AdminAccessMiddleware:
                             # Если это не главная страница админки, просто блокируем
                             return HttpResponseForbidden("Доступ запрещен")
                         else:
-                            # Если главная - перенаправляем на admin-uk или dba
-                            if profile.is_dba():
-                                return redirect('portal:dba_page')
+                            # Если главная - перенаправляем на admin-uk или director
+                            if profile.is_director_uk():
+                                return redirect('portal:director_page')
                             else:
                                 return redirect('portal:welcome')
                 except UserProfile.DoesNotExist:

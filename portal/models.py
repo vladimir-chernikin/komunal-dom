@@ -42,7 +42,7 @@ class UserProfile(models.Model):
 
     ROLE_CHOICES = [
         ('uk_user', 'Пользователь УК'),
-        ('dba', 'DBA - менеджер данных'),
+        ('direktor_uk', 'Директор УК'),
         ('django_admin', 'Администратор Django (ИТ)'),
         ('executor', 'Исполнитель'),
         ('resident', 'Житель'),
@@ -99,19 +99,19 @@ class UserProfile(models.Model):
         return f"{self.user.username} - {self.get_role_display()}"
 
     def is_uk_user(self):
-        return self.role in ['uk_user', 'dba']
+        return self.role in ['uk_user', 'direktor_uk']
 
     def is_uk_admin(self):
-        return self.role in ['dba', 'django_admin']
+        return self.role in ['direktor_uk', 'django_admin']
 
-    def is_dba(self):
-        return self.role == 'dba'
+    def is_director_uk(self):
+        return self.role == 'direktor_uk'
 
     def is_django_admin(self):
         return self.role == 'django_admin'
 
     def has_admin_access(self):
-        return self.role in ['dba', 'django_admin']
+        return self.role in ['direktor_uk', 'django_admin']
 
 
 class SemanticPattern(models.Model):
