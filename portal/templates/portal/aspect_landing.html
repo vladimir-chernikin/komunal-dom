@@ -1,0 +1,324 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}УК "Аспект" - Управление многоквартирными домами{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Стили для aspect landing */
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 100px 0 80px;
+}
+
+.hero-title {
+    font-size: 3.5rem;
+    font-weight: 800;
+    margin-bottom: 20px;
+}
+
+.hero-subtitle {
+    font-size: 1.5rem;
+    opacity: 0.9;
+    margin-bottom: 40px;
+}
+
+.section-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.section-subtitle {
+    font-size: 1.1rem;
+    color: #6c757d;
+    margin-bottom: 50px;
+}
+
+.company-card {
+    background: white;
+    border-radius: 15px;
+    padding: 40px;
+    box-shadow: 0 5px 30px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.company-card:hover {
+    transform: translateY(-10px);
+    box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+}
+
+.company-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    color: white;
+    font-size: 32px;
+}
+
+.contact-info {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.contact-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.contact-item:last-child {
+    margin-bottom: 0;
+}
+
+.contact-icon {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    margin-right: 15px;
+    flex-shrink: 0;
+}
+
+.contact-label {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 2px;
+}
+
+.contact-value {
+    color: #6c757d;
+    font-size: 0.95rem;
+}
+
+.btn-custom {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    padding: 15px 40px;
+    color: white;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-custom:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+}
+
+.features-section {
+    padding: 80px 0;
+    background: #f8f9fa;
+}
+
+.feature-card {
+    text-align: center;
+    padding: 40px 20px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.feature-icon {
+    width: 70px;
+    height: 70px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    color: white;
+    font-size: 28px;
+}
+
+@media (max-width: 768px) {
+    .hero-section {
+        padding: 60px 0 40px;
+    }
+
+    .hero-title {
+        font-size: 2.5rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.2rem;
+    }
+
+    .section-title {
+        font-size: 2rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="hero-section">
+    <div class="container text-center">
+        <h1 class="hero-title">УК "Аспект"</h1>
+        <p class="hero-subtitle">Профессиональное управление многоквартирными домами</p>
+        <a href="/login/" class="btn btn-custom btn-lg">
+            <i class="fas fa-sign-in-alt me-2"></i>Войти в личный кабинет
+        </a>
+    </div>
+</div>
+
+<!-- Companies Section -->
+{% if companies %}
+<div class="container" style="padding: 80px 0;">
+    <div class="text-center">
+        <h2 class="section-title">Наши компании</h2>
+        <p class="section-subtitle">Предоставляем полный спектр услуг по управлению недвижимостью</p>
+    </div>
+
+    <div class="row">
+        {% for company in companies %}
+            <div class="col-lg-6 col-md-12 mb-4">
+                <div class="company-card">
+                    <div class="d-flex align-items-start">
+                        <div class="company-icon">
+                            <i class="fas fa-building"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h3>{{ company.name }}</h3>
+                            {% if company.full_name %}
+                                <p class="text-muted mb-3">{{ company.full_name }}</p>
+                            {% endif %}
+
+                            {% if company.domain or company.phone %}
+                                <div class="contact-info">
+                                    {% if company.domain %}
+                                        <div class="contact-item">
+                                            <div class="contact-icon">
+                                                <i class="fas fa-globe"></i>
+                                            </div>
+                                            <div>
+                                                <div class="contact-label">Веб-сайт</div>
+                                                <div class="contact-value">{{ company.domain }}</div>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+
+                                    {% if company.phone %}
+                                        <div class="contact-item">
+                                            <div class="contact-icon">
+                                                <i class="fas fa-phone"></i>
+                                            </div>
+                                            <div>
+                                                <div class="contact-label">Телефон</div>
+                                                <div class="contact-value">{{ company.phone }}</div>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Features Section -->
+<div class="features-section">
+    <div class="container">
+        <div class="text-center">
+            <h2 class="section-title">Наши услуги</h2>
+            <p class="section-subtitle">Комплексное решение для комфортной жизни</p>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-tools"></i>
+                    </div>
+                    <h4>Ремонт и обслуживание</h4>
+                    <p class="text-muted">Оперативное решение проблем с сантехникой, электрикой и другими коммуникациями</p>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-broom"></i>
+                    </div>
+                    <h4>Уборка территорий</h4>
+                    <p class="text-muted">Регулярная уборка придомовой территории и помещений общего пользования</p>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-snowflake"></i>
+                    </div>
+                    <h4>Теплоснабжение</h4>
+                    <p class="text-muted">Контроль за работой систем отопления и горячего водоснабжения</p>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-tint"></i>
+                    </div>
+                    <h4>Водоснабжение</h4>
+                    <p class="text-muted">Обслуживание систем водоснабжения и канализации</p>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-bolt"></i>
+                    </div>
+                    <h4>Электроснабжение</h4>
+                    <p class="text-muted">Поддержка работоспособности электросетей и освещения</p>
+                </div>
+            </div>
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i class="fas fa-headset"></i>
+                    </div>
+                    <h4>Поддержка 24/7</h4>
+                    <p class="text-muted">Круглосуточная диспетчерская служба для оперативной помощи</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CTA Section -->
+<div class="container" style="padding: 80px 0;">
+    <div class="card bg-primary text-white" style="border-radius: 20px; border: none; overflow: hidden;">
+        <div class="card-body text-center p-5" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <h2 class="mb-3">Готовы начать?</h2>
+            <p class="lead mb-4">Войдите в личный кабинет для создания заявок и отслеживания их статуса</p>
+            <a href="/login/" class="btn btn-light btn-lg rounded-pill px-5">
+                <i class="fas fa-sign-in-alt me-2"></i>Войти в кабинет
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

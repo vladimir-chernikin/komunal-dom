@@ -62,6 +62,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'komunal_dom.middleware.SubdomainMiddleware',  # Обработка поддоменов
     'portal.middleware.AdminAccessMiddleware',
 ]
 

@@ -1,0 +1,294 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Вход в систему - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Стили для landing страницы */
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 80px 0 60px;
+    margin-bottom: 40px;
+}
+
+.auth-container {
+    max-width: 900px;
+    margin: -60px auto 40px;
+    position: relative;
+    z-index: 10;
+}
+
+.auth-card {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.auth-tabs {
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 600;
+    color: #6c757d;
+    border: none;
+    background: transparent;
+}
+
+.auth-tab:hover {
+    background: #e9ecef;
+}
+
+.auth-tab.active {
+    background: white;
+    color: #667eea;
+    border-bottom: 3px solid #667eea;
+}
+
+.auth-content {
+    padding: 40px;
+}
+
+.auth-form {
+    display: none;
+}
+
+.auth-form.active {
+    display: block;
+}
+
+.company-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.company-item {
+    padding: 15px;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.company-item:hover {
+    border-color: #667eea;
+    background: #f8f9ff;
+    transform: translateY(-2px);
+}
+
+.company-name {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.company-domain {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.form-control {
+    border-radius: 10px;
+    padding: 12px 15px;
+    border: 2px solid #e9ecef;
+}
+
+.form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.btn-primary-custom {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 30px;
+    color: white;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-primary-custom:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+}
+
+.info-section {
+    padding: 60px 0;
+    background: #f8f9fa;
+}
+
+.info-card {
+    text-align: center;
+    padding: 30px;
+}
+
+.info-icon {
+    width: 70px;
+    height: 70px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    color: white;
+    font-size: 28px;
+}
+
+@media (max-width: 768px) {
+    .hero-section {
+        padding: 60px 0 40px;
+    }
+
+    .auth-container {
+        margin: -40px 15px 20px;
+    }
+
+    .auth-content {
+        padding: 20px;
+    }
+
+    .company-list {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="hero-section">
+    <div class="container text-center">
+        <h1 class="display-4 fw-bold mb-3">Добро пожаловать!</h1>
+        <p class="lead">Система управления услугами ЖКХ</p>
+    </div>
+</div>
+
+<!-- Auth Container -->
+<div class="auth-container">
+    <div class="auth-card">
+        <!-- Tabs -->
+        <div class="auth-tabs">
+            <button class="auth-tab active" data-tab="login">
+                <i class="fas fa-sign-in-alt me-2"></i>Вход по логину
+            </button>
+            <button class="auth-tab" data-tab="company">
+                <i class="fas fa-building me-2"></i>Выбрать компанию
+            </button>
+        </div>
+
+        <!-- Login Form -->
+        <div id="login-form" class="auth-form active">
+            <div class="auth-content">
+                <h4 class="text-center mb-4">Вход в систему</h4>
+                <form method="post" action="{% url 'admin:login' %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="id_username" class="form-label">Логин</label>
+                        <input type="text" class="form-control" name="username" id="id_username" placeholder="Введите логин" required>
+                    </div>
+                    <div class="mb-4">
+                        <label for="id_password" class="form-label">Пароль</label>
+                        <input type="password" class="form-control" name="password" id="id_password" placeholder="Введите пароль" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary-custom w-100">
+                        <i class="fas fa-sign-in-alt me-2"></i>Войти
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Company Selection -->
+        <div id="company-form" class="auth-form">
+            <div class="auth-content">
+                <h4 class="text-center mb-4">Выберите компанию</h4>
+                {% if companies %}
+                    <div class="company-list">
+                        {% for company in companies %}
+                            <a href="https://{{ company.domain }}/login/" class="text-decoration-none">
+                                <div class="company-item">
+                                    <div class="company-name">{{ company.name }}</div>
+                                    {% if company.domain %}
+                                        <div class="company-domain">{{ company.domain }}</div>
+                                    {% endif %}
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="alert alert-info text-center">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Список компаний пуст. Добавьте компании в справочник.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Info Section -->
+<div class="info-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="info-card">
+                    <div class="info-icon">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <h5>Создание заявок</h5>
+                    <p class="text-muted">Быстрое оформление заявок на коммунальные услуги</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="info-card">
+                    <div class="info-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h5>Отслеживание статуса</h5>
+                    <p class="text-muted">Мониторинг выполнения заявок в реальном времени</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="info-card">
+                    <div class="info-icon">
+                        <i class="fas fa-headset"></i>
+                    </div>
+                    <h5>Поддержка 24/7</h5>
+                    <p class="text-muted">Круглосуточная техническая поддержка</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        // Remove active class from all tabs
+        document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+
+        // Add active class to clicked tab
+        this.classList.add('active');
+
+        // Show corresponding form
+        const tabName = this.getAttribute('data-tab');
+        document.getElementById(tabName + '-form').classList.add('active');
+    });
+});
+</script>
+{% endblock %}

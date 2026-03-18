@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from django.http import Http404
 from django.conf import settings
 from .models import UserProfile
+from nsi.models import Company
 import json  # ИСПРАВЛЕНО (2026-01-05): Добавлен для парсинга metadata
 
 # Импорты для КЛАДР статистики
@@ -18,6 +19,32 @@ except ImportError:
 def welcome(request):
     """Главная страница - приветствие ООО Аспект"""
     return render(request, 'portal/welcome.html')
+
+
+def landing(request):
+    """Стартовая страница для незарегистрированных пользователей"""
+    from django.contrib.auth.forms import AuthenticationForm
+
+    # Получаем список активных компаний
+    companies = Company.objects.filter(is_active=True).order_by('name')
+
+    context = {
+        'companies': companies,
+    }
+
+    return render(request, 'portal/landing.html', context)
+
+
+def aspect_landing(request):
+    """Стартовая страница для aspect.komunal-dom.ru"""
+    # Получаем информацию о компании "Аспект"
+    companies = Company.objects.filter(is_active=True).order_by('name')
+
+    context = {
+        'companies': companies,
+    }
+
+    return render(request, 'portal/aspect_landing.html', context)
 
 
 def test_logo_variants(request):
