@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crispy_forms',
     'crispy_bootstrap5',
+    'nsi.apps.NsiConfig',  # НСИ - Normativno-Spravochnaya Informatsiya (справочники)
     'file_manager.apps.FileManagerConfig',
     'portal.apps.PortalConfig',
     'kladr.apps.KladrConfig',
