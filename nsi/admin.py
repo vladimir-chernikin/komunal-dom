@@ -126,5 +126,4 @@ class RefCategoryAdmin(admin.ModelAdmin):
         self.message_user(request, f'Категория "{category.category_name}" установлена как "по умолчанию"')
     set_as_default.short_description = '⭐ Установить выбранную категорию как "По умолчанию"'
 
-    class Media:
-        js = ('nsi/admin_actions_customization.js',)
+    change_list_template = 'nsi/refcategory_change_list.html'
