@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 from .models import UserProfile, AIPrompt, SemanticPattern, ServicesCatalog
+from nsi.models import RefCategory
 
 
 # Отключаем стандартную регистрацию User
@@ -225,13 +226,13 @@ class ServicesCatalogAdmin(admin.ModelAdmin):
 
     def category_display(self, obj):
         """Показать категорию"""
-        from django.db import connection
         try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT category_name FROM ref_categories WHERE category_id = %s", [obj.category_id])
-                result = cursor.fetchone()
-                return result[0] if result else f'ID:{obj.category_id}'
-        except:
+            from nsi.models import RefCategory
+            category = RefCategory.objects.get(category_id=obj.category_id)
+            return category.category_name
+        except RefCategory.DoesNotExist:
+            return f'ID:{obj.category_id}'
+        except Exception:
             return f'ID:{obj.category_id}'
     category_display.short_description = 'Категория'
 

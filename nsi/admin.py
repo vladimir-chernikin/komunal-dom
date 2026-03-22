@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Company, EquipmentType
+from .models import Company, EquipmentType, RefCategory
 
 
 @admin.register(Company)
@@ -53,3 +53,35 @@ class EquipmentTypeAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(RefCategory)
+class RefCategoryAdmin(admin.ModelAdmin):
+    """Админка для справочника категорий услуг ЖКХ"""
+
+    list_display = ['category_id', 'category_name', 'is_default', 'created_at']
+    list_filter = ['is_default', 'created_at']
+    search_fields = ['category_name', 'llm_description']
+    list_editable = ['is_default']
+    ordering = ['category_id']
+
+    fieldsets = (
+        ('Основное', {
+            'fields': ('category_id', 'category_name', 'is_default')
+        }),
+        ('Описание для AI', {
+            'fields': ('llm_description',),
+            'description': 'Текстовое описание для использования в AI-системах классификации'
+        }),
+        ('Служебная информация', {
+            'fields': ('dev_notes',),
+            'classes': ('collapse',),
+            'description': 'Заметки разработчиков (не влияет на бизнес-логику)'
+        }),
+        ('Системная информация', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+
+    readonly_fields = ['category_id', 'created_at']
