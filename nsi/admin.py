@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.safestring import mark_safe
 from .models import Company, EquipmentType, RefCategory
 
 
@@ -59,11 +60,11 @@ class EquipmentTypeAdmin(admin.ModelAdmin):
 class RefCategoryAdmin(admin.ModelAdmin):
     """Админка для справочника категорий услуг ЖКХ"""
 
-    list_display = ['category_id', 'category_name', 'is_default', 'created_at']
-    list_filter = ['is_default', 'created_at']
+    list_display = ['category_id', 'linked_category_name', 'is_default_display', 'dev_notes_preview']
+    list_filter = ['is_default']
     search_fields = ['category_name', 'llm_description']
-    list_editable = ['is_default']
     ordering = ['category_id']
+    actions = ['set_as_default']
 
     fieldsets = (
         ('Основное', {
@@ -78,10 +79,49 @@ class RefCategoryAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
             'description': 'Заметки разработчиков (не влияет на бизнес-логику)'
         }),
-        ('Системная информация', {
-            'fields': ('created_at',),
-            'classes': ('collapse',)
-        }),
     )
 
-    readonly_fields = ['category_id', 'created_at']
+    readonly_fields = ['category_id']
+
+    def linked_category_name(self, obj):
+        """Возвращает название категории как гиперссылку на форму редактирования"""
+        url = f'/admin/nsi/refcategory/{obj.category_id}/change/'
+        return mark_safe(f'<a href="{url}">{obj.category_name}</a>')
+    linked_category_name.short_description = 'Категория'
+    linked_category_name.admin_order_field = 'category_name'
+
+    def is_default_display(self, obj):
+        """Отображает is_default с эмодзи для наглядности"""
+        if obj.is_default:
+            return mark_safe('<span style="color: green; font-size: 16px;">⭐ Да</span>')
+        return mark_safe('<span style="color: gray;">—</span>')
+    is_default_display.short_description = 'По умолчанию'
+    is_default_display.admin_order_field = 'is_default'
+    is_default_display.boolean = False
+
+    def dev_notes_preview(self, obj):
+        """Показывает preview dev_notes (обрезает до 50 символов)"""
+        if obj.dev_notes:
+            notes = obj.dev_notes
+            if len(notes) > 50:
+                return f'{notes[:50]}...'
+            return notes
+        return mark_safe('<span style="color: gray;">—</span>')
+    dev_notes_preview.short_description = 'Заметки разработчика'
+
+    def set_as_default(self, request, queryset):
+        """Admin action: установить выбранную категорию как default"""
+        if queryset.count() != 1:
+            self.message_user(request, 'Выберите ровно одну категорию для установки как "по умолчанию"', level='ERROR')
+            return
+
+        category = queryset.first()
+        from nsi.models import RefCategory
+        # Сбрасываем is_default у всех
+        RefCategory.objects.all().update(is_default=False)
+        # Устанавливаем для выбранной
+        category.is_default = True
+        category.save()
+
+        self.message_user(request, f'Категория "{category.category_name}" установлена как "по умолчанию"')
+    set_as_default.short_description = '⭐ Установить выбранную категорию как "По умолчанию"'
