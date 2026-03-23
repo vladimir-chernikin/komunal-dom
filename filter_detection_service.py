@@ -7,7 +7,9 @@ FilterDetectionService - микросервис определения филь�
 ИСПРАВЛЕНО (2026-01-20): Разбит на 3 отдельных промпта:
 - incident_type (Инцидент/Запрос)
 - location_type (Индивидуальное/Общедомовое)
-- category (категория проблемы) - ОТКЛЮЧЕН с 2026-01-27
+- category (категория проблемы)
+
+ИЗМЕНЕНО (2026-03-22): category ПЕРЕВКЛЮЧЕН
 
 Каждый промпт возвращает упрощенный JSON: {[filter], [confidence], [reasoning]}
 Итоговый JSON собирается внутри Python кода.
@@ -44,7 +46,14 @@ class FilterDetectionService:
         logger.info(f"FilterDetectionService инициализирован (доступен: {self.is_available})")
 
     def _load_reference_data_from_db(self):
-        """Загружает справочные данные из БД для промпта"""
+        """
+        Загружает справочные данные из БД для промпта
+
+        ИЗМЕНЕНО (2026-03-22):
+        - Добавлена загрузка категорий с полями: ID, name, llm_description, is_default
+        - categories_list УДАЛЕН (рудимент)
+        - Добавлено определение is_default_id
+        """
         try:
             import psycopg2
             from django.conf import settings
@@ -60,15 +69,25 @@ class FilterDetectionService:
 
             try:
                 with conn.cursor() as cursor:
-                    # Загружаем уникальные категории
+                    # ИЗМЕНЕНО (2026-03-22): Загружаем категории с полными данными
                     cursor.execute("""
-                        SELECT DISTINCT rc.category_name
-                        FROM services_catalog sc
-                        JOIN ref_categories rc ON sc.category_id = rc.category_id
-                        WHERE rc.category_name IS NOT NULL AND rc.category_name != ''
-                        ORDER BY rc.category_name
+                        SELECT category_id, category_name, llm_description, is_default
+                        FROM ref_categories
+                        ORDER BY category_name
                     """)
-                    self.categories_list = [row[0] for row in cursor.fetchall()]
+                    self.categories_data = [
+                        {
+                            'id': row[0],
+                            'name': row[1],
+                            'description': row[2],
+                            'is_default': row[3]
+                        }
+                        for row in cursor.fetchall()
+                    ]
+
+                    # ИЗМЕНЕНО (2026-03-22): Находим is_default_id
+                    default_categories = [c for c in self.categories_data if c['is_default']]
+                    self.is_default_id = default_categories[0]['id'] if default_categories else None
 
                     # Загружаем примеры объектов
                     cursor.execute("""
@@ -97,13 +116,15 @@ class FilterDetectionService:
                 conn.close()
 
             logger.info(
-                f"FilterDetectionService: загружено {len(self.categories_list)} категорий, "
+                f"FilterDetectionService: загружено {len(self.categories_data)} категорий, "
+                f"is_default_id={self.is_default_id}, "
                 f"{len(self.objects_examples)} примеров объектов"
             )
 
         except Exception as e:
             logger.error(f"Ошибка загрузки справочных данных: {e}")
-            self.categories_list = []
+            self.categories_data = []
+            self.is_default_id = None
             self.objects_examples = []
 
     # ========================================================================
@@ -211,9 +232,23 @@ class FilterDetectionService:
 
         ИСПРАВЛЕНО (2026-02-05): Загружает промпт из БД вместо хардкода.
         ИСПРАВЛЕНО (2026-03-07): Убрано формирование examples (Ольга добавляла тупо).
+        ИЗМЕНЕНО (2026-03-22):
+        - categories_str УДАЛЕН (рудимент)
+        - categories_json формируется из БД (ID, name, llm_description, is_default=false)
+        - is_default_id подставляется из БД
+        - Используется .format() вместо replace
         """
-        # Формируем список категорий
-        categories_str = ", ".join([f'"{cat}"' for cat in self.categories_list])
+        # ИЗМЕНЕНО (2026-03-22): Формируем JSON только с is_default=false
+        categories_for_json = [
+            {
+                'id': cat['id'],
+                'name': cat['name'],
+                'description': cat['description']
+            }
+            for cat in self.categories_data
+            if not cat['is_default']
+        ]
+        categories_json = json.dumps(categories_for_json, ensure_ascii=False, indent=2)
 
         # ИСПРАВЛЕНО (2026-02-05): Загружаем промпт из БД
         try:
@@ -230,11 +265,15 @@ class FilterDetectionService:
             db_template = await get_db_template()
 
             if db_template:
-                # Подставляем переменные через replace
-                prompt = db_template.template.replace('{txtPrb}', txtPrb)
-                prompt = prompt.replace('{categories_str}', categories_str)
+                # ИЗМЕНЕНО (2026-03-22): Подставляем переменные через .format()
+                prompt = db_template.template.format(
+                    txtPrb=txtPrb,
+                    categories_json=categories_json,
+                    is_default_id=self.is_default_id
+                )
 
                 logger.debug(f"[DB] Промпт filter-category загружен из БД (ID: {db_template.id})")
+                logger.debug(f"[DB] categories_json: {len(categories_for_json)} категорий, is_default_id={self.is_default_id}")
                 return prompt
             else:
                 logger.error(f"[DB] Промпт 'filter-category' не найден в БД!")
@@ -463,32 +502,26 @@ class FilterDetectionService:
             problem_description = txtPrb if txtPrb else message_text
 
             # ====================================================================
-            # ВЫЗЫВАЕМ 2 ПРОМПТА ПАРАЛЛЕЛЬНО (category ОТКЛЮЧЕН - заглушка)
+            # ВЫЗЫВАЕМ 3 ПРОМПТА ПАРАЛЛЕЛЬНО
             # ====================================================================
-            logger.info(f"FilterDetectionService: запускаем 2 промпта параллельно (category - заглушка)...")
+            # ИЗМЕНЕНО (2026-03-22): category ПЕРЕВКЛЮЧЕН
+            logger.info(f"FilterDetectionService: запускаем 3 промпта параллельно...")
 
             # Создаем промпты
             # ИСПРАВЛЕНО (2026-02-05): Добавлен await (методы теперь async)
             prompt_incident = await self._create_incident_type_prompt(problem_description)
             prompt_location = await self._create_location_type_prompt(problem_description)
-            # ИСПРАВЛЕНО (2026-03-05): category ОТКЛЮЧЕН для оптимизации
-            # prompt_category = await self._create_category_prompt(problem_description)
+            # ИЗМЕНЕНО (2026-03-22): category ПЕРЕВКЛЮЧЕН
+            prompt_category = await self._create_category_prompt(problem_description)
 
-            # Вызываем LLM для каждого фильтра (кроме category - заглушка)
+            # Вызываем LLM для каждого фильтра
             # ИСПРАВЛЕНО (2026-03-07): Передаём уникальный service_name для каждого фильтра
-            incident_result, location_result = await asyncio.gather(
+            # ИЗМЕНЕНО (2026-03-22): category добавлен в параллельное выполнение
+            incident_result, location_result, category_result = await asyncio.gather(
                 self._call_llm_for_filter(prompt_incident, 'incident_type', session_id, message_id),
-                self._call_llm_for_filter(prompt_location, 'location_type', session_id, message_id)
-                # ИСПРАВЛЕНО (2026-03-05): category ОТКЛЮЧЕН для оптимизации
-                # self._call_llm_for_filter(prompt_category, 'category', session_id, message_id)
+                self._call_llm_for_filter(prompt_location, 'location_type', session_id, message_id),
+                self._call_llm_for_filter(prompt_category, 'category', session_id, message_id)
             )
-
-            # ИСПРАВЛЕНО (2026-03-05): Заглушка для category
-            category_result = {
-                'value': None,
-                'confidence': 1.0,
-                'reasoning': 'Заглушка (отключено для оптимизации)'
-            }
 
             # ====================================================================
             # СОБИРАЕМ ИТОГОВЫЙ JSON
@@ -499,12 +532,12 @@ class FilterDetectionService:
                 'category': category_result['value']
             }
 
-            # Общая уверенность = минимум из двух (без category)
+            # Общая уверенность = минимум из трех
+            # ИЗМЕНЕНО (2026-03-22): category добавлен в расчет confidence
             confidence = min(
                 incident_result['confidence'],
-                location_result['confidence']
-                # ИСПРАВЛЕНО (2026-03-05): category исключен
-                # category_result['confidence']
+                location_result['confidence'],
+                category_result['confidence']
             )
 
             # Объединяем reasoning
