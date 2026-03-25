@@ -154,25 +154,18 @@ class MainAgent:
         """
         try:
             with connection.cursor() as cursor:
-                # ИСПРАВЛЕНО (2026-01-15): Загружаем уникальные категории через JOIN с ref_categories
+                # ИСПРАВЛЕНО (2026-03-25): Новая структура catalog - category_name текстовое поле
                 cursor.execute("""
-                    SELECT DISTINCT rc.category_name
-                    FROM services_catalog sc
-                    JOIN ref_categories rc ON sc.category_id = rc.category_id
-                    WHERE rc.category_name IS NOT NULL AND rc.category_name != ''
-                    ORDER BY rc.category_name
+                    SELECT DISTINCT category_name
+                    FROM services_catalog
+                    WHERE category_name IS NOT NULL AND category_name != ''
+                    ORDER BY category_name
                 """)
                 self._categories_cache = [row[0] for row in cursor.fetchall()]
 
-                # Загружаем уникальные объекты
-                cursor.execute("""
-                    SELECT DISTINCT ro.object_name
-                    FROM services_catalog sc
-                    JOIN ref_objects ro ON sc.object_id = ro.object_id
-                    WHERE ro.object_name IS NOT NULL AND ro.object_name != ''
-                    ORDER BY ro.object_name
-                """)
-                self._objects_cache = [row[0] for row in cursor.fetchall()]
+                # ИСПРАВЛЕНО (2026-03-25): ref_objects удален, объекты больше не используются
+                # Загружаем пустой список для обратной совместимости
+                self._objects_cache = []
 
                 # Загружаем типы локации из справочника
                 cursor.execute("SELECT DISTINCT localization_name FROM ref_localization ORDER BY localization_name")
@@ -1263,17 +1256,14 @@ class MainAgent:
                 service_ids = [c['service_id'] for c in candidates_data]
 
                 with connection.cursor() as cursor:
-                    # ИСПРАВЛЕНО (2026-01-15): Используем JOIN с ref_* таблицами
+                    # ИСПРАВЛЕНО (2026-03-25): Новая структура - текстовые поля вместо JOIN
                     cursor.execute("""
-                        SELECT sc.service_id, sc.scenario_name,
-                               COALESCE(rst.type_name, '') as incident_type,
-                               COALESCE(rc.category_name, '') as category,
-                               COALESCE(rl.localization_name, '') as location_type
-                        FROM services_catalog sc
-                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
-                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
-                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
-                        WHERE sc.service_id IN %s
+                        SELECT service_id, scenario_name,
+                               type_name as incident_type,
+                               category_name as category,
+                               localization_name as location_type
+                        FROM services_catalog
+                        WHERE service_id IN %s
                     """, [tuple(service_ids)])
 
                     attrs_map = {}
@@ -1330,36 +1320,32 @@ class MainAgent:
         try:
             def load_sync():
                 with connection.cursor() as cursor:
-                    # Строим SQL запрос с фильтрами через JOIN с справочниками
-                    # ИСПРАВЛЕНО (2026-01-13): Используем ref_* вместо varchar колонок
+                    # ИСПРАВЛЕНО (2026-03-25): Новая структура - текстовые поля вместо JOIN
                     sql = """
-                        SELECT sc.service_id, sc.scenario_name,
-                               COALESCE(rst.type_name, '') as incident_type,
-                               COALESCE(rc.category_name, '') as category,
-                               COALESCE(rl.localization_name, '') as location_type
-                        FROM services_catalog sc
-                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
-                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
-                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
-                        WHERE sc.is_active = TRUE
+                        SELECT service_id, scenario_name,
+                               type_name as incident_type,
+                               category_name as category,
+                               localization_name as location_type
+                        FROM services_catalog
+                        WHERE is_active = TRUE
                     """
                     params = []
 
                     # Добавляем фильтры если они есть
                     if filters.get('incident_type'):
-                        sql += " AND rst.type_name = %s"
+                        sql += " AND type_name = %s"
                         params.append(filters['incident_type'])
 
                     if filters.get('location_type'):
-                        sql += " AND rl.localization_name = %s"
+                        sql += " AND localization_name = %s"
                         params.append(filters['location_type'])
 
                     if filters.get('category'):
                         # Частичное совпадение для категории
-                        sql += " AND rc.category_name ILIKE %s"
+                        sql += " AND category_name ILIKE %s"
                         params.append(f"%{filters['category']}%")
 
-                    sql += " ORDER BY sc.scenario_name"
+                    sql += " ORDER BY scenario_name"
                     logger.info(f"SQL для поиска по фильтрам: {sql} с параметрами {params}")
 
                     cursor.execute(sql, params)
@@ -2466,11 +2452,15 @@ class MainAgent:
             return f"Услуга #{service_id}"
 
     def get_service_details(self, service_id: int) -> Optional[Dict]:
-        """Получить детальную информацию об услуге из services_catalog"""
+        """
+        Получить детальную информацию об услуге из services_catalog
+
+        ИСПРАВЛЕНО (2026-03-25): Новая структура catalog
+        """
         try:
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT service_id, scenario_name, description_for_search, type_id, kind_id, category_id
+                    SELECT service_id, scenario_name, description, type_name, localization_name, category_name, route_name, is_internal
                     FROM services_catalog WHERE service_id = %s
                 """, [service_id])
                 result = cursor.fetchone()
@@ -2480,9 +2470,11 @@ class MainAgent:
                         'service_id': result[0],
                         'scenario_name': result[1],
                         'description': result[2] or result[1],
-                        'type_id': result[3],
-                        'kind_id': result[4],
-                        'category_id': result[5]
+                        'type_name': result[3],
+                        'localization_name': result[4],
+                        'category_name': result[5],
+                        'route_name': result[6],
+                        'is_internal': result[7]
                     }
                 return None
         except Exception as e:

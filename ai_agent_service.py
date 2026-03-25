@@ -207,8 +207,9 @@ class AIAgentService:
         try:
             def load_sync():
                 with connection.cursor() as cursor:
+                    # ИСПРАВЛЕНО (2026-03-25): Новая структура - поле description вместо description_for_search
                     cursor.execute("""
-                        SELECT service_id, scenario_name, description_for_search
+                        SELECT service_id, scenario_name, description
                         FROM services_catalog
                         WHERE is_active = TRUE
                         ORDER BY service_id

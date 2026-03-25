@@ -503,16 +503,13 @@ def executor_dashboard(request):
             r.status,
             r.service_name,
             r.urgency_level,
-            rc.category_name as service_category,
-            rst.type_name as incident_type,
+            '—' as service_category,  -- ИСПРАВЛЕНО (2026-03-25): service_id NULL, категория недоступна
+            '—' as incident_type,      -- ИСПРАВЛЕНО (2026-03-25): service_id NULL, тип недоступен
             r.assigned_to,
             r.is_at_scene,
             r.arrived_at,
             r.photo_path
         FROM bot_service_requests r
-        LEFT JOIN services_catalog s ON r.service_id = s.service_id
-        LEFT JOIN ref_categories rc ON s.category_id = rc.category_id
-        LEFT JOIN ref_service_types rst ON s.type_id = rst.type_id
         WHERE 1=1
     """
 
@@ -868,14 +865,12 @@ def executor_report(request, request_id):
                 r.entrance as address_details,
                 r.description,
                 r.photo_path,
-                COALESCE(sc.scenario_name, r.service_name) as service_name,
-                COALESCE(rc.category_name, '—') as category_name,
+                COALESCE(r.service_name, '—') as service_name,  -- ИСПРАВЛЕНО (2026-03-25): берем из заявки
+                '—' as category_name,  -- ИСПРАВЛЕНО (2026-03-25): service_id NULL, категория недоступна
                 u.username as executor_username,
                 u.first_name as executor_first_name,
                 u.last_name as executor_last_name
             FROM bot_service_requests r
-            LEFT JOIN services_catalog sc ON r.service_id = sc.service_id
-            LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
             LEFT JOIN auth_user u ON r.assigned_to = u.id
             WHERE r.id = %s
         """, [request_id])

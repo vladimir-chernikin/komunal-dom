@@ -180,41 +180,37 @@ class SemanticPatternAdmin(admin.ModelAdmin):
 
 @admin.register(ServicesCatalog)
 class ServicesCatalogAdmin(admin.ModelAdmin):
-    """Админка для услуг из services_catalog"""
+    """Админка для услуг из services_catalog
+
+    НОВАЯ СТРУКТУРА (с 2026-03-25):
+    - Текстовые поля вместо FK
+    - 44 услуги (матрица 11×2×2)
+    """
 
     list_display = [
         'service_id',
         'scenario_name',
-        'category_display',
-        'type_display',
-        'object_display',
+        'category_name',
+        'type_name',
+        'localization_name',
+        'is_internal',
         'is_active',
-        'tags_preview'
     ]
 
-    list_filter = ['is_active', 'category_id', 'type_id', 'localization_id', 'object_id']
-    search_fields = ['scenario_name', 'scenario_id', 'description_for_search', 'tags']
+    list_filter = ['is_active', 'is_internal', 'category_name', 'type_name', 'localization_name', 'route_name']
+    search_fields = ['scenario_name', 'category_name', 'type_name', 'description', 'route_name']
     list_editable = ['is_active']
-    ordering = ['category_id', 'scenario_name']
+    ordering = ['category_name', 'scenario_name']
 
     fieldsets = (
         ('Основное', {
-            'fields': ('service_id', 'scenario_id', 'scenario_name', 'is_active')
+            'fields': ('service_id', 'scenario_name', 'is_active', 'is_internal')
         }),
         ('Классификация', {
-            'fields': ('category_id', 'type_id', 'object_id', 'localization_id')
+            'fields': ('category_name', 'type_name', 'localization_name', 'route_name')
         }),
-        ('Дополнительно', {
-            'fields': ('kind_id', 'payment_id', 'route_id', 'urgency_id', 'description_for_search')
-        }),
-        ('Теги', {
-            'fields': ('tags',),
-            'description': 'Теги услуги для улучшения поиска (заполняются из service_tags)'
-        }),
-        ('Embedding', {
-            'fields': ('embedding_text', 'embedding_service'),
-            'classes': ('collapse',),
-            'description': 'Векторное представление для семантического поиска'
+        ('Описание', {
+            'fields': ('description',)
         }),
         ('Системная информация', {
             'fields': ('created_at', 'updated_at'),
@@ -222,53 +218,5 @@ class ServicesCatalogAdmin(admin.ModelAdmin):
         }),
     )
 
-    readonly_fields = ['service_id', 'kind_id', 'payment_id', 'route_id', 'urgency_id', 'created_at', 'updated_at', 'embedding_service']
-
-    def category_display(self, obj):
-        """Показать категорию"""
-        try:
-            from nsi.models import RefCategory
-            category = RefCategory.objects.get(category_id=obj.category_id)
-            return category.category_name
-        except RefCategory.DoesNotExist:
-            return f'ID:{obj.category_id}'
-        except Exception:
-            return f'ID:{obj.category_id}'
-    category_display.short_description = 'Категория'
-
-    def type_display(self, obj):
-        """Показать тип"""
-        from django.db import connection
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT type_name FROM ref_service_types WHERE type_id = %s", [obj.type_id])
-                result = cursor.fetchone()
-                return result[0] if result else f'ID:{obj.type_id}'
-        except:
-            return f'ID:{obj.type_id}'
-    type_display.short_description = 'Тип'
-
-    def object_display(self, obj):
-        """Показать объект"""
-        from django.db import connection
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT object_name FROM ref_objects WHERE object_id = %s", [obj.object_id])
-                result = cursor.fetchone()
-                return result[0] if result else f'ID:{obj.object_id}'
-        except:
-            return f'ID:{obj.object_id}'
-    object_display.short_description = 'Объект'
-
-    def tags_preview(self, obj):
-        """Предпросмотр тегов (полностью)"""
-        from django.utils.safestring import mark_safe
-        from django.utils.html import escape
-        if obj.tags:
-            # Показываем все теги с переносом строк для удобства
-            escaped_tags = escape(obj.tags)
-            return mark_safe(f'<span style="white-space: pre-wrap; word-break: break-word; max-width: 500px; display: inline-block;">{escaped_tags}</span>')
-        return mark_safe('<span style="color: #999;">-</span>')
-    tags_preview.short_description = 'Теги'
-    tags_preview.allow_tags = True
+    readonly_fields = ['service_id', 'created_at', 'updated_at']
 

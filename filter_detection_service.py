@@ -90,17 +90,15 @@ class FilterDetectionService:
                     self.is_default_id = default_categories[0]['id'] if default_categories else None
 
                     # Загружаем примеры объектов
+                    # ИСПРАВЛЕНО (2026-03-25): Новая структура - текстовые поля вместо JOIN
                     cursor.execute("""
-                        SELECT sc.scenario_name,
-                               COALESCE(rc.category_name, '') as category,
-                               COALESCE(rst.type_name, '') as incident_type,
-                               COALESCE(rl.localization_name, '') as localization
-                        FROM services_catalog sc
-                        LEFT JOIN ref_categories rc ON sc.category_id = rc.category_id
-                        LEFT JOIN ref_service_types rst ON sc.type_id = rst.type_id
-                        LEFT JOIN ref_localization rl ON sc.localization_id = rl.localization_id
-                        WHERE sc.is_active = TRUE
-                        ORDER BY sc.service_id
+                        SELECT scenario_name,
+                               category_name as category,
+                               type_name as incident_type,
+                               localization_name as localization
+                        FROM services_catalog
+                        WHERE is_active = TRUE
+                        ORDER BY service_id
                         LIMIT 100
                     """)
                     self.objects_examples = [
