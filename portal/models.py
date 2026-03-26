@@ -188,30 +188,120 @@ class SemanticPattern(models.Model):
 class ServicesCatalog(models.Model):
     """Услуги из БД services_catalog (unmanaged модель)
 
-    НОВАЯ СТРУКТУРА (с 2026-03-25):
+    НОВАЯ СТРУКТУРА (с 2026-03-26):
     - 44 услуги (матрица 11 категорий × 2 типа × 2 локализации)
-    - Текстовые поля вместо FK
-    - Без embeddings и tags
+    - FK поля: type_id, category_id, localization_id
+    - Текстовые поля сохранены для обратной совместимости
+
+    ВОССТАНОВЛЕНО (2026-03-26):
+    - Добавлены ForeignKey поля для FK-структуры БД
+    - Текстовые поля устарели, но временно оставлены
     """
 
     service_id = models.IntegerField(primary_key=True, verbose_name="ID услуги")
     scenario_name = models.CharField(max_length=255, verbose_name="Название услуги")
-    type_name = models.CharField(max_length=100, verbose_name="Тип услуги")
-    localization_name = models.CharField(max_length=100, verbose_name="Локализация")
-    category_name = models.CharField(max_length=255, verbose_name="Категория")
-    description = models.TextField(blank=True, null=True, verbose_name="Описание")
-    route_name = models.CharField(max_length=150, blank=True, null=True, verbose_name="Маршрут")
-    is_internal = models.BooleanField(default=False, verbose_name="Служебная услуга")
-    is_active = models.BooleanField(default=True, verbose_name="Активна")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
+
+    # ========================================
+    # FK ПОЛЯ (ВОССТАНОВЛЕНЫ - 2026-03-26)
+    # ========================================
+    # Привязка к существующим БД-колонкам: type_id, category_id, localization_id
+    # Используем db_column для маппинга на существующие колонки (без создания новых)
+
+    type = models.ForeignKey(
+        'nsi.RefServiceType',
+        db_column='type_id',
+        on_delete=models.PROTECT,
+        verbose_name="Тип услуги",
+        related_name='+',
+        help_text="Инцидент или Запрос"
+    )
+
+    category = models.ForeignKey(
+        'nsi.RefCategory',
+        db_column='category_id',
+        on_delete=models.PROTECT,
+        verbose_name="Категория",
+        related_name='+',
+        help_text="Категория услуги (11 категорий)"
+    )
+
+    localization = models.ForeignKey(
+        'nsi.RefLocalization',
+        db_column='localization_id',
+        on_delete=models.PROTECT,
+        verbose_name="Локализация",
+        related_name='+',
+        help_text="Общедомовое или Индивидуальное"
+    )
+
+    # ========================================
+    # УСТАРЕВШИЕ ТЕКСТОВЫЕ ПОЛЯ (ВРЕМЕННО ОСТАВЛЕНЫ)
+    # ========================================
+    # ВНИМАНИЕ: Эти поля устарели и сохранены ТОЛЬКО для обратной совместимости.
+    # Будут удалены после обновления всех SQL-запросов и проверки приложения.
+    # НЕ ИСПОЛЬЗОВАТЬ в новом коде - используйте FK поля (type, category, localization).
+
+    type_name = models.CharField(
+        max_length=100,
+        verbose_name="Тип услуги (устарело, использовать 'type')",
+        help_text="ВРЕМЕННО: Устаревшее текстовое поле. Используйте FK поле 'type'."
+    )
+
+    localization_name = models.CharField(
+        max_length=100,
+        verbose_name="Локализация (устарело, использовать 'localization')",
+        help_text="ВРЕМЕННО: Устаревшее текстовое поле. Используйте FK поле 'localization'."
+    )
+
+    category_name = models.CharField(
+        max_length=255,
+        verbose_name="Категория (устарело, использовать 'category')",
+        help_text="ВРЕМЕННО: Устаревшее текстовое поле. Используйте FK поле 'category'."
+    )
+
+    # ========================================
+    # ОСТАЛЬНЫЕ ПОЛЯ (без изменений)
+    # ========================================
+
+    description = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Описание"
+    )
+
+    route_name = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True,
+        verbose_name="Маршрут"
+    )
+
+    is_internal = models.BooleanField(
+        default=False,
+        verbose_name="Служебная услуга"
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активна"
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания"
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Дата обновления"
+    )
 
     class Meta:
         managed = False  # НЕ управлять Django (таблица уже существует)
         db_table = 'services_catalog'
         verbose_name = "Услуга"
         verbose_name_plural = "Справочник услуг"
-        ordering = ['category_name', 'scenario_name']
+        ordering = ['category', 'scenario_name']  # Используем FK поле
 
     def __str__(self):
         return f"{self.scenario_name} (ID: {self.service_id})"
