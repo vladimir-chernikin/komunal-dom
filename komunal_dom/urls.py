@@ -28,6 +28,7 @@ urlpatterns = [
     path('files/', include('file_manager.urls')),
     path('chat/', include('message_handler.urls')),  # Веб-чат с AI
     path('llm-tester/', include('llm_tester.urls')),  # LLM Tester
+    path('db-sql/', include('database_viewer.urls')),  # СУБД SQL интерфейс
 ]
 
 # Обслуживание медиа-файлов в режиме разработки
