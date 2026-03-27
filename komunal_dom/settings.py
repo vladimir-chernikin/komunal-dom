@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'message_handler.apps.MessageHandlerConfig',  # Логирование сообщений из всех каналов
     'llm_tester.apps.LlmTesterConfig',  # LLM Tester - тестирование промптов
     'database_viewer.apps.DatabaseViewerConfig',  # СУБД SQL интерфейс
+    'work_orders.apps.WorkOrdersConfig',  # Управление заявками ЖКХ
 ]
 
 MIDDLEWARE = [
@@ -83,6 +84,9 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST'),
         'PORT': config('DB_PORT'),
+        'OPTIONS': {
+            'options': '-c search_path=public,request_mgmt'
+        }
     }
 }
 

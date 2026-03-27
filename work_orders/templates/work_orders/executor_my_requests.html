@@ -1,0 +1,117 @@
+{% extends 'work_orders/base.html' %}
+
+{% block title %}Мои заявки - УК Комфорт{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'work_orders:executor_dashboard' %}">Дашборд</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Мои заявки</li>
+            </ol>
+        </nav>
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-person-check"></i> Мои заявки</h2>
+        </div>
+    </div>
+</div>
+
+<!-- Фильтры -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-6">
+                <label for="status" class="form-label">Статус</label>
+                <select name="status" id="status" class="form-select">
+                    <option value="">Все статусы</option>
+                    <option value="accepted_by_executor" {% if status_filter == 'accepted_by_executor' %}selected{% endif %}>Принята</option>
+                    <option value="in_progress" {% if status_filter == 'in_progress' %}selected{% endif %}>В работе</option>
+                    <option value="on_hold" {% if status_filter == 'on_hold' %}selected{% endif %}>Приостановлена</option>
+                    <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Выполнена</option>
+                    <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Закрыта</option>
+                </select>
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-funnel"></i> Применить
+                </button>
+                <a href="{% url 'work_orders:executor_my_requests' %}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Очистить
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Список заявок -->
+{% if my_requests %}
+<div class="row">
+    {% for work_order in my_requests %}
+    <div class="col-md-6 mb-4">
+        <div class="card work-order-card h-100" onclick="window.location='{% url 'work_orders:work_order_detail' work_order.id %}'">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title">{{ work_order.work_order_no }}</h5>
+                        <small class="text-muted">
+                            <i class="bi bi-calendar"></i> {{ work_order.created_at|date:"d.m.Y H:i" }}
+                        </small>
+                    </div>
+                    <div>
+                        {% if work_order.is_emergency %}
+                        <span class="badge bg-danger emergency-badge">АВАРИЯ</span>
+                        {% else %}
+                        <span class="badge priority-badge
+                            {% if work_order.priority_code == 'high' %}bg-danger
+                            {% elif work_order.priority_code == 'normal' %}bg-warning
+                            {% else %}bg-secondary{% endif %}">
+                            {{ work_order.get_priority_code_display }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <p class="card-text text-truncate" style="max-height: 80px; overflow: hidden;">
+                    {{ work_order.original_request_text }}
+                </p>
+
+                {% if work_order.resolution_text %}
+                <div class="alert alert-success mb-2">
+                    <small><strong>Решение:</strong> {{ work_order.resolution_text|truncatewords:15 }}</small>
+                </div>
+                {% endif %}
+
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <small class="text-muted">
+                        <i class="bi bi-geo-alt"></i> Объект #{{ work_order.object.service_object_id }}
+                    </small>
+                    <span class="badge
+                        {% if work_order.current_internal_status.short_code_en == 'accepted_by_executor' %}bg-primary
+                        {% elif work_order.current_internal_status.short_code_en == 'in_progress' %}bg-warning
+                        {% elif work_order.current_internal_status.short_code_en == 'completed' %}bg-success
+                        {% elif work_order.current_internal_status.short_code_en == 'closed' %}bg-dark
+                        {% else %}bg-secondary{% endif %}">
+                        {{ work_order.current_internal_status.short_name_ru }}
+                    </span>
+                </div>
+
+                <div class="mt-2">
+                    <small class="text-muted">
+                        <i class="bi bi-box-seam"></i> {{ work_order.service.scenario_name }}
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<div class="alert alert-info" role="alert">
+    <i class="bi bi-info-circle"></i> У вас пока нет заявок
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,124 @@
+{% extends 'work_orders/base.html' %}
+
+{% block title %}Создать заявку - УК Комфорт{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'work_orders:executor_dashboard' %}">Дашборд</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Создать заявку</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Создать новую заявку</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label for="{{ form.object.id_for_label }}" class="form-label">Объект обслуживания *</label>
+                        {{ form.object }}
+                        {% if form.object.errors %}
+                        <div class="text-danger">{{ form.object.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.service.id_for_label }}" class="form-label">Услуга *</label>
+                        {{ form.service }}
+                        {% if form.service.errors %}
+                        <div class="text-danger">{{ form.service.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.original_request_text.id_for_label }}" class="form-label">Описание заявки *</label>
+                        {{ form.original_request_text }}
+                        {% if form.original_request_text.errors %}
+                        <div class="text-danger">{{ form.original_request_text.errors }}</div>
+                        {% endif %}
+                        <div class="form-text">Опишите проблему подробно</div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="{{ form.priority_code.id_for_label }}" class="form-label">Приоритет</label>
+                                {{ form.priority_code }}
+                                {% if form.priority_code.errors %}
+                                <div class="text-danger">{{ form.priority_code.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="form-check mt-4">
+                                    {{ form.is_emergency }}
+                                    <label class="form-check-label" for="{{ form.is_emergency.id_for_label }}">
+                                        Аварийная заявка
+                                    </label>
+                                    {% if form.is_emergency.errors %}
+                                    <div class="text-danger">{{ form.is_emergency.errors }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{% url 'work_orders:executor_dashboard' %}" class="btn btn-secondary">Отмена</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Создать заявку
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Подсказка</h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">При создании заявки:</p>
+                <ul class="mb-0">
+                    <li>Выберите объект обслуживания</li>
+                    <li>Выберите тип услуги</li>
+                    <li>Опишите проблему подробно</li>
+                    <li>Укажите приоритет при необходимости</li>
+                    <li>Отметьте как аварийную, если требуется срочное вмешательство</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Добавляем классы формы Bootstrap
+    const fields = ['object', 'service', 'original_request_text', 'priority_code'];
+    fields.forEach(field => {
+        const element = document.getElementById('id_' + field);
+        if (element) {
+            element.classList.add('form-select');
+            if (field === 'original_request_text') {
+                element.classList.remove('form-select');
+                element.classList.add('form-control');
+            }
+        }
+    });
+});
+</script>
+
+{% endblock %}

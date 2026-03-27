@@ -1,0 +1,149 @@
+{% extends 'work_orders/base.html' %}
+
+{% block title %}Управленческий список - УК Комфорт{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'work_orders:executor_dashboard' %}">Дашборд</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Управленческий список</li>
+            </ol>
+        </nav>
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-graph-up"></i> Управленческий список</h2>
+            <h5 class="text-muted">{{ company.name }}</h5>
+        </div>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-warning" role="alert">
+    <i class="bi bi-exclamation-triangle"></i> {{ error }}
+</div>
+{% else %}
+
+<!-- Фильтры -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label for="status" class="form-label">Статус</label>
+                <select name="status" id="status" class="form-select">
+                    <option value="">Все статусы</option>
+                    <option value="new_registered" {% if status_filter == 'new_registered' %}selected{% endif %}>Новая</option>
+                    <option value="accepted_by_executor" {% if status_filter == 'accepted_by_executor' %}selected{% endif %}>Принята исполнителем</option>
+                    <option value="in_progress" {% if status_filter == 'in_progress' %}selected{% endif %}>В работе</option>
+                    <option value="on_hold" {% if status_filter == 'on_hold' %}selected{% endif %}>Приостановлена</option>
+                    <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Выполнена</option>
+                    <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Закрыта</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="department" class="form-label">Подразделение</label>
+                <select name="department" id="department" class="form-select">
+                    <option value="">Все подразделения</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.id }}" {% if department_filter == dept.id|stringformat:"s" %}selected{% endif %}>
+                        {{ dept.department_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="priority" class="form-label">Приоритет</label>
+                <select name="priority" id="priority" class="form-select">
+                    <option value="">Все приоритеты</option>
+                    <option value="high" {% if priority_filter == 'high' %}selected{% endif %}>Высокий</option>
+                    <option value="normal" {% if priority_filter == 'normal' %}selected{% endif %}>Обычный</option>
+                    <option value="low" {% if priority_filter == 'low' %}selected{% endif %}>Низкий</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-funnel"></i> Применить
+                </button>
+                <a href="{% url 'work_orders:management_list' %}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Очистить
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Таблица заявок -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>№ заявки</th>
+                        <th>Создана</th>
+                        <th>Описание</th>
+                        <th>Услуга</th>
+                        <th>Подразделение</th>
+                        <th>Исполнитель</th>
+                        <th>Статус</th>
+                        <th>Приоритет</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for work_order in work_orders %}
+                    <tr onclick="window.location='{% url 'work_orders:work_order_detail' work_order.id %}'" style="cursor: pointer;">
+                        <td>
+                            <strong>{{ work_order.work_order_no }}</strong>
+                            {% if work_order.is_emergency %}
+                            <span class="badge bg-danger emergency-badge ms-1">АВАРИЯ</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ work_order.created_at|date:"d.m.Y H:i" }}</td>
+                        <td>
+                            <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                {{ work_order.original_request_text }}
+                            </div>
+                        </td>
+                        <td>{{ work_order.service.scenario_name }}</td>
+                        <td>{{ work_order.department.department_name }}</td>
+                        <td>
+                            {% if work_order.responsible_user %}
+                            {{ work_order.responsible_user.get_full_name|default:work_order.responsible_user.username }}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge
+                                {% if work_order.current_internal_status.short_code_en == 'new_registered' %}bg-secondary
+                                {% elif work_order.current_internal_status.short_code_en == 'in_progress' %}bg-primary
+                                {% elif work_order.current_internal_status.short_code_en == 'completed' %}bg-success
+                                {% elif work_order.current_internal_status.short_code_en == 'closed' %}bg-dark
+                                {% else %}bg-warning{% endif %}">
+                                {{ work_order.current_internal_status.short_name_ru }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge
+                                {% if work_order.priority_code == 'high' %}bg-danger
+                                {% elif work_order.priority_code == 'normal' %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {{ work_order.get_priority_code_display }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted">Заявки не найдены</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,1138 @@
+"""
+Модели подсистемы управления заявками ЖКХ
+
+Все таблицы находятся в PostgreSQL schema 'request_mgmt'
+PK: bigint с identity/auto increment
+Обязательное поле: is_test boolean NOT NULL DEFAULT false
+"""
+from django.db import models
+from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator
+from django.db.models import UniqueConstraint, Q, CheckConstraint, F
+
+
+# ============================================
+# Справочники
+# ============================================
+
+class RouteRef(models.Model):
+    """Справочник типовых маршрутов (request_mgmt.route_ref)"""
+
+    route_code = models.CharField(max_length=50, unique=True, verbose_name="Код маршрута")
+    route_name = models.CharField(max_length=150, verbose_name="Название маршрута")
+    description = models.TextField(blank=True, null=True, verbose_name="Описание")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'route_ref'
+        verbose_name = "Типовой маршрут"
+        verbose_name_plural = "Типовые маршруты"
+        ordering = ['route_code']
+        indexes = [
+            models.Index(fields=['is_active'], name='idx_route_ref_active'),
+            models.Index(fields=['route_name'], name='idx_route_ref_name'),
+        ]
+
+    def __str__(self):
+        return f"{self.route_name} ({self.route_code})"
+
+
+class CompanyDepartment(models.Model):
+    """Иерархический справочник подразделений компании (request_mgmt.company_department)"""
+
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='departments',
+        verbose_name="Компания"
+    )
+    parent_department = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        db_column='parent_department_id',
+        null=True,
+        blank=True,
+        related_name='child_departments',
+        verbose_name="Родительское подразделение"
+    )
+    department_name = models.CharField(max_length=150, verbose_name="Название")
+    department_code = models.CharField(max_length=50, verbose_name="Код")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    sort_order = models.IntegerField(default=100, verbose_name="Порядок сортировки")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'company_department'
+        verbose_name = "Подразделение компании"
+        verbose_name_plural = "Подразделения компаний"
+        ordering = ['company', 'sort_order', 'department_name']
+        constraints = [
+            UniqueConstraint(
+                fields=['company', 'department_code'],
+                name='uq_company_department_company_code'
+            ),
+            UniqueConstraint(
+                fields=['company', 'parent_department', 'department_name'],
+                name='uq_company_department_company_name_parent'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company'], name='idx_company_department_company'),
+            models.Index(fields=['parent_department'], name='idx_company_department_parent'),
+            models.Index(fields=['company', 'is_active'], name='idx_company_department_active'),
+            models.Index(fields=['company', 'sort_order'], name='idx_company_department_sort'),
+        ]
+
+    def __str__(self):
+        return f"{self.department_name} ({self.company.name})"
+
+
+class ContractorOrganization(models.Model):
+    """Справочник подрядных организаций (request_mgmt.contractor_organization)"""
+
+    contractor_name = models.CharField(max_length=200, verbose_name="Название")
+    tax_id = models.CharField(max_length=20, blank=True, null=True, verbose_name="ИНН")
+    phone = models.CharField(max_length=50, blank=True, null=True, verbose_name="Телефон")
+    email = models.EmailField(max_length=254, blank=True, null=True, verbose_name="Email")
+    address = models.TextField(blank=True, null=True, verbose_name="Адрес")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'contractor_organization'
+        verbose_name = "Подрядная организация"
+        verbose_name_plural = "Подрядные организации"
+        ordering = ['contractor_name']
+        constraints = [
+            UniqueConstraint(
+                fields=['tax_id'],
+                condition=Q(tax_id__isnull=False),
+                name='uq_contractor_organization_tax_id'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['contractor_name'], name='idx_contr_org_name'),
+            models.Index(fields=['is_active'], name='idx_contr_org_active'),
+        ]
+
+    def __str__(self):
+        return self.contractor_name
+
+
+class CompanyRouteMapping(models.Model):
+    """Настройка маршрута в конкретной компании (request_mgmt.company_route_mapping)"""
+
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='route_mappings',
+        verbose_name="Компания"
+    )
+    route = models.ForeignKey(
+        RouteRef,
+        on_delete=models.PROTECT,
+        db_column='route_id',
+        related_name='company_mappings',
+        verbose_name="Типовой маршрут"
+    )
+    target_department = models.ForeignKey(
+        CompanyDepartment,
+        on_delete=models.PROTECT,
+        db_column='target_department_id',
+        related_name='incoming_mappings',
+        verbose_name="Целевое подразделение"
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'company_route_mapping'
+        verbose_name = "Маппинг маршрута компании"
+        verbose_name_plural = "Маппинги маршрутов компаний"
+        ordering = ['company', 'route']
+        constraints = [
+            UniqueConstraint(
+                fields=['company', 'route'],
+                condition=Q(is_active=True),
+                name='uq_company_route_mapping_active_route_per_company'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company'], name='idx_comp_route_map_comp'),
+            models.Index(fields=['route'], name='idx_comp_route_map_route'),
+            models.Index(fields=['target_department'], name='idx_comp_route_map_dept'),
+        ]
+
+    def __str__(self):
+        return f"{self.company.name} → {self.route.route_code} → {self.target_department.department_name}"
+
+
+class UserCompanyMembership(models.Model):
+    """Привязка пользователя к компании, подразделению и роли (request_mgmt.user_company_membership)"""
+
+    ROLE_CHOICES = [
+        ('resident', 'Житель'),
+        ('uk_user', 'Пользователь УК'),
+        ('executor', 'Исполнитель'),
+        ('chief_engineer', 'Главный инженер'),
+        ('direktor_uk', 'Директор УК'),
+        ('contractor', 'Подрядчик'),
+        ('django_admin', 'Django администратор'),
+    ]
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        db_column='user_id',
+        related_name='company_memberships',
+        verbose_name="Пользователь"
+    )
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.CASCADE,
+        db_column='company_id',
+        related_name='user_memberships',
+        verbose_name="Компания"
+    )
+    department = models.ForeignKey(
+        CompanyDepartment,
+        on_delete=models.PROTECT,
+        db_column='department_id',
+        related_name='user_memberships',
+        verbose_name="Подразделение"
+    )
+    role_code = models.CharField(max_length=50, choices=ROLE_CHOICES, verbose_name="Роль")
+    contractor_organization = models.ForeignKey(
+        ContractorOrganization,
+        on_delete=models.SET_NULL,
+        db_column='contractor_organization_id',
+        null=True,
+        blank=True,
+        related_name='user_memberships',
+        verbose_name="Подрядная организация"
+    )
+    is_primary = models.BooleanField(default=False, verbose_name="Основная привязка")
+    date_from = models.DateField(verbose_name="Действует с")
+    date_to = models.DateField(blank=True, null=True, verbose_name="Действует до")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'user_company_membership'
+        verbose_name = "Членство в компании"
+        verbose_name_plural = "Членства в компаниях"
+        ordering = ['user', 'company', '-is_primary', '-is_active']
+        constraints = [
+            UniqueConstraint(
+                fields=['user', 'company', 'department', 'role_code', 'date_from'],
+                name='uq_user_company_membership_identity'
+            ),
+            UniqueConstraint(
+                fields=['user'],
+                condition=Q(is_primary=True, is_active=True, date_to__isnull=True),
+                name='uq_user_company_membership_primary_active'
+            ),
+            CheckConstraint(
+                condition=Q(date_to__isnull=True) | Q(date_to__gte=F('date_from')),
+                name='ck_user_company_membership_date_range'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['user'], name='idx_user_comp_member_user'),
+            models.Index(fields=['company'], name='idx_user_comp_member_comp'),
+            models.Index(fields=['department'], name='idx_user_comp_member_dept'),
+            models.Index(fields=['role_code'], name='idx_user_comp_member_role'),
+            models.Index(fields=['user', 'is_active'], name='idx_user_comp_member_active'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.company.name} ({self.get_role_code_display()})"
+
+
+class WorkOrderStatusRef(models.Model):
+    """Справочник статусов заявки (request_mgmt.work_order_status_ref)"""
+
+    STATUS_SCOPE_CHOICES = [
+        ('internal', 'Внутренний'),
+        ('external', 'Внешний'),
+        ('both', 'Оба контура'),
+    ]
+
+    short_code_en = models.CharField(max_length=50, unique=True, verbose_name="Код статуса")
+    short_name_ru = models.CharField(max_length=100, verbose_name="Название")
+    status_scope = models.CharField(max_length=20, choices=STATUS_SCOPE_CHOICES, verbose_name="Область применения")
+    description_and_transition_rules = models.TextField(
+        blank=True, null=True, verbose_name="Описание и правила переходов"
+    )
+    sort_order = models.IntegerField(default=100, verbose_name="Порядок сортировки")
+    is_terminal = models.BooleanField(default=False, verbose_name="Терминальный статус")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'work_order_status_ref'
+        verbose_name = "Статус заявки"
+        verbose_name_plural = "Статусы заявок"
+        ordering = ['sort_order', 'short_code_en']
+        constraints = [
+            CheckConstraint(
+                condition=Q(status_scope__in=['internal', 'external', 'both']),
+                name='ck_work_order_status_ref_scope'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['status_scope'], name='idx_work_status_ref_scope'),
+            models.Index(fields=['is_active'], name='idx_work_status_ref_active'),
+            models.Index(fields=['sort_order'], name='idx_work_status_ref_sort'),
+        ]
+
+    def __str__(self):
+        return f"{self.short_name_ru} ({self.short_code_en})"
+
+
+class WorkOrderStatusTransition(models.Model):
+    """Допустимые переходы статусов (request_mgmt.work_order_status_transition)"""
+
+    from_status = models.ForeignKey(
+        WorkOrderStatusRef,
+        on_delete=models.PROTECT,
+        db_column='from_status_id',
+        related_name='transitions_from',
+        verbose_name="Исходный статус"
+    )
+    to_status = models.ForeignKey(
+        WorkOrderStatusRef,
+        on_delete=models.PROTECT,
+        db_column='to_status_id',
+        related_name='transitions_to',
+        verbose_name="Целевой статус"
+    )
+    allowed_role_code = models.CharField(
+        max_length=50, blank=True, null=True, verbose_name="Разрешенная роль"
+    )
+    is_system_transition = models.BooleanField(default=False, verbose_name="Системный переход")
+    require_comment = models.BooleanField(default=False, verbose_name="Требует комментарий")
+    require_reason_code = models.BooleanField(default=False, verbose_name="Требует код причины")
+    require_resolution_text = models.BooleanField(default=False, verbose_name="Требует текст решения")
+    require_result_photo = models.BooleanField(default=False, verbose_name="Требует фото результата")
+    require_executor_assigned = models.BooleanField(default=False, verbose_name="Требует назначенного исполнителя")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'work_order_status_transition'
+        verbose_name = "Переход статуса"
+        verbose_name_plural = "Переходы статусов"
+        ordering = ['from_status', 'to_status']
+        constraints = [
+            UniqueConstraint(
+                fields=['from_status', 'to_status', 'allowed_role_code', 'is_system_transition'],
+                name='uq_work_order_status_transition_rule'
+            ),
+            CheckConstraint(
+                condition=~Q(from_status=F('to_status')),
+                name='ck_work_order_status_transition_not_self'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['from_status'], name='idx_work_stat_trans_from'),
+            models.Index(fields=['to_status'], name='idx_work_stat_trans_to'),
+            models.Index(fields=['is_active'], name='idx_work_stat_trans_active'),
+        ]
+
+    def __str__(self):
+        return f"{self.from_status.short_code_en} → {self.to_status.short_code_en}"
+
+
+class SLAPolicy(models.Model):
+    """SLA-политики (request_mgmt.sla_policy)"""
+
+    PRIORITY_CHOICES = [
+        ('low', 'Низкий'),
+        ('normal', 'Обычный'),
+        ('high', 'Высокий'),
+        ('critical', 'Критический'),
+    ]
+
+    CALENDAR_TYPE_CHOICES = [
+        ('24x7', '24/7'),
+        ('company_working_hours', 'Рабочие часы компании'),
+    ]
+
+    POLICY_SOURCE_CHOICES = [
+        ('normative', 'Нормативный'),
+        ('company', 'Внутренний компании'),
+        ('mixed', 'Смешанный'),
+    ]
+
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='sla_policies',
+        verbose_name="Компания"
+    )
+    service = models.ForeignKey(
+        'portal.ServicesCatalog',
+        on_delete=models.PROTECT,
+        db_column='service_id',
+        related_name='sla_policies',
+        verbose_name="Услуга"
+    )
+    is_emergency = models.BooleanField(default=False, verbose_name="Аварийный сценарий")
+    priority_code = models.CharField(max_length=20, choices=PRIORITY_CHOICES, verbose_name="Приоритет")
+    calendar_type = models.CharField(max_length=25, choices=CALENDAR_TYPE_CHOICES, verbose_name="Тип календаря")
+    executor_assignment_minutes = models.IntegerField(
+        validators=[MinValueValidator(0)], verbose_name="Срок назначения исполнителя (мин)"
+    )
+    work_start_minutes = models.IntegerField(
+        validators=[MinValueValidator(0)], verbose_name="Срок взятия в работу (мин)"
+    )
+    resident_contact_minutes = models.IntegerField(
+        validators=[MinValueValidator(0)], verbose_name="Срок контакта с заявителем (мин)"
+    )
+    localization_minutes = models.IntegerField(
+        blank=True, null=True, validators=[MinValueValidator(0)], verbose_name="Срок локализации (мин)"
+    )
+    resolution_minutes = models.IntegerField(
+        validators=[MinValueValidator(0)], verbose_name="Срок выполнения (мин)"
+    )
+    auto_close_after_days = models.IntegerField(
+        validators=[MinValueValidator(0)], verbose_name="Автозакрытие через (дни)"
+    )
+    policy_source = models.CharField(max_length=20, choices=POLICY_SOURCE_CHOICES, verbose_name="Источник политики")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'sla_policy'
+        verbose_name = "SLA-политика"
+        verbose_name_plural = "SLA-политики"
+        ordering = ['company', 'service', 'priority_code', 'is_emergency']
+        constraints = [
+            UniqueConstraint(
+                fields=['company', 'service', 'priority_code', 'is_emergency'],
+                name='uq_sla_policy_company_service_priority_emergency'
+            ),
+            CheckConstraint(
+                condition=Q(calendar_type__in=['24x7', 'company_working_hours']),
+                name='ck_sla_policy_calendar_type'
+            ),
+            CheckConstraint(
+                condition=Q(policy_source__in=['normative', 'company', 'mixed']),
+                name='ck_sla_policy_source'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'service'], name='idx_sla_policy_company_service'),
+            models.Index(fields=['company', 'is_active'], name='idx_sla_policy_active'),
+        ]
+
+    def __str__(self):
+        emergency_str = " [АВАРИЯ]" if self.is_emergency else ""
+        return f"{self.company.name} - {self.service.scenario_name} - {self.get_priority_code_display()}{emergency_str}"
+
+
+class CompanyObjectServicePeriod(models.Model):
+    """Период обслуживания объекта компанией (request_mgmt.company_object_service_period)"""
+
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='service_periods',
+        verbose_name="Компания"
+    )
+    object = models.ForeignKey(
+        'portal.ServiceObject',
+        on_delete=models.PROTECT,
+        db_column='object_id',
+        related_name='service_periods',
+        verbose_name="Объект обслуживания"
+    )
+    date_from = models.DateField(verbose_name="Обслуживание с")
+    date_to = models.DateField(blank=True, null=True, verbose_name="Обслуживание по")
+    comment = models.TextField(blank=True, null=True, verbose_name="Комментарий")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'company_object_service_period'
+        verbose_name = "Период обслуживания объекта"
+        verbose_name_plural = "Периоды обслуживания объектов"
+        ordering = ['object', '-date_from']
+        constraints = [
+            CheckConstraint(
+                condition=Q(date_to__isnull=True) | Q(date_to__gte=F('date_from')),
+                name='ck_company_object_service_period_date_range'
+            ),
+            # Exclusion constraint будет добавлен через миграцию
+        ]
+        indexes = [
+            models.Index(fields=['company'], name='idx_comp_obj_period_comp'),
+            models.Index(fields=['object'], name='idx_comp_obj_period_obj'),
+            models.Index(fields=['date_from', 'date_to'], name='idx_comp_obj_period_dates'),
+        ]
+
+    def __str__(self):
+        date_to_str = f" - {self.date_to}" if self.date_to else " (настоящее время)"
+        return f"{self.object} - {self.company.name}: {self.date_from}{date_to_str}"
+
+
+# ============================================
+# Документы
+# ============================================
+
+class RequestIntake(models.Model):
+    """Входящий JSON/событие (request_mgmt.request_intake)"""
+
+    CHANNEL_CHOICES = [
+        ('telegram', 'Telegram'),
+        ('max', 'MAX'),
+        ('site_chat', 'Чат на сайте'),
+        ('phone', 'Телефон'),
+        ('manual', 'Вручную'),
+    ]
+
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='request_intakes',
+        verbose_name="Компания"
+    )
+    channel_code = models.CharField(max_length=30, choices=CHANNEL_CHOICES, verbose_name="Канал поступления")
+    source_payload_json = models.JSONField(verbose_name="Исходный JSON")
+    normalized_payload_json = models.JSONField(blank=True, null=True, verbose_name="Нормализованный JSON")
+    message_log_ref = models.CharField(max_length=255, blank=True, null=True, verbose_name="Ссылка на MessageLog")
+    external_message_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="Внешний ID сообщения")
+    received_at = models.DateTimeField(verbose_name="Получен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'request_intake'
+        verbose_name = "Входящее событие"
+        verbose_name_plural = "Входящие события"
+        ordering = ['-received_at']
+        indexes = [
+            models.Index(fields=['company', '-received_at'], name='idx_req_intake_comp_recv'),
+            models.Index(fields=['channel_code', '-received_at'], name='idx_req_intake_chan_recv'),
+            models.Index(fields=['external_message_id'], name='idx_req_intake_ext_msg_id'),
+        ]
+
+    def __str__(self):
+        return f"RequestIntake #{self.id} ({self.get_channel_code_display()}) - {self.received_at}"
+
+
+class WorkOrder(models.Model):
+    """Главная сущность заявки (request_mgmt.work_order)"""
+
+    CREATION_SOURCE_CHOICES = [
+        ('bot_json', 'Бот (JSON)'),
+        ('manual_operator', 'Вручную оператором'),
+        ('manual_employee', 'Вручную сотрудником'),
+        ('manual_chief_engineer', 'Вручную главным инженером'),
+        ('manual_director', 'Вручную директором'),
+        ('manual_django_admin', 'Вручную Django-админом'),
+    ]
+
+    PRIORITY_CHOICES = [
+        ('low', 'Низкий'),
+        ('normal', 'Обычный'),
+        ('high', 'Высокий'),
+        ('critical', 'Критический'),
+    ]
+
+    work_order_no = models.CharField(max_length=30, unique=True, verbose_name="Номер заявки")
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='work_orders',
+        verbose_name="Компания"
+    )
+    object = models.ForeignKey(
+        'portal.ServiceObject',
+        on_delete=models.PROTECT,
+        db_column='object_id',
+        related_name='work_orders',
+        verbose_name="Объект обслуживания"
+    )
+    service = models.ForeignKey(
+        'portal.ServicesCatalog',
+        on_delete=models.PROTECT,
+        db_column='service_id',
+        related_name='work_orders',
+        verbose_name="Услуга"
+    )
+    route = models.ForeignKey(
+        RouteRef,
+        on_delete=models.PROTECT,
+        db_column='route_id',
+        related_name='work_orders',
+        verbose_name="Маршрут"
+    )
+    department = models.ForeignKey(
+        CompanyDepartment,
+        on_delete=models.PROTECT,
+        db_column='department_id',
+        related_name='work_orders',
+        verbose_name="Подразделение"
+    )
+    responsible_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='responsible_user_id',
+        null=True,
+        blank=True,
+        related_name='assigned_work_orders',
+        verbose_name="Ответственный исполнитель"
+    )
+    request_intake = models.OneToOneField(
+        RequestIntake,
+        on_delete=models.SET_NULL,
+        db_column='request_intake_id',
+        null=True,
+        blank=True,
+        related_name='work_order',
+        verbose_name="Входящее событие"
+    )
+    message_log_ref = models.CharField(max_length=255, blank=True, null=True, verbose_name="Ссылка на MessageLog")
+    creation_source = models.CharField(max_length=30, choices=CREATION_SOURCE_CHOICES, verbose_name="Источник создания")
+    resident_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='resident_user_id',
+        null=True,
+        blank=True,
+        related_name='resident_work_orders',
+        verbose_name="Авторизованный житель"
+    )
+    original_request_text = models.TextField(verbose_name="Исходный текст обращения")
+    additional_info_text = models.TextField(blank=True, null=True, verbose_name="Дополнительные сведения")
+    resolution_text = models.TextField(blank=True, null=True, verbose_name="Решение")
+    is_emergency = models.BooleanField(default=False, verbose_name="Аварийная заявка")
+    priority_code = models.CharField(max_length=20, choices=PRIORITY_CHOICES, verbose_name="Приоритет")
+    current_internal_status = models.ForeignKey(
+        WorkOrderStatusRef,
+        on_delete=models.PROTECT,
+        db_column='current_internal_status_id',
+        related_name='internal_status_work_orders',
+        verbose_name="Текущий внутренний статус"
+    )
+    current_external_status = models.ForeignKey(
+        WorkOrderStatusRef,
+        on_delete=models.PROTECT,
+        db_column='current_external_status_id',
+        related_name='external_status_work_orders',
+        verbose_name="Текущий внешний статус"
+    )
+    parent_work_order = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        db_column='parent_work_order_id',
+        null=True,
+        blank=True,
+        related_name='child_work_orders',
+        verbose_name="Родительская заявка"
+    )
+    completed_by_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='completed_by_user_id',
+        null=True,
+        blank=True,
+        related_name='completed_work_orders',
+        verbose_name="Выполнено пользователем"
+    )
+    closed_by_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='closed_by_user_id',
+        null=True,
+        blank=True,
+        related_name='closed_work_orders',
+        verbose_name="Закрыто пользователем"
+    )
+    cancelled_by_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='cancelled_by_user_id',
+        null=True,
+        blank=True,
+        related_name='cancelled_work_orders',
+        verbose_name="Отменено пользователем"
+    )
+
+    # Даты жизненного цикла
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    assigned_at = models.DateTimeField(blank=True, null=True, verbose_name="Назначен")
+    accepted_at = models.DateTimeField(blank=True, null=True, verbose_name="Взят в работу")
+    in_progress_at = models.DateTimeField(blank=True, null=True, verbose_name="В работе")
+    resident_contacted_at = models.DateTimeField(blank=True, null=True, verbose_name="Контакт с заявителем")
+    localized_at = models.DateTimeField(blank=True, null=True, verbose_name="Локализовано")
+    completed_at = models.DateTimeField(blank=True, null=True, verbose_name="Выполнен")
+    closed_at = models.DateTimeField(blank=True, null=True, verbose_name="Закрыт")
+    cancelled_at = models.DateTimeField(blank=True, null=True, verbose_name="Отменен")
+    reopened_at = models.DateTimeField(blank=True, null=True, verbose_name="Переоткрыт")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'work_order'
+        verbose_name = "Заявка"
+        verbose_name_plural = "Заявки"
+        ordering = ['-created_at']
+        constraints = [
+            CheckConstraint(
+                condition=Q(parent_work_order__isnull=True) | ~Q(parent_work_order=F('id')),
+                name='ck_work_order_no_self_parent'
+            ),
+            CheckConstraint(
+                condition=Q(creation_source__in=[
+                    'bot_json', 'manual_operator', 'manual_employee',
+                    'manual_chief_engineer', 'manual_director', 'manual_django_admin'
+                ]),
+                name='ck_work_order_creation_source'
+            ),
+            CheckConstraint(
+                condition=Q(priority_code__in=['low', 'normal', 'high', 'critical']),
+                name='ck_work_order_priority'
+            ),
+            CheckConstraint(
+                condition=Q(closed_at__isnull=True) | ~Q(completed_at__isnull=True) | ~Q(cancelled_at__isnull=True),
+                name='ck_work_order_close_requires_complete_or_cancel'
+            ),
+            CheckConstraint(
+                condition=Q(completed_at__isnull=True) | ~Q(resolution_text__isnull=True),
+                name='ck_work_order_complete_requires_resolution'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', '-created_at'], name='idx_work_order_comp_created'),
+            models.Index(fields=['company', 'department', 'current_internal_status', '-created_at'], name='idx_work_order_comp_dept_stat'),
+            models.Index(fields=['responsible_user', 'current_internal_status', '-created_at'], name='idx_work_order_resp_stat'),
+            models.Index(fields=['department', '-created_at'], name='idx_work_order_dept_unassign', condition=Q(responsible_user__isnull=True)),
+            models.Index(fields=['parent_work_order'], name='idx_work_order_parent'),
+            models.Index(fields=['object'], name='idx_work_order_object'),
+            models.Index(fields=['service'], name='idx_work_order_service'),
+            models.Index(fields=['route'], name='idx_work_order_route'),
+            models.Index(fields=['is_test'], name='idx_work_order_test'),
+        ]
+
+    def __str__(self):
+        return f"Заявка #{self.work_order_no}: {self.original_request_text[:50]}..."
+
+
+class SLAInstance(models.Model):
+    """Экземпляр SLA для заявки (request_mgmt.sla_instance)"""
+
+    SLA_STATE_CHOICES = [
+        ('waiting', 'Ожидает'),
+        ('met', 'Выполнен'),
+        ('overdue', 'Просрочен'),
+        ('not_applicable', 'Неприменимо'),
+    ]
+
+    CALENDAR_TYPE_CHOICES = [
+        ('24x7', '24/7'),
+        ('company_working_hours', 'Рабочие часы компании'),
+    ]
+
+    work_order = models.OneToOneField(
+        WorkOrder,
+        on_delete=models.CASCADE,
+        db_column='work_order_id',
+        related_name='sla_instance',
+        verbose_name="Заявка"
+    )
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='sla_instances',
+        verbose_name="Компания"
+    )
+    sla_policy = models.ForeignKey(
+        SLAPolicy,
+        on_delete=models.PROTECT,
+        db_column='sla_policy_id',
+        related_name='sla_instances',
+        verbose_name="SLA-политика"
+    )
+    calendar_type = models.CharField(max_length=25, choices=CALENDAR_TYPE_CHOICES, verbose_name="Тип календаря")
+
+    # Таймер назначения исполнителя
+    executor_assignment_due_at = models.DateTimeField(blank=True, null=True, verbose_name="Дедлайн назначения")
+    executor_assignment_stopped_at = models.DateTimeField(blank=True, null=True, verbose_name="Остановлен")
+    executor_assignment_state = models.CharField(
+        max_length=20, choices=SLA_STATE_CHOICES, default='waiting', verbose_name="Состояние"
+    )
+
+    # Таймер взятия в работу
+    work_start_due_at = models.DateTimeField(blank=True, null=True, verbose_name="Дедлайн старта")
+    work_start_stopped_at = models.DateTimeField(blank=True, null=True, verbose_name="Остановлен")
+    work_start_state = models.CharField(
+        max_length=20, choices=SLA_STATE_CHOICES, default='waiting', verbose_name="Состояние"
+    )
+
+    # Таймер контакта с заявителем
+    resident_contact_due_at = models.DateTimeField(blank=True, null=True, verbose_name="Дедлайн контакта")
+    resident_contact_stopped_at = models.DateTimeField(blank=True, null=True, verbose_name="Остановлен")
+    resident_contact_state = models.CharField(
+        max_length=20, choices=SLA_STATE_CHOICES, default='waiting', verbose_name="Состояние"
+    )
+
+    # Таймер локализации аварии
+    localization_due_at = models.DateTimeField(blank=True, null=True, verbose_name="Дедлайн локализации")
+    localization_stopped_at = models.DateTimeField(blank=True, null=True, verbose_name="Остановлен")
+    localization_state = models.CharField(
+        max_length=20, choices=SLA_STATE_CHOICES, default='not_applicable', verbose_name="Состояние"
+    )
+
+    # Таймер выполнения
+    resolution_due_at = models.DateTimeField(blank=True, null=True, verbose_name="Дедлайн выполнения")
+    resolution_stopped_at = models.DateTimeField(blank=True, null=True, verbose_name="Остановлен")
+    resolution_state = models.CharField(
+        max_length=20, choices=SLA_STATE_CHOICES, default='waiting', verbose_name="Состояние"
+    )
+
+    # Таймер автозакрытия
+    auto_close_due_at = models.DateTimeField(blank=True, null=True, verbose_name="Дедлайн автозакрытия")
+    auto_close_stopped_at = models.DateTimeField(blank=True, null=True, verbose_name="Остановлен")
+    auto_close_state = models.CharField(
+        max_length=20, choices=SLA_STATE_CHOICES, default='waiting', verbose_name="Состояние"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'sla_instance'
+        verbose_name = "SLA экземпляр"
+        verbose_name_plural = "SLA экземпляры"
+        ordering = ['-created_at']
+        constraints = [
+            CheckConstraint(
+                condition=Q(calendar_type__in=['24x7', 'company_working_hours']),
+                name='ck_sla_instance_calendar_type'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company'], name='idx_sla_instance_company'),
+            models.Index(
+                fields=['executor_assignment_due_at'],
+                name='idx_sla_inst_assign_wait',
+                condition=Q(executor_assignment_state='waiting')
+            ),
+            models.Index(
+                fields=['work_start_due_at'],
+                name='idx_sla_inst_start_wait',
+                condition=Q(work_start_state='waiting')
+            ),
+            models.Index(
+                fields=['resident_contact_due_at'],
+                name='idx_sla_inst_contact_wait',
+                condition=Q(resident_contact_state='waiting')
+            ),
+            models.Index(
+                fields=['localization_due_at'],
+                name='idx_sla_inst_local_wait',
+                condition=Q(localization_state='waiting')
+            ),
+            models.Index(
+                fields=['resolution_due_at'],
+                name='idx_sla_inst_resol_wait',
+                condition=Q(resolution_state='waiting')
+            ),
+            models.Index(
+                fields=['auto_close_due_at'],
+                name='idx_sla_inst_close_wait',
+                condition=Q(auto_close_state='waiting')
+            ),
+        ]
+
+    def __str__(self):
+        return f"SLA для заявки #{self.work_order.work_order_no}"
+
+
+class WorkOrderEventLog(models.Model):
+    """Журнал событий заявки (request_mgmt.work_order_event_log)"""
+
+    work_order = models.ForeignKey(
+        WorkOrder,
+        on_delete=models.CASCADE,
+        db_column='work_order_id',
+        related_name='event_logs',
+        verbose_name="Заявка"
+    )
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='work_order_event_logs',
+        verbose_name="Компания"
+    )
+    department = models.ForeignKey(
+        CompanyDepartment,
+        on_delete=models.SET_NULL,
+        db_column='department_id',
+        null=True,
+        blank=True,
+        related_name='work_order_event_logs',
+        verbose_name="Подразделение"
+    )
+    event_type_code = models.CharField(max_length=50, verbose_name="Тип события")
+    event_datetime = models.DateTimeField(verbose_name="Дата/время события")
+    author_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='author_user_id',
+        null=True,
+        blank=True,
+        related_name='created_work_order_events',
+        verbose_name="Автор"
+    )
+    text_value = models.TextField(blank=True, null=True, verbose_name="Текст события")
+    event_payload_json = models.JSONField(blank=True, null=True, verbose_name="Дополнительная нагрузка")
+    old_status = models.ForeignKey(
+        WorkOrderStatusRef,
+        on_delete=models.SET_NULL,
+        db_column='old_status_id',
+        null=True,
+        blank=True,
+        related_name='old_status_events',
+        verbose_name="Старый статус"
+    )
+    new_status = models.ForeignKey(
+        WorkOrderStatusRef,
+        on_delete=models.SET_NULL,
+        db_column='new_status_id',
+        null=True,
+        blank=True,
+        related_name='new_status_events',
+        verbose_name="Новый статус"
+    )
+    old_service = models.ForeignKey(
+        'portal.ServicesCatalog',
+        on_delete=models.SET_NULL,
+        db_column='old_service_id',
+        null=True,
+        blank=True,
+        related_name='old_service_events',
+        verbose_name="Старая услуга"
+    )
+    new_service = models.ForeignKey(
+        'portal.ServicesCatalog',
+        on_delete=models.SET_NULL,
+        db_column='new_service_id',
+        null=True,
+        blank=True,
+        related_name='new_service_events',
+        verbose_name="Новая услуга"
+    )
+    old_object = models.ForeignKey(
+        'portal.ServiceObject',
+        on_delete=models.SET_NULL,
+        db_column='old_object_id',
+        null=True,
+        blank=True,
+        related_name='old_object_events',
+        verbose_name="Старый объект"
+    )
+    new_object = models.ForeignKey(
+        'portal.ServiceObject',
+        on_delete=models.SET_NULL,
+        db_column='new_object_id',
+        null=True,
+        blank=True,
+        related_name='new_object_events',
+        verbose_name="Новый объект"
+    )
+    old_responsible_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='old_responsible_user_id',
+        null=True,
+        blank=True,
+        related_name='old_responsible_events',
+        verbose_name="Старый ответственный"
+    )
+    new_responsible_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='new_responsible_user_id',
+        null=True,
+        blank=True,
+        related_name='new_responsible_events',
+        verbose_name="Новый ответственный"
+    )
+    is_visible_to_resident = models.BooleanField(default=False, verbose_name="Видно жителю")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'work_order_event_log'
+        verbose_name = "Событие заявки"
+        verbose_name_plural = "События заявок"
+        ordering = ['-event_datetime']
+        indexes = [
+            models.Index(fields=['work_order', '-event_datetime'], name='idx_work_evlog_work_dt'),
+            models.Index(fields=['company', 'department', '-event_datetime'], name='idx_work_evlog_comp_dept_dt'),
+            models.Index(fields=['event_type_code', '-event_datetime'], name='idx_work_evlog_type_dt'),
+        ]
+
+    def __str__(self):
+        return f"{self.event_type_code} - {self.work_order.work_order_no} ({self.event_datetime})"
+
+
+class WorkOrderAttachment(models.Model):
+    """Вложения заявки (request_mgmt.work_order_attachment)"""
+
+    ATTACHMENT_KIND_CHOICES = [
+        ('incoming_photo', 'Входящее фото'),
+        ('result_photo', 'Фото результата'),
+        ('document', 'Документ'),
+        ('other', 'Другое'),
+    ]
+
+    work_order = models.ForeignKey(
+        WorkOrder,
+        on_delete=models.CASCADE,
+        db_column='work_order_id',
+        related_name='attachments',
+        verbose_name="Заявка"
+    )
+    event = models.ForeignKey(
+        WorkOrderEventLog,
+        on_delete=models.SET_NULL,
+        db_column='event_id',
+        null=True,
+        blank=True,
+        related_name='attachments',
+        verbose_name="Событие"
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="Загружен")
+    uploaded_by_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='uploaded_by_user_id',
+        null=True,
+        blank=True,
+        related_name='uploaded_attachments',
+        verbose_name="Загружен пользователем"
+    )
+    attachment_kind = models.CharField(max_length=30, choices=ATTACHMENT_KIND_CHOICES, verbose_name="Тип вложения")
+    mime_type = models.CharField(max_length=120, verbose_name="MIME-тип")
+    file_name = models.CharField(max_length=255, verbose_name="Имя файла")
+    file_size = models.BigIntegerField(validators=[MinValueValidator(0)], verbose_name="Размер (байт)")
+    file_data = models.BinaryField(verbose_name="Содержимое файла")
+    is_visible_to_resident = models.BooleanField(default=False, verbose_name="Видно жителю")
+    sort_order = models.IntegerField(default=100, verbose_name="Порядок сортировки")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'work_order_attachment'
+        verbose_name = "Вложение заявки"
+        verbose_name_plural = "Вложения заявок"
+        ordering = ['work_order', 'sort_order', 'uploaded_at']
+        constraints = [
+            CheckConstraint(
+                condition=Q(attachment_kind__in=['incoming_photo', 'result_photo', 'document', 'other']),
+                name='ck_work_order_attachment_kind'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['work_order'], name='idx_work_attach_work_order'),
+            models.Index(fields=['event'], name='idx_work_attach_event'),
+            models.Index(fields=['attachment_kind'], name='idx_work_order_attachment_kind'),
+        ]
+
+    def __str__(self):
+        return f"{self.get_attachment_kind_display()}: {self.file_name}"
+
+
+class NotificationOutbox(models.Model):
+    """Очередь уведомлений (request_mgmt.notification_outbox)"""
+
+    STATUS_CHOICES = [
+        ('not_sent', 'Не отправлено'),
+        ('processed', 'Обработано'),
+        ('ignored', 'Игнорировано'),
+    ]
+
+    company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.PROTECT,
+        db_column='company_id',
+        related_name='notifications',
+        verbose_name="Компания"
+    )
+    work_order = models.ForeignKey(
+        WorkOrder,
+        on_delete=models.CASCADE,
+        db_column='work_order_id',
+        related_name='notifications',
+        verbose_name="Заявка"
+    )
+    recipient_user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        db_column='recipient_user_id',
+        related_name='received_notifications',
+        verbose_name="Получатель"
+    )
+    event_type_code = models.CharField(max_length=50, verbose_name="Тип события")
+    payload_json = models.JSONField(blank=True, null=True, verbose_name="Нагрузка")
+    status_code = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_sent', verbose_name="Статус")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    processed_at = models.DateTimeField(blank=True, null=True, verbose_name="Обработан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'notification_outbox'
+        verbose_name = "Уведомление"
+        verbose_name_plural = "Уведомления"
+        ordering = ['-created_at']
+        constraints = [
+            CheckConstraint(
+                condition=Q(status_code__in=['not_sent', 'processed', 'ignored']),
+                name='ck_notification_outbox_status'
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['status_code', 'created_at'], name='idx_notif_out_status_created'),
+            models.Index(fields=['recipient_user', 'status_code'], name='idx_notif_out_recip_status'),
+            models.Index(fields=['work_order'], name='idx_notif_out_work_order'),
+        ]
+
+    def __str__(self):
+        return f"Уведомление #{self.id} - {self.event_type_code} -> {self.recipient_user.username}"

@@ -1,0 +1,94 @@
+{% extends 'work_orders/base.html' %}
+
+{% block title %}Пул подразделения - УК Комфорт{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'work_orders:executor_dashboard' %}">Дашборд</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Пул подразделения</li>
+            </ol>
+        </nav>
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-inbox"></i> Пул подразделения</h2>
+            <h5 class="text-muted">{{ department.department_name }}</h5>
+        </div>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-warning" role="alert">
+    <i class="bi bi-exclamation-triangle"></i> {{ error }}
+</div>
+{% else %}
+
+{% if pool_requests %}
+<div class="row">
+    {% for work_order in pool_requests %}
+    <div class="col-md-6 mb-4">
+        <div class="card work-order-card h-100" onclick="window.location='{% url 'work_orders:work_order_detail' work_order.id %}'">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title">{{ work_order.work_order_no }}</h5>
+                        <small class="text-muted">
+                            <i class="bi bi-clock"></i> {{ work_order.created_at|date:"d.m.Y H:i" }}
+                        </small>
+                    </div>
+                    <div>
+                        {% if work_order.is_emergency %}
+                        <span class="badge bg-danger emergency-badge">АВАРИЯ</span>
+                        {% else %}
+                        <span class="badge priority-badge
+                            {% if work_order.priority_code == 'high' %}bg-danger
+                            {% elif work_order.priority_code == 'normal' %}bg-warning
+                            {% else %}bg-secondary{% endif %}">
+                            {{ work_order.get_priority_code_display }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <p class="card-text text-truncate" style="max-height: 80px; overflow: hidden;">
+                    {{ work_order.original_request_text }}
+                </p>
+
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div>
+                        <small class="text-muted">
+                            <i class="bi bi-geo-alt"></i> Объект #{{ work_order.object.service_object_id }}
+                        </small>
+                    </div>
+                    <span class="badge bg-secondary">{{ work_order.current_internal_status.short_name_ru }}</span>
+                </div>
+
+                <div class="mt-2">
+                    <small class="text-muted">
+                        <i class="bi bi-box-seam"></i> {{ work_order.service.scenario_name }}
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<div class="alert alert-info" role="alert">
+    <i class="bi bi-info-circle"></i> В пуле нет заявок
+</div>
+{% endif %}
+
+{% endif %}
+
+<script>
+// Автообновление каждые 30 секунд
+setTimeout(function() {
+    location.reload();
+}, 30000);
+</script>
+
+{% endblock %}

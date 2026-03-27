@@ -1,0 +1,91 @@
+{% extends 'work_orders/base.html' %}
+
+{% block title %}Мои заявки - УК Комфорт{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-house-door"></i> Мои заявки</h2>
+        </div>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card stats-card">
+            <div class="number">{{ total_requests }}</div>
+            <div class="label">Всего заявок</div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card stats-card">
+            <div class="number text-warning">{{ active_requests }}</div>
+            <div class="label">Активных</div>
+        </div>
+    </div>
+</div>
+
+<!-- Список заявок -->
+{% if my_requests %}
+<div class="row">
+    {% for work_order in my_requests %}
+    <div class="col-md-6 mb-4">
+        <div class="card work-order-card h-100" onclick="window.location='{% url 'work_orders:work_order_detail' work_order.id %}'">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title">{{ work_order.work_order_no }}</h5>
+                        <small class="text-muted">
+                            <i class="bi bi-calendar"></i> {{ work_order.created_at|date:"d.m.Y H:i" }}
+                        </small>
+                    </div>
+                    <div>
+                        {% if work_order.is_emergency %}
+                        <span class="badge bg-danger emergency-badge">АВАРИЯ</span>
+                        {% else %}
+                        <span class="badge
+                            {% if work_order.current_external_status.short_code_en == 'in_work' %}bg-primary
+                            {% elif work_order.current_external_status.short_code_en == 'completed_external' %}bg-success
+                            {% elif work_order.current_external_status.short_code_en == 'closed_external' %}bg-dark
+                            {% else %}bg-secondary{% endif %}">
+                            {{ work_order.current_external_status.short_name_ru }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <p class="card-text text-truncate" style="max-height: 80px; overflow: hidden;">
+                    {{ work_order.original_request_text }}
+                </p>
+
+                {% if work_order.resolution_text %}
+                <div class="alert alert-success mb-2">
+                    <small><strong>Решение:</strong> {{ work_order.resolution_text|truncatewords:20 }}</small>
+                </div>
+                {% endif %}
+
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <small class="text-muted">
+                        <i class="bi bi-box-seam"></i> {{ work_order.service.scenario_name }}
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<div class="alert alert-info" role="alert">
+    <i class="bi bi-info-circle"></i> У вас пока нет заявок
+</div>
+<p class="text-center">
+    <a href="/chat/" class="btn btn-primary btn-lg">
+        <i class="bi bi-plus-circle"></i> Создать заявку через чат
+    </a>
+</p>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,312 @@
+{% extends 'work_orders/base.html' %}
+
+{% block title %}Заявка {{ work_order.work_order_no }} - УК Комфорт{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'work_orders:executor_dashboard' %}">Дашборд</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ work_order.work_order_no }}</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Левая колонка - карточка заявки -->
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clipboard-data"></i> {{ work_order.work_order_no }}
+                    </h5>
+                    <div>
+                        {% if work_order.is_emergency %}
+                        <span class="badge bg-danger emergency-badge me-2">АВАРИЯ</span>
+                        {% endif %}
+                        <span class="badge bg-light text-dark">
+                            <i class="bi bi-flag"></i> {{ work_order.get_priority_code_display }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Основная информация -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Статус (внутренний)</h6>
+                        <span class="badge bg-primary fs-6">{{ work_order.current_internal_status.short_name_ru }}</span>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Статус (внешний)</h6>
+                        <span class="badge bg-info fs-6">{{ work_order.current_external_status.short_name_ru }}</span>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Текст заявки -->
+                <div class="mb-3">
+                    <h6 class="text-muted">Описание заявки</h6>
+                    <p class="fs-5">{{ work_order.original_request_text }}</p>
+                    {% if work_order.additional_info_text %}
+                    <p class="text-muted"><small>{{ work_order.additional_info_text }}</small></p>
+                    {% endif %}
+                </div>
+
+                {% if work_order.resolution_text %}
+                <div class="mb-3">
+                    <h6 class="text-muted">Решение</h6>
+                    <div class="alert alert-success">
+                        {{ work_order.resolution_text }}
+                    </div>
+                </div>
+                {% endif %}
+
+                <hr>
+
+                <!-- Детали -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Услуга</h6>
+                        <p>{{ work_order.service.scenario_name }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Объект</h6>
+                        <p>Объект #{{ work_order.object.service_object_id }}</p>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Подразделение</h6>
+                        <p>{{ work_order.department.department_name }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Исполнитель</h6>
+                        <p>
+                            {% if work_order.responsible_user %}
+                            {{ work_order.responsible_user.get_full_name|default:work_order.responsible_user.username }}
+                            {% else %}
+                            <span class="text-muted">Не назначен</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Даты -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Создана</h6>
+                        <p>{{ work_order.created_at|date:"d.m.Y H:i" }}</p>
+                    </div>
+                    {% if work_order.assigned_at %}
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Назначена</h6>
+                        <p>{{ work_order.assigned_at|date:"d.m.Y H:i" }}</p>
+                    </div>
+                    {% endif %}
+                    {% if work_order.in_progress_at %}
+                    <div class="col-md-6">
+                        <h6 class="text-muted">В работе с</h6>
+                        <p>{{ work_order.in_progress_at|date:"d.m.Y H:i" }}</p>
+                    </div>
+                    {% endif %}
+                    {% if work_order.completed_at %}
+                    <div class="col-md-6">
+                        <h6 class="text-muted">Выполнена</h6>
+                        <p>{{ work_order.completed_at|date:"d.m.Y H:i" }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Действия -->
+        {% if work_order.responsible_user == user %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> Действия</h5>
+            </div>
+            <div class="card-body">
+                {% if work_order.current_internal_status.short_code_en == 'accepted_by_executor' %}
+                <button class="btn btn-success" onclick="startWorkOrder({{ work_order.id }})">
+                    <i class="bi bi-play-circle"></i> Начать выполнение
+                </button>
+                {% endif %}
+
+                {% if work_order.current_internal_status.short_code_en == 'in_progress' %}
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#completeModal">
+                    <i class="bi bi-check-circle"></i> Завершить выполнение
+                </button>
+                <button class="btn btn-warning" onclick="pauseWorkOrder({{ work_order.id }})">
+                    <i class="bi bi-pause-circle"></i> Приостановить
+                </button>
+                {% endif %}
+
+                {% if work_order.current_internal_status.short_code_en == 'on_hold' %}
+                <button class="btn btn-success" onclick="resumeWorkOrder({{ work_order.id }})">
+                    <i class="bi bi-play-circle"></i> Возобновить
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if work_order.responsible_user is None %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <button class="btn btn-success btn-lg w-100" onclick="takeWorkOrder({{ work_order.id }})">
+                    <i class="bi bi-hand-index-thumb"></i> Взять заявку в работу
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Правая колонка - история событий -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> История событий</h5>
+            </div>
+            <div class="card-body">
+                <div class="timeline">
+                    {% for event in events %}
+                    <div class="timeline-item mb-3">
+                        <small class="text-muted">{{ event.event_datetime|date:"d.m.Y H:i" }}</small>
+                        <div>
+                            {% if event.author_user %}
+                            <strong>{{ event.author_user.get_full_name|default:event.author_user.username }}</strong>:
+                            {% endif %}
+                            {{ event.text_value }}
+                        </div>
+                        {% if event.new_status %}
+                        <span class="badge bg-secondary">{{ event.new_status.short_name_ru }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно завершения заявки -->
+<div class="modal fade" id="completeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Завершить выполнение заявки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="completeForm">
+                    <div class="mb-3">
+                        <label for="resolution_text" class="form-label">Текст решения</label>
+                        <textarea class="form-control" id="resolution_text" rows="5" required
+                                  placeholder="Опишите, что было сделано для устранения проблемы"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="completeWorkOrder({{ work_order.id }})">
+                    Завершить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function takeWorkOrder(workOrderId) {
+    if (!confirm('Взять эту заявку в работу?')) return;
+
+    fetch(`/work_orders/api/${workOrderId}/take/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = data.redirect_url;
+        } else {
+            alert('Ошибка: ' + data.error);
+        }
+    })
+    .catch(error => alert('Ошибка: ' + error));
+}
+
+function startWorkOrder(workOrderId) {
+    if (!confirm('Начать выполнение заявки?')) return;
+
+    fetch(`/work_orders/api/${workOrderId}/start/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Ошибка: ' + data.error);
+        }
+    })
+    .catch(error => alert('Ошибка: ' + error));
+}
+
+function completeWorkOrder(workOrderId) {
+    const resolutionText = document.getElementById('resolution_text').value;
+    if (!resolutionText) {
+        alert('Пожалуйста, укажите текст решения');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('resolution_text', resolutionText);
+
+    fetch(`/work_orders/api/${workOrderId}/complete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Ошибка: ' + data.error);
+        }
+    })
+    .catch(error => alert('Ошибка: ' + error));
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+
+{% endblock %}

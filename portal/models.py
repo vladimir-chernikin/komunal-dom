@@ -306,3 +306,25 @@ class ServicesCatalog(models.Model):
     def __str__(self):
         return f"{self.scenario_name} (ID: {self.service_id})"
 
+
+class ServiceObject(models.Model):
+    """Объекты обслуживания (unmanaged модель, таблица service_objects)"""
+
+    service_object_id = models.IntegerField(primary_key=True, verbose_name="ID объекта")
+    building_id = models.IntegerField(verbose_name="ID здания")
+    unit_id = models.IntegerField(blank=True, null=True, verbose_name="ID помещения")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(verbose_name="Создан")
+
+    class Meta:
+        managed = False  # НЕ управлять Django (таблица уже существует)
+        db_table = 'service_objects'
+        verbose_name = "Объект обслуживания"
+        verbose_name_plural = "Объекты обслуживания"
+        ordering = ['service_object_id']
+
+    def __str__(self):
+        if self.unit_id:
+            return f"Объект #{self.service_object_id}: здание {self.building_id} - помещение {self.unit_id}"
+        return f"Объект #{self.service_object_id}: здание {self.building_id}"
+

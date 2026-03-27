@@ -29,6 +29,7 @@ urlpatterns = [
     path('chat/', include('message_handler.urls')),  # Веб-чат с AI
     path('llm-tester/', include('llm_tester.urls')),  # LLM Tester
     path('db-sql/', include('database_viewer.urls')),  # СУБД SQL интерфейс
+    path('work_orders/', include('work_orders.urls')),  # Управление заявками ЖКХ
 ]
 
 # Обслуживание медиа-файлов в режиме разработки
