@@ -90,6 +90,7 @@ class CompanyObjectServicePeriodAdmin(admin.ModelAdmin):
 @admin.register(WorkOrderStatusRef)
 class WorkOrderStatusRefAdmin(admin.ModelAdmin):
     list_display = ['short_code_en', 'short_name_ru', 'display_name_for_user', 'is_terminal', 'is_active', 'sort_order']
+    list_display_links = ['short_code_en', 'short_name_ru', 'display_name_for_user']  # Первые 3 колонки кликабельные
     list_filter = ['is_terminal', 'is_active']
     search_fields = ['short_code_en', 'short_name_ru', 'display_name_for_user', 'description_and_transition_rules']
     ordering = ['sort_order', 'short_code_en']
