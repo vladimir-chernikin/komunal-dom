@@ -1,97 +1,12 @@
 {% extends "admin/change_form.html" %}
 {% load i18n admin_urls static admin_modify %}
 
-{# Убираем стандартные кнопки #}
-{% block submit_buttons_top %}{% endblock %}
-{% block submit_buttons_bottom %}{% endblock %}
-
-{# Убираем возможные ограничения родительских контейнеров #}
+{# Специфика для WorkOrder: tabs и компактный layout #}
 {% block bodyclass %}{{ block.super }} compact-work-order-form{% endblock %}
 
-{# Compact CSS + Tabs styling #}
 {% block extrastyle %}
 {{ block.super }}
 <style>
-    /* Глобально для этой формы - убираем все ограничения */
-    body.compact-work-order-form #content,
-    body.compact-work-order-form #content-main,
-    body.compact-work-order-form #content-main form,
-    body.compact-work-order-form #content-main form > div {
-        max-width: 100% !important;
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        box-sizing: border-box !important;
-    }
-
-    /* Убираем правую колонку, используем всю ширину */
-    #content-main {
-        max-width: 100% !important;
-        width: 100% !important;
-        padding: 0 !important;
-    }
-
-    /* Убираем стандартную правую колонку Django admin */
-    .submit-row {
-        float: none !important;
-        width: 100% !important;
-        margin: 0 !important;
-    }
-
-    /* Убираем отступы у form container */
-    .compact-form-container form {
-        margin: 0 !important;
-        padding: 0 !important;
-        width: 100% !important;
-    }
-
-    /* Убираем ограничение ширины у модулей */
-    .compact-form-container .module {
-        max-width: 100% !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-    }
-
-    /* Убираем float у формы если есть */
-    .compact-form-container .form-row {
-        float: none !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-    }
-
-    /* Убираем возможные wrapper div с ограниченной шириной */
-    .compact-form-container > div {
-        max-width: 100% !important;
-        width: 100% !important;
-    }
-
-    /* Все элементы формы на всю ширину */
-    .compact-form-container * {
-        box-sizing: border-box !important;
-    }
-
-    /* Компактный контейнер формы - РАСШИРЕН до 100% */
-    .compact-form-container {
-        max-width: 100% !important;
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        box-sizing: border-box !important;
-    }
-
-    /* Родительские контейнеры - на всю ширину */
-    #content-main > form {
-        max-width: 100% !important;
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-
-    #content-main > form > div {
-        max-width: 100% !important;
-        width: 100% !important;
-    }
-
     /* TABS - навигация */
     .form-tabs {
         display: flex !important;
@@ -134,138 +49,13 @@
         display: block !important;
     }
 
-    /* Компактные заголовки реквизитов - меньше места, больше для полей */
-    .compact-form-container .form-row > label {
-        font-size: 11px !important;
-        font-weight: 500 !important;
-        margin-bottom: 2px !important;
-        line-height: 1.2 !important;
-        display: inline-block !important;
-        width: auto !important;
-        max-width: 18% !important;
-        vertical-align: middle !important;
-        flex-shrink: 0 !important;
-    }
-
-    /* Компактные строки формы */
-    .compact-form-container .form-row {
-        display: flex !important;
-        align-items: center !important;
-        padding: 4px 12px !important;
-        margin-bottom: 3px !important;
-        min-height: 32px !important;
-        flex-wrap: nowrap !important;
-    }
-
-    /* Компактные поля ввода */
-    .compact-form-container input[type="text"],
-    .compact-form-container input[type="email"],
-    .compact-form-container input[type="number"],
-    .compact-form-container select,
-    .compact-form-container .related-widget-wrapper {
-        font-size: 12px !important;
-        padding: 3px 6px !important;
-        min-height: 26px !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        flex: 1 !important;
-        min-width: 0 !important;
-    }
-
-    /* Текстовые области - полная ширина */
-    .compact-form-container textarea {
-        font-size: 12px !important;
-        padding: 6px 8px !important;
-        min-height: 80px !important;
-        width: 100% !important;
-        resize: vertical !important;
-    }
-
-    /* Иконки FK/M2M - справа от поля */
-    .compact-form-container .related-widget-wrapper-link {
-        display: inline-flex !important;
-        align-items: center !important;
-        margin-left: 2px !important;
-        white-space: nowrap !important;
-        flex-shrink: 0 !important;
-    }
-
-    .compact-form-container .related-widget-wrapper-link a {
-        display: inline-flex !important;
-        align-items: center !important;
-        padding: 2px 4px !important;
-        font-size: 13px !important;
-    }
-
-    /* Компактные fieldsets */
-    .compact-form-container .module {
-        margin-bottom: 0 !important;
-        border: none !important;
-        border-radius: 0 !important;
-    }
-
+    /* Скрываем заголовки fieldsets */
     .compact-form-container .module > h2 {
-        display: none !important; /* Скрываем заголовки fieldsets */
-    }
-
-    /* Compact submit row - КНОПКА СОХРАНИТЬ на всю ширину */
-    .compact-submit-row {
-        padding: 10px 15px !important;
-        margin: 0 0 15px 0 !important;
-        background: #e8f5e9 !important;
-        border: 1px solid #4caf50 !important;
-        border-radius: 6px !important;
-        display: flex !important;
-        justify-content: flex-start !important;
-        gap: 10px !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
-    }
-
-    .compact-submit-row input[type="submit"] {
-        font-size: 14px !important;
-        font-weight: 600 !important;
-        padding: 8px 24px !important;
-        height: auto !important;
-        background: #4caf50 !important;
-        color: #fff !important;
-        border: none !important;
-        border-radius: 4px !important;
-        cursor: pointer !important;
-        flex: 0 0 auto !important;
-    }
-
-    .compact-submit-row input[type="submit"]:hover {
-        background: #45a049 !important;
-    }
-
-    /* Readonly поля */
-    .compact-form-container .readonly {
-        font-size: 12px !important;
-        padding: 4px 0 !important;
-    }
-
-    /* Help text */
-    .compact-form-container .help {
-        font-size: 10px !important;
-        margin-top: 2px !important;
-    }
-
-    /* Checkbox */
-    .compact-form-container .checkbox-row {
-        display: flex !important;
-        align-items: center !important;
-    }
-
-    .compact-form-container .checkbox-row label {
-        width: auto !important;
-        margin-left: 5px !important;
+        display: none !important;
     }
 </style>
 {% endblock %}
 
-{# JavaScript для tabs + compact layout #}
 {% block extrahead %}
 {{ block.super }}
 <script>
@@ -295,47 +85,45 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Вставляем tabs перед первым fieldset
     const container = document.querySelector('.compact-form-container');
-    container.insertBefore(tabsNav, fieldsets[0]);
+    if (container) {
+        container.insertBefore(tabsNav, fieldsets[0]);
 
-    // Оборачиваем каждый fieldset в tab content
-    fieldsets.forEach((fieldset, index) => {
-        fieldset.classList.add('form-tab-content');
-        fieldset.classList.add('active');
-        if (index !== 0) {
-            fieldset.classList.remove('active');
-        }
-    });
+        // Оборачиваем каждый fieldset в tab content
+        fieldsets.forEach((fieldset, index) => {
+            fieldset.classList.add('form-tab-content');
+            fieldset.classList.add('active');
+            if (index !== 0) {
+                fieldset.classList.remove('active');
+            }
+        });
 
-    // Tab switching
-    tabsNav.addEventListener('click', function(e) {
-        if (e.target.classList.contains('form-tab')) {
-            const index = parseInt(e.target.dataset.index);
+        // Tab switching
+        tabsNav.addEventListener('click', function(e) {
+            if (e.target.classList.contains('form-tab')) {
+                const index = parseInt(e.target.dataset.index);
 
-            // Update tabs
-            document.querySelectorAll('.form-tab').forEach(t => t.classList.remove('active'));
-            e.target.classList.add('active');
+                // Update tabs
+                document.querySelectorAll('.form-tab').forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
 
-            // Update content
-            fieldsets.forEach((fieldset, i) => {
-                if (i === index) {
-                    fieldset.classList.add('active');
-                } else {
-                    fieldset.classList.remove('active');
-                }
-            });
-        }
-    });
+                // Update content
+                fieldsets.forEach((fieldset, i) => {
+                    if (i === index) {
+                        fieldset.classList.add('active');
+                    } else {
+                        fieldset.classList.remove('active');
+                    }
+                });
+            }
+        });
+    }
 });
 </script>
 {% endblock %}
 
-{# Добавляем compact-container вокруг полей + кнопка Сохранить #}
+{# Добавляем compact-container вокруг полей #}
 {% block field_sets %}
 <div class="compact-form-container">
-    {# Кнопка Сохранить над tabs #}
-    <div class="compact-submit-row">
-        <input type="submit" name="_save" value="Сохранить" class="default">
-    </div>
     {{ block.super }}
 </div>
 {% endblock %}
