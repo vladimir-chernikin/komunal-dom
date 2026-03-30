@@ -7,47 +7,24 @@
 {% block extrastyle %}
 {{ block.super }}
 <style>
-    /* АГРЕССИВНО убираем всё что связано с кнопками unfold */
-    footer,
-    #submit-row,
-    .submit-row,
-    [id*="submit"],
-    [class*="submit-row"],
-    [class*="submit"] {
+    /* Убираем только unfold submit-row */
+    #submit-row {
         display: none !important;
-        visibility: hidden !important;
-        height: 0 !important;
-        width: 0 !important;
-        overflow: hidden !important;
     }
 
-    /* РАСТЯГИВАЕМ на всю ширину - убираем все ограничения */
-    #content,
+    /* Растягиваем на всю ширину */
     #content-main,
-    #content > *,
-    #content-main > *,
-    .container {
+    #content-main > form {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+
+    /* Убираем ограничители контейнера unfold */
+    #content > .container {
         max-width: 100% !important;
         width: 100% !important;
         padding-left: 0 !important;
         padding-right: 0 !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-    }
-
-    /* Убираем двухколоночный layout */
-    #content.colM,
-    #content.colM > * {
-        display: block !important;
-        width: 100% !important;
-    }
-
-    /* Убираем любые sidebar/side колонки */
-    aside,
-    .sidebar,
-    [class*="sidebar"],
-    [class*="side-"] {
-        display: none !important;
     }
 
     /* Кнопка Записать над формой */
@@ -57,7 +34,7 @@
         background: #e8f5e9;
         border: 1px solid #4caf50;
         border-radius: 6px;
-        display: flex !important;
+        display: flex;
         justify-content: flex-start;
         gap: 10px;
         width: 100%;
