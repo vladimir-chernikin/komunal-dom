@@ -7,15 +7,15 @@ from .models import Company, EquipmentType, RefCategory
 class CompanyAdmin(admin.ModelAdmin):
     """Админка для справочника компаний"""
 
-    list_display = ['id', 'name', 'domain', 'phone', 'is_active', 'created_at']
+    list_display = ['linked_id', 'linked_name', 'phone_display', 'director_display', 'domain', 'is_active_display', 'created_at']
     list_filter = ['is_active', 'created_at']
     search_fields = ['name', 'full_name', 'domain', 'phone']
-    list_editable = ['is_active']
     ordering = ['name']
+    actions = None  # Отключаем bulk actions
 
     fieldsets = (
         ('Основное', {
-            'fields': ('name', 'full_name', 'is_active')
+            'fields': ('name', 'full_name', 'director', 'is_active')
         }),
         ('Контактная информация', {
             'fields': ('domain', 'phone')
@@ -27,6 +27,45 @@ class CompanyAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = ['created_at', 'updated_at']
+    change_list_template = 'nsi/company_change_list.html'
+
+    def linked_id(self, obj):
+        """ID как гиперссылка"""
+        url = f'/admin/nsi/company/{obj.id}/change/'
+        return mark_safe(f'<a href="{url}">{obj.id}</a>')
+    linked_id.short_description = 'ID'
+    linked_id.admin_order_field = 'id'
+
+    def linked_name(self, obj):
+        """Название как гиперссылка"""
+        url = f'/admin/nsi/company/{obj.id}/change/'
+        return mark_safe(f'<a href="{url}">{obj.name}</a>')
+    linked_name.short_description = 'Наименование'
+    linked_name.admin_order_field = 'name'
+
+    def phone_display(self, obj):
+        """Телефон (отдельное поле)"""
+        return obj.phone if obj.phone else mark_safe('<span style="color: gray;">—</span>')
+    phone_display.short_description = 'Телефон'
+    phone_display.admin_order_field = 'phone'
+
+    def director_display(self, obj):
+        """Директор с ссылкой"""
+        if obj.director:
+            url = f'/admin/auth/user/{obj.director.id}/change/'
+            return mark_safe(f'<a href="{url}">{obj.director.get_full_name() or obj.director.username}</a>')
+        return mark_safe('<span style="color: gray;">—</span>')
+    director_display.short_description = 'Директор'
+    director_display.admin_order_field = 'director'
+
+    def is_active_display(self, obj):
+        """Активна с визуальным отображением"""
+        if obj.is_active:
+            return mark_safe('<span style="color: green;">✓ Да</span>')
+        return mark_safe('<span style="color: red;">✗ Нет</span>')
+    is_active_display.short_description = 'Активна'
+    is_active_display.admin_order_field = 'is_active'
+    is_active_display.boolean = False
 
 
 @admin.register(EquipmentType)

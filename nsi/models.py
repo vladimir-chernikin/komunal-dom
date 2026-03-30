@@ -1,4 +1,7 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class Company(models.Model):
@@ -8,6 +11,14 @@ class Company(models.Model):
     full_name = models.CharField(max_length=500, blank=True, null=True, verbose_name="Полное наименование")
     domain = models.CharField(max_length=255, blank=True, null=True, verbose_name="Домен")
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Телефон для приема заявок")
+    director = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Директор",
+        related_name="directed_companies"
+    )
     is_active = models.BooleanField(default=True, verbose_name="Активна")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
@@ -74,12 +85,6 @@ class RefServiceType(models.Model):
 
     type_id = models.SmallIntegerField(primary_key=True, verbose_name="ID типа")
     type_name = models.CharField(max_length=100, verbose_name="Наименование типа")
-    llm_description = models.TextField(
-        blank=True,
-        null=True,
-        verbose_name="Описание для LLM",
-        help_text="Текстовое описание для использования в AI-системах классификации"
-    )
 
     class Meta:
         db_table = 'ref_service_types'
@@ -104,12 +109,6 @@ class RefLocalization(models.Model):
     localization_name = models.CharField(
         max_length=100,
         verbose_name="Наименование локализации"
-    )
-    llm_description = models.TextField(
-        blank=True,
-        null=True,
-        verbose_name="Описание для LLM",
-        help_text="Текстовое описание для использования в AI-системах классификации"
     )
 
     class Meta:
