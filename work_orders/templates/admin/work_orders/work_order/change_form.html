@@ -53,6 +53,47 @@
     .compact-form-container .module > h2 {
         display: none !important;
     }
+
+    /* Уменьшаем шрифт лейблов и расстояния между полями */
+    .compact-form-container .form-row {
+        padding-bottom: 8px !important;
+        margin-bottom: 8px !important;
+    }
+
+    .compact-form-container label {
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        color: #495057 !important;
+        margin-bottom: 2px !important;
+    }
+
+    .compact-form-container .fieldBox {
+        padding-top: 2px !important;
+    }
+
+    /* Compact для inline таблиц (история статусов) */
+    .compact-form-container .inline-group {
+        margin-top: 15px !important;
+    }
+
+    .compact-form-container .inline-group thead th {
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        padding: 8px !important;
+        background: #f8f9fa !important;
+        border-bottom: 2px solid #dee2e6 !important;
+        text-align: left !important;
+    }
+
+    .compact-form-container .inline-group tbody td {
+        font-size: 13px !important;
+        padding: 6px 8px !important;
+        border-bottom: 1px solid #dee2e6 !important;
+    }
+
+    .compact-form-container .inline-group tbody tr:hover {
+        background: #f8f9fa !important;
+    }
 </style>
 {% endblock %}
 

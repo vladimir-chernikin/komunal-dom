@@ -136,14 +136,35 @@ class WorkOrderStatusHistoryInline(admin.TabularInline):
     model = WorkOrderStatusHistory
     extra = 0
     can_delete = False
-    readonly_fields = ['changed_at', 'status', 'changed_by']
-    fields = ['changed_at', 'status', 'changed_by']
+    readonly_fields = ['changed_at_display', 'status_display', 'changed_by_display']
+    fields = ['changed_at_display', 'status_display', 'changed_by_display']
 
     def has_add_permission(self, request, obj=None):
         return False
 
     def has_change_permission(self, request, obj=None):
         return False
+
+    def changed_at_display(self, obj):
+        """Форматированное отображение даты изменения"""
+        from django.utils import timezone
+        if obj.changed_at:
+            local_time = timezone.localtime(obj.changed_at)
+            return local_time.strftime('%d.%m.%Y %H:%M:%S')
+        return '-'
+    changed_at_display.short_description = 'Дата и время'
+
+    def status_display(self, obj):
+        """Отображение статуса"""
+        return obj.status.short_name_ru if obj.status else '-'
+    status_display.short_description = 'Статус'
+
+    def changed_by_display(self, obj):
+        """Отображение пользователя"""
+        if obj.changed_by:
+            return obj.changed_by.get_full_name() or obj.changed_by.username
+        return '-'
+    changed_by_display.short_description = 'Кто изменил'
 
 
 @admin.register(WorkOrder)
@@ -154,7 +175,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Основная информация', {
             'fields': (
-                'work_order_no', 'created_at', 'company', 'object', 'service', 'route', 'department', 'responsible_user',
+                'work_order_no', 'created_at', 'company', 'object_link', 'service', 'route', 'department', 'responsible_user',
                 'original_request_text', 'additional_info_text', 'resolution_text',
                 'current_internal_status', 'priority_code', 'is_emergency'
             )
@@ -175,12 +196,12 @@ class WorkOrderAdmin(admin.ModelAdmin):
     list_display = ['work_order_with_date', 'department',
                    'responsible_user', 'status_display', 'priority_code',
                    'is_emergency_compact']
-    list_display_links = ['work_order_with_date']  # Кликабельная колонка "Номер"
+    list_display_links = None  # Отключаем кликабельность, все поля текстом
     list_filter = [ClosedFilter, 'company', 'department', 'current_internal_status',
                    'priority_code', 'is_emergency', 'creation_source', 'is_test']
     search_fields = ['work_order_no', 'original_request_text', 'resolution_text']
     ordering = ['-created_at']
-    readonly_fields = ['created_at']
+    readonly_fields = ['work_order_no', 'created_at', 'object_link']
     list_per_page = 50  # Компактность: больше строк на странице
     autocomplete_fields = ['company', 'service', 'route', 'department',
                           'responsible_user', 'request_intake', 'resident_user',
@@ -231,6 +252,22 @@ class WorkOrderAdmin(admin.ModelAdmin):
         '''
         return mark_safe(html)
     work_order_with_date.short_description = 'Заявка'
+
+    def object_link(self, obj):
+        """Ссылка на просмотр объекта обслуживания"""
+        if obj.object:
+            from django.urls import reverse
+            from urllib.parse import quote
+            url = reverse('admin:portal_serviceobject_change', args=[obj.object.id])
+            return mark_safe(
+                f'<a href="{url}" class="button" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 12px;">'
+                f'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                f'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>'
+                f'<circle cx="12" cy="12" r="3"></circle></svg>'
+                f'Просмотр объекта</a>'
+            )
+        return '-'
+    object_link.short_description = 'Объект обслуживания'
 
     def get_queryset(self, request):
         """Оптимизация запросов"""
