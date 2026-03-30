@@ -172,10 +172,10 @@ class WorkOrderAdmin(admin.ModelAdmin):
     actions = None
 
     # Компактный список: убрали company, object, service, is_test
-    list_display = ['work_order_no', 'created_at', 'department',
+    list_display = ['work_order_with_date', 'department',
                    'responsible_user', 'status_display', 'priority_code',
                    'is_emergency_compact']
-    list_display_links = ['work_order_no']  # Кликабельная колонка "Номер"
+    list_display_links = ['work_order_with_date']  # Кликабельная колонка "Номер"
     list_filter = [ClosedFilter, 'company', 'department', 'current_internal_status',
                    'priority_code', 'is_emergency', 'creation_source', 'is_test']
     search_fields = ['work_order_no', 'original_request_text', 'resolution_text']
@@ -206,6 +206,31 @@ class WorkOrderAdmin(admin.ModelAdmin):
         return mark_safe('<span class="text-muted">-</span>')
     is_emergency_compact.short_description = 'Авария'
     is_emergency_compact.admin_order_field = 'is_emergency'
+
+    def work_order_with_date(self, obj):
+        """Объединенное отображение номера и даты создания в одну строку"""
+        from django.utils import timezone
+        # Форматируем дату
+        if obj.created_at:
+            # Локализуем дату
+            local_time = timezone.localtime(obj.created_at)
+            date_str = local_time.strftime('%d.%m.%Y %H:%M')
+        else:
+            date_str = '-'
+
+        # Используем flexbox для компактного отображения в одну строку
+        html = f'''
+        <div style="display: flex; align-items: baseline; gap: 12px; min-width: 200px;">
+            <div style="font-weight: 500; color: #1a1a1a;">
+                {obj.work_order_no}
+            </div>
+            <div style="font-size: 0.85em; color: #6c757d;">
+                {date_str}
+            </div>
+        </div>
+        '''
+        return mark_safe(html)
+    work_order_with_date.short_description = 'Заявка'
 
     def get_queryset(self, request):
         """Оптимизация запросов"""
