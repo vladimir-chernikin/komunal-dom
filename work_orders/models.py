@@ -267,7 +267,7 @@ class WorkOrderStatusRef(models.Model):
 
     short_code_en = models.CharField(max_length=50, unique=True, verbose_name="Код статуса")
     short_name_ru = models.CharField(max_length=100, verbose_name="Название")
-    display_name_for_user = models.CharField(max_length=100, verbose_name="Для пользователя")
+    display_name_for_user = models.CharField(max_length=100, blank=True, null=True, verbose_name="Для пользователя")
     description_and_transition_rules = models.TextField(
         blank=True, null=True, verbose_name="Описание и правила переходов"
     )
@@ -623,7 +623,7 @@ class WorkOrder(models.Model):
     resolution_text = models.TextField(blank=True, null=True, verbose_name="Решение")
     is_emergency = models.BooleanField(default=False, verbose_name="Аварийная заявка")
     priority_code = models.CharField(max_length=20, choices=PRIORITY_CHOICES, verbose_name="Приоритет")
-    current_status = models.ForeignKey(
+    current_internal_status = models.ForeignKey(
         WorkOrderStatusRef,
         on_delete=models.PROTECT,
         db_column='current_internal_status_id',
@@ -639,46 +639,9 @@ class WorkOrder(models.Model):
         related_name='child_work_orders',
         verbose_name="Родительская заявка"
     )
-    completed_by_user = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        db_column='completed_by_user_id',
-        null=True,
-        blank=True,
-        related_name='completed_work_orders',
-        verbose_name="Выполнено пользователем"
-    )
-    closed_by_user = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        db_column='closed_by_user_id',
-        null=True,
-        blank=True,
-        related_name='closed_work_orders',
-        verbose_name="Закрыто пользователем"
-    )
-    cancelled_by_user = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        db_column='cancelled_by_user_id',
-        null=True,
-        blank=True,
-        related_name='cancelled_work_orders',
-        verbose_name="Отменено пользователем"
-    )
 
-    # Даты жизненного цикла
+    # Дата создания
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
-    assigned_at = models.DateTimeField(blank=True, null=True, verbose_name="Назначен")
-    accepted_at = models.DateTimeField(blank=True, null=True, verbose_name="Взят в работу")
-    in_progress_at = models.DateTimeField(blank=True, null=True, verbose_name="В работе")
-    resident_contacted_at = models.DateTimeField(blank=True, null=True, verbose_name="Контакт с заявителем")
-    localized_at = models.DateTimeField(blank=True, null=True, verbose_name="Локализовано")
-    completed_at = models.DateTimeField(blank=True, null=True, verbose_name="Выполнен")
-    closed_at = models.DateTimeField(blank=True, null=True, verbose_name="Закрыт")
-    cancelled_at = models.DateTimeField(blank=True, null=True, verbose_name="Отменен")
-    reopened_at = models.DateTimeField(blank=True, null=True, verbose_name="Переоткрыт")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
     is_test = models.BooleanField(default=False, verbose_name="Тестовый")
 
     class Meta:
@@ -702,19 +665,11 @@ class WorkOrder(models.Model):
                 condition=Q(priority_code__in=['low', 'normal', 'high', 'critical']),
                 name='ck_work_order_priority'
             ),
-            CheckConstraint(
-                condition=Q(closed_at__isnull=True) | ~Q(completed_at__isnull=True) | ~Q(cancelled_at__isnull=True),
-                name='ck_work_order_close_requires_complete_or_cancel'
-            ),
-            CheckConstraint(
-                condition=Q(completed_at__isnull=True) | ~Q(resolution_text__isnull=True),
-                name='ck_work_order_complete_requires_resolution'
-            ),
         ]
         indexes = [
             models.Index(fields=['company', '-created_at'], name='idx_work_order_comp_created'),
-            models.Index(fields=['company', 'department', 'current_status', '-created_at'], name='idx_work_order_comp_dept_stat'),
-            models.Index(fields=['responsible_user', 'current_status', '-created_at'], name='idx_work_order_resp_stat'),
+            models.Index(fields=['company', 'department', 'current_internal_status', '-created_at'], name='idx_work_order_comp_dept_stat'),
+            models.Index(fields=['responsible_user', 'current_internal_status', '-created_at'], name='idx_work_order_resp_stat'),
             models.Index(fields=['department', '-created_at'], name='idx_work_order_dept_unassign', condition=Q(responsible_user__isnull=True)),
             models.Index(fields=['parent_work_order'], name='idx_work_order_parent'),
             models.Index(fields=['object'], name='idx_work_order_object'),
@@ -725,6 +680,51 @@ class WorkOrder(models.Model):
 
     def __str__(self):
         return f"Заявка #{self.work_order_no}: {self.original_request_text[:50]}..."
+
+
+class WorkOrderStatusHistory(models.Model):
+    """История изменения статусов заявки (request_mgmt.work_order_status_history)"""
+
+    work_order = models.ForeignKey(
+        WorkOrder,
+        on_delete=models.CASCADE,
+        db_column='work_order_id',
+        related_name='status_history',
+        verbose_name="Заявка"
+    )
+    status = models.ForeignKey(
+        WorkOrderStatusRef,
+        on_delete=models.PROTECT,
+        db_column='status_id',
+        related_name='history_entries',
+        verbose_name="Статус"
+    )
+    changed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        db_column='changed_by_id',
+        null=True,
+        blank=True,
+        related_name='status_changes',
+        verbose_name="Пользователь"
+    )
+    changed_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата-Время")
+    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
+
+    class Meta:
+        db_table = 'work_order_status_history'
+        verbose_name = "История изменения статуса"
+        verbose_name_plural = "Истории изменения статусов"
+        ordering = ['-changed_at']
+        indexes = [
+            models.Index(fields=['work_order', '-changed_at'], name='idx_status_hist_work_time'),
+            models.Index(fields=['status'], name='idx_status_hist_status'),
+            models.Index(fields=['changed_by'], name='idx_status_hist_user'),
+        ]
+
+    def __str__(self):
+        user_str = self.changed_by.get_full_name() if self.changed_by else 'Система'
+        return f"{self.work_order.work_order_no} → {self.status.short_name_ru} ({self.changed_at.strftime('%d.%m.%Y %H:%M')})"
 
 
 class SLAInstance(models.Model):

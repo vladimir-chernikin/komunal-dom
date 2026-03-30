@@ -11,7 +11,8 @@ from django.urls import reverse_lazy
 
 from .models import (
     WorkOrder, WorkOrderStatusRef, UserCompanyMembership,
-    CompanyDepartment, WorkOrderEventLog, RequestIntake
+    CompanyDepartment, WorkOrderEventLog, RequestIntake,
+    WorkOrderStatusHistory
 )
 from portal.models import ServicesCatalog, ServiceObject
 
@@ -309,9 +310,17 @@ def api_take_work_order(request, work_order_id):
 
     # Назначаем заявку
     work_order.responsible_user = request.user
-    work_order.assigned_at = timezone.now()
-    work_order.current_internal_status = WorkOrderStatusRef.objects.get(short_code_en='accepted_by_executor')
+    new_status = WorkOrderStatusRef.objects.get(short_code_en='accepted_by_executor')
+    work_order.current_internal_status = new_status
     work_order.save()
+
+    # Записываем в историю изменений статусов
+    WorkOrderStatusHistory.objects.create(
+        work_order=work_order,
+        status=new_status,
+        changed_by=request.user,
+        is_test=False
+    )
 
     # Создаем событие
     WorkOrderEventLog.objects.create(
@@ -342,9 +351,17 @@ def api_start_work_order(request, work_order_id):
         return JsonResponse({'error': 'Заявка назначена на другого пользователя'}, status=403)
 
     # Меняем статус на "В работе"
-    work_order.current_internal_status = WorkOrderStatusRef.objects.get(short_code_en='in_progress')
-    work_order.in_progress_at = timezone.now()
+    new_status = WorkOrderStatusRef.objects.get(short_code_en='in_progress')
+    work_order.current_internal_status = new_status
     work_order.save()
+
+    # Записываем в историю изменений статусов
+    WorkOrderStatusHistory.objects.create(
+        work_order=work_order,
+        status=new_status,
+        changed_by=request.user,
+        is_test=False
+    )
 
     # Создаем событие
     WorkOrderEventLog.objects.create(
@@ -380,11 +397,9 @@ def api_complete_work_order(request, work_order_id):
         return JsonResponse({'error': 'Необходимо указать текст решения'}, status=400)
 
     # Меняем статус на "Выполнена"
-    work_order.current_internal_status = WorkOrderStatusRef.objects.get(short_code_en='completed')
-    work_order.current_external_status = WorkOrderStatusRef.objects.get(short_code_en='completed_external')
+    new_status = WorkOrderStatusRef.objects.get(short_code_en='completed')
+    work_order.current_internal_status = new_status
     work_order.resolution_text = resolution_text
-    work_order.completed_at = timezone.now()
-    work_order.completed_by_user = request.user
     work_order.save()
 
     # Создаем событие
@@ -398,6 +413,14 @@ def api_complete_work_order(request, work_order_id):
         author_user=request.user,
         new_status=work_order.current_internal_status,
         is_visible_to_resident=True,
+        is_test=False
+    )
+
+    # Записываем в историю изменений статусов
+    WorkOrderStatusHistory.objects.create(
+        work_order=work_order,
+        status=new_status,
+        changed_by=request.user,
         is_test=False
     )
 
@@ -422,15 +445,13 @@ def api_close_work_order(request, work_order_id):
     if not membership:
         return JsonResponse({'error': 'У вас нет прав для закрытия заявок'}, status=403)
 
-    # Проверяем, что заявка выполнена
-    if not work_order.completed_at:
+    # Проверяем, что заявка в статусе "Выполнена"
+    if work_order.current_internal_status.short_code_en != 'completed':
         return JsonResponse({'error': 'Можно закрыть только выполненную заявку'}, status=400)
 
     # Закрываем заявку
-    work_order.current_internal_status = WorkOrderStatusRef.objects.get(short_code_en='closed')
-    work_order.current_external_status = WorkOrderStatusRef.objects.get(short_code_en='closed_external')
-    work_order.closed_at = timezone.now()
-    work_order.closed_by_user = request.user
+    new_status = WorkOrderStatusRef.objects.get(short_code_en='closed')
+    work_order.current_internal_status = new_status
     work_order.save()
 
     # Создаем событие
@@ -444,6 +465,14 @@ def api_close_work_order(request, work_order_id):
         author_user=request.user,
         new_status=work_order.current_internal_status,
         is_visible_to_resident=True,
+        is_test=False
+    )
+
+    # Записываем в историю изменений статусов
+    WorkOrderStatusHistory.objects.create(
+        work_order=work_order,
+        status=new_status,
+        changed_by=request.user,
         is_test=False
     )
 

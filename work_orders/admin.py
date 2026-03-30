@@ -12,7 +12,7 @@ from .models import (
     CompanyObjectServicePeriod, WorkOrderStatusRef,
     WorkOrderStatusTransition, SLAPolicy, RequestIntake,
     WorkOrder, SLAInstance, WorkOrderEventLog,
-    WorkOrderAttachment, NotificationOutbox
+    WorkOrderAttachment, NotificationOutbox, WorkOrderStatusHistory
 )
 
 
@@ -30,7 +30,7 @@ class ClosedFilter(SimpleListFilter):
     def queryset(self, request, queryset):
         if self.value() == '0':
             return queryset.exclude(
-                current_status__short_code_en__in=['completed', 'closed']
+                current_internal_status__short_code_en__in=['completed', 'closed']
             )
         return queryset
 
@@ -131,6 +131,21 @@ class RequestIntakeAdmin(admin.ModelAdmin):
     autocomplete_fields = ['company']
 
 
+class WorkOrderStatusHistoryInline(admin.TabularInline):
+    """Inline для истории изменения статусов (readonly)"""
+    model = WorkOrderStatusHistory
+    extra = 0
+    can_delete = False
+    readonly_fields = ['changed_at', 'status', 'changed_by']
+    fields = ['changed_at', 'status', 'changed_by']
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(WorkOrder)
 class WorkOrderAdmin(admin.ModelAdmin):
     # Кастомный шаблон для compact layout с кнопками наверх
@@ -139,18 +154,15 @@ class WorkOrderAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Основная информация', {
             'fields': (
-                'work_order_no', 'company', 'object', 'service', 'route', 'department', 'responsible_user',
+                'work_order_no', 'created_at', 'company', 'object', 'service', 'route', 'department', 'responsible_user',
                 'original_request_text', 'additional_info_text', 'resolution_text',
-                'current_status', 'priority_code', 'is_emergency'
+                'current_internal_status', 'priority_code', 'is_emergency'
             )
         }),
         ('Служебное', {
             'fields': (
                 'request_intake', 'resident_user', 'parent_work_order',
-                'creation_source', 'created_at', 'assigned_at', 'accepted_at', 'in_progress_at',
-                'resident_contacted_at', 'localized_at', 'completed_at', 'closed_at', 'cancelled_at', 'reopened_at',
-                'message_log_ref', 'completed_by_user', 'closed_by_user', 'cancelled_by_user',
-                'updated_at', 'is_test'
+                'creation_source', 'message_log_ref', 'is_test'
             ),
             'classes': ('collapse',),
         }),
@@ -164,20 +176,20 @@ class WorkOrderAdmin(admin.ModelAdmin):
                    'responsible_user', 'status_display', 'priority_code',
                    'is_emergency_compact']
     list_display_links = ['work_order_no']  # Кликабельная колонка "Номер"
-    list_filter = [ClosedFilter, 'company', 'department', 'current_status',
+    list_filter = [ClosedFilter, 'company', 'department', 'current_internal_status',
                    'priority_code', 'is_emergency', 'creation_source', 'is_test']
     search_fields = ['work_order_no', 'original_request_text', 'resolution_text']
     ordering = ['-created_at']
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = ['created_at']
     list_per_page = 50  # Компактность: больше строк на странице
     autocomplete_fields = ['company', 'service', 'route', 'department',
                           'responsible_user', 'request_intake', 'resident_user',
-                          'parent_work_order', 'completed_by_user', 'closed_by_user',
-                          'cancelled_by_user']
+                          'parent_work_order']
+    inlines = [WorkOrderStatusHistoryInline]  # История изменения статусов на закладке "Служебное"
 
     def status_display(self, obj):
         """Отображение статуса только по-русски"""
-        return obj.current_status.short_name_ru if obj.current_status else '-'
+        return obj.current_internal_status.short_name_ru if obj.current_internal_status else '-'
     status_display.short_description = 'Статус'
 
     def responsible_user(self, obj):
@@ -200,7 +212,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
         qs = super().get_queryset(request)
         return qs.select_related(
             'company', 'object', 'service', 'department', 'responsible_user',
-            'current_status'
+            'current_internal_status'
         )
 
     def get_list_filter(self, request):
