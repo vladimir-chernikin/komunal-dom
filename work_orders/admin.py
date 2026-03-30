@@ -239,18 +239,8 @@ class WorkOrderAdmin(admin.ModelAdmin):
         else:
             date_str = '-'
 
-        # Используем flexbox для компактного отображения в одну строку
-        html = f'''
-        <div style="display: flex; align-items: baseline; gap: 12px; min-width: 200px;">
-            <div style="font-weight: 500; color: #1a1a1a;">
-                {obj.work_order_no}
-            </div>
-            <div style="font-size: 0.85em; color: #6c757d;">
-                {date_str}
-            </div>
-        </div>
-        '''
-        return mark_safe(html)
+        # Возвращаем простой текст с разделителем (Django обернет в <a>)
+        return f'{obj.work_order_no}  |  {date_str}'
     work_order_with_date.short_description = 'Заявка'
 
     def object_link(self, obj):
