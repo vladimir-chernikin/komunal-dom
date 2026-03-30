@@ -84,8 +84,7 @@ request_intake → work_order → исполнение → закрытие
 - `resolution_text text NULL` — решение
 - `is_emergency boolean NOT NULL DEFAULT false`
 - `priority_code varchar(20) NOT NULL` — low, normal, high, critical
-- `current_internal_status_id bigint NOT NULL` → `request_mgmt.work_order_status_ref`
-- `current_external_status_id bigint NOT NULL` → `request_mgmt.work_order_status_ref`
+- `current_status_id bigint NOT NULL` → `request_mgmt.work_order_status_ref`
 - `parent_work_order_id bigint NULL` → `request_mgmt.work_order`
 
 **Даты жизненного цикла:**
@@ -103,8 +102,8 @@ request_intake → work_order → исполнение → закрытие
 
 **Индексы:**
 - `company_id, created_at desc`
-- `company_id, department_id, current_internal_status_id, created_at desc`
-- `responsible_user_id, current_internal_status_id, created_at desc`
+- `company_id, department_id, current_status_id, created_at desc`
+- `responsible_user_id, current_status_id, created_at desc`
 - `department_id, created_at desc WHERE responsible_user_id IS NULL`
 - `parent_work_order_id`
 - `object_id`
@@ -354,26 +353,27 @@ request_intake → work_order → исполнение → закрытие
 
 #### 2.2.7. work_order_status_ref
 
-**Назначение:** Справочник статусов заявки (внутренние и внешние)
+**Назначение:** Справочник статусов заявки (единый для внутреннего и внешнего контуров)
 
 **Поля:**
 - `status_id bigint PK`
 - `short_code_en varchar(50) NOT NULL UNIQUE` — технический код
 - `short_name_ru varchar(100) NOT NULL` — название
-- `status_scope varchar(20) NOT NULL` — internal, external, both
-- `description_and_transition_rules text NULL`
-- `sort_order integer NOT NULL DEFAULT 100`
-- `is_terminal boolean NOT NULL DEFAULT false`
+- `display_name_for_user varchar(100) NOT NULL` — отображаемое название для пользователя
+- `description_and_transition_rules text NULL` — описание бизнес-правил
+- `sort_order integer NOT NULL DEFAULT 100` — порядок сортировки в UI
+- `is_terminal boolean NOT NULL DEFAULT false` — конечный статус (нет переходов дальше)
 - `is_active boolean NOT NULL DEFAULT true`
 
-**CHECK:**
-- `status_scope IN ('internal', 'external', 'both')`
-
-**Стартовые коды (внутренние):**
-- new_registered, accepted_by_executor, in_progress, on_hold, completed, closed, cancelled, reopened
-
-**Стартовые коды (внешние):**
-- accepted, in_work, waiting_for_resident, completed_external, closed_external, cancelled_external, reopened_external
+**Стартовые коды:**
+- new_registered — Новая
+- accepted_by_executor — Принята исполнителем
+- in_progress — В работе
+- on_hold — Приостановлена
+- completed — Выполнена (терминальный)
+- closed — Закрыта (терминальный)
+- cancelled — Отменена (терминальный)
+- reopened — Переоткрыта
 
 ---
 
@@ -450,7 +450,7 @@ request_intake → work_order → исполнение → закрытие
 3. **Обязательные поля:**
    - `company_id`, `object_id`, `service_id`, `route_id`, `department_id`
    - `creation_source`, `original_request_text`
-   - `current_internal_status_id`, `current_external_status_id`, `priority_code`
+   - `current_status_id`, `priority_code`
 
 ### 3.2. Назначение исполнителя
 
@@ -548,7 +548,7 @@ request_intake → work_order → исполнение → закрытие
 
 - Полная информация: номер, компания, объект, услуга, маршрут, подразделение, ответственный
 - Тексты: исходный текст, доп. сведения, решение
-- Статусы: внутренний и внешний
+- Статус: единый (используется display_name_for_user для отображения)
 - SLA-блок
 - Журнал событий
 - Вложения
@@ -569,7 +569,7 @@ request_intake → work_order → исполнение → закрытие
 ### 7.5. Экран жителя
 
 - Список заявок жителя
-- Карточка заявки: внешний статус, текст, решение, видимые вложения
+- Карточка заявки: статус (display_name_for_user), текст, решение, видимые вложения
 - Действие переоткрытия (если разрешено)
 
 ### 7.6. Django admin / Jazzmin

@@ -30,7 +30,7 @@ class ClosedFilter(SimpleListFilter):
     def queryset(self, request, queryset):
         if self.value() == '0':
             return queryset.exclude(
-                current_internal_status__short_code_en__in=['completed', 'closed']
+                current_status__short_code_en__in=['completed', 'closed']
             )
         return queryset
 
@@ -89,10 +89,18 @@ class CompanyObjectServicePeriodAdmin(admin.ModelAdmin):
 
 @admin.register(WorkOrderStatusRef)
 class WorkOrderStatusRefAdmin(admin.ModelAdmin):
-    list_display = ['short_code_en', 'short_name_ru', 'status_scope', 'is_terminal', 'is_active', 'sort_order']
-    list_filter = ['status_scope', 'is_terminal', 'is_active']
-    search_fields = ['short_code_en', 'short_name_ru', 'description_and_transition_rules']
+    list_display = ['short_code_en', 'short_name_ru', 'display_name_for_user', 'is_terminal', 'is_active', 'sort_order']
+    list_filter = ['is_terminal', 'is_active']
+    search_fields = ['short_code_en', 'short_name_ru', 'display_name_for_user', 'description_and_transition_rules']
     ordering = ['sort_order', 'short_code_en']
+    fieldsets = (
+        ('Основное', {
+            'fields': ('short_code_en', 'short_name_ru', 'display_name_for_user')
+        }),
+        ('Дополнительно', {
+            'fields': ('description_and_transition_rules', 'sort_order', 'is_terminal', 'is_active')
+        }),
+    )
 
 
 @admin.register(WorkOrderStatusTransition)
@@ -133,7 +141,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
             'fields': (
                 'work_order_no', 'company', 'object', 'service', 'route', 'department', 'responsible_user',
                 'original_request_text', 'additional_info_text', 'resolution_text',
-                'current_internal_status', 'current_external_status', 'priority_code', 'is_emergency'
+                'current_status', 'priority_code', 'is_emergency'
             )
         }),
         ('Служебное', {
@@ -156,7 +164,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
                    'responsible_user', 'status_display', 'priority_code',
                    'is_emergency_compact']
     list_display_links = ['work_order_no']  # Кликабельная колонка "Номер"
-    list_filter = [ClosedFilter, 'company', 'department', 'current_internal_status', 'current_external_status',
+    list_filter = [ClosedFilter, 'company', 'department', 'current_status',
                    'priority_code', 'is_emergency', 'creation_source', 'is_test']
     search_fields = ['work_order_no', 'original_request_text', 'resolution_text']
     ordering = ['-created_at']
@@ -169,7 +177,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
 
     def status_display(self, obj):
         """Отображение статуса только по-русски"""
-        return obj.current_internal_status.short_name_ru if obj.current_internal_status else '-'
+        return obj.current_status.short_name_ru if obj.current_status else '-'
     status_display.short_description = 'Статус'
 
     def responsible_user(self, obj):
@@ -192,7 +200,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
         qs = super().get_queryset(request)
         return qs.select_related(
             'company', 'object', 'service', 'department', 'responsible_user',
-            'current_internal_status', 'current_external_status'
+            'current_status'
         )
 
     def get_list_filter(self, request):

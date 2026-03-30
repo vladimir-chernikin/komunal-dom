@@ -265,20 +265,14 @@ class UserCompanyMembership(models.Model):
 class WorkOrderStatusRef(models.Model):
     """Справочник статусов заявки (request_mgmt.work_order_status_ref)"""
 
-    STATUS_SCOPE_CHOICES = [
-        ('internal', 'Внутренний'),
-        ('external', 'Внешний'),
-        ('both', 'Оба контура'),
-    ]
-
     short_code_en = models.CharField(max_length=50, unique=True, verbose_name="Код статуса")
     short_name_ru = models.CharField(max_length=100, verbose_name="Название")
-    status_scope = models.CharField(max_length=20, choices=STATUS_SCOPE_CHOICES, verbose_name="Область применения")
+    display_name_for_user = models.CharField(max_length=100, verbose_name="Для пользователя")
     description_and_transition_rules = models.TextField(
         blank=True, null=True, verbose_name="Описание и правила переходов"
     )
     sort_order = models.IntegerField(default=100, verbose_name="Порядок сортировки")
-    is_terminal = models.BooleanField(default=False, verbose_name="Терминальный статус")
+    is_terminal = models.BooleanField(default=False, verbose_name="Конечный статус")
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
@@ -289,14 +283,7 @@ class WorkOrderStatusRef(models.Model):
         verbose_name = "Статус заявки"
         verbose_name_plural = "Статусы заявок"
         ordering = ['sort_order', 'short_code_en']
-        constraints = [
-            CheckConstraint(
-                condition=Q(status_scope__in=['internal', 'external', 'both']),
-                name='ck_work_order_status_ref_scope'
-            ),
-        ]
         indexes = [
-            models.Index(fields=['status_scope'], name='idx_work_status_ref_scope'),
             models.Index(fields=['is_active'], name='idx_work_status_ref_active'),
             models.Index(fields=['sort_order'], name='idx_work_status_ref_sort'),
         ]
@@ -636,19 +623,12 @@ class WorkOrder(models.Model):
     resolution_text = models.TextField(blank=True, null=True, verbose_name="Решение")
     is_emergency = models.BooleanField(default=False, verbose_name="Аварийная заявка")
     priority_code = models.CharField(max_length=20, choices=PRIORITY_CHOICES, verbose_name="Приоритет")
-    current_internal_status = models.ForeignKey(
+    current_status = models.ForeignKey(
         WorkOrderStatusRef,
         on_delete=models.PROTECT,
         db_column='current_internal_status_id',
-        related_name='internal_status_work_orders',
-        verbose_name="Текущий внутренний статус"
-    )
-    current_external_status = models.ForeignKey(
-        WorkOrderStatusRef,
-        on_delete=models.PROTECT,
-        db_column='current_external_status_id',
-        related_name='external_status_work_orders',
-        verbose_name="Текущий внешний статус"
+        related_name='status_work_orders',
+        verbose_name="Текущий статус"
     )
     parent_work_order = models.ForeignKey(
         'self',
@@ -733,8 +713,8 @@ class WorkOrder(models.Model):
         ]
         indexes = [
             models.Index(fields=['company', '-created_at'], name='idx_work_order_comp_created'),
-            models.Index(fields=['company', 'department', 'current_internal_status', '-created_at'], name='idx_work_order_comp_dept_stat'),
-            models.Index(fields=['responsible_user', 'current_internal_status', '-created_at'], name='idx_work_order_resp_stat'),
+            models.Index(fields=['company', 'department', 'current_status', '-created_at'], name='idx_work_order_comp_dept_stat'),
+            models.Index(fields=['responsible_user', 'current_status', '-created_at'], name='idx_work_order_resp_stat'),
             models.Index(fields=['department', '-created_at'], name='idx_work_order_dept_unassign', condition=Q(responsible_user__isnull=True)),
             models.Index(fields=['parent_work_order'], name='idx_work_order_parent'),
             models.Index(fields=['object'], name='idx_work_order_object'),
