@@ -264,10 +264,10 @@
                             </a>
                             <ul class="dropdown-menu" aria-labelledby="navbarDropdown" role="menu">
                                 {% if user.userprofile.is_django_admin %}
-                                <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Кабинет DBA</a></li>
+                                {# <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Кабинет DBA</a></li> #}
                                 <li role="none"><a class="dropdown-item" href="/admin/" role="menuitem">Админ-панель Django</a></li>
                                 {% elif user.userprofile.is_dba %}
-                                <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Кабинет DBA</a></li>
+                                {# <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Кабинет DBA</a></li> #}
                                 {% endif %}
                                 <li role="none"><hr class="dropdown-divider"></li>
                                 <li role="none">
