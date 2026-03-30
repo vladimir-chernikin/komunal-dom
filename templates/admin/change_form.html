@@ -1,20 +1,27 @@
 {% extends "admin/change_form.html" %}
 {% load i18n admin_urls static admin_modify %}
 
-{# Убираем стандартные кнопки сверху и снизу #}
-{% block submit_buttons_top %}{% endblock %}
-{% block submit_buttons_bottom %}{% endblock %}
-
 {% block extrastyle %}
 {{ block.super }}
 <style>
-    /* Скрываем правую колонку unfold с кнопками */
-    .submit-row,
-    footer .submit-row {
+    /* Убираем двухколоночный layout, растягиваем на всю ширину */
+    #content.colM {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Скрываем sidebar если есть */
+    #content > .sidebar,
+    #content-main > aside {
         display: none !important;
     }
 
-    /* Кнопка Сохранить над формой */
+    /* Скрываем стандартный submit row unfold */
+    #submit-row {
+        display: none !important;
+    }
+
+    /* Кнопка Записать над формой */
     .compact-submit-row {
         padding: 12px 20px;
         margin: 0 0 20px 0;
@@ -45,10 +52,17 @@
     .compact-submit-row input[type="submit"]:hover {
         background: #45a049;
     }
+
+    /* Убираем container ограничение ширины unfold */
+    #content > .container,
+    #content-main > .container {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
 </style>
 {% endblock %}
 
-{# Добавляем кнопку Сохранить над формой #}
+{# Кнопка Записать над формой #}
 {% block form_before %}
 <div class="compact-submit-row">
     <input type="submit" name="_save" value="Записать" class="default">
