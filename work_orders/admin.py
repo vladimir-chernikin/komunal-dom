@@ -196,7 +196,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
     list_display = ['work_order_with_date', 'department',
                    'responsible_user', 'status_display', 'priority_code',
                    'is_emergency_compact']
-    list_display_links = None  # Отключаем кликабельность, все поля текстом
+    list_display_links = ['work_order_with_date']  # Кликабельная вся ячейка, но внутри просто текст
     list_filter = [ClosedFilter, 'company', 'department', 'current_internal_status',
                    'priority_code', 'is_emergency', 'creation_source', 'is_test']
     search_fields = ['work_order_no', 'original_request_text', 'resolution_text']
