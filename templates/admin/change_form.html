@@ -1,23 +1,52 @@
 {% extends "admin/change_form.html" %}
 {% load i18n admin_urls static admin_modify %}
 
+{# Полностью убираем блок кнопок unfold #}
+{% block footer %}{% endblock %}
+
 {% block extrastyle %}
 {{ block.super }}
 <style>
-    /* Убираем двухколоночный layout, растягиваем на всю ширину */
-    #content.colM {
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-
-    /* Скрываем sidebar если есть */
-    #content > .sidebar,
-    #content-main > aside {
+    /* АГРЕССИВНО убираем всё что связано с кнопками unfold */
+    footer,
+    #submit-row,
+    .submit-row,
+    [id*="submit"],
+    [class*="submit-row"],
+    [class*="submit"] {
         display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        width: 0 !important;
+        overflow: hidden !important;
     }
 
-    /* Скрываем стандартный submit row unfold */
-    #submit-row {
+    /* РАСТЯГИВАЕМ на всю ширину - убираем все ограничения */
+    #content,
+    #content-main,
+    #content > *,
+    #content-main > *,
+    .container {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+
+    /* Убираем двухколоночный layout */
+    #content.colM,
+    #content.colM > * {
+        display: block !important;
+        width: 100% !important;
+    }
+
+    /* Убираем любые sidebar/side колонки */
+    aside,
+    .sidebar,
+    [class*="sidebar"],
+    [class*="side-"] {
         display: none !important;
     }
 
@@ -28,7 +57,7 @@
         background: #e8f5e9;
         border: 1px solid #4caf50;
         border-radius: 6px;
-        display: flex;
+        display: flex !important;
         justify-content: flex-start;
         gap: 10px;
         width: 100%;
@@ -52,17 +81,10 @@
     .compact-submit-row input[type="submit"]:hover {
         background: #45a049;
     }
-
-    /* Убираем container ограничение ширины unfold */
-    #content > .container,
-    #content-main > .container {
-        max-width: 100% !important;
-        width: 100% !important;
-    }
 </style>
 {% endblock %}
 
-{# Кнопка Записать над формой #}
+{# ТОЛЬКО кнопка Записать над формой #}
 {% block form_before %}
 <div class="compact-submit-row">
     <input type="submit" name="_save" value="Записать" class="default">
