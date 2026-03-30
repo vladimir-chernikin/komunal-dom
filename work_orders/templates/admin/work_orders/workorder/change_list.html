@@ -27,12 +27,19 @@
     }
 
     /* Кликабельные строки */
-    #result_list tbody tr {
+    #result_list tbody tr.clickable-row {
         cursor: pointer;
     }
 
-    #result_list tbody tr:hover {
-        background-color: #f0f0f0 !important;
+    #result_list tbody tr.clickable-row:hover {
+        background-color: #f8f9fa !important;
+    }
+
+    /* Чекбоксы и ссылки остаются со своим курсором */
+    #result_list tbody tr.clickable-row input[type="checkbox"],
+    #result_list tbody tr.clickable-row a,
+    #result_list tbody tr.clickable-row button {
+        cursor: auto;
     }
 
     /* Компактность для колонок */
