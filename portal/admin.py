@@ -24,27 +24,31 @@ class UserProfileInline(admin.TabularInline):
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    """Красивый интерфейс редактирования пользователя"""
+    """
+    Красивый интерфейс редактирования пользователя
 
-    list_display = ('username', 'email', 'first_name', 'last_name', 'get_role', 'is_active', 'date_joined')
+    ИЗМЕНЕНО (2026-04-02):
+    - Добавлена ссылка на компанию из UserCompanyMembership
+    - get_role() использует UserCompanyMembership
+    - Добавлены timezone и phone в основную информацию
+    """
+
+    list_display = ('username', 'email', 'first_name', 'last_name', 'get_company', 'get_role', 'is_active', 'date_joined')
     inlines = [UserProfileInline]
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
 
     fieldsets = (
-        (None, {
-            'fields': ('username', 'password'),
+        ('Основная информация', {
+            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_phone'),
             'classes': ('wide',),
-            'description': 'Основные данные для входа в систему'
-        }),
-        ('Личная информация', {
-            'fields': ('first_name', 'last_name', 'email'),
-            'classes': ('wide',),
+            'description': 'Основные данные для входа в систему и привязка к компании'
         }),
         ('Права доступа', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
             'classes': ('wide',),
+            'description': '<strong>ВНИМАНИЕ:</strong> is_staff = true означает доступ к системе. is_superuser = true означает доступ к Django Admin (/admin/).',
         }),
         ('Важные даты', {
             'fields': ('last_login', 'date_joined'),
@@ -52,20 +56,117 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    def get_role(self, obj):
-        """Получить роль пользователя"""
+    readonly_fields = ('get_company_link', 'get_timezone', 'get_phone')
+
+    def get_company(self, obj):
+        """Получить основную компанию пользователя"""
+        try:
+            from work_orders.models import UserCompanyMembership
+            membership = UserCompanyMembership.objects.filter(
+                user=obj,
+                is_primary=True,
+                is_active=True,
+                date_to__isnull=True
+            ).select_related('company').first()
+
+            if membership:
+                return mark_safe(f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>')
+            else:
+                # Если нет primary - берем любую активную
+                membership = UserCompanyMembership.objects.filter(
+                    user=obj,
+                    is_active=True,
+                    date_to__isnull=True
+                ).select_related('company').first()
+
+                if membership:
+                    return mark_safe(f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>')
+
+                return mark_safe('<span class="badge bg-secondary">Нет компании</span>')
+        except Exception:
+            return mark_safe('<span class="badge bg-secondary">Ошибка</span>')
+    get_company.short_description = 'Компания'
+
+    def get_company_link(self, obj):
+        """Получить ссылку на компанию для readonly поля"""
+        company = self.get_company(obj)
+        return company
+    get_company_link.short_description = 'Компания'
+
+    def get_timezone(self, obj):
+        """Получить timezone из UserProfile"""
         try:
             profile = obj.userprofile
-            if profile.role == 'django_admin':
-                return mark_safe('<span class="badge bg-danger">Администратор Django</span>')
-            elif profile.role == 'direktor_uk':
-                return mark_safe('<span class="badge bg-warning">Директор УК</span>')
-            elif profile.role == 'uk_user':
-                return mark_safe('<span class="badge bg-info">Пользователь УК</span>')
-            else:
-                return mark_safe('<span class="badge bg-secondary">Житель</span>')
+            return profile.timezone or 'Не указан'
         except UserProfile.DoesNotExist:
-            return mark_safe('<span class="badge bg-secondary">Без роли</span>')
+            return 'Europe/Moscow (по умолчанию)'
+    get_timezone.short_description = 'Часовой пояс'
+
+    def get_phone(self, obj):
+        """Получить телефон из UserProfile"""
+        try:
+            profile = obj.userprofile
+            return profile.phone or 'Не указан'
+        except UserProfile.DoesNotExist:
+            return 'Не указан'
+    get_phone.short_description = 'Телефон'
+
+    def get_role(self, obj):
+        """
+        Получить роль пользователя из UserCompanyMembership
+
+        ПРИОРИТЕТ:
+        1. Primary membership
+        2. Любая активная membership
+        3. UserProfile.role (fallback)
+        """
+        try:
+            from work_orders.models import UserCompanyMembership
+
+            # Сначала пробуем UserCompanyMembership
+            membership = UserCompanyMembership.objects.filter(
+                user=obj,
+                is_primary=True,
+                is_active=True,
+                date_to__isnull=True
+            ).first()
+
+            if not membership:
+                # Если нет primary - берем любую активную
+                membership = UserCompanyMembership.objects.filter(
+                    user=obj,
+                    is_active=True,
+                    date_to__isnull=True
+                ).first()
+
+            if membership:
+                # Формируем badge на основе role_code
+                role_labels = {
+                    'django_admin': ('Администратор Django', 'danger'),
+                    'direktor_uk': ('Директор УК', 'warning'),
+                    'chief_engineer': ('Главный инженер', 'primary'),
+                    'executor': ('Исполнитель', 'info'),
+                    'uk_user': ('Пользователь УК', 'secondary'),
+                    'resident': ('Житель', 'secondary'),
+                    'contractor': ('Подрядчик', 'secondary'),
+                }
+
+                label, color = role_labels.get(membership.role_code, (membership.role_code, 'secondary'))
+                return mark_safe(f'<span class="badge bg-{color}">{label}</span>')
+
+            # Fallback на UserProfile.role
+            profile = obj.userprofile
+            if profile.role == 'django_admin':
+                return mark_safe('<span class="badge bg-danger">Администратор Django (старый)</span>')
+            elif profile.role == 'direktor_uk':
+                return mark_safe('<span class="badge bg-warning">Директор УК (старый)</span>')
+            elif profile.role == 'uk_user':
+                return mark_safe('<span class="badge bg-info">Пользователь УК (старый)</span>')
+            else:
+                return mark_safe(f'<span class="badge bg-secondary">{profile.get_role_display()} (старый)</span>')
+
+        except UserProfile.DoesNotExist:
+            return mark_safe('<span class="badge bg-secondary">Нет роли</span>')
     get_role.short_description = 'Роль'
 
     def change_view(self, request, object_id, form_url='', extra_context=None):

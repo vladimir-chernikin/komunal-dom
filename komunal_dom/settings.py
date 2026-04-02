@@ -37,6 +37,7 @@ ALLOWED_HOSTS = ['komunal-dom.ru', 'www.komunal-dom.ru', 'localhost', '127.0.0.1
 
 INSTALLED_APPS = [
     'jazzmin',
+    'unfold',  # Django Unfold — современный админский интерфейс
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -64,7 +65,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'komunal_dom.middleware.SubdomainMiddleware',  # Обработка поддоменов
-    'portal.middleware.AdminAccessMiddleware',
+    'portal.middleware.CompanyMembershipMiddleware',  # Добавление компании в request (ДО защиты admin)
+    'portal.middleware.DjangoAdminProtectionMiddleware',  # Защита Django Admin (только superuser)
 ]
 
 ROOT_URLCONF = 'komunal_dom.urls'

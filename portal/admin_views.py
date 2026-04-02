@@ -1,5 +1,12 @@
 """
 Административные представления для портала
+
+АВТОР: Claude Sonnet
+ОБНОВЛЕНО: 2026-04-02
+ИЗМЕНЕНИЯ:
+- Использование UserCompanyMembership вместо UserProfile.role
+- Использование mixins для контроля доступа
+- Фильтрация по company_id
 """
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -8,6 +15,7 @@ from django.contrib.auth.models import User
 from django.db.models import Count, Q
 from django.http import JsonResponse
 from portal.models import UserProfile, AIPrompt
+from portal.mixins import get_primary_membership
 from file_manager.models import UserFile
 
 # Импорты для КЛАДР статистики
@@ -22,23 +30,40 @@ except ImportError:
 def admin_page(request):
     """
     Главная страница административного интерфейса УК
+
+    ДОСТУП: direktor_uk, django_admin (через middleware будет редирект для non-superuser)
     """
-    # Проверка прав доступа (доступно для Директора УК и django_admin)
-    if not request.user.userprofile.has_admin_access():
+    # Проверка staff
+    if not request.user.is_staff:
         messages.error(request, 'Доступ запрещен!')
         return redirect('portal:welcome')
 
-    user_stats = get_user_statistics()
-    users = User.objects.select_related('userprofile').all()
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        messages.warning(request, 'Вы не привязаны к компании')
+        return redirect('portal:no_membership')
+
+    # Фильтрация по компании
+    company_id = membership.company_id
+
+    # Статистика по пользователям компании
+    from work_orders.models import UserCompanyMembership
+
+    user_stats = get_user_statistics(company_id)
 
     context = {
+        'company': membership.company,
+        'department': membership.department,
+        'user_role': membership.role_code,
         'total_users': user_stats['total'],
-        'django_admin_count': users.filter(userprofile__role='django_admin').count(),
-        'director_count': users.filter(userprofile__role='direktor_uk').count(),
-        'executor_count': users.filter(userprofile__role='executor').count(),
-        'resident_count': users.filter(userprofile__role='resident').count(),
+        'django_admin_count': user_stats['by_role'].get('Django администратор', 0),
+        'director_count': user_stats['by_role'].get('Директор УК', 0),
+        'chief_engineer_count': user_stats['by_role'].get('Главный инженер', 0),
+        'executor_count': user_stats['by_role'].get('Исполнитель', 0),
+        'resident_count': user_stats['by_role'].get('Житель', 0),
         'user_stats': user_stats,
-        'file_stats': get_file_statistics(),
+        'file_stats': get_file_statistics(company_id),
         'prompt_stats': get_prompt_statistics(),
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
     }
@@ -50,23 +75,43 @@ def admin_page(request):
 def director_page(request):
     """
     Отдельная страница для Директора УК
+
+    ДОСТУП: direktor_uk (ограничение через DirectorMixin в Class-Based Views)
     """
-    # Проверка прав доступа (доступно для Директора УК и django_admin)
-    if not request.user.userprofile.has_admin_access():
+    # Проверка staff
+    if not request.user.is_staff:
         messages.error(request, 'Доступ запрещен!')
         return redirect('portal:welcome')
 
-    user_stats = get_user_statistics()
-    users = User.objects.select_related('userprofile').all()
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        messages.warning(request, 'Вы не привязаны к компании')
+        return redirect('portal:no_membership')
+
+    # Проверка роли
+    if membership.role_code != 'direktor_uk':
+        messages.error(request, 'Доступ разрешен только Директорам УК')
+        return redirect('portal:welcome')
+
+    # Фильтрация по компании
+    company_id = membership.company_id
+
+    # Статистика по пользователям компании
+    user_stats = get_user_statistics(company_id)
 
     context = {
+        'company': membership.company,
+        'department': membership.department,
+        'user_role': membership.role_code,
         'total_users': user_stats['total'],
-        'django_admin_count': users.filter(userprofile__role='django_admin').count(),
-        'director_count': users.filter(userprofile__role='direktor_uk').count(),
-        'executor_count': users.filter(userprofile__role='executor').count(),
-        'resident_count': users.filter(userprofile__role='resident').count(),
+        'django_admin_count': user_stats['by_role'].get('Django администратор', 0),
+        'director_count': user_stats['by_role'].get('Директор УК', 0),
+        'chief_engineer_count': user_stats['by_role'].get('Главный инженер', 0),
+        'executor_count': user_stats['by_role'].get('Исполнитель', 0),
+        'resident_count': user_stats['by_role'].get('Житель', 0),
         'user_stats': user_stats,
-        'file_stats': get_file_statistics(),
+        'file_stats': get_file_statistics(company_id),
         'prompt_stats': get_prompt_statistics(),
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
     }
@@ -74,31 +119,106 @@ def director_page(request):
     return render(request, 'portal/director_page.html', context)
 
 
-def get_user_statistics():
-    """Получить статистику по пользователям"""
-    users = User.objects.select_related('userprofile').all()
+@login_required
+def chief_engineer_page(request):
+    """
+    Страница Главного инженера
 
-    stats = {
-        'total': users.count(),
-        'by_role': {},
-        'active_recently': users.filter(last_login__isnull=False).count(),
+    ДОСТУП: chief_engineer
+    ПРАВА:
+    - Видит всю компанию (все подразделения)
+    - Может перераспределять обращения
+    - Может переводить в статус "on_hold"
+    - Может переоткрывать из completed
+    """
+    # Проверка staff
+    if not request.user.is_staff:
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        messages.warning(request, 'Вы не привязаны к компании')
+        return redirect('portal:no_membership')
+
+    # Проверка роли
+    if membership.role_code != 'chief_engineer':
+        messages.error(request, 'Доступ разрешен только Главным инженерам')
+        return redirect('portal:welcome')
+
+    # Фильтрация по компании
+    company_id = membership.company_id
+
+    # Статистика по пользователям компании
+    user_stats = get_user_statistics(company_id)
+
+    context = {
+        'company': membership.company,
+        'department': membership.department,
+        'user_role': membership.role_code,
+        'total_users': user_stats['total'],
+        'executor_count': user_stats['by_role'].get('Исполнитель', 0),
+        'chief_engineer_count': user_stats['by_role'].get('Главный инженер', 0),
+        'user_stats': user_stats,
     }
 
-    # Считаем по ролям
-    for role, role_name in UserProfile.ROLE_CHOICES:
-        count = UserProfile.objects.filter(role=role).count()
+    return render(request, 'portal/chief_engineer_page.html', context)
+
+
+def get_user_statistics(company_id=None):
+    """
+    Получить статистику по пользователям
+
+    ПАРАМЕТРЫ:
+    - company_id: фильтрация по компании (если указана)
+    """
+    from work_orders.models import UserCompanyMembership
+
+    memberships = UserCompanyMembership.objects.filter(is_active=True)
+
+    if company_id:
+        memberships = memberships.filter(company_id=company_id)
+
+    stats = {
+        'total': memberships.count(),
+        'by_role': {},
+        'active_recently': memberships.filter(
+            user__last_login__isnull=False
+        ).count(),
+    }
+
+    # Считаем по ролям (используем ROLE_CHOICES из UserCompanyMembership)
+    from work_orders.models import UserCompanyMembership as UCM
+
+    for role_code, role_name in UCM.ROLE_CHOICES:
+        count = memberships.filter(role_code=role_code).count()
         stats['by_role'][role_name] = count
 
     return stats
 
 
-def get_file_statistics():
-    """Получить статистику по файлам"""
+def get_file_statistics(company_id=None):
+    """
+    Получить статистику по файлам
+
+    ПАРАМЕТРЫ:
+    - company_id: фильтрация по компании (если указана)
+    """
     files = UserFile.objects.all()
+
+    # Фильтрация по пользователям компании
+    if company_id:
+        from work_orders.models import UserCompanyMembership
+        user_ids = UserCompanyMembership.objects.filter(
+            company_id=company_id,
+            is_active=True
+        ).values_list('user_id', flat=True)
+        files = files.filter(user_id__in=user_ids)
 
     stats = {
         'total': files.count(),
-        'total_size': sum(f.file_size for f in files),
+        'total_size': sum(f.file_size for f in files) if files.exists() else 0,
         'unique_users': files.values('user').distinct().count(),
     }
 

@@ -194,7 +194,7 @@
         <div id="login-form" class="auth-form active">
             <div class="auth-content">
                 <h4 class="text-center mb-4">Вход в систему</h4>
-                <form method="post" action="{% url 'admin:login' %}">
+                <form method="post" action="{% url 'portal:custom_login' %}">
                     {% csrf_token %}
                     <div class="mb-3">
                         <label for="id_username" class="form-label">Логин</label>

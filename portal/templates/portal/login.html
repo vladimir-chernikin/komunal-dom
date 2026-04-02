@@ -1,0 +1,133 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Вход в систему - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+.login-container {
+    max-width: 450px;
+    margin: 80px auto;
+    padding: 40px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.login-header h2 {
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.login-header p {
+    color: #6c757d;
+    margin: 0;
+}
+
+.login-form .form-group {
+    margin-bottom: 20px;
+}
+
+.login-form label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+}
+
+.login-form .form-control {
+    border-radius: 10px;
+    padding: 12px 15px;
+    border: 2px solid #e9ecef;
+}
+
+.login-form .form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.btn-login {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 30px;
+    color: white;
+    font-weight: 600;
+    width: 100%;
+    transition: all 0.3s ease;
+}
+
+.btn-login:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+}
+
+.alert {
+    border-radius: 10px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-header">
+        <h2>Вход в систему</h2>
+        <p>Система управления услугами ЖКХ</p>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" action="{% url 'portal:custom_login' %}" class="login-form">
+        {% csrf_token %}
+
+        <div class="form-group">
+            <label for="id_username">Логин</label>
+            <input type="text"
+                   class="form-control"
+                   name="username"
+                   id="id_username"
+                   placeholder="Введите логин"
+                   required
+                   autofocus>
+        </div>
+
+        <div class="form-group">
+            <label for="id_password">Пароль</label>
+            <input type="password"
+                   class="form-control"
+                   name="password"
+                   id="id_password"
+                   placeholder="Введите пароль"
+                   required>
+        </div>
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+                {% for error in form.non_field_errors %}
+                    {{ error }}
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-login">
+            <i class="fas fa-sign-in-alt me-2"></i>Войти
+        </button>
+    </form>
+
+    <div class="text-center mt-4">
+        <a href="/" class="text-decoration-none">
+            <i class="fas fa-arrow-left me-2"></i>На главную
+        </a>
+    </div>
+</div>
+{% endblock %}

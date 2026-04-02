@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import admin_views
 from . import kladr_views
+from . import auth_views
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -9,6 +10,8 @@ app_name = 'portal'
 
 urlpatterns = [
     path('', views.landing, name='landing'),
+    path('login/', auth_views.CustomLoginView.as_view(), name='custom_login'),
+    path('no-membership/', auth_views.no_membership_page, name='no_membership'),
     path('welcome/', views.welcome, name='welcome'),
     path('test-logo/', views.test_logo_variants, name='test_logo'),
     path('subscribers/', views.subscriber_page, name='subscriber_page'),
@@ -19,6 +22,7 @@ urlpatterns = [
     path('executor/complete/<int:request_id>/', views.executor_complete_request, name='executor_complete_request'),
     path('executor/upload-photo/<int:request_id>/', views.executor_upload_photo, name='executor_upload_photo'),
     path('executor/report/<int:request_id>/', views.executor_report, name='executor_report'),
+    path('chief-engineer/', admin_views.chief_engineer_page, name='chief_engineer_page'),
     path('director/', admin_views.director_page, name='director_page'),
     path('admin-uk/', admin_views.admin_page, name='admin_page'),  # Главная админки УК
     # ИСПРАВЛЕНИЕ (2026-02-03): Удален дубликат /admin-uk/users/ - используется /admin/auth/user/
