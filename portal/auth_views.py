@@ -80,7 +80,7 @@ class CustomLoginView(LoginView):
             return redirect('/no-membership/')
 
         # Redirect в зависимости от роли
-        return self.get_success_url()
+        return redirect(self.get_success_url())
 
     def get_success_url(self):
         """
