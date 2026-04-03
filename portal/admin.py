@@ -28,8 +28,8 @@ class UserCompanyMembershipInline(admin.TabularInline):
     def get_formset(self, request, obj=None, **kwargs):
         """Делаем поле department необязательным (для Директора и др. ролей)"""
         formset = super().get_formset(request, obj, **kwargs)
-        form = formset.form
-        form.department.required = False
+        # form - это класс формы, поэтому обращаемся к base_fields
+        formset.form.base_fields['department'].required = False
         return formset
 
     class Media:
