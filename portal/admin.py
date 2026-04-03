@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 from django.utils.safestring import mark_safe
+from django.utils.html import format_html
 from django.urls import reverse
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
@@ -11,16 +12,6 @@ from nsi.models import RefCategory
 
 # Отключаем стандартную регистрацию User
 admin.site.unregister(User)
-
-
-class UserProfileInline(admin.TabularInline):
-    """Inline для редактирования личных данных пользователя (без роли, роль в UserCompanyMembership)"""
-    model = UserProfile
-    can_delete = False
-    verbose_name_plural = 'Личные данные (телефон, адрес, специализация)'
-    verbose_name = 'Личные данные'
-    fields = ('phone', 'address', 'specialization', 'job_title', 'responsibilities')  # Убрали role - она в UserCompanyMembership
-    extra = 0
 
 
 @admin.register(User)
@@ -35,14 +26,18 @@ class UserAdmin(BaseUserAdmin):
     """
 
     list_display = ('username', 'email', 'first_name', 'last_name', 'get_company', 'get_role', 'is_active', 'date_joined')
-    inlines = [UserProfileInline]  # Убран UserCompanyMembershipInline - привязка к компании через отдельную админку
+    inlines = []  # UserProfileInline удален - поля перенесены в fieldsets
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
 
     fieldsets = (
         ('Основная информация', {
-            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_phone', 'get_dates_info'),
+            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_dates_info'),
+            'classes': ('wide',),
+        }),
+        ('Личные данные', {
+            'fields': ('get_phone', 'get_address', 'get_specialization', 'get_job_title', 'get_responsibilities'),
             'classes': ('wide',),
         }),
         ('Права доступа', {
@@ -52,7 +47,7 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    readonly_fields = ('get_company_link', 'get_timezone', 'get_phone', 'get_dates_info')
+    readonly_fields = ('get_company_link', 'get_timezone', 'get_dates_info', 'get_phone', 'get_address', 'get_specialization', 'get_job_title', 'get_responsibilities')
 
     def get_company(self, obj):
         """Получить основную компанию пользователя"""
@@ -95,7 +90,11 @@ class UserAdmin(BaseUserAdmin):
             ).select_related('company').first()
 
             if membership:
-                return mark_safe(f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>')
+                return format_html(
+                    '<a href="/admin/work_orders/usercompanymembership/?user_id__exact={}" target="_blank">{}</a>',
+                    obj.id,
+                    membership.company.name
+                )
             else:
                 # Если нет primary - берем любую активную
                 membership = UserCompanyMembership.objects.filter(
@@ -105,7 +104,11 @@ class UserAdmin(BaseUserAdmin):
                 ).select_related('company').first()
 
                 if membership:
-                    return mark_safe(f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>')
+                    return format_html(
+                        '<a href="/admin/work_orders/usercompanymembership/?user_id__exact={}" target="_blank">{}</a>',
+                        obj.id,
+                        membership.company.name
+                    )
 
                 return mark_safe('<span class="badge bg-secondary">Нет компании</span>')
         except Exception:
@@ -129,6 +132,42 @@ class UserAdmin(BaseUserAdmin):
         except UserProfile.DoesNotExist:
             return 'Не указан'
     get_phone.short_description = 'Телефон'
+
+    def get_address(self, obj):
+        """Получить адрес из UserProfile"""
+        try:
+            profile = obj.userprofile
+            return profile.address or 'Не указан'
+        except UserProfile.DoesNotExist:
+            return 'Не указан'
+    get_address.short_description = 'Адрес'
+
+    def get_specialization(self, obj):
+        """Получить специализацию из UserProfile"""
+        try:
+            profile = obj.userprofile
+            return profile.get_specialization_display() if profile.specialization else 'Не указана'
+        except UserProfile.DoesNotExist:
+            return 'Не указана'
+    get_specialization.short_description = 'Специализация'
+
+    def get_job_title(self, obj):
+        """Получить должность из UserProfile"""
+        try:
+            profile = obj.userprofile
+            return profile.get_job_title_display() if profile.job_title else 'Не указана'
+        except UserProfile.DoesNotExist:
+            return 'Не указана'
+    get_job_title.short_description = 'Должность'
+
+    def get_responsibilities(self, obj):
+        """Получить обязанности из UserProfile"""
+        try:
+            profile = obj.userprofile
+            return profile.responsibilities or 'Не указаны'
+        except UserProfile.DoesNotExist:
+            return 'Не указаны'
+    get_responsibilities.short_description = 'Обязанности'
 
     def get_dates_info(self, obj):
         """Форматирует даты в одну строку: 'Создан {date_joined}, последний вход {last_login}'"""
