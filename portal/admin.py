@@ -10,7 +10,7 @@ from nsi.models import RefCategory
 
 
 class UserCompanyMembershipInline(admin.TabularInline):
-    """Inline для привязки пользователя к компании"""
+    """Inline для привязки пользователя к компании с динамической фильтрацией подразделений"""
     from work_orders.models import UserCompanyMembership
 
     model = UserCompanyMembership
@@ -24,6 +24,9 @@ class UserCompanyMembershipInline(admin.TabularInline):
         """Показываем все membership, включая неактивные"""
         qs = super().get_queryset(request)
         return qs.select_related('company', 'department')
+
+    class Media:
+        js = ('admin/js/company_department_filter.js',)
 
 
 # Отключаем стандартную регистрацию User

@@ -51,6 +51,20 @@ class CompanyDepartmentAdmin(admin.ModelAdmin):
     ordering = ['company', 'sort_order', 'department_name']
     autocomplete_fields = ['parent_department']
 
+    def get_search_results(self, request, queryset, search_term):
+        """
+        Переопределенный поиск для поддержки фильтрации по company_id
+        в autocomplete запросах из UserCompanyMembershipInline
+        """
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+
+        # Фильтрация по company_id для autocomplete в UserCompanyMembershipInline
+        company_id = request.GET.get('company_id')
+        if company_id:
+            queryset = queryset.filter(company_id=company_id)
+
+        return queryset, use_distinct
+
 
 @admin.register(ContractorOrganization)
 class ContractorOrganizationAdmin(admin.ModelAdmin):
