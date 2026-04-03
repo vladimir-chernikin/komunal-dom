@@ -59,18 +59,14 @@ class CustomLoginView(LoginView):
         """
         user = form.get_user()
 
-        # Проверка: is_staff должен быть true
-        if not user.is_staff:
-            messages.error(
-                self.request,
-                "У вас нет доступа к системе. Обратитесь к администратору."
-            )
-            return self.form_invalid(form)
-
         # Логиним пользователя
         login(self.request, user)
 
-        # Проверка membership
+        # Для суперпользователей проверка membership не обязательна
+        if user.is_superuser:
+            return redirect('/admin/')
+
+        # Проверка membership для обычных пользователей
         membership = get_primary_membership(user)
         if not membership:
             messages.warning(
@@ -99,7 +95,7 @@ class CustomLoginView(LoginView):
             return '/admin/'
         elif role == 'direktor_uk':
             # Директор УК
-            return '/admin-uk/'
+            return '/director/'  # Используем director_page, не admin_page
         elif role == 'chief_engineer':
             # Главный инженер
             return '/chief-engineer/'
@@ -137,7 +133,11 @@ def custom_login_view(request):
             # Логиним
             login(request, user)
 
-            # Проверка membership
+            # Для суперпользователей проверка membership не обязательна
+            if user.is_superuser:
+                return redirect('/admin/')
+
+            # Проверка membership для обычных пользователей
             membership = get_primary_membership(user)
             if not membership:
                 messages.warning(
@@ -147,10 +147,8 @@ def custom_login_view(request):
                 return redirect('/no-membership/')
 
             # Redirect по роли
-            if user.is_superuser:
-                return redirect('/admin/')
-            elif membership.role_code == 'direktor_uk':
-                return redirect('/admin-uk/')
+            if membership.role_code == 'direktor_uk':
+                return redirect('/director/')
             elif membership.role_code == 'chief_engineer':
                 return redirect('/chief-engineer/')
             elif membership.role_code == 'executor':
