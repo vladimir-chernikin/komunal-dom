@@ -15,8 +15,8 @@ class UserCompanyMembershipInline(admin.TabularInline):
 
     model = UserCompanyMembership
     extra = 0
-    verbose_name_plural = 'Привязки к компаниям'
-    verbose_name = 'Привязка'
+    verbose_name_plural = 'Основная и дополнительные привязки к компаниям'
+    verbose_name = 'Привязка к компании'
     fields = ('company', 'department', 'role_code', 'is_primary', 'is_active', 'date_from', 'date_to')
     autocomplete_fields = ['company', 'department']
 
@@ -24,6 +24,13 @@ class UserCompanyMembershipInline(admin.TabularInline):
         """Показываем все membership, включая неактивные"""
         qs = super().get_queryset(request)
         return qs.select_related('company', 'department')
+
+    def get_formset(self, request, obj=None, **kwargs):
+        """Делаем поле department необязательным (для Директора и др. ролей)"""
+        formset = super().get_formset(request, obj, **kwargs)
+        form = formset.form
+        form.department.required = False
+        return formset
 
     class Media:
         js = ('admin/js/company_department_filter.js',)
@@ -34,11 +41,12 @@ admin.site.unregister(User)
 
 
 class UserProfileInline(admin.TabularInline):
-    """Inline для редактирования профиля пользователя на странице User"""
+    """Inline для редактирования личных данных пользователя (без роли, роль в UserCompanyMembership)"""
     model = UserProfile
     can_delete = False
-    verbose_name_plural = 'Профиль пользователя'
-    fields = ('role', 'phone', 'address')
+    verbose_name_plural = 'Личные данные (телефон, адрес, специализация)'
+    verbose_name = 'Личные данные'
+    fields = ('phone', 'address', 'specialization', 'job_title', 'responsibilities')  # Убрали role - она в UserCompanyMembership
     extra = 0
 
 
@@ -54,7 +62,7 @@ class UserAdmin(BaseUserAdmin):
     """
 
     list_display = ('username', 'email', 'first_name', 'last_name', 'get_company', 'get_role', 'is_active', 'date_joined')
-    inlines = [UserProfileInline, UserCompanyMembershipInline]
+    inlines = [UserCompanyMembershipInline, UserProfileInline]  # UserCompanyMembershipInline ПЕРЕД UserProfileInline
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
@@ -64,7 +72,8 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_phone'),
             'classes': ('wide',),
             'description': mark_safe('Основные данные для входа в систему. '
-                                   'Для привязки к компании используйте секцию <strong>Привязки к компаниям</strong> ниже.')
+                                   'Текущая привязка к компании показана выше в секции <strong>Основная и дополнительные привязки к компаниям</strong>. '
+                                   'Для добавления/изменения привязки используйте эту секцию.')
         }),
         ('Права доступа', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
