@@ -9,6 +9,23 @@ from .models import UserProfile, AIPrompt, SemanticPattern, ServicesCatalog
 from nsi.models import RefCategory
 
 
+class UserCompanyMembershipInline(admin.TabularInline):
+    """Inline для привязки пользователя к компании"""
+    from work_orders.models import UserCompanyMembership
+
+    model = UserCompanyMembership
+    extra = 0
+    verbose_name_plural = 'Привязки к компаниям'
+    verbose_name = 'Привязка'
+    fields = ('company', 'department', 'role_code', 'is_primary', 'is_active', 'date_from', 'date_to')
+    autocomplete_fields = ['company', 'department']
+
+    def get_queryset(self, request):
+        """Показываем все membership, включая неактивные"""
+        qs = super().get_queryset(request)
+        return qs.select_related('company', 'department')
+
+
 # Отключаем стандартную регистрацию User
 admin.site.unregister(User)
 
@@ -34,7 +51,7 @@ class UserAdmin(BaseUserAdmin):
     """
 
     list_display = ('username', 'email', 'first_name', 'last_name', 'get_company', 'get_role', 'is_active', 'date_joined')
-    inlines = [UserProfileInline]
+    inlines = [UserProfileInline, UserCompanyMembershipInline]
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
@@ -43,12 +60,13 @@ class UserAdmin(BaseUserAdmin):
         ('Основная информация', {
             'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_phone'),
             'classes': ('wide',),
-            'description': 'Основные данные для входа в систему и привязка к компании'
+            'description': mark_safe('Основные данные для входа в систему. '
+                                   'Для привязки к компании используйте секцию <strong>Привязки к компаниям</strong> ниже.')
         }),
         ('Права доступа', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
             'classes': ('wide',),
-            'description': '<strong>ВНИМАНИЕ:</strong> is_staff = true означает доступ к системе. is_superuser = true означает доступ к Django Admin (/admin/).',
+            'description': mark_safe('<strong>ВНИМАНИЕ:</strong> is_staff = true означает доступ к системе. is_superuser = true означает доступ к Django Admin (/admin/).'),
         }),
         ('Важные даты', {
             'fields': ('last_login', 'date_joined'),
