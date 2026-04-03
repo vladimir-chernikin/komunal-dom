@@ -9,33 +9,6 @@ from .models import UserProfile, AIPrompt, SemanticPattern, ServicesCatalog
 from nsi.models import RefCategory
 
 
-class UserCompanyMembershipInline(admin.TabularInline):
-    """Inline для привязки пользователя к компании с динамической фильтрацией подразделений"""
-    from work_orders.models import UserCompanyMembership
-
-    model = UserCompanyMembership
-    extra = 0
-    verbose_name_plural = 'Основная и дополнительные привязки к компаниям'
-    verbose_name = 'Привязка к компании'
-    fields = ('company', 'department', 'role_code', 'is_primary', 'is_active', 'date_from', 'date_to')
-    autocomplete_fields = ['company', 'department']
-
-    def get_queryset(self, request):
-        """Показываем все membership, включая неактивные"""
-        qs = super().get_queryset(request)
-        return qs.select_related('company', 'department')
-
-    def get_formset(self, request, obj=None, **kwargs):
-        """Делаем поле department необязательным (для Директора и др. ролей)"""
-        formset = super().get_formset(request, obj, **kwargs)
-        # form - это класс формы, поэтому обращаемся к base_fields
-        formset.form.base_fields['department'].required = False
-        return formset
-
-    class Media:
-        js = ('admin/js/company_department_filter.js',)
-
-
 # Отключаем стандартную регистрацию User
 admin.site.unregister(User)
 
@@ -62,7 +35,7 @@ class UserAdmin(BaseUserAdmin):
     """
 
     list_display = ('username', 'email', 'first_name', 'last_name', 'get_company', 'get_role', 'is_active', 'date_joined')
-    inlines = [UserCompanyMembershipInline, UserProfileInline]  # UserCompanyMembershipInline ПЕРЕД UserProfileInline
+    inlines = [UserProfileInline]  # Убран UserCompanyMembershipInline - привязка к компании через отдельную админку
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
@@ -71,9 +44,6 @@ class UserAdmin(BaseUserAdmin):
         ('Основная информация', {
             'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_phone'),
             'classes': ('wide',),
-            'description': mark_safe('Основные данные для входа в систему. '
-                                   'Текущая привязка к компании показана выше в секции <strong>Основная и дополнительные привязки к компаниям</strong>. '
-                                   'Для добавления/изменения привязки используйте эту секцию.')
         }),
         ('Права доступа', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
