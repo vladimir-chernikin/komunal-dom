@@ -42,7 +42,7 @@ class UserAdmin(BaseUserAdmin):
 
     fieldsets = (
         ('Основная информация', {
-            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_phone'),
+            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_phone', 'get_dates_info'),
             'classes': ('wide',),
         }),
         ('Права доступа', {
@@ -50,13 +50,9 @@ class UserAdmin(BaseUserAdmin):
             'classes': ('wide',),
             'description': mark_safe('<strong>ВНИМАНИЕ:</strong> is_staff = true означает доступ к системе. is_superuser = true означает доступ к Django Admin (/admin/).'),
         }),
-        ('Важные даты', {
-            'fields': ('last_login', 'date_joined'),
-            'classes': ('wide',),
-        }),
     )
 
-    readonly_fields = ('get_company_link', 'get_timezone', 'get_phone')
+    readonly_fields = ('get_company_link', 'get_timezone', 'get_phone', 'get_dates_info')
 
     def get_company(self, obj):
         """Получить основную компанию пользователя"""
@@ -88,9 +84,32 @@ class UserAdmin(BaseUserAdmin):
     get_company.short_description = 'Компания'
 
     def get_company_link(self, obj):
-        """Получить ссылку на компанию для readonly поля"""
-        company = self.get_company(obj)
-        return company
+        """Получить ссылку на компанию для readonly поля (КЛИКАБЕЛЬНАЯ)"""
+        try:
+            from work_orders.models import UserCompanyMembership
+            membership = UserCompanyMembership.objects.filter(
+                user=obj,
+                is_primary=True,
+                is_active=True,
+                date_to__isnull=True
+            ).select_related('company').first()
+
+            if membership:
+                return mark_safe(f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>')
+            else:
+                # Если нет primary - берем любую активную
+                membership = UserCompanyMembership.objects.filter(
+                    user=obj,
+                    is_active=True,
+                    date_to__isnull=True
+                ).select_related('company').first()
+
+                if membership:
+                    return mark_safe(f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>')
+
+                return mark_safe('<span class="badge bg-secondary">Нет компании</span>')
+        except Exception:
+            return mark_safe('<span class="badge bg-secondary">Ошибка</span>')
     get_company_link.short_description = 'Компания'
 
     def get_timezone(self, obj):
@@ -110,6 +129,30 @@ class UserAdmin(BaseUserAdmin):
         except UserProfile.DoesNotExist:
             return 'Не указан'
     get_phone.short_description = 'Телефон'
+
+    def get_dates_info(self, obj):
+        """Форматирует даты в одну строку: 'Создан {date_joined}, последний вход {last_login}'"""
+        from django.utils import timezone
+        parts = []
+
+        # Дата создания
+        if obj.date_joined:
+            local_joined = timezone.localtime(obj.date_joined)
+            joined_str = local_joined.strftime('%d.%m.%Y %H:%M')
+            parts.append(f'Создан {joined_str}')
+        else:
+            parts.append('Создан не указан')
+
+        # Последний вход
+        if obj.last_login:
+            local_login = timezone.localtime(obj.last_login)
+            login_str = local_login.strftime('%d.%m.%Y %H:%M')
+            parts.append(f'последний вход {login_str}')
+        else:
+            parts.append('последний вход: никогда')
+
+        return mark_safe(f'<span class="text-muted">{", ".join(parts)}</span>')
+    get_dates_info.short_description = 'Даты'
 
     def get_role(self, obj):
         """
