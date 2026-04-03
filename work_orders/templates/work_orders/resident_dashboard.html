@@ -1,10 +1,18 @@
 {% extends 'work_orders/base.html' %}
 
-{% block title %}Мои заявки - УК Комфорт{% endblock %}
+{% block title %}{{ block.super }}{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-12">
+        <!-- Breadcrumbs -->
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Мои заявки</li>
+            </ol>
+        </nav>
+
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2><i class="bi bi-house-door"></i> Мои заявки</h2>
         </div>

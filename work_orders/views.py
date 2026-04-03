@@ -15,6 +15,7 @@ from .models import (
     WorkOrderStatusHistory
 )
 from portal.models import ServicesCatalog, ServiceObject
+from portal.mixins import get_role_dashboard_url
 
 
 class ExecutorDashboardView(LoginRequiredMixin, TemplateView):
@@ -71,6 +72,11 @@ class ExecutorDashboardView(LoginRequiredMixin, TemplateView):
         context['pool_new'] = pool_requests.filter(current_internal_status__short_code_en='new_registered').count()
         context['pool_total'] = pool_requests.count()
 
+        # Breadcrumbs для возврата на правильный дашборд
+        dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
+        context['dashboard_url'] = dashboard_url
+        context['dashboard_title'] = dashboard_title
+
         return context
 
 
@@ -96,6 +102,11 @@ class ExecutorMyRequestsView(LoginRequiredMixin, TemplateView):
 
         context['my_requests'] = my_requests
         context['status_filter'] = status_filter
+
+        # Breadcrumbs для возврата на правильный дашборд
+        dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
+        context['dashboard_url'] = dashboard_url
+        context['dashboard_title'] = dashboard_title
 
         return context
 
@@ -129,6 +140,11 @@ class ExecutorPoolView(LoginRequiredMixin, TemplateView):
         context['pool_requests'] = pool_requests
         context['department'] = membership.department
 
+        # Breadcrumbs для возврата на правильный дашборд
+        dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
+        context['dashboard_url'] = dashboard_url
+        context['dashboard_title'] = dashboard_title
+
         return context
 
 
@@ -150,6 +166,12 @@ class WorkOrderDetailView(LoginRequiredMixin, DetailView):
         ).order_by('-event_datetime')
 
         context['events'] = events
+
+        # Breadcrumbs для возврата на правильный дашборд
+        from portal.mixins import get_role_dashboard_url
+        dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
+        context['dashboard_url'] = dashboard_url
+        context['dashboard_title'] = dashboard_title
 
         return context
 
@@ -180,7 +202,6 @@ class WorkOrderCreateView(LoginRequiredMixin, CreateView):
         work_order.department = membership.department
         work_order.creation_source = 'manual_employee'
         work_order.current_internal_status = WorkOrderStatusRef.objects.get(short_code_en='new_registered')
-        work_order.current_external_status = WorkOrderStatusRef.objects.get(short_code_en='accepted')
         work_order.created_at = timezone.now()
         work_order.is_test = False
         work_order.save()
@@ -205,6 +226,17 @@ class WorkOrderCreateView(LoginRequiredMixin, CreateView):
 
         # TODO: Добавить фильтрацию сервисов и объектов
         return form
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Breadcrumbs для возврата на правильный дашборд
+        from portal.mixins import get_role_dashboard_url
+        dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
+        context['dashboard_url'] = dashboard_url
+        context['dashboard_title'] = dashboard_title
+
+        return context
 
 
 class ManagementListView(LoginRequiredMixin, TemplateView):
@@ -259,6 +291,12 @@ class ManagementListView(LoginRequiredMixin, TemplateView):
             is_active=True
         )
 
+        # Breadcrumbs для возврата на правильный дашборд
+        from portal.mixins import get_role_dashboard_url
+        dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
+        context['dashboard_url'] = dashboard_url
+        context['dashboard_title'] = dashboard_title
+
         return context
 
 
@@ -274,7 +312,7 @@ class ResidentDashboardView(LoginRequiredMixin, TemplateView):
             resident_user=self.request.user,
             is_test=False
         ).select_related(
-            'current_internal_status', 'current_external_status', 'service'
+            'current_internal_status', 'service'
         ).order_by('-created_at')
 
         context['my_requests'] = my_requests
@@ -282,6 +320,78 @@ class ResidentDashboardView(LoginRequiredMixin, TemplateView):
         context['active_requests'] = my_requests.exclude(
             current_internal_status__short_code_en__in=['completed', 'closed', 'cancelled']
         ).count()
+
+        # Breadcrumbs для возврата на правильный дашборд
+        dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
+        context['dashboard_url'] = dashboard_url
+        context['dashboard_title'] = dashboard_title
+
+        return context
+
+
+class ContractorDashboardView(LoginRequiredMixin, TemplateView):
+    """Дашборд подрядчика"""
+    template_name = 'work_orders/contractor_dashboard.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Получаем текущего пользователя
+        user = self.request.user
+
+        # Получаем членства пользователя в компаниях (может быть несколько для подрядчика)
+        memberships = UserCompanyMembership.objects.filter(
+            user=user,
+            is_active=True,
+            role_code='contractor'
+        ).select_related('company', 'department')
+
+        if not memberships.exists():
+            context['error'] = 'У вас нет назначенных ролей подрядчика'
+            return context
+
+        # Все членства подрядчика
+        context['memberships'] = memberships
+
+        # Основное членство
+        primary_membership = memberships.filter(is_primary=True).first() or memberships.first()
+        context['primary_membership'] = primary_membership
+        context['company'] = primary_membership.company
+        context['department'] = primary_membership.department
+
+        # Мои заявки (назначенные на подрядчика)
+        my_requests = WorkOrder.objects.filter(
+            responsible_user=user,
+            is_test=False
+        ).select_related(
+            'current_internal_status', 'service', 'object', 'company'
+        ).order_by('-created_at')
+
+        # Статистика по моим заявкам
+        context['my_requests_new'] = my_requests.filter(current_internal_status__short_code_en='accepted_by_executor').count()
+        context['my_requests_in_progress'] = my_requests.filter(current_internal_status__short_code_en='in_progress').count()
+        context['my_requests_on_hold'] = my_requests.filter(current_internal_status__short_code_en='on_hold').count()
+        context['my_requests_completed'] = my_requests.filter(current_internal_status__short_code_en='completed').count()
+        context['my_requests_total'] = my_requests.count()
+
+        # Пул заявок по всем компаниям подрядчика
+        company_ids = memberships.values_list('company_id', flat=True)
+        pool_requests = WorkOrder.objects.filter(
+            company_id__in=company_ids,
+            responsible_user__isnull=True,
+            is_test=False
+        ).select_related(
+            'current_internal_status', 'service', 'object', 'company'
+        ).order_by('-created_at')
+
+        # Статистика по пулу
+        context['pool_new'] = pool_requests.filter(current_internal_status__short_code_en='new_registered').count()
+        context['pool_total'] = pool_requests.count()
+
+        # Breadcrumbs для возврата на правильный дашборд
+        dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
+        context['dashboard_url'] = dashboard_url
+        context['dashboard_title'] = dashboard_title
 
         return context
 

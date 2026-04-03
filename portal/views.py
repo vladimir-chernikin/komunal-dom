@@ -68,9 +68,31 @@ def subscriber_page(request):
         # Создаем профиль если его нет
         profile = UserProfile.objects.create(user=request.user, role='resident')
 
+    # Получаем membership пользователя
+    from portal.mixins import get_primary_membership
+    membership = get_primary_membership(request.user)
+
     context = {
         'user_profile': profile,
     }
+
+    # Добавляем информацию о компании, если есть
+    if membership:
+        context['company'] = membership.company
+        context['membership'] = membership
+
+        # Получаем заявки жителя
+        from work_orders.models import WorkOrder
+        user_work_orders = WorkOrder.objects.filter(
+            resident_user=request.user,
+            is_test=False
+        ).select_related(
+            'current_internal_status', 'service'
+        ).order_by('-created_at')[:5]  # Последние 5 заявок
+
+        context['work_orders'] = user_work_orders
+        context['work_orders_count'] = user_work_orders.count()
+
     return render(request, 'portal/subscriber_page.html', context)
 
 
@@ -1021,3 +1043,11 @@ def executor_upload_photo(request, request_id):
         'photo_path': updated_row[1],
         'photo_url': photo_url
     })
+
+
+@login_required
+def contractor_dashboard(request):
+    """Кабинет подрядчика - перенаправление на work_orders"""
+    from work_orders.views import ContractorDashboardView
+    view = ContractorDashboardView.as_view()
+    return view(request)

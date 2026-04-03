@@ -225,10 +225,11 @@ def get_primary_membership(user):
 
     ВОЗВРАЩАЕТ:
     - UserCompanyMembership или None
-    """
-    if not user.is_staff:
-        return None
 
+    ПРИМЕЧАНИЕ:
+    - Работает для всех пользователей (staff и residents)
+    - Не требует is_staff=True
+    """
     try:
         from work_orders.models import UserCompanyMembership
         return UserCompanyMembership.objects.filter(
@@ -239,3 +240,38 @@ def get_primary_membership(user):
         ).select_related('company', 'department').first()
     except Exception:
         return None
+
+
+def get_role_dashboard_url(user):
+    """
+    Возвращает URL и название дашборда на основе роли пользователя
+
+    ИСПОЛЬЗУЕТСЯ в views для breadcrumbs
+
+    ПРИМЕР:
+    ```python
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    ```
+
+    ВОЗВРАЩАЕТ:
+    - (url, title) - кортеж с URL и названием дашборда
+    """
+    membership = get_primary_membership(user)
+
+    if not membership:
+        return ('/welcome/', 'Главная')
+
+    role = membership.role_code
+
+    if role == 'direktor_uk':
+        return ('/director/', 'Кабинет директора')
+    elif role == 'chief_engineer':
+        return ('/chief-engineer/', 'Кабинет главного инженера')
+    elif role == 'executor':
+        return ('/executor/', 'Кабинет исполнителя')
+    elif role == 'contractor':
+        return ('/contractor/', 'Кабинет подрядчика')
+    elif role == 'resident':
+        return ('/subscribers/', 'Личный кабинет')
+    else:
+        return ('/welcome/', 'Главная')

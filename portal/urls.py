@@ -22,8 +22,13 @@ urlpatterns = [
     path('executor/complete/<int:request_id>/', views.executor_complete_request, name='executor_complete_request'),
     path('executor/upload-photo/<int:request_id>/', views.executor_upload_photo, name='executor_upload_photo'),
     path('executor/report/<int:request_id>/', views.executor_report, name='executor_report'),
+    path('contractor/', views.contractor_dashboard, name='contractor_dashboard'),
     path('chief-engineer/', admin_views.chief_engineer_page, name='chief_engineer_page'),
     path('director/', admin_views.director_page, name='director_page'),
+    path('director/residents/', admin_views.director_residents, name='director_residents'),
+    path('director/residents/add/', admin_views.director_add_resident, name='director_add_resident'),
+    path('director/departments/', admin_views.director_departments, name='director_departments'),
+    path('director/departments/add/', admin_views.director_add_department, name='director_add_department'),
     path('admin-uk/', admin_views.admin_page, name='admin_page'),  # Главная админки УК
     # ИСПРАВЛЕНИЕ (2026-02-03): Удален дубликат /admin-uk/users/ - используется /admin/auth/user/
     path('admin-uk/prompts/', admin_views.prompt_management, name='prompt_management'),

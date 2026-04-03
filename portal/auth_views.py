@@ -102,6 +102,9 @@ class CustomLoginView(LoginView):
         elif role == 'executor':
             # Исполнитель
             return '/executor/'
+        elif role == 'contractor':
+            # Подрядчик
+            return '/contractor/'
         elif role == 'resident':
             # Житель
             return '/subscribers/'
@@ -153,6 +156,8 @@ def custom_login_view(request):
                 return redirect('/chief-engineer/')
             elif membership.role_code == 'executor':
                 return redirect('/executor/')
+            elif membership.role_code == 'contractor':
+                return redirect('/contractor/')
             elif membership.role_code == 'resident':
                 return redirect('/subscribers/')
             else:

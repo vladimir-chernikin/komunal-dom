@@ -16,6 +16,9 @@ urlpatterns = [
     # Пул подразделения (исполнитель)
     path('executor/pool/', views.ExecutorPoolView.as_view(), name='executor_pool'),
 
+    # Экран подрядчика
+    path('contractor/', views.ContractorDashboardView.as_view(), name='contractor_dashboard'),
+
     # Карточка заявки (сотрудник)
     path('request/<int:work_order_id>/', views.WorkOrderDetailView.as_view(), name='work_order_detail'),
 
