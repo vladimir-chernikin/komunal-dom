@@ -507,191 +507,165 @@ def dialog_report_view_page(request, filename):
 @login_required
 def executor_dashboard(request):
     """Кабинет исполнителя - просмотр заявок"""
-    from django.db import connection
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
+    from work_orders.models import WorkOrder, WorkOrderStatusRef
 
     try:
         profile = request.user.userprofile
     except UserProfile.DoesNotExist:
         profile = UserProfile.objects.create(user=request.user, role='uk_user')
 
+    # Получаем membership для определения department
+    from portal.mixins import get_primary_membership
+    membership = get_primary_membership(request.user)
+
+    if not membership:
+        return render(request, 'executor_dashboard.html', {
+            'user_profile': profile,
+            'my_requests': [],
+            'available_requests': [],
+            'error': 'У вас нет привязки к компании'
+        })
+
     # Получаем параметры фильтрации
     status_filter = request.GET.get('status', '')
     search_query = request.GET.get('q', '')
 
-    # TODO: Определить категорию услуг исполнителя
-    # Пока показываем все заявки, позже можно добавить:
-    # - профиль исполнителя с полем category (Электричество/Сантехника/и т.д.)
-    # - фильтрацию по category
-
-    # Базовый SQL запрос для получения заявок
-    sql_base = """
-        SELECT
-            r.id,
-            r.request_uuid,
-            r.created_at,
-            r.updated_at,
-            r.user_name,
-            r.user_phone,
-            r.street_name,
-            r.house_number,
-            r.apartment_number,
-            r.entrance,
-            r.description,
-            r.status,
-            r.service_name,
-            r.urgency_level,
-            '—' as service_category,  -- ИСПРАВЛЕНО (2026-03-25): service_id NULL, категория недоступна
-            '—' as incident_type,      -- ИСПРАВЛЕНО (2026-03-25): service_id NULL, тип недоступен
-            r.assigned_to,
-            r.is_at_scene,
-            r.arrived_at,
-            r.photo_path
-        FROM bot_service_requests r
-        WHERE 1=1
-    """
-
-    params = []
+    # Базовый QuerySet заявок для отдела исполнителя
+    work_orders_qs = WorkOrder.objects.filter(
+        is_test=False,
+        department_id=membership.department_id
+    ).select_related(
+        'current_internal_status',
+        'service',
+        'responsible_user'
+    ).order_by('-created_at')
 
     # Фильтр по статусу
     if status_filter:
-        sql_base += " AND r.status = %s"
-        params.append(status_filter)
+        work_orders_qs = work_orders_qs.filter(
+            current_internal_status__short_code_en=status_filter
+        )
 
-    # Поиск
+    # Поиск по описанию
     if search_query:
-        sql_base += " AND (r.user_name ILIKE %s OR r.description ILIKE %s OR r.street_name ILIKE %s)"
-        search_pattern = f"%{search_query}%"
-        params.extend([search_pattern, search_pattern, search_pattern])
+        work_orders_qs = work_orders_qs.filter(
+            original_request_text__icontains=search_query
+        )
 
-    # Сортировка по дате (новые сначала)
-    sql_base += " ORDER BY r.created_at DESC"
+    # Форматируем заявки для шаблона
+    requests = []
+    for wo in work_orders_qs:
+        req = {
+            'id': wo.id,
+            'work_order_no': wo.work_order_no,
+            'created_at': wo.created_at,
+            'updated_at': wo.updated_at,
+            'description': wo.original_request_text,
+            'status': wo.current_internal_status.short_code_en if wo.current_internal_status else 'unknown',
+            'service_name': wo.service.service_name if wo.service else '—',
+            'urgency_level': 'emergency' if wo.is_emergency else 'normal',
+            'assigned_to': wo.responsible_user_id,
+            'priority_code': wo.priority_code,
+        }
 
-    # Выполняем запрос
-    with connection.cursor() as cursor:
-        cursor.execute(sql_base, params)
-        columns = [col[0] for col in cursor.description]
-        requests = []
-        for row in cursor.fetchall():
-            req = dict(zip(columns, row))
-            # Форматируем дату
-            if req['created_at']:
-                req['created_at_formatted'] = req['created_at'].strftime('%d.%m.%Y %H:%M')
-            # Формируем адрес
-            address_parts = []
-            if req['street_name']:
-                address_parts.append(req['street_name'])
-            if req['house_number']:
-                address_parts.append(f"д. {req['house_number']}")
-            if req['apartment_number']:
-                address_parts.append(f"кв. {req['apartment_number']}")
-            req['address_formatted'] = ', '.join(address_parts) if address_parts else '—'
-            # Детали адреса
-            req['address_details'] = []
-            if req['entrance']:
-                req['address_details'].append(f"Подъезд: {req['entrance']}")
-            req['address_details_str'] = ', '.join(req['address_details']) if req['address_details'] else ''
-            # Категория
-            if req['service_category']:
-                req['category_badge'] = f'<span class="badge bg-info text-dark">{req["service_category"]}</span>'
+        # Форматируем дату
+        if req['created_at']:
+            req['created_at_formatted'] = req['created_at'].strftime('%d.%m.%Y %H:%M')
+
+        # Адрес (заглушка, данные о адресе нужно добавить в модель)
+        req['address_formatted'] = f"Объект #{wo.object_id}" if wo.object_id else '—'
+        req['address_details'] = []
+        req['address_details_str'] = ''
+
+        # Категория
+        req['category_badge'] = '—'
+
+        # Вычисляем просрочку для аварийных заявок
+        req['is_overdue'] = False
+        req['remaining_seconds'] = 0
+        req['remaining_time_formatted'] = ''
+        req['deadline_at'] = None
+
+        # Маппинг статусов на русский язык
+        status_map = {
+            'new': 'Новая',
+            'accepted_by_executor': 'Принята',
+            'in_progress': 'В работе',
+            'completed': 'Выполнена',
+            'cancelled': 'Отменена',
+            'on_hold': 'Отложена',
+        }
+        req['status_display'] = status_map.get(req['status'], req['status'])
+
+        # Таймер для заявок "В работе"
+        if req['status'] == 'in_progress' and req['updated_at']:
+            now = datetime.now(timezone.utc)
+            time_in_work = now - req['updated_at']
+            total_seconds_work = int(time_in_work.total_seconds())
+            mins_work = total_seconds_work // 60
+            hrs_work = mins_work // 60
+            mins_work = mins_work % 60
+
+            if hrs_work > 0:
+                req['status_display'] = f"{hrs_work} ч {mins_work} мин в работе"
             else:
-                req['category_badge'] = '—'
+                req['status_display'] = f"{mins_work} мин в работе"
 
-            # Вычисляем просрочку для аварийных заявок
-            req['is_overdue'] = False
-            req['remaining_seconds'] = 0
-            req['remaining_time_formatted'] = ''
-            req['deadline_at'] = None
+        if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
+            now = datetime.now(timezone.utc)
+            time_diff = now - req['created_at']
+            total_seconds = time_diff.total_seconds()
+            arrival_deadline = 30 * 60  # 30 минут
 
-            # Маппинг статусов на русский язык
-            status_map = {
-                'new': 'Новая',
-                'in_work': 'В работе',
-                'done': 'Выполнена',
-                'cancelled': 'Отменена',
-                'overdue': 'Просрочена'
-            }
-            req['status_display'] = status_map.get(req['status'], req['status'])
+            if total_seconds < 300:  # < 5 минут
+                req['is_take_deadline'] = True
+                req['remaining_seconds'] = int(300 - total_seconds)
+                mins = req['remaining_seconds'] // 60
+                secs = req['remaining_seconds'] % 60
+                req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
+                req['status_display'] = 'Новая'
+            elif total_seconds < arrival_deadline:
+                req['is_overdue'] = True
+                remaining_arrival = int(arrival_deadline - total_seconds)
+                req['remaining_seconds'] = remaining_arrival
+                mins = remaining_arrival // 60
+                secs = remaining_arrival % 60
+                req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
+                req['status_display'] = req['remaining_time_formatted']
+            else:
+                req['is_overdue'] = True
+                req['is_late'] = True
+                late_seconds = int(total_seconds - arrival_deadline)
+                req['remaining_seconds'] = late_seconds
+                late_mins = late_seconds // 60
+                late_secs = late_seconds % 60
+                req['status_display'] = f"{late_mins}:{late_secs:02d} опоздание"
 
-            # Таймер для заявок "В работе"
-            if req['status'] == 'in_work' and req['updated_at']:
-                now = datetime.now(timezone.utc)
-                time_in_work = now - req['updated_at']
-                total_seconds_work = int(time_in_work.total_seconds())
-                mins_work = total_seconds_work // 60
-                hrs_work = mins_work // 60
-                mins_work = mins_work % 60
+        req['can_mark_arrived'] = False
+        requests.append(req)
 
-                if hrs_work > 0:
-                    req['status_display'] = f"{hrs_work} ч {mins_work} мин в работе"
-                else:
-                    req['status_display'] = f"{mins_work} мин в работе"
-
-            if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
-                now = datetime.now(timezone.utc)
-                time_diff = now - req['created_at']
-                total_seconds = time_diff.total_seconds()
-                arrival_deadline = 30 * 60  # 30 минут = 1800 секунд
-
-                if total_seconds < 300:  # < 5 минут
-                    # Новая, мигает - обратный отсчёт до 5 минут
-                    req['is_take_deadline'] = True
-                    req['remaining_seconds'] = int(300 - total_seconds)
-                    mins = req['remaining_seconds'] // 60
-                    secs = req['remaining_seconds'] % 60
-                    req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
-                    req['status_display'] = 'Новая'
-                elif total_seconds < arrival_deadline:  # 5-30 минут
-                    # Показать таймер до прибытия (30 минут от создания)
-                    req['is_overdue'] = True
-                    remaining_arrival = int(arrival_deadline - total_seconds)
-                    req['remaining_seconds'] = remaining_arrival  # Для JavaScript обновления
-                    mins = remaining_arrival // 60
-                    secs = remaining_arrival % 60
-                    req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
-                    req['status_display'] = req['remaining_time_formatted']
-                else:  # > 30 минут
-                    # Просрочена прибытие - начинается отсчет опоздания с нуля
-                    req['is_overdue'] = True
-                    req['is_late'] = True  # Флаг для JavaScript (увеличивать время, а не уменьшать)
-                    late_seconds = int(total_seconds - arrival_deadline)  # Сколько уже опаздываем
-                    req['remaining_seconds'] = late_seconds  # Отсчет опоздания
-
-                    # Форматирование: "0:05 опоздание", "1:25 опоздание"
-                    late_mins = late_seconds // 60
-                    late_secs = late_seconds % 60
-                    req['status_display'] = f"{late_mins}:{late_secs:02d} опоздание"
-
-            # Вычисляем can_mark_arrived - можно ли нажать кнопку "Прибыл"
-            # Отключено - сразу показываем "Фото" и "Выполнить"
-            req['can_mark_arrived'] = False
-
-            requests.append(req)
-
-    # Разделяем на "Мои заявки" (assigned_to = current_user_id) и "Доступные"
+    # Разделяем на "Мои заявки" и "Доступные"
     my_requests = [r for r in requests if r['assigned_to'] == request.user.id]
     available_requests = [r for r in requests if r['assigned_to'] is None]
 
-    # Сортировка: просроченные аварийные сверху, затем новые аварийные, затем остальные
+    # Сортировка
     def sort_key(req):
-        # Приоритет 1: просроченные аварийные
         if req.get('is_overdue'):
             return (0, req['created_at'])
-        # Приоритет 2: аварийные с обратным отсчётом
         elif req.get('urgency_level') == 'emergency' and req.get('remaining_seconds', 0) > 0:
             return (1, req['created_at'])
-        # Приоритет 3: остальные по дате (новые сначала)
         else:
             return (2, -req['created_at'].timestamp())
 
     my_requests.sort(key=sort_key)
     available_requests.sort(key=sort_key)
 
-    # Считаем счетчики для "Мои заявки"
+    # Считаем счетчики
     all_requests_count = len(my_requests)
-    status_new_count = len([r for r in my_requests if r['status'] == 'new'])
-    status_in_work_count = len([r for r in my_requests if r['status'] == 'in_work'])
-    status_done_count = len([r for r in my_requests if r['status'] == 'done'])
+    status_new_count = len([r for r in my_requests if r['status'] in ['new', 'accepted_by_executor']])
+    status_in_work_count = len([r for r in my_requests if r['status'] == 'in_progress'])
+    status_done_count = len([r for r in my_requests if r['status'] == 'completed'])
     status_cancelled_count = len([r for r in my_requests if r['status'] == 'cancelled'])
 
     context = {
