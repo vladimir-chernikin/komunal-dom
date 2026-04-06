@@ -562,7 +562,7 @@ def executor_dashboard(request):
             'created_at': wo.created_at,
             'description': wo.original_request_text,
             'status': wo.current_internal_status.short_code_en if wo.current_internal_status else 'unknown',
-            'service_name': wo.service.service_name if wo.service else '—',
+            'service_name': wo.service.scenario_name if wo.service else '—',
             'urgency_level': 'emergency' if wo.is_emergency else 'normal',
             'assigned_to': wo.responsible_user_id,
             'priority_code': wo.priority_code,
