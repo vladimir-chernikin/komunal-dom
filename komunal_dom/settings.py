@@ -27,6 +27,24 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
+# CSRF settings
+CSRF_TRUSTED_ORIGINS = [
+    'http://komunal-dom.ru',
+    'https://komunal-dom.ru',
+    'http://www.komunal-dom.ru',
+    'https://www.komunal-dom.ru',
+    'http://localhost',
+    'http://127.0.0.1',
+]
+CSRF_COOKIE_SECURE = False  # True для HTTPS только
+CSRF_COOKIE_HTTPONLY = False  # Разрешить JavaScript доступ к cookie
+CSRF_COOKIE_SAMESITE = 'Lax'  # Защита от CSRF
+
+# Session settings
+SESSION_COOKIE_SECURE = False  # True для HTTPS только
+SESSION_COOKIE_HTTPONLY = True  # Защита от XSS
+SESSION_COOKIE_SAMESITE = 'Lax'  # Защита от CSRF
+
 # Debug prompts - добавлять объяснение к вопросам
 TST_PROMPT = config('TST_PROMPT', default=0, cast=int)
 
