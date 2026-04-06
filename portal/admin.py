@@ -8,6 +8,29 @@ from django.shortcuts import render
 from django.http import HttpResponseRedirect
 from .models import UserProfile, AIPrompt, SemanticPattern, ServicesCatalog
 from nsi.models import RefCategory
+from work_orders.models import UserCompanyMembership, CompanyDepartment
+
+
+# ============================================
+# Inline для UserCompanyMembership
+# ============================================
+
+class UserCompanyMembershipInline(admin.TabularInline):
+    """
+    Inline для отображения членств пользователя в компаниях
+
+    ПОКАЗЫВАЕТСЯ внизу формы пользователя
+    """
+    model = UserCompanyMembership
+    extra = 0
+    can_delete = True
+    show_change_link = True
+    fields = ('company', 'department', 'role_code', 'is_primary', 'is_active', 'date_from', 'date_to')
+    readonly_fields = ()
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('company', 'department').order_by('-is_primary', 'company__name')
 
 
 # Отключаем стандартную регистрацию User
@@ -26,19 +49,45 @@ class UserAdmin(BaseUserAdmin):
     """
 
     list_display = ('username', 'email', 'first_name', 'last_name', 'get_company', 'get_role', 'is_active', 'date_joined')
-    inlines = []  # UserProfileInline удален - поля перенесены в fieldsets
+    inlines = [UserCompanyMembershipInline]
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Ограничение выбора подразделения выбранной компанией
+
+        Если выбрана primary_company, то primary_department фильтруется по этой компании
+        """
+        if db_field.name == 'primary_department':
+            # Пытаемся получить выбранную компанию из формы
+            obj_id = request.resolver_match.kwargs.get('object_id')
+            if obj_id:
+                try:
+                    user = User.objects.get(pk=obj_id)
+                    if user.userprofile.primary_company_id:
+                        kwargs['queryset'] = CompanyDepartment.objects.filter(
+                            company_id=user.userprofile.primary_company_id,
+                            is_active=True
+                        )
+                except (User.DoesNotExist, UserProfile.DoesNotExist):
+                    pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     fieldsets = (
         ('Основная информация', {
-            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'get_company_link', 'get_timezone', 'get_dates_info'),
+            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'primary_company', 'primary_department', 'get_timezone', 'get_dates_info'),
             'classes': ('wide',),
         }),
         ('Личные данные', {
             'fields': ('get_phone', 'get_address', 'get_specialization', 'get_job_title', 'get_responsibilities'),
             'classes': ('wide',),
+        }),
+        ('Членства в компаниях (множественные привязки)', {
+            'fields': ('get_memberships_info',),
+            'classes': ('wide',),
+            'description': 'Блок множественных привязок показан ниже. Для редких случаев работы в нескольких компаниях.',
         }),
         ('Права доступа', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
@@ -47,7 +96,7 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    readonly_fields = ('get_company_link', 'get_timezone', 'get_dates_info', 'get_phone', 'get_address', 'get_specialization', 'get_job_title', 'get_responsibilities')
+    readonly_fields = ('get_timezone', 'get_dates_info', 'get_phone', 'get_address', 'get_specialization', 'get_job_title', 'get_responsibilities', 'get_memberships_info')
 
     def get_company(self, obj):
         """Получить основную компанию пользователя"""
@@ -78,42 +127,29 @@ class UserAdmin(BaseUserAdmin):
             return mark_safe('<span class="badge bg-secondary">Ошибка</span>')
     get_company.short_description = 'Компания'
 
-    def get_company_link(self, obj):
-        """Получить ссылку на компанию для readonly поля (КЛИКАБЕЛЬНАЯ)"""
+    def get_memberships_info(self, obj):
+        """Информация о множественных членствах в компаниях"""
         try:
             from work_orders.models import UserCompanyMembership
-            membership = UserCompanyMembership.objects.filter(
+            memberships = UserCompanyMembership.objects.filter(
                 user=obj,
-                is_primary=True,
                 is_active=True,
                 date_to__isnull=True
-            ).select_related('company').first()
+            ).select_related('company', 'department').order_by('-is_primary', 'company__name')
 
-            if membership:
-                return format_html(
-                    '<a href="/admin/work_orders/usercompanymembership/?user_id__exact={}" target="_blank">{}</a>',
-                    obj.id,
-                    membership.company.name
-                )
-            else:
-                # Если нет primary - берем любую активную
-                membership = UserCompanyMembership.objects.filter(
-                    user=obj,
-                    is_active=True,
-                    date_to__isnull=True
-                ).select_related('company').first()
+            if not memberships.exists():
+                return mark_safe('<span class="text-muted">Нет активных членств</span>')
 
-                if membership:
-                    return format_html(
-                        '<a href="/admin/work_orders/usercompanymembership/?user_id__exact={}" target="_blank">{}</a>',
-                        obj.id,
-                        membership.company.name
-                    )
+            html = ['<div style="max-height: 200px; overflow-y: auto;">']
+            for m in memberships:
+                primary_badge = ' <span class="badge bg-primary">Основная</span>' if m.is_primary else ''
+                html.append(f'<div>{m.company.name} → {m.department.department_name} ({m.get_role_code_display()}){primary_badge}</div>')
+            html.append('</div>')
 
-                return mark_safe('<span class="badge bg-secondary">Нет компании</span>')
+            return mark_safe(''.join(html))
         except Exception:
-            return mark_safe('<span class="badge bg-secondary">Ошибка</span>')
-    get_company_link.short_description = 'Компания'
+            return mark_safe('<span class="text-danger">Ошибка загрузки</span>')
+    get_memberships_info.short_description = 'Членства в компаниях'
 
     def get_timezone(self, obj):
         """Получить timezone из UserProfile"""

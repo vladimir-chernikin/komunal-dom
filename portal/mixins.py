@@ -213,6 +213,11 @@ def get_primary_membership(user):
     """
     Возвращает primary UserCompanyMembership для пользователя
 
+    ПРИОРИТЕТ чтения:
+    1. UserProfile.primary_company и UserProfile.primary_department (новый механизм)
+    2. UserCompanyMembership с is_primary=True (fallback для старых данных)
+    3. Любая активная UserCompanyMembership (последний fallback)
+
     ИСПОЛЬЗУЕТСЯ в views для получения компании и роли
 
     ПРИМЕР:
@@ -229,15 +234,65 @@ def get_primary_membership(user):
     ПРИМЕЧАНИЕ:
     - Работает для всех пользователей (staff и residents)
     - Не требует is_staff=True
+
+    ИСТОРИЯ:
+    - 2026-04-06: Обновлен для чтения primary из UserProfile с fallback на membership
     """
     try:
         from work_orders.models import UserCompanyMembership
-        return UserCompanyMembership.objects.filter(
+
+        # ПРИОРИТЕТ 1: Читаем из UserProfile (новый механизм)
+        try:
+            profile = user.userprofile
+            if profile.primary_company_id and profile.primary_department_id:
+                # Ищем соответствующую membership
+                membership = UserCompanyMembership.objects.filter(
+                    user=user,
+                    company_id=profile.primary_company_id,
+                    department_id=profile.primary_department_id,
+                    is_active=True,
+                    date_to__isnull=True
+                ).select_related('company', 'department').first()
+
+                if membership:
+                    return membership
+                else:
+                    # Если нет membership, создаем объект-заглушку
+                    # Это нужно для обратной совместимости с кодом, который ожидает membership
+                    class FakeMembership:
+                        def __init__(self, profile):
+                            self.user = profile.user
+                            self.company_id = profile.primary_company_id
+                            self.department_id = profile.primary_department_id
+                            self.company = profile.primary_company
+                            self.department = profile.primary_department
+                            self.role_code = profile.role
+                            self.is_primary = True
+
+                    return FakeMembership(profile)
+        except Exception:
+            pass  # Profile не существует или ошибка, идем к fallback
+
+        # ПРИОРИТЕТ 2: Fallback на UserCompanyMembership.is_primary=True
+        membership = UserCompanyMembership.objects.filter(
             user=user,
             is_primary=True,
             is_active=True,
             date_to__isnull=True
         ).select_related('company', 'department').first()
+
+        if membership:
+            return membership
+
+        # ПРИОРИТЕТ 3: Последний fallback - любая активная membership
+        membership = UserCompanyMembership.objects.filter(
+            user=user,
+            is_active=True,
+            date_to__isnull=True
+        ).select_related('company', 'department').first()
+
+        return membership
+
     except Exception:
         return None
 

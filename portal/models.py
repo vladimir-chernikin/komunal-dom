@@ -67,6 +67,27 @@ class UserProfile(models.Model):
     timezone = models.CharField(max_length=50, choices=TIMEZONE_CHOICES, default='Europe/Moscow', verbose_name="Часовой пояс")
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Телефон")
     address = models.TextField(blank=True, null=True, verbose_name="Адрес")
+
+    # Основная компания и подразделение (primary)
+    primary_company = models.ForeignKey(
+        'nsi.Company',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Основная компания",
+        related_name='primary_users',
+        help_text="Основная компания пользователя для 90% кейсов"
+    )
+    primary_department = models.ForeignKey(
+        'work_orders.CompanyDepartment',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Основное подразделение",
+        related_name='primary_users',
+        help_text="Основное подразделение пользователя для 90% кейсов"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
 
     # Дополнительные поля для сотрудников
