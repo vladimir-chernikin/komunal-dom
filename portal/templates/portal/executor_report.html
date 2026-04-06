@@ -3,299 +3,393 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Отчет по заявке #{{ request_id }}</title>
+    <title>Заявка #{{ request_id }}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <style>
+        :root {
+            --bg-primary: #f8f8f8;
+            --bg-secondary: #ffffff;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --accent-color: #F59E0B;
+            --font-family: 'Inter', sans-serif;
+        }
+        
         * {
-            margin: 0;
-            padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
-            font-family: 'Arial', sans-serif;
-            font-size: 14px;
-            line-height: 1.5;
-            color: #333;
-            padding: 20px;
-            background: #fff;
+            font-family: var(--font-family);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
         }
-
-        .report-container {
-            max-width: 800px;
-            margin: 0 auto;
+        
+        .aerial-hero {
+            position: relative;
+            min-height: 600px;
+            overflow: hidden;
+            background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
         }
-
-        .report-header {
-            text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 20px;
+        
+        .city-3d-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
-
-        .report-header h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
+        
+        .aerial-content {
+            position: relative;
+            z-index: 2;
+            padding: 3rem 0;
+            color: white;
         }
-
-        .report-header p {
-            color: #666;
+        
+        .aerial-hero h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            color: #1a1a1a;
         }
-
-        .report-section {
-            margin-bottom: 25px;
+        
+        .aerial-hero .breadcrumb {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
         }
-
-        .report-section-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            border-left: 4px solid #007bff;
-            padding-left: 10px;
+        
+        .aerial-hero .breadcrumb a {
+            color: #F59E0B;
+            text-decoration: none;
         }
-
-        .report-row {
+        
+        .content-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #F59E0B;
+        }
+        
+        .info-row {
             display: flex;
-            margin-bottom: 10px;
+            padding: 0.75rem 0;
             border-bottom: 1px solid #eee;
-            padding-bottom: 5px;
         }
-
-        .report-label {
-            font-weight: bold;
+        
+        .info-label {
+            font-weight: 600;
             width: 200px;
             flex-shrink: 0;
+            color: #666;
         }
-
-        .report-value {
+        
+        .info-value {
             flex: 1;
+            color: #1a1a1a;
         }
-
+        
+        .status-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+        
+        .status-new { background: #6c757d; color: white; }
+        .status-in_work { background: #007bff; color: white; }
+        .status-done { background: #28a745; color: white; }
+        
         .timeline {
             list-style: none;
             padding-left: 0;
         }
-
+        
         .timeline-item {
             display: flex;
-            margin-bottom: 10px;
+            margin-bottom: 1rem;
             align-items: flex-start;
         }
-
+        
         .timeline-time {
-            font-weight: bold;
-            width: 80px;
+            font-weight: 600;
+            width: 120px;
             flex-shrink: 0;
-            color: #007bff;
+            color: #F59E0B;
         }
-
+        
         .timeline-content {
             flex: 1;
         }
-
+        
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-top: 15px;
+            gap: 1rem;
+            margin-top: 1rem;
         }
-
+        
         .stat-box {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
+            background: rgba(245, 158, 11, 0.1);
+            padding: 1.5rem;
+            border-radius: 15px;
             text-align: center;
+            border: 1px solid rgba(245, 158, 11, 0.2);
         }
-
+        
         .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #007bff;
-            margin-bottom: 5px;
+            font-size: 2rem;
+            font-weight: 700;
+            color: #F59E0B;
+            margin-bottom: 0.5rem;
         }
-
+        
         .stat-label {
-            font-size: 12px;
+            font-size: 0.875rem;
             color: #666;
+            font-weight: 500;
         }
-
+        
         .photo-container {
-            margin-top: 15px;
+            margin-top: 1.5rem;
         }
-
+        
         .photo-container img {
             max-width: 100%;
             max-height: 400px;
-            border-radius: 5px;
+            border-radius: 15px;
             border: 1px solid #ddd;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
         }
-
+        
         .no-photo {
             color: #999;
             font-style: italic;
-            padding: 20px;
+            padding: 2rem;
             text-align: center;
-            background: #f8f9fa;
-            border-radius: 5px;
+            background: rgba(245, 158, 11, 0.1);
+            border-radius: 15px;
         }
-
-        @media print {
-            .no-print {
-                display: none;
-            }
-
-            body {
-                padding: 0;
-            }
-
-            .report-container {
-                max-width: 100%;
-            }
-        }
-
-        .print-button {
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        .print-button button {
-            padding: 10px 30px;
-            font-size: 16px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        .print-button button:hover {
-            background: #0056b3;
+        
+        .description-box {
+            background: rgba(245, 158, 11, 0.05);
+            padding: 1.5rem;
+            border-radius: 15px;
+            border-left: 4px solid #F59E0B;
         }
     </style>
 </head>
 <body>
-    <div class="report-container">
-        <div class="report-header">
-            <h1>ОТЧЕТ ПО ВЫПОЛНЕНИЮ ЗАЯВКИ #{{ request_id }}</h1>
-            <p>Управляющая компания "Аспект"</p>
-        </div>
-
-        <div class="print-button no-print">
-            <button onclick="window.print()">🖨 Распечатать</button>
-        </div>
-
-        <div class="report-section">
-            <div class="report-section-title">📋 Основная информация</div>
-            <div class="report-row">
-                <div class="report-label">ID заявки:</div>
-                <div class="report-value">#{{ request_id }}</div>
-            </div>
-            <div class="report-row">
-                <div class="report-label">Дата создания:</div>
-                <div class="report-value">{{ created_at|date:"d.m.Y" }} в {{ created_at|date:"H:i" }}</div>
-            </div>
-            <div class="report-row">
-                <div class="report-label">Дата выполнения:</div>
-                <div class="report-value">{{ updated_at|date:"d.m.Y" }} в {{ updated_at|date:"H:i" }}</div>
-            </div>
-            <div class="report-row">
-                <div class="report-label">Статус:</div>
-                <div class="report-value">
-                    {% if status == 'done' %}✅ Выполнена{% endif %}
+    <section class="aerial-hero">
+        <!-- SVG 3D ГОРОД -->
+        <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#87CEEB"/>
+                    <stop offset="50%" style="stop-color:#B0E0E6"/>
+                    <stop offset="100%" style="stop-color:#98D8AA"/>
+                </linearGradient>
+                
+                <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#98D8AA"/>
+                    <stop offset="100%" style="stop-color:#7CB887"/>
+                </linearGradient>
+                
+                <filter id="buildingShadowFilter">
+                    <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+                    <feOffset dx="3" dy="3"/>
+                </filter>
+                
+                <radialGradient id="treeGradient">
+                    <stop offset="0%" style="stop-color:#4ADE80"/>
+                    <stop offset="100%" style="stop-color:#166534"/>
+                </radialGradient>
+            </defs>
+            
+            <rect width="1200" height="600" fill="url(#skyGradient)"/>
+            <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
+        </svg>
+        
+        <div class="container aerial-content">
+            <div class="row">
+                <div class="col-12">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="/executor/">Кабинет исполнителя</a></li>
+                            <li class="breadcrumb-item active" aria-current="page">Заявка #{{ request_id }}</li>
+                        </ol>
+                    </nav>
+                    
+                    <h2>Заявка #{{ request_id }}</h2>
                 </div>
             </div>
-        </div>
-
-        <div class="report-section">
-            <div class="report-section-title">📍 Адрес и описание</div>
-            <div class="report-row">
-                <div class="report-label">Адрес:</div>
-                <div class="report-value">
-                    ул. {{ street_name }}, д. {{ house_number }}{% if apartment %}, кв. {{ apartment }}{% endif %}
-                    {% if address_details %}({{ address_details }}){% endif %}
-                </div>
-            </div>
-            <div class="report-row">
-                <div class="report-label">Заявитель:</div>
-                <div class="report-value">{{ user_name|default:"—" }}</div>
-            </div>
-            <div class="report-row">
-                <div class="report-label">Телефон:</div>
-                <div class="report-value">{{ user_phone|default:"—" }}</div>
-            </div>
-            <div class="report-row">
-                <div class="report-label">Описание:</div>
-                <div class="report-value">{{ description }}</div>
-            </div>
-            <div class="report-row">
-                <div class="report-label">Услуга:</div>
-                <div class="report-value">{{ service_name|default:"—" }}</div>
-            </div>
-            <div class="report-row">
-                <div class="report-label">Категория:</div>
-                <div class="report-value">{{ category_name|default:"—" }}</div>
-            </div>
-        </div>
-
-        <div class="report-section">
-            <div class="report-section-title">👤 Исполнитель</div>
-            <div class="report-row">
-                <div class="report-label">ФИО:</div>
-                <div class="report-value">{{ executor_name|default:"—" }}</div>
-            </div>
-        </div>
-
-        <div class="report-section">
-            <div class="report-section-title">⏱ Хронология</div>
-            <ul class="timeline">
-                <li class="timeline-item">
-                    <div class="timeline-time">{{ created_at|date:"H:i" }}</div>
-                    <div class="timeline-content">Поступила заявка</div>
-                </li>
-                {% if arrived_at %}
-                <li class="timeline-item">
-                    <div class="timeline-time">{{ arrived_at|date:"H:i" }}</div>
-                    <div class="timeline-content">Исполнитель прибыл на место</div>
-                </li>
-                {% endif %}
-                <li class="timeline-item">
-                    <div class="timeline-time">{{ updated_at|date:"H:i" }}</div>
-                    <div class="timeline-content">Заявка выполнена</div>
-                </li>
-            </ul>
-        </div>
-
-        <div class="report-section">
-            <div class="report-section-title">⏱ Время выполнения</div>
-            <div class="stats-grid">
-                <div class="stat-box">
-                    <div class="stat-value">
-                        {% if minutes_to_arrive %}{{ minutes_to_arrive }} мин{% else %}—{% endif %}
+            
+            <div class="content-container">
+                <!-- Основная информация -->
+                <div class="section-title">Основная информация</div>
+                <div class="info-row">
+                    <div class="info-label">Статус:</div>
+                    <div class="info-value">
+                        <span class="status-badge status-{{ request.status }}">
+                            {% if request.status == 'new' %}Новая
+                            {% elif request.status == 'in_work' %}В работе
+                            {% elif request.status == 'done' %}Выполнена
+                            {% else %}{{ request.status }}
+                            {% endif %}
+                        </span>
                     </div>
-                    <div class="stat-label">До прибытия</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-value">
-                        {% if minutes_work %}{{ minutes_work }} мин{% else %}—{% endif %}
+                
+                <div class="info-row">
+                    <div class="info-label">Создана:</div>
+                    <div class="info-value">{{ request.created_at|date:"d.m.Y H:i" }}</div>
+                </div>
+                
+                <div class="info-row">
+                    <div class="info-label">Обновлена:</div>
+                    <div class="info-value">{{ request.updated_at|date:"d.m.Y H:i" }}</div>
+                </div>
+                
+                <div class="info-row">
+                    <div class="info-label">Заявитель:</div>
+                    <div class="info-value">
+                        {{ request.user_name }}
+                        {% if request.user_phone %}
+                        <br><small>{{ request.user_phone }}</small>
+                        {% endif %}
                     </div>
-                    <div class="stat-label">В работе</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-value">{{ minutes_total }} мин</div>
-                    <div class="stat-label">Общее время</div>
+                
+                <div class="info-row">
+                    <div class="info-label">Адрес:</div>
+                    <div class="info-value">
+                        {{ request.street_name }}, д. {{ request.house_number }}
+                        {% if request.apartment_number %}, кв. {{ request.apartment_number }}{% endif %}
+                        {% if request.entrance %}, под. {{ request.entrance }}{% endif %}
+                    </div>
                 </div>
-            </div>
-        </div>
-
-        <div class="report-section">
-            <div class="report-section-title">📸 Фото выполненной работы</div>
-            <div class="photo-container">
-                {% if photo_path %}
-                    <img src="/{{ photo_path }}" alt="Фото выполненной работы">
-                {% else %}
-                    <div class="no-photo">Фото не загружено</div>
+                
+                <!-- Описание -->
+                {% if request.description %}
+                <div class="section-title" style="margin-top: 2rem;">Описание</div>
+                <div class="description-box">
+                    {{ request.description }}
+                </div>
                 {% endif %}
+                
+                <!-- Таймлайн -->
+                <div class="section-title" style="margin-top: 2rem;">История</div>
+                <ul class="timeline">
+                    <li class="timeline-item">
+                        <div class="timeline-time">{{ request.created_at|date:"H:i" }}</div>
+                        <div class="timeline-content">Заявка создана</div>
+                    </li>
+                    {% if request.arrived_at %}
+                    <li class="timeline-item">
+                        <div class="timeline-time">{{ request.arrived_at|date:"H:i" }}</div>
+                        <div class="timeline-content">Исполнитель прибыл на место</div>
+                    </li>
+                    {% endif %}
+                    {% if request.status == 'done' %}
+                    <li class="timeline-item">
+                        <div class="timeline-time">{{ request.updated_at|date:"H:i" }}</div>
+                        <div class="timeline-content">Заявка выполнена</div>
+                    </li>
+                    {% endif %}
+                </ul>
+                
+                <!-- Статистика -->
+                <div class="section-title" style="margin-top: 2rem;">Время выполнения</div>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-value" id="responseTime">—</div>
+                        <div class="stat-label">Время реакции</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="executionTime">—</div>
+                        <div class="stat-label">Время выполнения</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="totalTime">—</div>
+                        <div class="stat-label">Общее время</div>
+                    </div>
+                </div>
+                
+                <!-- Фото -->
+                {% if request.photo_path %}
+                <div class="section-title" style="margin-top: 2rem;">Фото</div>
+                <div class="photo-container">
+                    <img src="{{ request.photo_path }}" alt="Фото заявки">
+                </div>
+                {% endif %}
+                
+                <!-- Кнопка возврата -->
+                <div style="margin-top: 2rem; text-align: center;">
+                    <a href="/executor/" class="btn btn-primary">
+                        <i class="fas fa-arrow-left"></i> Вернуться в кабинет
+                    </a>
+                </div>
             </div>
         </div>
-    </div>
+    </section>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+    // Вычисляем время
+    document.addEventListener('DOMContentLoaded', function() {
+        const created = new Date('{{ request.created_at|date:"Y-m-d H:i:s" }}');
+        const updated = new Date('{{ request.updated_at|date:"Y-m-d H:i:s" }}');
+        
+        let arrived = null;
+        {% if request.arrived_at %}
+        arrived = new Date('{{ request.arrived_at|date:"Y-m-d H:i:s" }}');
+        {% endif %}
+        
+        // Время реакции (создание -> прибытие)
+        if (arrived) {
+            const responseMs = arrived - created;
+            const responseMins = Math.floor(responseMs / 60000);
+            document.getElementById('responseTime').textContent = responseMins + ' мин';
+        }
+        
+        // Время выполнения (прибытие -> завершение)
+        if (arrived && '{{ request.status }}' === 'done') {
+            const executionMs = updated - arrived;
+            const executionMins = Math.floor(executionMs / 60000);
+            document.getElementById('executionTime').textContent = executionMins + ' мин';
+        }
+        
+        // Общее время (создание -> завершение)
+        if ('{{ request.status }}' === 'done') {
+            const totalMs = updated - created;
+            const totalMins = Math.floor(totalMs / 60000);
+            document.getElementById('totalTime').textContent = totalMins + ' мин';
+        }
+    });
+    </script>
 </body>
 </html>
