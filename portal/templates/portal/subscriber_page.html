@@ -4,808 +4,505 @@
 
 {% block extra_css %}
 <style>
-/* Стили специфичные для страницы жителя */
-
-/* Компактные карточки */
-.compact-card {
-    border: 1px solid #dee2e6;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+/* === 3D CITY DASHBOARD STYLES === */
+:root {
+    --bg-primary: #f8f8f8;
+    --bg-secondary: #ffffff;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666666;
+    --shadow-lg: 0 10px 25px rgba(0,0,0,0.15);
+    --font-family: 'Inter', sans-serif;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
 }
 
-.compact-card .card-header {
-    padding: 6px 10px;
-    background: #f8f9fa;
-    color: #495057;
-    border-bottom: 1px solid #dee2e6;
-    font-size: 1rem;
+* {
+    box-sizing: border-box;
 }
 
-.compact-card .card-body {
-    padding: 8px;
+body {
+    font-family: var(--font-family);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    overflow-x: hidden;
 }
 
-.compact-card h5 {
-    font-size: 1rem;
-    font-weight: 600;
-    margin: 0;
-}
-
-/* Чат */
-.chat-embedded {
-    max-width: 800px;
-    margin: 0 auto;
-    background: #fff;
-    border-radius: 6px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+/* === HERO С 3D ГОРОДОМ === */
+.aerial-hero {
+    position: relative;
+    min-height: 600px;
     overflow: hidden;
-    border: 1px solid #dee2e6;
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
 }
 
-.chat-embedded .chat-header {
-    background: linear-gradient(135deg, #111827 0%, #374151 100%);
+.city-3d-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.aerial-content {
+    position: relative;
+    z-index: 2;
+    padding: 3rem 0;
     color: white;
-    padding: 6px 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
 }
 
-.chat-embedded .chat-header h3 {
-    margin: 0;
-    font-size: 0.875rem;
-    font-weight: 600;
+.aerial-hero h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    color: #1a1a1a;
 }
 
-.chat-embedded .chat-header p {
-    margin: 0;
-    opacity: 0.9;
-    font-size: 0.75rem;
+.aerial-hero .subtitle {
+    font-size: 1.25rem;
+    opacity: 0.95;
+    margin-bottom: 2rem;
+    max-width: 600px;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.2);
+    color: #2a2a2a;
 }
 
-.new-dialog-btn {
-    background: #28a745;
-    color: white;
-    border: none;
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.15s ease-in-out;
+/* Сетка плиток */
+.tiles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+    position: relative;
+    z-index: 3;
 }
 
-.new-dialog-btn:hover {
-    background: #218838;
-}
-
-.chat-embedded .chat-messages {
-    height: 350px;
-    overflow-y: auto;
-    padding: 6px;
-    background: #f8f9fa;
-}
-
-.chat-embedded .message {
-    margin-bottom: 4px;
-    display: flex;
-    flex-direction: column;
-}
-
-.chat-embedded .message.user {
-    align-items: flex-end;
-}
-
-.chat-embedded .message.bot {
-    align-items: flex-start;
-}
-
-.chat-embedded .message-bubble {
-    max-width: 70%;
-    padding: 5px 8px;
-    border-radius: 10px;
-    word-wrap: break-word;
-    line-height: 1.3;
-    font-size: 0.875rem;
-}
-
-.chat-embedded .message.user .message-bubble {
-    background: #007bff;
-    color: white;
-    border-bottom-right-radius: 3px;
-}
-
-.chat-embedded .message.bot .message-bubble {
-    background: #e9ecef;
-    color: #333;
-    border-bottom-left-radius: 3px;
-}
-
-.chat-embedded .message-meta {
-    font-size: 0.75rem;
-    color: #6c757d;
-    margin-top: 2px;
-    padding: 0 3px;
-}
-
-.chat-embedded .chat-input-container {
-    padding: 5px 8px;
-    background: white;
-    border-top: 1px solid #dee2e6;
-}
-
-.chat-embedded .chat-input-form {
-    display: flex;
-    gap: 5px;
-}
-
-.chat-embedded .chat-input {
-    flex: 1;
-    padding: 4px 8px;
-    border: 1px solid #ced4da;
-    border-radius: 10px;
-    font-size: 0.875rem;
-    outline: none;
-    height: 26px;
-    line-height: 16px;
-}
-
-.chat-embedded .chat-input:focus {
-    border-color: #007bff;
-}
-
-.chat-embedded .send-button {
-    padding: 4px 10px;
-    background: #0d6efd;
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-}
-
-.chat-embedded .send-button:hover {
-    background: #0b5ed7;
-}
-
-.chat-embedded .send-button:disabled {
-    background: #6c757d;
-    cursor: not-allowed;
-}
-
-.chat-embedded .typing-indicator {
-    display: none;
-    padding: 5px 10px;
-    background: #e9ecef;
-    border-radius: 12px;
-    border-bottom-left-radius: 3px;
-    max-width: 70px;
-    margin-left: 10px;
-    margin-bottom: 8px;
-}
-
-.chat-embedded .typing-indicator.active {
+.aerial-tile {
     display: block;
+    text-decoration: none;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-2xl);
+    padding: 1.75rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
 }
 
-.chat-embedded .typing-dots {
-    display: flex;
-    gap: 2px;
-}
-
-.chat-embedded .typing-dots span {
-    width: 5px;
+.aerial-tile::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
     height: 5px;
-    background: #6c757d;
-    border-radius: 50%;
-    animation: typing 1.4s infinite;
+    background: linear-gradient(90deg, #10b981, #059669);
+    opacity: 0;
+    transition: opacity 0.3s;
 }
 
-.chat-embedded .typing-dots span:nth-child(2) {
-    animation-delay: 0.2s;
+.aerial-tile:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
 }
 
-.chat-embedded .typing-dots span:nth-child(3) {
-    animation-delay: 0.4s;
+.aerial-tile:hover::before {
+    opacity: 1;
 }
 
-@keyframes typing {
-    0%, 60%, 100% {
-        transform: translateY(0);
-    }
-    30% {
-        transform: translateY(-6px);
-    }
+.tile-icon-wrapper {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+    border-radius: var(--radius-xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+    border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
-.chat-embedded .service-detected {
-    background: #d4edda;
-    border: 1px solid #c3e6cb;
-    color: #155724;
-    padding: 4px 8px;
-    border-radius: 5px;
-    margin-top: 4px;
-    font-size: 0.875rem;
+.tile-icon {
+    font-size: 1.5rem;
+    color: #059669;
 }
 
-.chat-embedded .error-message {
-    background: #f8d7da;
-    border: 1px solid #f5c6cb;
-    color: #721c24;
-    padding: 6px 10px;
-    border-radius: 5px;
-    margin-bottom: 8px;
-    font-size: 0.875rem;
+.tile-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
 }
 
-.chat-embedded .chat-status {
-    text-align: center;
-    padding: 6px;
-    font-size: 0.875rem;
-    color: #6c757d;
+.tile-description {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
 }
 
-/* Таблица */
-.table-sm td {
-    padding: 0.35rem 0.5rem;
-    font-size: 0.875rem;
+.tile-badge {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.4rem 0.8rem;
+    background: #ecfdf5;
+    color: #059669;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
-.table-sm td:first-child {
-    width: 40%;
-    color: #6c757d;
-    font-weight: 500;
-}
-
-.content-container {
-    max-width: 900px;
-}
-
-/* Адаптивность чата */
+/* === АДАПТИВНОСТЬ === */
 @media (max-width: 768px) {
-    .chat-embedded {
-        margin: 0 -0.5rem;
-        border-radius: 0;
+    .aerial-hero {
+        min-height: auto;
     }
 
-    .chat-messages {
-        height: 300px;
-        padding: 1rem;
+    .aerial-hero h1 {
+        font-size: 1.75rem;
     }
 
-    .message-bubble {
-        max-width: 85%;
-        padding: 0.5rem 0.75rem;
-        font-size: 0.9rem;
-    }
-
-    .chat-input {
-        font-size: 0.9rem;
-        padding: 0.5rem 0.75rem;
-    }
-
-    .send-button {
-        padding: 0.5rem 0.75rem;
-        font-size: 0.85rem;
+    .tiles-grid {
+        grid-template-columns: 1fr;
+        margin-top: 1.5rem;
     }
 }
 
-@media (max-width: 576px) {
-    .content-container {
-        max-width: 100%;
-        padding: 0;
-    }
+        /* Статистические пузыри поверх карты */
+        .stats-over-map {
+            position: absolute;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 4;
+            display: flex;
+            gap: 1rem;
+        }
 
-    .chat-messages {
-        height: 250px;
-    }
+        .stat-bubble {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: var(--radius-2xl);
+            padding: 1.25rem;
+            min-width: 130px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
 
-    .message-bubble {
-        max-width: 90%;
-        font-size: 0.85rem;
-    }
+        .stat-bubble-number {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #059669;
+            line-height: 1;
+        }
 
-    .new-dialog-btn {
-        font-size: 0.7rem;
-        padding: 0.3rem 0.6rem;
-    }
-}
-</style>
+        .stat-bubble-label {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: 500;
+            margin-top: 0.4rem;
+        }
+
+        </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-3 content-container">
-    <!-- Заголовок -->
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">
-                    <i class="fas fa-user text-primary"></i>
-                    Здравствуйте, {{ user.get_full_name|default:user.username }}!
-                    <small class="text-muted">- личный кабинет{% if company %} {{ company.name }}{% endif %}</small>
-                </h6>
-                {% if company %}
-                <a href="{% url 'work_orders:resident_dashboard' %}" class="btn btn-outline-primary btn-sm">
-                    <i class="fas fa-list"></i> Мои заявки
-                </a>
-                {% endif %}
-            </div>
-        </div>
-    </div>
+<!-- HERO С 3D ГОРОДОМ -->
+<section class="aerial-hero">
+    <!-- ФОН: SVG 3D город -->
+    <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:#87CEEB;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#E0F4FF;stop-opacity:1" />
+            </linearGradient>
 
-    {% if company %}
-    <!-- Информация о компании -->
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="card compact-card">
-                <div class="card-header">
-                    <i class="fas fa-building"></i> Ваша управляющая компания
-                </div>
-                <div class="card-body">
-                    <h5 class="card-title">{{ company.name }}</h5>
-                    {% if company.full_name %}
-                    <p class="card-text text-muted small">{{ company.full_name }}</p>
+            <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:#98D8AA;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#7CB887;stop-opacity:1" />
+            </linearGradient>
+
+            <radialGradient id="treeGradient" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#2E7D32;stop-opacity:1" />
+            </radialGradient>
+
+            <filter id="buildingShadowFilter" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+                <feOffset dx="3" dy="3" result="offsetblur"/>
+                <feComponentTransfer>
+                    <feFuncA type="linear" slope="0.3"/>
+                </feComponentTransfer>
+                <feMerge>
+                    <feMergeNode/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+
+        <!-- Небо -->
+        <rect width="1200" height="600" fill="url(#skyGradient)"/>
+
+        <!-- Земля -->
+        <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
+
+        <!-- === ДОМА ГРУППА 1 (левая) === -->
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="50,380 120,360 120,280 50,300" fill="#F5F5F5"/>
+            <polygon points="50,300 50,380 20,390 20,310" fill="#E0E0E0"/>
+            <polygon points="50,300 120,280 90,270 20,290" fill="#E8E8E8"/>
+        </g>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="140,385 200,365 200,270 140,290" fill="#FAFAFA"/>
+            <polygon points="140,290 140,385 115,395 115,300" fill="#E5E5E5"/>
+            <polygon points="140,290 200,270 175,260 115,278" fill="#EBEBEB"/>
+        </g>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="60,450 130,430 130,350 60,370" fill="#F8F8F8"/>
+            <polygon points="60,370 60,450 35,460 35,380" fill="#E3E3E3"/>
+            <polygon points="60,370 130,350 100,340 35,358" fill="#E9E9E9"/>
+        </g>
+
+        <circle cx="95" cy="480" r="25" fill="url(#treeGradient)" opacity="0.9"/>
+        <circle cx="160" cy="470" r="22" fill="url(#treeGradient)" opacity="0.85"/>
+        <circle cx="220" cy="490" r="28" fill="url(#treeGradient)" opacity="0.9"/>
+
+        <!-- === ДОМА ГРУППА 2 (центральная левая) === -->
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="280,390 360,365 360,220 280,245" fill="#FDFDFD"/>
+            <polygon points="280,245 280,390 250,400 250,255" fill="#E8E8E8"/>
+            <polygon points="280,245 360,220 330,210 250,232" fill="#F0F0F0"/>
+        </g>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="390,400 450,380 450,300 390,320" fill="#FBFBFB"/>
+            <polygon points="390,320 390,400 365,410 365,330" fill="#E6E6E6"/>
+            <polygon points="390,320 450,300 425,290 365,308" fill="#ECECEC"/>
+        </g>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="300,470 370,450 370,370 300,390" fill="#F9F9F9"/>
+            <polygon points="300,390 300,470 275,480 275,400" fill="#E4E4E4"/>
+            <polygon points="300,390 370,370 340,360 275,378" fill="#EAEAEA"/>
+        </g>
+
+        <circle cx="335" cy="510" r="30" fill="url(#treeGradient)" opacity="0.9"/>
+        <circle cx="420" cy="520" r="26" fill="url(#treeGradient)" opacity="0.85"/>
+        <circle cx="480" cy="500" r="24" fill="url(#treeGradient)" opacity="0.88"/>
+
+        <!-- === ДОМА ГРУППА 3 (центральная - Ваш дом) === -->
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="550,400 630,375 630,260 550,285" fill="#FFFFFF"/>
+            <polygon points="550,285 550,400 520,410 520,295" fill="#EBEBEB"/>
+            <polygon points="550,285 630,260 600,250 520,270" fill="#F5F5F5"/>
+        </g>
+
+        <circle cx="575" cy="230" r="12" fill="#EF4444" opacity="0.9"/>
+        <circle cx="575" cy="230" r="8" fill="#FFFFFF" opacity="0.95"/>
+        <text x="575" y="215" font-size="12" font-weight="700" fill="#1a1a1a" text-anchor="middle">Ваш дом</text>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="660,395 720,375 720,290 660,310" fill="#FCFCFC"/>
+            <polygon points="660,310 660,395 635,405 635,320" fill="#E7E7E7"/>
+            <polygon points="660,310 720,290 695,280 635,298" fill="#EDEDED"/>
+        </g>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="570,480 640,460 640,380 570,400" fill="#FAFAFA"/>
+            <polygon points="570,400 570,480 545,490 545,410" fill="#E5E5E5"/>
+            <polygon points="570,400 640,380 610,370 545,388" fill="#EBEBEB"/>
+        </g>
+
+        <circle cx="605" cy="530" r="32" fill="url(#treeGradient)" opacity="0.9"/>
+        <circle cx="700" cy="540" r="28" fill="url(#treeGradient)" opacity="0.88"/>
+        <circle cx="530" cy="550" r="26" fill="url(#treeGradient)" opacity="0.86"/>
+
+        <!-- === ДОМА ГРУППА 4 (центральная правая - УК) === -->
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="780,385 850,360 850,265 780,290" fill="#FEFEFE"/>
+            <polygon points="780,290 780,385 755,395 755,300" fill="#E9E9E9"/>
+            <polygon points="780,290 850,265 820,255 755,275" fill="#EFEFEF"/>
+        </g>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="880,390 960,365 960,250 880,275" fill="#FDFDFD"/>
+            <polygon points="880,275 880,390 855,400 855,285" fill="#E8E8E8"/>
+            <polygon points="880,275 960,250 930,240 855,260" fill="#F0F0F0"/>
+        </g>
+
+        <rect x="895" y="220" width="30" height="30" fill="#3B82F6" opacity="0.8" rx="4"/>
+        <text x="910" y="240" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">УК</text>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="800,470 870,450 870,370 800,390" fill="#F9F9F9"/>
+            <polygon points="800,390 800,470 775,480 775,400" fill="#E4E4E4"/>
+            <polygon points="800,390 870,370 840,360 775,378" fill="#EAEAEA"/>
+        </g>
+
+        <circle cx="835" cy="520" r="29" fill="url(#treeGradient)" opacity="0.9"/>
+        <circle cx="920" cy="530" r="27" fill="url(#treeGradient)" opacity="0.87"/>
+        <circle cx="990" cy="510" r="25" fill="url(#treeGradient)" opacity="0.89"/>
+
+        <!-- === ДОМА ГРУППА 5 (правая) === -->
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="1020,380 1090,355 1090,270 1020,295" fill="#FBFBFB"/>
+            <polygon points="1020,295 1020,380 995,390 995,305" fill="#E6E6E6"/>
+            <polygon points="1020,295 1090,270 1060,260 995,278" fill="#ECECEC"/>
+        </g>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="1110,385 1170,365 1170,280 1110,300" fill="#FAFAFA"/>
+            <polygon points="1110,300 1110,385 1085,395 1085,310" fill="#E5E5E5"/>
+            <polygon points="1110,300 1170,280 1145,270 1085,288" fill="#EBEBEB"/>
+        </g>
+
+        <g filter="url(#buildingShadowFilter)">
+            <polygon points="1030,460 1100,440 1100,365 1030,385" fill="#F8F8F8"/>
+            <polygon points="1030,385 1030,460 1005,470 1005,395" fill="#E3E3E3"/>
+            <polygon points="1030,385 1100,365 1070,355 1005,373" fill="#E9E9E9"/>
+        </g>
+
+        <circle cx="1065" cy="510" r="26" fill="url(#treeGradient)" opacity="0.9"/>
+        <circle cx="1135" cy="520" r="24" fill="url(#treeGradient)" opacity="0.88"/>
+        <circle cx="1000" cy="540" r="22" fill="url(#treeGradient)" opacity="0.86"/>
+
+        <circle cx="180" cy="570" r="20" fill="url(#treeGradient)" opacity="0.7"/>
+        <circle cx="450" cy="580" r="24" fill="url(#treeGradient)" opacity="0.7"/>
+        <circle cx="750" cy="575" r="22" fill="url(#treeGradient)" opacity="0.7"/>
+        <circle cx="1150" cy="580" r="21" fill="url(#treeGradient)" opacity="0.7"/>
+    </svg>
+
+    <!-- КОНТЕНТ -->
+    <div class="container aerial-content">
+        <div class="row">
+            <div class="col-lg-8">
+                <h1>Здравствуйте, {{ user.get_full_name|default:user.username }}!</h1>
+                <p class="subtitle">
+                    Ваш персональный кабинет для управления услугами ЖКХ.
+                    {% if company %}
+                    <ul class="mt-3" style="opacity: 0.95;">
+                        <li><i class="fas fa-building"></i> {{ company.name }}</li>
+                        {% if company.phone %}
+                        <li><i class="fas fa-phone"></i> {{ company.phone }}</li>
+                        {% endif %}
+                    </ul>
                     {% endif %}
-                    {% if company.phone %}
-                    <p class="card-text small">
-                        <i class="fas fa-phone"></i> {{ company.phone }}
-                    </p>
-                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        <!-- ПЛИТКИ (3 штуки) -->
+        <div class="tiles-grid">
+            <!-- Создать заявку (чат-бот) -->
+            <a href="{% url 'work_orders:work_order_create' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-plus-circle tile-icon"></i>
                 </div>
+                <div class="tile-title">Создать заявку</div>
+                <div class="tile-description">
+                    Опишите проблему в чате с диспетчером для создания заявки
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-comments"></i> Чат-бот
+                </span>
+            </a>
+
+            <!-- Мои заявки -->
+            <a href="{% url 'work_orders:resident_dashboard' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-clipboard-list tile-icon"></i>
+                </div>
+                <div class="tile-title">Мои заявки</div>
+                <div class="tile-description">
+                    Просмотр и отслеживание статуса ваших заявок
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-clipboard-check"></i> {{ work_orders|length }} заяв{{ work_orders|length|pluralize:"ка,ки,ок" }}
+                </span>
+            </a>
+
+            <!-- История обращений -->
+            <a href="{% url 'work_orders:resident_dashboard' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-history tile-icon"></i>
+                </div>
+                <div class="tile-title">История обращений</div>
+                <div class="tile-description">
+                    Чат с диспетчером и история всех диалогов
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-comments"></i> Все обращения
+                </span>
+            </a>
+
+            <!-- Квитанции и оплата -->
+            <a href="#" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-file-invoice-dollar tile-icon"></i>
+                </div>
+                <div class="tile-title">Квитанции и оплата</div>
+                <div class="tile-description">
+                    Просмотр истории платежей и онлайн-оплата услуг ЖКХ
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-check-circle"></i> Скоро
+                </span>
+            </a>
+
+            <!-- Контакты УК -->
+            <a href="#" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-phone-alt tile-icon"></i>
+                </div>
+                <div class="tile-title">Контакты УК</div>
+                <div class="tile-description">
+                    Телефоны поддержки, адрес, часы работы
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-clock"></i> 9:00–18:00
+                </span>
+            </a>
+
+            <!-- Документы -->
+            <a href="#" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-folder-open tile-icon"></i>
+                </div>
+                <div class="tile-title">Документы</div>
+                <div class="tile-description">
+                    Правила, тарифы, образцы заявлений
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-download"></i> Библиотека
+                </span>
+            </a>
+        </div>
+
+        <!-- СТАТИСТИКА (в правом нижнем углу) -->
+        <div class="stats-over-map">
+            <div class="stat-bubble">
+                <div class="stat-bubble-number">{{ active_work_orders }}</div>
+                <div class="stat-bubble-label">Активных</div>
+            </div>
+            <div class="stat-bubble">
+                <div class="stat-bubble-number">{{ completed_work_orders }}</div>
+                <div class="stat-bubble-label">Выполнено</div>
+            </div>
+            <div class="stat-bubble">
+                <div class="stat-bubble-number">₽ 0</div>
+                <div class="stat-bubble-label">Долг</div>
             </div>
         </div>
     </div>
-    {% endif %}
+</section>
 
-    <!-- Чат -->
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="chat-embedded">
-                <div class="chat-header">
-                    <div>
-                        <h3>Подать заявку</h3>
-                        <p>Опишите проблему</p>
-                    </div>
-                    <button class="new-dialog-btn" id="newDialogBtn">Новый диалог</button>
-                </div>
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-                <div class="chat-messages" id="chatMessages">
-                    <div class="chat-status">
-                        Начните диалог. Например: "У меня течет в ванной"
-                    </div>
-                </div>
-
-                <div class="typing-indicator" id="typingIndicator">
-                    <div class="typing-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                </div>
-
-                <div class="chat-input-container">
-                    <form class="chat-input-form" id="chatForm" autocomplete="off">
-                        <input
-                            type="text"
-                            class="chat-input"
-                            id="messageInput"
-                            placeholder="Опишите вашу проблему..."
-                            autocomplete="off"
-                            data-lpignore="true"
-                            data-form-type="other"
-                            spellcheck="false"
-                            value=""
-                            required
-                        >
-                        <button type="submit" class="send-button" id="sendButton">
-                            Отправить
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {% if work_orders %}
-    <!-- Последние заявки -->
-    <div class="row mb-3">
-        <div class="col-12">
-            <div class="card compact-card">
-                <div class="card-header">
-                    <i class="fas fa-clipboard-list"></i> Ваши заявки (последние {{ work_orders|length }})
-                    <a href="{% url 'work_orders:resident_dashboard' %}" class="btn btn-sm btn-outline-primary float-end">
-                        Все заявки
-                    </a>
-                </div>
-                <div class="card-body p-0">
-                    {% if work_orders %}
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>№</th>
-                                    <th>Услуга</th>
-                                    <th>Статус</th>
-                                    <th>Дата</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for wo in work_orders %}
-                                <tr>
-                                    <td><strong>{{ wo.work_order_no }}</strong></td>
-                                    <td>{{ wo.service.scenario_name }}</td>
-                                    <td>
-                                        {% if wo.current_external_status.short_code_en == 'new' %}
-                                            <span class="badge bg-secondary">{{ wo.current_external_status.short_name_ru }}</span>
-                                        {% else %}
-                                            <span class="badge bg-success">{{ wo.current_external_status.short_name_ru }}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="small">{{ wo.created_at|date:"d.m.Y" }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <p class="text-muted text-center py-3 mb-0">У вас пока нет заявок</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Информация -->
-    <div class="row">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-address-card text-success"></i> Контактные данные
-                </div>
-                <div class="card-body">
-                    <table class="table table-sm">
-                        <tr>
-                            <td>Адрес</td>
-                            <td class="text-muted">—</td>
-                        </tr>
-                        <tr>
-                            <td>Телефон</td>
-                            <td class="text-muted">—</td>
-                        </tr>
-                        <tr>
-                            <td>Email</td>
-                            <td class="text-muted">{{ user.email|default:"—" }}</td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-history text-info"></i> История заявок
-                </div>
-                <div class="card-body" id="dialogsHistoryCard">
-                    <p class="text-muted text-small mb-0">Загрузка...</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    // Версия для cache-busting
-    const SCRIPT_VERSION = '202601160904';
-
-    const CHAT_CONFIG = {
-        sessionId: 'web_{{ user.id }}_{% if request.session.session_key %}{{ request.session.session_key }}{% else %}{{ user.id }}{% endif %}',
-        apiSendUrl: '{% url "message_handler:send_message" %}',
-        apiHistoryUrl: '{% url "message_handler:get_chat_history" %}',
-        apiDialogsListUrl: '{% url "message_handler:get_dialogs_list" %}',
-        csrfToken: '{{ csrf_token }}'
-    };
-
-    let isChatProcessing = false;
-    let currentSessionId = CHAT_CONFIG.sessionId;
-
-    const chatMessages = document.getElementById('chatMessages');
-    const chatForm = document.getElementById('chatForm');
-    const messageInput = document.getElementById('messageInput');
-    const sendButton = document.getElementById('sendButton');
-    const typingIndicator = document.getElementById('typingIndicator');
-    const newDialogBtn = document.getElementById('newDialogBtn');
-    const dialogsHistoryCard = document.getElementById('dialogsHistoryCard');
-
-    // Инициализация
-    document.addEventListener('DOMContentLoaded', function() {
-        loadChatHistory();
-        loadDialogsList();
-        messageInput.focus();
-    });
-
-    // Очищаем поле ввода при восстановлении страницы из кэша (bfcache)
-    window.addEventListener('pageshow', function(event) {
-        console.log('[DEBUG] pageshow event, persisted:', event.persisted);
-        // Для Microsoft Edge и других Chromium браузеров
-        setTimeout(function() {
-            console.log('[DEBUG] Clearing input, current value:', messageInput.value);
-            messageInput.value = '';
-            messageInput.setAttribute('value', '');
-            messageInput.defaultValue = '';
-        }, 0);
-        messageInput.focus();
-    });
-
-    // Дополнительная очистка перед выгрузкой страницы
-    window.addEventListener('beforeunload', function() {
-        messageInput.value = '';
-    });
-
-    // Кнопка "Новый диалог"
-    newDialogBtn.addEventListener('click', function() {
-        if (!confirm('Начать новый диалог? Текущий диалог будет сохранен в истории.')) {
-            return;
-        }
-
-        // Создаем новый session_id с timestamp
-        const timestamp = Date.now();
-        const userId = '{{ user.id }}';
-        currentSessionId = `web_${userId}_${timestamp}`;
-
-        // Очищаем чат и показываем сообщение
-        chatMessages.innerHTML = '<div class="chat-status">Начните новый диалог. Например: "У меня течет в ванной"</div>';
-
-        // Обновляем список диалогов (чтобы появился новый)
-        loadDialogsList();
-
-        // Фокус на поле ввода
-        messageInput.focus();
-    });
-
-    // Обработка отправки формы
-    chatForm.addEventListener('submit', async function(e) {
-        e.preventDefault();
-
-        const message = messageInput.value.trim();
-        if (!message || isChatProcessing) return;
-
-        addChatMessage(message, 'user');
-        messageInput.value = '';
-        await sendChatMessage(message);
-    });
-
-    // Добавление сообщения в UI
-    function addChatMessage(text, type, serviceDetected = null) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${type}`;
-
-        const bubble = document.createElement('div');
-        bubble.className = 'message-bubble';
-        bubble.textContent = text;
-
-        const meta = document.createElement('div');
-        meta.className = 'message-meta';
-        meta.textContent = type === 'user' ? 'Вы' : 'Диспетчер';
-
-        messageDiv.appendChild(bubble);
-        messageDiv.appendChild(meta);
-
-        if (serviceDetected) {
-            const serviceDiv = document.createElement('div');
-            serviceDiv.className = 'service-detected';
-            serviceDiv.textContent = `Услуга ID ${serviceDetected}`;
-            messageDiv.appendChild(serviceDiv);
-        }
-
-        chatMessages.appendChild(messageDiv);
-        scrollChatToBottom();
-    }
-
-    function showTypingIndicator() {
-        typingIndicator.classList.add('active');
-        scrollChatToBottom();
-    }
-
-    function hideTypingIndicator() {
-        typingIndicator.classList.remove('active');
-    }
-
-    function showChatError(message) {
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-message';
-        errorDiv.textContent = message;
-        chatMessages.appendChild(errorDiv);
-        scrollChatToBottom();
-
-        setTimeout(() => {
-            errorDiv.remove();
-        }, 5000);
-    }
-
-    async function sendChatMessage(message) {
-        isChatProcessing = true;
-        sendButton.disabled = true;
-        showTypingIndicator();
-
-        try {
-            const response = await fetch(CHAT_CONFIG.apiSendUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': CHAT_CONFIG.csrfToken
-                },
-                body: JSON.stringify({
-                    message: message,
-                    session_id: currentSessionId
-                })
-            });
-
-            const data = await response.json();
-
-            hideTypingIndicator();
-
-            if (data.status === 'success') {
-                addChatMessage(data.response, 'bot', data.service_detected);
-            } else {
-                showChatError(data.error || 'Ошибка при отправке');
-            }
-
-        } catch (error) {
-            hideTypingIndicator();
-            console.error('Ошибка:', error);
-            showChatError('Ошибка соединения');
-        } finally {
-            isChatProcessing = false;
-            sendButton.disabled = false;
-            messageInput.focus();
-        }
-    }
-
-    async function loadChatHistory() {
-        try {
-            const response = await fetch(`${CHAT_CONFIG.apiHistoryUrl}?session_id=${currentSessionId}&limit=50`);
-            const data = await response.json();
-
-            if (data.status === 'success' && data.messages.length > 0) {
-                chatMessages.innerHTML = '';
-                data.messages.forEach(msg => {
-                    const type = msg.direction === 'inbound' ? 'user' : 'bot';
-                    addChatMessage(msg.text, type);
-                });
-            }
-
-        } catch (error) {
-            console.error('Ошибка загрузки истории:', error);
-        }
-    }
-
-    // Загрузить список всех диалогов
-    async function loadDialogsList() {
-        try {
-            const response = await fetch(CHAT_CONFIG.apiDialogsListUrl);
-            const data = await response.json();
-
-            if (data.status === 'success') {
-                renderDialogsList(data.dialogs);
-            } else {
-                dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Ошибка загрузки истории</p>';
-            }
-
-        } catch (error) {
-            console.error('Ошибка загрузки списка диалогов:', error);
-            dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Ошибка загрузки истории</p>';
-        }
-    }
-
-    // Отобразить список диалогов
-    function renderDialogsList(dialogs) {
-        if (!dialogs || dialogs.length === 0) {
-            // Проверяем, есть ли текущий диалог (возможно новый без сообщений)
-            const now = new Date();
-            const hasCurrentDialog = currentSessionId && currentSessionId !== CHAT_CONFIG.sessionId;
-
-            if (hasCurrentDialog) {
-                // Показываем только новый диалог
-                let html = '<div class="table-responsive"><table class="table table-sm mb-0">';
-                html += '<thead><tr><th>Дата</th><th>Время</th><th>Фраза</th><th>Действие</th></tr></thead><tbody>';
-                html += `
-                    <tr>
-                        <td class="text-muted">${now.toLocaleDateString('ru-RU')}</td>
-                        <td class="text-muted">${now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}</td>
-                        <td class="text-muted" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Новый диалог</td>
-                        <td>
-                            <button class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 2px 6px;" disabled>Текущий</button>
-                        </td>
-                    </tr>
-                `;
-                html += '</tbody></table></div>';
-                dialogsHistoryCard.innerHTML = html;
-            } else {
-                dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Заявок пока нет</p>';
-            }
-            return;
-        }
-
-        // Проверяем, есть ли текущий session_id в списке
-        const currentExists = dialogs.some(d => d.session_id === currentSessionId);
-
-        // Если текущего диалога нет в списке, добавляем его
-        if (!currentExists && currentSessionId) {
-            const now = new Date();
-            const newDialog = {
-                session_id: currentSessionId,
-                date: now.toLocaleDateString('ru-RU'),
-                time: now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}),
-                preview: 'Новый диалог',
-                message_count: 0
-            };
-            dialogs.unshift(newDialog); // Добавляем в начало
-        }
-
-        let html = '<div class="table-responsive"><table class="table table-sm mb-0">';
-        html += '<thead><tr><th>Дата</th><th>Время</th><th>Фраза</th><th>Действие</th></tr></thead><tbody>';
-
-        dialogs.forEach(dialog => {
-            const isCurrent = dialog.session_id === currentSessionId;
-            const btnText = isCurrent ? 'Текущий' : 'Открыть';
-            const btnDisabled = isCurrent ? 'disabled' : '';
-            const preview = dialog.preview || '—';
-
-            html += `
-                <tr>
-                    <td class="text-muted">${dialog.date}</td>
-                    <td class="text-muted">${dialog.time}</td>
-                    <td class="text-muted" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${preview}</td>
-                    <td>
-                        <button class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 2px 6px;" onclick="loadOldDialog('${dialog.session_id}')" ${btnDisabled}>${btnText}</button>
-                    </td>
-                </tr>
-            `;
-        });
-
-        html += '</tbody></table></div>';
-        dialogsHistoryCard.innerHTML = html;
-    }
-
-    // Загрузить старый диалог
-    async function loadOldDialog(sessionId) {
-        if (!sessionId || sessionId === currentSessionId) {
-            return;
-        }
-
-        if (!confirm('Загрузить старый диалог?')) {
-            return;
-        }
-
-        currentSessionId = sessionId;
-        chatMessages.innerHTML = '<div class="chat-status">Загрузка диалога...</div>';
-
-        try {
-            const response = await fetch(`${CHAT_CONFIG.apiHistoryUrl}?session_id=${sessionId}&limit=50`);
-            const data = await response.json();
-
-            if (data.status === 'success' && data.messages.length > 0) {
-                chatMessages.innerHTML = '';
-                data.messages.forEach(msg => {
-                    const type = msg.direction === 'inbound' ? 'user' : 'bot';
-                    addChatMessage(msg.text, type);
-                });
-
-                // Обновляем список диалогов
-                loadDialogsList();
-            } else {
-                chatMessages.innerHTML = '<div class="chat-status">Не удалось загрузить диалог</div>';
-            }
-
-        } catch (error) {
-            console.error('Ошибка загрузки диалога:', error);
-            chatMessages.innerHTML = '<div class="chat-status">Ошибка загрузки диалога</div>';
-        }
-    }
-
-    function scrollChatToBottom() {
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-</script>
 {% endblock %}
