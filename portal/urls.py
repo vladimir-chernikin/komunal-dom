@@ -33,6 +33,7 @@ urlpatterns = [
     # ИСПРАВЛЕНИЕ (2026-02-03): Удален дубликат /admin-uk/users/ - используется /admin/auth/user/
     path('admin-uk/prompts/', admin_views.prompt_management, name='prompt_management'),
 
+
     # КЛАДР управление
     path('admin-uk/kladr/', kladr_views.kladr_management, name='kladr_management'),
     path('admin-uk/kladr/objects/', kladr_views.kladr_objects_list, name='kladr_objects'),

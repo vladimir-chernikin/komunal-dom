@@ -1,10 +1,12 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt  # ИСПРАВЛЕНО (2026-01-06): Для API endpoints
+from django.contrib import messages  # ИСПРАВЛЕНО (2026-04-06): Добавлен для новых dashboard
 from django.contrib.auth.models import User
 from django.http import Http404
 from django.conf import settings
 from .models import UserProfile
+from .mixins import get_primary_membership  # ИСПРАВЛЕНО (2026-04-06): Добавлен для новых dashboard
 from nsi.models import Company
 import json  # ИСПРАВЛЕНО (2026-01-05): Добавлен для парсинга metadata
 
@@ -92,6 +94,8 @@ def subscriber_page(request):
 
         context['work_orders'] = user_work_orders
         context['work_orders_count'] = user_work_orders.count()
+        context['active_work_orders'] = user_work_orders.filter(current_internal_status__short_code_en__in=['accepted_by_executor', 'in_progress']).count()
+        context['completed_work_orders'] = user_work_orders.filter(current_internal_status__short_code_en='completed').count()
 
     return render(request, 'portal/subscriber_page.html', context)
 
@@ -1051,3 +1055,73 @@ def contractor_dashboard(request):
     from work_orders.views import ContractorDashboardView
     view = ContractorDashboardView.as_view()
     return view(request)
+
+
+# ========== ВРЕМЕННЫЕ VIEW ФУНКЦИИ ДЛЯ НОВЫХ DASHBOARD (2026-04-06) ==========
+
+@login_required
+def executor_dashboard_new(request):
+    """
+    Временная функция для просмотра нового dashboard исполнителя с 3D дизайном
+
+    TODO: После утверждения дизайна - заменить executor_dashboard.html на executor_dashboard_new.html
+    """
+    membership = get_primary_membership(request.user)
+    if not membership or membership.role_code != 'executor':
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    context = {
+        'user': request.user,
+    }
+    return render(request, 'portal/executor_dashboard_new.html', context)
+
+
+@login_required
+def contractor_dashboard_new(request):
+    """
+    Временная функция для просмотра нового dashboard подрядчика с 3D дизайном
+
+    TODO: После утверждения дизайна - заменить contractor_dashboard.html на contractor_dashboard_new.html
+    """
+    membership = get_primary_membership(request.user)
+    if not membership or membership.role_code != 'contractor':
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    from work_orders.models import UserCompanyMembership
+    memberships = UserCompanyMembership.objects.filter(
+        user=request.user,
+        is_active=True
+    ).select_related('company')
+
+    context = {
+        'user': request.user,
+        'memberships': memberships,
+    }
+    return render(request, 'work_orders/contractor_dashboard_new.html', context)
+
+
+@login_required
+def subscriber_page_new(request):
+    """
+    Временная функция для просмотра нового dashboard жителя с 3D дизайном
+
+    TODO: После утверждения дизайна - заменить subscriber_page.html на subscriber_page_new.html
+    """
+    membership = get_primary_membership(request.user)
+    if not membership or membership.role_code != 'resident':
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    from work_orders.models import WorkOrder
+    work_orders = WorkOrder.objects.filter(
+        resident_user=request.user
+    ).order_by('-created_at')[:10]
+
+    context = {
+        'user': request.user,
+        'company': membership.company if membership else None,
+        'work_orders': work_orders,
+    }
+    return render(request, 'portal/subscriber_page_new.html', context)

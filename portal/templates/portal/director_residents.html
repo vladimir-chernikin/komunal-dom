@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Подразделения - {{ company.name }}</title>
+    <title>Жители - {{ company.name }}</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -73,7 +73,14 @@
             text-decoration: none;
         }
         
+        .stats-container {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
         .stat-card {
+            flex: 1;
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.5);
@@ -81,7 +88,6 @@
             padding: 1.5rem;
             box-shadow: 0 8px 32px rgba(0,0,0,0.1);
             text-align: center;
-            margin-bottom: 1.5rem;
         }
         
         .stat-card h5 {
@@ -115,20 +121,6 @@
         
         .table-hover tbody tr:hover {
             background: rgba(59, 130, 246, 0.1);
-        }
-        
-        .info-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            border-radius: 20px;
-            padding: 1.5rem;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-        }
-        
-        .info-container h6 {
-            color: #1a1a1a;
-            font-weight: 600;
         }
     </style>
 </head>
@@ -164,101 +156,108 @@
                     <nav aria-label="breadcrumb">
                         <ol class="breadcrumb">
                             <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
-                            <li class="breadcrumb-item active" aria-current="page">Подразделения</li>
+                            <li class="breadcrumb-item active" aria-current="page">Жители</li>
                         </ol>
                     </nav>
                     
                     <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h2><i class="fas fa-building"></i> Подразделения - {{ company.name }}</h2>
-                        {% if can_add_department %}
-                        <a href="{% url 'portal:director_add_department' %}" class="btn btn-success">
-                            <i class="fas fa-plus"></i>
-                            Добавить подразделение
+                        <h2><i class="fas fa-users"></i> Жители и сотрудники - {{ company.name }}</h2>
+                        <a href="{% url 'portal:director_add_resident' %}" class="btn btn-success">
+                            <i class="fas fa-user-plus"></i>
+                            Добавить пользователя
                         </a>
-                        {% endif %}
                     </div>
                 </div>
             </div>
             
             <!-- Статистика -->
-            <div class="row">
-                <div class="col-12">
-                    <div class="stat-card">
-                        <h5>Всего подразделений</h5>
-                        <h2>{{ total_departments }}</h2>
-                    </div>
+            <div class="stats-container">
+                <div class="stat-card">
+                    <h5 class="text-info">Жители</h5>
+                    <h2 class="text-info">{{ total_residents }}</h2>
+                </div>
+                <div class="stat-card">
+                    <h5 class="text-warning">Сотрудники</h5>
+                    <h2 class="text-warning">{{ total_staff }}</h2>
                 </div>
             </div>
             
-            <!-- Подразделения -->
+            <!-- Жители -->
             <div class="table-container">
-                <h5><i class="fas fa-sitemap"></i> Структура подразделений</h5>
-                {% if departments %}
+                <h5><i class="fas fa-home"></i> Жители ({{ total_residents }})</h5>
+                {% if residents %}
                 <div class="table-responsive">
                     <table class="table table-hover">
                         <thead>
                             <tr>
-                                <th>Название</th>
-                                <th>Родительское подразделение</th>
-                                <th>Сотрудников</th>
-                                <th>Код</th>
+                                <th>Пользователь</th>
+                                <th>Email</th>
+                                <th>Роль</th>
+                                <th>Подразделение</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for dept_info in departments %}
-                            {% with dept=dept_info.department %}
+                            {% for membership in residents %}
                             <tr>
                                 <td>
-                                    <strong>{{ dept.department_name }}</strong>
+                                    <strong>{{ membership.user.get_full_name|default:membership.user.username }}</strong>
                                 </td>
+                                <td>{{ membership.user.email|default:"-" }}</td>
                                 <td>
-                                    {% if dept.parent_department %}
-                                        <span class="badge bg-secondary">{{ dept.parent_department.department_name }}</span>
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
+                                    <span class="badge bg-info">
+                                        {% if membership.role_code == 'resident' %}Житель{% endif %}
+                                    </span>
                                 </td>
-                                <td>
-                                    <span class="badge bg-info">{{ dept_info.staff_count }}</span>
-                                </td>
-                                <td>
-                                    <code>{{ dept.department_code|default:"-" }}</code>
-                                </td>
+                                <td>{{ membership.department.name|default:"-" }}</td>
                             </tr>
-                            {% endwith %}
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
                 {% else %}
-                <div class="text-center py-5">
-                    <i class="fas fa-building fa-3x text-muted mb-3"></i>
-                    <p class="text-muted mb-0">Подразделения не найдены</p>
-                    {% if can_add_department %}
-                    <a href="{% url 'portal:director_add_department' %}" class="btn btn-success mt-3">
-                        <i class="fas fa-plus"></i>
-                        Создать первое подразделение
-                    </a>
-                    {% endif %}
-                </div>
+                <p class="text-muted mb-0">Жителей не найдено</p>
                 {% endif %}
             </div>
             
-            <!-- Инструкция -->
-            <div class="info-container">
-                <h6><i class="fas fa-info-circle"></i> Инструкция</h6>
-                <p class="mb-2">Управление пользователями и подразделениями:</p>
-                <ul class="mb-0">
-                    <li>Для добавления/редактирования пользователей используйте кнопки выше</li>
-                    <li>При создании пользователя обязательно укажите:
-                        <ul>
-                            <li>Привязку к компании: {{ company.name }}</li>
-                            <li>Роль: Житель, Исполнитель, Главный инженер или Директор УК</li>
-                            <li>Подразделение (для сотрудников)</li>
-                        </ul>
-                    </li>
-                    <li>Подразделения можно создавать иерархически (родительские и дочерние)</li>
-                </ul>
+            <!-- Сотрудники -->
+            <div class="table-container">
+                <h5><i class="fas fa-tools"></i> Сотрудники ({{ total_staff }})</h5>
+                {% if staff %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Пользователь</th>
+                                <th>Email</th>
+                                <th>Роль</th>
+                                <th>Подразделение</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for membership in staff %}
+                            <tr>
+                                <td>
+                                    <strong>{{ membership.user.get_full_name|default:membership.user.username }}</strong>
+                                </td>
+                                <td>{{ membership.user.email|default:"-" }}</td>
+                                <td>
+                                    <span class="badge bg-warning text-dark">
+                                        {% if membership.role_code == 'direktor_uk' %}Директор УК
+                                        {% elif membership.role_code == 'chief_engineer' %}Главный инженер
+                                        {% elif membership.role_code == 'executor' %}Исполнитель
+                                        {% else %}{{ membership.role_code }}
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>{{ membership.department.name|default:"-" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Сотрудников не найдено</p>
+                {% endif %}
             </div>
         </div>
     </section>

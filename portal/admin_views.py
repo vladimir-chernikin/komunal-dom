@@ -46,12 +46,12 @@ def admin_page(request):
         return redirect('portal:no_membership')
 
     # Фильтрация по компании
-    company_id = membership.company_id
+    company_scope = getattr(request, 'user_company_ids', None) or [membership.company_id]
 
     # Статистика по пользователям компании
     from work_orders.models import UserCompanyMembership
 
-    user_stats = get_user_statistics(company_id)
+    user_stats = get_user_statistics(company_scope)
 
     context = {
         'company': membership.company,
@@ -64,7 +64,7 @@ def admin_page(request):
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
         'resident_count': user_stats['by_role'].get('Житель', 0),
         'user_stats': user_stats,
-        'file_stats': get_file_statistics(company_id),
+        'file_stats': get_file_statistics(company_scope),
         'prompt_stats': get_prompt_statistics(),
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
     }
@@ -96,10 +96,10 @@ def director_page(request):
         return redirect('portal:welcome')
 
     # Фильтрация по компании
-    company_id = membership.company_id
+    company_scope = getattr(request, 'user_company_ids', None) or [membership.company_id]
 
     # Статистика по пользователям компании
-    user_stats = get_user_statistics(company_id)
+    user_stats = get_user_statistics(company_scope)
 
     context = {
         'company': membership.company,
@@ -112,9 +112,11 @@ def director_page(request):
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
         'resident_count': user_stats['by_role'].get('Житель', 0),
         'user_stats': user_stats,
-        'file_stats': get_file_statistics(company_id),
+        'file_stats': get_file_statistics(company_scope),
         'prompt_stats': get_prompt_statistics(),
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
+        'total_work_orders': 0,  # TODO: получить из WorkOrder
+        'active_work_orders': 0,  # TODO: получить из WorkOrder
     }
 
     return render(request, 'portal/director_page.html', context)
@@ -132,10 +134,6 @@ def chief_engineer_page(request):
     - Может переводить в статус "on_hold"
     - Может переоткрывать из completed
     """
-    # Проверка staff
-    if not request.user.is_staff:
-        messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:welcome')
 
     # Получаем membership
     membership = get_primary_membership(request.user)
@@ -149,10 +147,10 @@ def chief_engineer_page(request):
         return redirect('portal:welcome')
 
     # Фильтрация по компании
-    company_id = membership.company_id
+    company_scope = getattr(request, 'user_company_ids', None) or [membership.company_id]
 
     # Статистика по пользователям компании
-    user_stats = get_user_statistics(company_id)
+    user_stats = get_user_statistics(company_scope)
 
     context = {
         'company': membership.company,
@@ -167,19 +165,22 @@ def chief_engineer_page(request):
     return render(request, 'portal/chief_engineer_page.html', context)
 
 
-def get_user_statistics(company_id=None):
+def get_user_statistics(company_scope=None):
     """
     Получить статистику по пользователям
 
     ПАРАМЕТРЫ:
-    - company_id: фильтрация по компании (если указана)
+    - company_scope: int или список company_id для фильтрации
     """
     from work_orders.models import UserCompanyMembership
 
     memberships = UserCompanyMembership.objects.filter(is_active=True)
 
-    if company_id:
-        memberships = memberships.filter(company_id=company_id)
+    if company_scope:
+        if isinstance(company_scope, (list, tuple, set)):
+            memberships = memberships.filter(company_id__in=company_scope)
+        else:
+            memberships = memberships.filter(company_id=company_scope)
 
     stats = {
         'total': memberships.count(),
@@ -199,22 +200,24 @@ def get_user_statistics(company_id=None):
     return stats
 
 
-def get_file_statistics(company_id=None):
+def get_file_statistics(company_scope=None):
     """
     Получить статистику по файлам
 
     ПАРАМЕТРЫ:
-    - company_id: фильтрация по компании (если указана)
+    - company_scope: int или список company_id для фильтрации
     """
     files = UserFile.objects.all()
 
     # Фильтрация по пользователям компании
-    if company_id:
+    if company_scope:
         from work_orders.models import UserCompanyMembership
-        user_ids = UserCompanyMembership.objects.filter(
-            company_id=company_id,
-            is_active=True
-        ).values_list('user_id', flat=True)
+        membership_filter = {'is_active': True}
+        if isinstance(company_scope, (list, tuple, set)):
+            membership_filter['company_id__in'] = company_scope
+        else:
+            membership_filter['company_id'] = company_scope
+        user_ids = UserCompanyMembership.objects.filter(**membership_filter).values_list('user_id', flat=True)
         files = files.filter(user_id__in=user_ids)
 
     stats = {
@@ -291,11 +294,6 @@ def director_residents(request):
 
     ДОСТУП: direktor_uk, chief_engineer
     """
-    # Проверка staff
-    if not request.user.is_staff:
-        messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:welcome')
-
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
@@ -344,11 +342,6 @@ def director_departments(request):
 
     ДОСТУП: direktor_uk, chief_engineer
     """
-    # Проверка staff
-    if not request.user.is_staff:
-        messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:welcome')
-
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
@@ -405,10 +398,6 @@ def director_add_resident(request):
 
     ДОСТУП: direktor_uk, chief_engineer
     """
-    # Проверка staff
-    if not request.user.is_staff:
-        messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:welcome')
 
     # Получаем membership
     membership = get_primary_membership(request.user)
@@ -510,9 +499,6 @@ def director_add_department(request):
     ДОСТУП: direktor_uk (только директор)
     """
     # Проверка staff
-    if not request.user.is_staff:
-        messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:welcome')
 
     # Получаем membership
     membership = get_primary_membership(request.user)
@@ -583,3 +569,63 @@ def director_add_department(request):
     context['dashboard_title'] = dashboard_title
 
     return render(request, 'portal/director_add_department.html', context)
+
+
+# ========== ВРЕМЕННЫЕ VIEW ФУНКЦИИ ДЛЯ НОВЫХ DASHBOARD (2026-04-06) ==========
+
+@login_required
+def director_page_new(request):
+    """
+    Временная функция для просмотра нового dashboard директора с 3D дизайном
+
+    TODO: После утверждения дизайна - заменить director_page.html на director_page_new.html
+    """
+    # Проверка доступа
+    if not request.user.is_staff:
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    membership = get_primary_membership(request.user)
+    if not membership:
+        messages.warning(request, 'Вы не привязаны к компании')
+        return redirect('portal:no_membership')
+
+    company_id = membership.company_id
+
+    # Статистика
+    user_stats = get_user_statistics(company_id)
+
+    context = {
+        'company': membership.company,
+        'total_users': user_stats['total'],
+        'resident_count': user_stats['by_role'].get('Житель', 0),
+    }
+
+    return render(request, 'portal/director_page_new.html', context)
+
+
+@login_required
+def chief_engineer_page_new(request):
+    """
+    Временная функция для просмотра нового dashboard главного инженера с 3D дизайном
+
+    TODO: После утверждения дизайна - заменить chief_engineer_page.html на chief_engineer_page_new.html
+    """
+    # Проверка доступа
+    membership = get_primary_membership(request.user)
+    if not membership or membership.role_code != 'chief_engineer':
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    company_id = membership.company_id
+
+    # Статистика
+    user_stats = get_user_statistics(company_id)
+
+    context = {
+        'company': membership.company,
+        'total_users': user_stats['total'],
+        'executor_count': user_stats['by_role'].get('Исполнитель', 0),
+    }
+
+    return render(request, 'portal/chief_engineer_page_new.html', context)

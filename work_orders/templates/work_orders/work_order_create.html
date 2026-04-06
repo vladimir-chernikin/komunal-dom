@@ -1,124 +1,245 @@
-{% extends 'work_orders/base.html' %}
-
-{% block title %}Создать заявку - УК Комфорт{% endblock %}
-
-{% block content %}
-<div class="row">
-    <div class="col-12">
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'work_orders:executor_dashboard' %}">Дашборд</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Создать заявку</li>
-            </ol>
-        </nav>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Создать новую заявку</h5>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Создать заявку - 3D город</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #f8f8f8;
+            --bg-secondary: #ffffff;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --accent-color: #3B82F6;
+            --font-family: 'Inter', sans-serif;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--font-family);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* === HERO С 3D ГОРОДОМ === */
+        .aerial-hero {
+            position: relative;
+            min-height: 600px;
+            overflow: hidden;
+            background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+        }
+        
+        .city-3d-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .aerial-content {
+            position: relative;
+            z-index: 2;
+            padding: 3rem 0;
+            color: white;
+        }
+        
+        .aerial-hero h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            color: #1a1a1a;
+        }
+        
+        .aerial-hero .breadcrumb {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+        }
+        
+        .aerial-hero .breadcrumb a {
+            color: #3B82F6;
+            text-decoration: none;
+        }
+        
+        .form-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .form-label {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #3B82F6, #2563EB);
+            border: none;
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #2563EB, #1D4ED8);
+        }
+    </style>
+</head>
+<body>
+    <section class="aerial-hero">
+        <!-- SVG 3D ГОРОД -->
+        <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#87CEEB"/>
+                    <stop offset="50%" style="stop-color:#B0E0E6"/>
+                    <stop offset="100%" style="stop-color:#98D8AA"/>
+                </linearGradient>
+                
+                <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#98D8AA"/>
+                    <stop offset="100%" style="stop-color:#7CB887"/>
+                </linearGradient>
+                
+                <filter id="buildingShadowFilter">
+                    <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+                    <feOffset dx="3" dy="3"/>
+                </filter>
+            </defs>
+            
+            <rect width="1200" height="600" fill="url(#skyGradient)"/>
+            <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
+        </svg>
+        
+        <div class="container aerial-content">
+            <div class="row">
+                <div class="col-12">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="/director/">Директор УК</a></li>
+                            <li class="breadcrumb-item active" aria-current="page">Создать заявку</li>
+                        </ol>
+                    </nav>
+                </div>
             </div>
-            <div class="card-body">
-                <form method="post">
-                    {% csrf_token %}
-
-                    <div class="mb-3">
-                        <label for="{{ form.object.id_for_label }}" class="form-label">Объект обслуживания *</label>
-                        {{ form.object }}
-                        {% if form.object.errors %}
-                        <div class="text-danger">{{ form.object.errors }}</div>
-                        {% endif %}
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="{{ form.service.id_for_label }}" class="form-label">Услуга *</label>
-                        {{ form.service }}
-                        {% if form.service.errors %}
-                        <div class="text-danger">{{ form.service.errors }}</div>
-                        {% endif %}
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="{{ form.original_request_text.id_for_label }}" class="form-label">Описание заявки *</label>
-                        {{ form.original_request_text }}
-                        {% if form.original_request_text.errors %}
-                        <div class="text-danger">{{ form.original_request_text.errors }}</div>
-                        {% endif %}
-                        <div class="form-text">Опишите проблему подробно</div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
+            
+            <div class="row mt-4">
+                <div class="col-lg-8">
+                    <div class="form-container">
+                        <h2 class="mb-4"><i class="bi bi-plus-circle"></i> Создать новую заявку</h2>
+                        
+                        <form method="post">
+                            {% csrf_token %}
+                            
                             <div class="mb-3">
-                                <label for="{{ form.priority_code.id_for_label }}" class="form-label">Приоритет</label>
-                                {{ form.priority_code }}
-                                {% if form.priority_code.errors %}
-                                <div class="text-danger">{{ form.priority_code.errors }}</div>
+                                <label for="{{ form.object.id_for_label }}" class="form-label">Объект обслуживания *</label>
+                                {{ form.object }}
+                                {% if form.object.errors %}
+                                <div class="text-danger">{{ form.object.errors }}</div>
                                 {% endif %}
                             </div>
-                        </div>
-                        <div class="col-md-6">
+                            
                             <div class="mb-3">
-                                <div class="form-check mt-4">
-                                    {{ form.is_emergency }}
-                                    <label class="form-check-label" for="{{ form.is_emergency.id_for_label }}">
-                                        Аварийная заявка
-                                    </label>
-                                    {% if form.is_emergency.errors %}
-                                    <div class="text-danger">{{ form.is_emergency.errors }}</div>
-                                    {% endif %}
+                                <label for="{{ form.service.id_for_label }}" class="form-label">Услуга *</label>
+                                {{ form.service }}
+                                {% if form.service.errors %}
+                                <div class="text-danger">{{ form.service.errors }}</div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="{{ form.original_request_text.id_for_label }}" class="form-label">Описание заявки *</label>
+                                {{ form.original_request_text }}
+                                {% if form.original_request_text.errors %}
+                                <div class="text-danger">{{ form.original_request_text.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">Опишите проблему подробно</div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="{{ form.priority_code.id_for_label }}" class="form-label">Приоритет</label>
+                                        {{ form.priority_code }}
+                                        {% if form.priority_code.errors %}
+                                        <div class="text-danger">{{ form.priority_code.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <div class="form-check mt-4">
+                                            {{ form.is_emergency }}
+                                            <label class="form-check-label" for="{{ form.is_emergency.id_for_label }}">
+                                                Аварийная заявка
+                                            </label>
+                                            {% if form.is_emergency.errors %}
+                                            <div class="text-danger">{{ form.is_emergency.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                            
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <a href="/director/" class="btn btn-secondary">Отмена</a>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-check-circle"></i> Создать заявку
+                                </button>
+                            </div>
+                        </form>
                     </div>
-
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <a href="{% url 'work_orders:executor_dashboard' %}" class="btn btn-secondary">Отмена</a>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-circle"></i> Создать заявку
-                        </button>
+                </div>
+                
+                <div class="col-lg-4">
+                    <div class="form-container">
+                        <h5 class="mb-3"><i class="bi bi-info-circle"></i> Подсказка</h5>
+                        <p class="mb-2">При создании заявки:</p>
+                        <ul class="mb-0">
+                            <li>Выберите объект обслуживания</li>
+                            <li>Выберите тип услуги</li>
+                            <li>Опишите проблему подробно</li>
+                            <li>Укажите приоритет при необходимости</li>
+                            <li>Отметьте как аварийную, если требуется срочное вмешательство</li>
+                        </ul>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
-    </div>
-
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Подсказка</h6>
-            </div>
-            <div class="card-body">
-                <p class="mb-2">При создании заявки:</p>
-                <ul class="mb-0">
-                    <li>Выберите объект обслуживания</li>
-                    <li>Выберите тип услуги</li>
-                    <li>Опишите проблему подробно</li>
-                    <li>Укажите приоритет при необходимости</li>
-                    <li>Отметьте как аварийную, если требуется срочное вмешательство</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Добавляем классы формы Bootstrap
-    const fields = ['object', 'service', 'original_request_text', 'priority_code'];
-    fields.forEach(field => {
-        const element = document.getElementById('id_' + field);
-        if (element) {
-            element.classList.add('form-select');
-            if (field === 'original_request_text') {
-                element.classList.remove('form-select');
-                element.classList.add('form-control');
+    </section>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const fields = ['object', 'service', 'original_request_text', 'priority_code'];
+        fields.forEach(field => {
+            const element = document.getElementById('id_' + field);
+            if (element) {
+                element.classList.add('form-select');
+                if (field === 'original_request_text') {
+                    element.classList.remove('form-select');
+                    element.classList.add('form-control');
+                }
             }
-        }
+        });
     });
-});
-</script>
-
-{% endblock %}
+    </script>
+</body>
+</html>
