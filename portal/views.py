@@ -85,17 +85,29 @@ def subscriber_page(request):
 
         # Получаем заявки жителя
         from work_orders.models import WorkOrder
-        user_work_orders = WorkOrder.objects.filter(
+        all_work_orders = WorkOrder.objects.filter(
             resident_user=request.user,
             is_test=False
         ).select_related(
             'current_internal_status', 'service'
-        ).order_by('-created_at')[:5]  # Последние 5 заявок
+        ).order_by('-created_at')
+
+        # Сначала получаем подсчеты (до среза)
+        work_orders_count = all_work_orders.count()
+        active_work_orders = all_work_orders.filter(
+            current_internal_status__short_code_en__in=['accepted_by_executor', 'in_progress']
+        ).count()
+        completed_work_orders = all_work_orders.filter(
+            current_internal_status__short_code_en='completed'
+        ).count()
+
+        # Потом применяем срез для отображения
+        user_work_orders = all_work_orders[:5]  # Последние 5 заявок
 
         context['work_orders'] = user_work_orders
-        context['work_orders_count'] = user_work_orders.count()
-        context['active_work_orders'] = user_work_orders.filter(current_internal_status__short_code_en__in=['accepted_by_executor', 'in_progress']).count()
-        context['completed_work_orders'] = user_work_orders.filter(current_internal_status__short_code_en='completed').count()
+        context['work_orders_count'] = work_orders_count
+        context['active_work_orders'] = active_work_orders
+        context['completed_work_orders'] = completed_work_orders
 
     return render(request, 'portal/subscriber_page.html', context)
 
