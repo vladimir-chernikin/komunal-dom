@@ -560,7 +560,6 @@ def executor_dashboard(request):
             'id': wo.id,
             'work_order_no': wo.work_order_no,
             'created_at': wo.created_at,
-            'updated_at': wo.updated_at,
             'description': wo.original_request_text,
             'status': wo.current_internal_status.short_code_en if wo.current_internal_status else 'unknown',
             'service_name': wo.service.service_name if wo.service else '—',
@@ -599,9 +598,9 @@ def executor_dashboard(request):
         req['status_display'] = status_map.get(req['status'], req['status'])
 
         # Таймер для заявок "В работе"
-        if req['status'] == 'in_progress' and req['updated_at']:
+        if req['status'] == 'in_progress' and req['created_at']:
             now = datetime.now(timezone.utc)
-            time_in_work = now - req['updated_at']
+            time_in_work = now - req['created_at']
             total_seconds_work = int(time_in_work.total_seconds())
             mins_work = total_seconds_work // 60
             hrs_work = mins_work // 60
