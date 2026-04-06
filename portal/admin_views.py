@@ -14,8 +14,9 @@ from django.contrib import messages
 from django.contrib.auth.models import User
 from django.db.models import Count, Q
 from django.http import JsonResponse
+from django.utils import timezone
 from portal.models import UserProfile, AIPrompt
-from portal.mixins import get_primary_membership
+from portal.mixins import get_primary_membership, get_role_dashboard_url
 from file_manager.models import UserFile
 
 # Импорты для КЛАДР статистики
@@ -281,3 +282,304 @@ def prompt_management(request):
     }
 
     return render(request, 'portal/prompt_management.html', context)
+
+
+@login_required
+def director_residents(request):
+    """
+    Управление жителями ТСЖ (только своей компании)
+
+    ДОСТУП: direktor_uk, chief_engineer
+    """
+    # Проверка staff
+    if not request.user.is_staff:
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        messages.warning(request, 'Вы не привязаны к компании')
+        return redirect('portal:no_membership')
+
+    # Проверка роли (доступно директору и главному инженеру)
+    if membership.role_code not in ['direktor_uk', 'chief_engineer']:
+        messages.error(request, 'Доступ разрешен только Директорам УК и Главным инженерам')
+        return redirect('portal:welcome')
+
+    # Фильтрация по компании
+    company_id = membership.company_id
+
+    # Получаем всех пользователей компании (жители + сотрудники)
+    from work_orders.models import UserCompanyMembership
+    company_memberships = UserCompanyMembership.objects.filter(
+        company_id=company_id,
+        is_active=True
+    ).select_related('user', 'department').order_by('user__username')
+
+    # Разделяем по ролям
+    residents = [m for m in company_memberships if m.role_code == 'resident']
+    staff = [m for m in company_memberships if m.role_code != 'resident']
+
+    context = {
+        'company': membership.company,
+        'residents': residents,
+        'staff': staff,
+        'total_residents': len(residents),
+        'total_staff': len(staff),
+    }
+
+    # Breadcrumbs для возврата на правильный дашборд
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+
+    return render(request, 'portal/director_residents.html', context)
+
+
+@login_required
+def director_departments(request):
+    """
+    Управление подразделениями ТСЖ (только своей компании)
+
+    ДОСТУП: direktor_uk, chief_engineer
+    """
+    # Проверка staff
+    if not request.user.is_staff:
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        messages.warning(request, 'Вы не привязаны к компании')
+        return redirect('portal:no_membership')
+
+    # Проверка роли (доступно директору и главному инженеру)
+    if membership.role_code not in ['direktor_uk', 'chief_engineer']:
+        messages.error(request, 'Доступ разрешен только Директорам УК и Главным инженерам')
+        return redirect('portal:welcome')
+
+    # Фильтрация по компании
+    company_id = membership.company_id
+
+    # Получаем подразделения компании
+    from work_orders.models import CompanyDepartment
+    departments = CompanyDepartment.objects.filter(
+        company_id=company_id,
+        is_active=True
+    ).select_related('parent_department').order_by('department_name')
+
+    # Статистика по сотрудникам в подразделениях
+    from work_orders.models import UserCompanyMembership
+    departments_with_stats = []
+    for dept in departments:
+        staff_count = UserCompanyMembership.objects.filter(
+            department_id=dept.id,
+            is_active=True
+        ).count()
+        departments_with_stats.append({
+            'department': dept,
+            'staff_count': staff_count,
+        })
+
+    context = {
+        'company': membership.company,
+        'departments': departments_with_stats,
+        'total_departments': departments.count(),
+        'can_add_department': membership.role_code == 'direktor_uk',  # Только директор может добавлять
+    }
+
+    # Breadcrumbs для возврата на правильный дашборд
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+
+    return render(request, 'portal/director_departments.html', context)
+
+
+@login_required
+def director_add_resident(request):
+    """
+    Добавление жителя/сотрудника директором ТСЖ
+
+    ДОСТУП: direktor_uk, chief_engineer
+    """
+    # Проверка staff
+    if not request.user.is_staff:
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        messages.warning(request, 'Вы не привязаны к компании')
+        return redirect('portal:no_membership')
+
+    # Проверка роли (доступно директору и главному инженеру)
+    if membership.role_code not in ['direktor_uk', 'chief_engineer']:
+        messages.error(request, 'Доступ разрешен только Директорам УК и Главным инженерам')
+        return redirect('portal:welcome')
+
+    company_id = membership.company_id
+
+    # Обработка формы
+    if request.method == 'POST':
+        from portal.forms import AddResidentForm
+        form = AddResidentForm(request.POST)
+
+        if form.is_valid():
+            # Создаем пользователя
+            user = User.objects.create_user(
+                username=form.cleaned_data['username'],
+                email=form.cleaned_data.get('email', ''),
+                first_name=form.cleaned_data.get('first_name', ''),
+                last_name=form.cleaned_data.get('last_name', ''),
+                password=form.cleaned_data['password'],
+                is_staff=False  # Жители - не staff
+            )
+
+            # Получаем или создаем UserProfile
+            from portal.models import UserProfile
+            profile, created = UserProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    'timezone': 'Europe/Moscow',
+                    'role': 'uk_user'
+                }
+            )
+
+            # Получаем подразделение (если есть)
+            from work_orders.models import CompanyDepartment
+            department_id = request.POST.get('department')
+            department = None
+            if department_id and department_id != '':
+                try:
+                    department = CompanyDepartment.objects.get(
+                        id=int(department_id),
+                        company_id=company_id
+                    )
+                except CompanyDepartment.DoesNotExist:
+                    pass
+
+            # Создаем UserCompanyMembership
+            from work_orders.models import UserCompanyMembership
+            UserCompanyMembership.objects.create(
+                user=user,
+                company_id=company_id,
+                department=department,
+                role_code=form.cleaned_data['role'],
+                is_primary=True,
+                is_active=True,
+                date_from=timezone.now(),
+                notes=form.cleaned_data.get('notes', '')
+            )
+
+            messages.success(request, f'Пользователь {user.username} успешно создан!')
+            return redirect('portal:director_residents')
+    else:
+        from portal.forms import AddResidentForm
+        form = AddResidentForm()
+
+    # Получаем подразделения для выбора
+    from work_orders.models import CompanyDepartment
+    departments = CompanyDepartment.objects.filter(
+        company_id=company_id,
+        is_active=True
+    ).order_by('department_name')
+
+    context = {
+        'company': membership.company,
+        'form': form,
+        'departments': departments,
+    }
+
+    # Breadcrumbs для возврата на правильный дашборд
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+
+    return render(request, 'portal/director_add_resident.html', context)
+
+
+@login_required
+def director_add_department(request):
+    """
+    Добавление подразделения директором ТСЖ
+
+    ДОСТУП: direktor_uk (только директор)
+    """
+    # Проверка staff
+    if not request.user.is_staff:
+        messages.error(request, 'Доступ запрещен!')
+        return redirect('portal:welcome')
+
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        messages.warning(request, 'Вы не привязаны к компании')
+        return redirect('portal:no_membership')
+
+    # Проверка роли (доступно только директору)
+    if membership.role_code != 'direktor_uk':
+        messages.error(request, 'Доступ разрешен только Директорам УК')
+        return redirect('portal:welcome')
+
+    company_id = membership.company_id
+
+    # Обработка формы
+    if request.method == 'POST':
+        from portal.forms import AddDepartmentForm
+        form = AddDepartmentForm(request.POST, departments=[])
+
+        if form.is_valid():
+            # Получаем родительское подразделение (если указан)
+            parent_id = request.POST.get('parent_department')
+            parent = None
+            if parent_id and parent_id != '':
+                from work_orders.models import CompanyDepartment
+                try:
+                    parent = CompanyDepartment.objects.get(
+                        id=int(parent_id),
+                        company_id=company_id
+                    )
+                except CompanyDepartment.DoesNotExist:
+                    pass
+
+            # Создаем подразделение
+            from work_orders.models import CompanyDepartment
+            department = CompanyDepartment.objects.create(
+                company_id=company_id,
+                department_code=form.cleaned_data['department_code'],
+                department_name=form.cleaned_data['department_name'],
+                parent_department=parent,
+                description=form.cleaned_data.get('description', ''),
+                is_active=True,
+                is_test=False
+            )
+
+            messages.success(request, f'Подразделение "{department.department_name}" успешно создано!')
+            return redirect('portal:director_departments')
+    else:
+        from portal.forms import AddDepartmentForm
+
+        # Получаем существующие подразделения для выбора родительского
+        from work_orders.models import CompanyDepartment
+        departments = CompanyDepartment.objects.filter(
+            company_id=company_id,
+            is_active=True
+        ).order_by('department_name')
+
+        form = AddDepartmentForm(departments=departments)
+
+    context = {
+        'company': membership.company,
+        'form': form,
+    }
+
+    # Breadcrumbs для возврата на правильный дашборд
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+
+    return render(request, 'portal/director_add_department.html', context)

@@ -1,0 +1,140 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Подразделения - {{ company.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Подразделения</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h1 class="h3">
+                    <i class="fas fa-building"></i>
+                    Подразделения - {{ company.name }}
+                </h1>
+                {% if can_add_department %}
+                <a href="{% url 'portal:director_add_department' %}" class="btn btn-success">
+                    <i class="fas fa-plus"></i>
+                    Добавить подразделение
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Всего подразделений</h5>
+                    <h2 class="display-4">{{ total_departments }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Подразделения -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-sitemap"></i>
+                        Структура подразделений
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if departments %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Название</th>
+                                    <th>Родительское подразделение</th>
+                                    <th>Сотрудников</th>
+                                    <th>Код</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for dept_info in departments %}
+                                {% with dept=dept_info.department %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ dept.department_name }}</strong>
+                                    </td>
+                                    <td>
+                                        {% if dept.parent_department %}
+                                            <span class="badge bg-secondary">{{ dept.parent_department.department_name }}</span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ dept_info.staff_count }}</span>
+                                    </td>
+                                    <td>
+                                        <code>{{ dept.department_code|default:"-" }}</code>
+                                    </td>
+                                </tr>
+                                {% endwith %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-building fa-3x text-muted mb-3"></i>
+                        <p class="text-muted mb-0">Подразделения не найдены</p>
+                        {% if can_add_department %}
+                        <a href="{% url 'portal:director_add_department' %}" class="btn btn-success mt-3">
+                            <i class="fas fa-plus"></i>
+                            Создать первое подразделение
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Инструкция -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle"></i>
+                        Инструкция
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2">Управление пользователями и подразделениями:</p>
+                    <ul class="mb-0">
+                        <li>Для добавления/редактирования пользователей используйте кнопки выше</li>
+                        <li>При создании пользователя обязательно укажите:
+                            <ul>
+                                <li>Привязку к компании: {{ company.name }}</li>
+                                <li>Роль: Житель, Исполнитель, Главный инженер или Директор УК</li>
+                                <li>Подразделение (для сотрудников)</li>
+                            </ul>
+                        </li>
+                        <li>Подразделения можно создавать иерархически (родительские и дочерние)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
