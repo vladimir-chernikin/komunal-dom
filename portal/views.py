@@ -5,6 +5,7 @@ from django.contrib import messages  # ИСПРАВЛЕНО (2026-04-06): Доб
 from django.contrib.auth.models import User
 from django.http import Http404
 from django.conf import settings
+from django.db import models
 from .models import UserProfile
 from .mixins import get_primary_membership  # ИСПРАВЛЕНО (2026-04-06): Добавлен для новых dashboard
 from nsi.models import Company
@@ -531,10 +532,14 @@ def executor_dashboard(request):
     status_filter = request.GET.get('status', '')
     search_query = request.GET.get('q', '')
 
-    # Базовый QuerySet заявок для отдела исполнителя
+    # Базовый QuerySet заявок:
+    # - Мои заявки: назначенные на меня (любой отдел)
+    # - Доступные заявки: моего отдела (не назначенные)
     work_orders_qs = WorkOrder.objects.filter(
-        is_test=False,
-        department_id=membership.department_id
+        is_test=False
+    ).filter(
+        models.Q(responsible_user_id=request.user.id) |
+        models.Q(responsible_user_id__isnull=True, department_id=membership.department_id)
     ).select_related(
         'current_internal_status',
         'service',
