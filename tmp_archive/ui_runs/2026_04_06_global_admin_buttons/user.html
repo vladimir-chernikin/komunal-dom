@@ -1,0 +1,1292 @@
+<!DOCTYPE html><html lang="ru-ru" style="height: auto;"><head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <!--  Prevent admin panel being crawled by search engines -->
+    <meta name="robots" content="none, noarchive">
+
+    <title>Изменить пользователь | Административный сайт Django</title>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="/static/vendor/fontawesome-free/css/all.min.css">
+
+    <!-- Bootstrap and adminLTE -->
+    <link rel="stylesheet" href="/static/vendor/adminlte/css/adminlte.min.css" id="adminlte-css">
+
+    <!-- Bootswatch theme -->
+    
+
+    
+
+    <!-- Custom fixes for django -->
+    <link rel="stylesheet" href="/static/jazzmin/css/main.css">
+
+    
+
+    <!-- favicons -->
+    <link rel="shortcut icon" href="/static/vendor/adminlte/img/AdminLTELogo.png" type="image/png">
+    <link rel="icon" href="/static/vendor/adminlte/img/AdminLTELogo.png" sizes="32x32" type="image/png">
+
+    
+    <!-- Google Font: Source Sans Pro -->
+    <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700" rel="stylesheet">
+    
+
+    
+
+     
+    <link rel="stylesheet" href="/static/vendor/select2/css/select2.min.css">
+
+<style>
+    /* Hide legacy action areas from both Unfold and Jazzmin. */
+    #submit-row,
+    #jazzy-actions,
+    .object-tools {
+        display: none !important;
+    }
+
+    /* Let the main form body use the freed width. */
+    #content-main,
+    #content-main > form {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+
+    .change-form .row > .col-12.col-lg-9 {
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+    }
+
+    .change-form .row > .col-12.col-lg-3 {
+        display: none !important;
+    }
+
+    .global-submit-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 12px;
+        width: 100%;
+        margin: 0 0 20px 0;
+        padding: 12px 16px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        box-sizing: border-box;
+    }
+
+    .global-submit-row input[type="submit"],
+    .global-submit-row .close-form-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 148px;
+        padding: 10px 20px;
+        border-radius: 6px;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.2;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background-color 0.2s ease-in-out;
+    }
+
+    .global-submit-row input[type="submit"] {
+        background: #28a745;
+        color: #fff;
+    }
+
+    .global-submit-row input[type="submit"]:hover {
+        background: #218838;
+    }
+
+    .global-submit-row .close-form-link {
+        background: #6c757d;
+        color: #fff;
+    }
+
+    .global-submit-row .close-form-link:hover {
+        background: #5a6268;
+        color: #fff;
+    }
+</style>
+
+    
+     
+    <script type="text/javascript" src="/admin/jsi18n/"></script>
+    <link href="/static/css/admin_custom.css" media="all" rel="stylesheet">
+<script src="/static/admin/js/vendor/jquery/jquery.js"></script>
+<script src="/static/admin/js/jquery.init.js"></script>
+<script src="/static/admin/js/core.js"></script>
+<script src="/static/admin/js/admin/RelatedObjectLookups.js"></script>
+<script src="/static/admin/js/SelectBox.js"></script>
+<script src="/static/admin/js/actions.js"></script>
+<script src="/static/admin/js/SelectFilter2.js"></script>
+<script src="/static/admin/js/urlify.js"></script>
+<script src="/static/admin/js/prepopulate.js"></script>
+<script src="/static/admin/js/vendor/xregexp/xregexp.js"></script>
+
+</head>
+<body class="sidebar-mini app-auth model-user change-form accent-primary theme-default" data-admin-utc-offset="10800" style="height: auto;">
+
+<div class="wrapper">
+
+    
+        <nav class="main-header navbar navbar-expand navbar-white navbar-light" id="jazzy-navbar">
+            <ul class="navbar-nav">
+
+                
+                    <li class="nav-item">
+                        <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
+                    </li>
+                
+
+                
+                
+            </ul>
+
+            
+
+            <ul class="navbar-nav ml-auto">
+
+                
+                
+
+                
+
+                <li class="nav-item dropdown">
+                    <a class="nav-link btn" data-toggle="dropdown" href="#" title="Admin_Aspect">
+                        <i class="far fa-user" aria-hidden="true"></i>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-lg dropdown-menu-left" id="jazzy-usermenu">
+                        <span class="dropdown-header">Аккаунт</span>
+                        <div class="dropdown-divider"></div>
+                        <a href="/admin/password_change/" class="dropdown-item">
+                            <i class="fas fa-key mr-2"></i> Изменить пароль
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <form id="logout-form" method="post" action="/admin/logout/">
+                            <input type="hidden" name="csrfmiddlewaretoken" value="m3UYkF0laAXhH63uF70hw5xvK6lE2lSSqzG0snyUTUQV9rXbQSONL2YPXHK6J18S" style="">
+                            <button type="submit" class="dropdown-item"><i class="fas fa-users mr-2"></i> Выйти</button>
+                        </form>
+                        
+                        
+                            <div class="dropdown-divider"></div>
+                            <a href="/db-sql/" class="dropdown-item">
+                                <i class="fas fa-database mr-2"></i> СУБД SQL
+                            </a>
+                        
+                            <div class="dropdown-divider"></div>
+                            <a href="/director/" class="dropdown-item">
+                                <i class="fas fa-user-tie mr-2"></i> Кабинет директора
+                            </a>
+                        
+                        <div class="dropdown-divider"></div>
+                        
+                            <a href="/admin/auth/user/1/change/" class="dropdown-item dropdown-footer active">Профиль</a>
+                        
+                    </div>
+                </li>
+            </ul>
+        </nav>
+        
+        
+            
+
+            <aside class="main-sidebar elevation-4 sidebar-dark-primary" id="jazzy-sidebar">
+                <a href="/admin/" class="brand-link " id="jazzy-logo">
+                    <img src="/static/vendor/adminlte/img/AdminLTELogo.png" alt="Панель управления Logo" class="img-circle brand-image elevation-3" style="opacity: .8">
+                    <span class="brand-text font-weight-light">УК "Аспект"</span>
+                </a>
+
+                <div class="sidebar">
+                    <div class="user-panel mt-3 pb-3 mb-3 d-flex">
+                        <div class="image">
+                            
+                                <i class="fas fa-inverse user-profile fa-user-circle"></i>
+                            
+                        </div>
+                        <div class="info">
+                            
+                                <a href="/admin/auth/user/1/change/" class="d-block active">Admin_Aspect</a>
+                            
+                        </div>
+                    </div>
+
+                    <nav class="mt-2">
+                        <ul class="nav nav-pills nav-sidebar flex-column " data-widget="treeview" role="menu" data-collapsible="false">
+
+                            <li class="nav-item">
+                                <a href="/admin/" class="nav-link">
+                                    <i class="nav-icon fas fa-th-large"></i>
+                                    <p>Админпанель</p>
+                                </a>
+                            </li>
+
+                            
+                                
+                                    <li class="nav-header">Work_Orders</li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/slainstance/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>SLA экземпляры</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/slapolicy/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>SLA-политики</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/workorderattachment/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Вложения заявок</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/requestintake/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Входящие события</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/workorder/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Заявки</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/companyroutemapping/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Маппинги маршрутов компаний</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/workorderstatustransition/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Переходы статусов</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/companyobjectserviceperiod/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Периоды обслуживания объектов</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/companydepartment/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Подразделения компаний</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/contractororganization/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Подрядные организации</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/workordereventlog/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>События заявок</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/workorderstatusref/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Статусы заявок</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/routeref/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Типовые маршруты</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/notificationoutbox/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Уведомления</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/work_orders/usercompanymembership/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Членства в компаниях</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                
+                                    <li class="nav-header">КЛАДР</li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/kladr/kladraddressobject/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Адресные объекты КЛАДР</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/kladr/building/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Здания</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/kladr/servicearea/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Зоны обслуживания</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/kladr/dataimportlog/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Логи импорта данных</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/kladr/kladrobjecttype/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Типы объектов КЛАДР</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                
+                                    <li class="nav-header">Логи диалогов</li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/message_handler/communicativescript/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Коммуникативные скрипты</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/message_handler/apierrorlog/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Логи ошибок API</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/message_handler/messagelog/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Логи сообщений</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                
+                                    <li class="nav-header">НСИ</li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/nsi/equipmenttype/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Виды общедомового оборудования</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/nsi/refcategory/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Категории услуг ЖКХ</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/nsi/company/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Компании</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                
+                                    <li class="nav-header">Пользователи и группы</li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/auth/group/" class="nav-link">
+                                                <i class="nav-icon fas fa-users"></i> <p>Группы</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/auth/user/" class="nav-link">
+                                                <i class="nav-icon fas fa-user"></i> <p>Пользователи</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                
+                                    <li class="nav-header">УК Аспект</li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/portal/aiprompt/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>AI и Промпты: Промпты</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/portal/llmtestresult/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>AI и Промпты: Результаты тестов LLM</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/portal/promptpreset/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>AI и Промпты: Тестовые пресеты</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/portal/prompttemplate/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>AI и Промпты: Шаблоны промптов</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/portal/semanticpattern/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Семантические паттерны</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/portal/servicescatalog/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Справочник услуг</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                
+                                    <li class="nav-header">Файлы</li>
+                                    
+                                        <li class="nav-item">
+                                            
+                                            <a href="/admin/file_manager/userfile/" class="nav-link">
+                                                <i class="nav-icon fas fa-circle"></i> <p>Файлы пользователей</p>
+                                            </a>
+                                        
+                                        </li>
+                                    
+                                
+                            
+                        </ul>
+                    </nav>
+                </div>
+            </aside>
+        
+        
+    
+
+    <div class="content-wrapper" style="min-height: 2574.02px;">
+        
+            
+            <div class="content border-bottom mb-2">
+                <div class="container-fluid">
+                    <div class="row">
+                        <div class="col-12 col-md-auto d-flex flex-grow-1 align-items-center">
+                            <h1 class="h4 m-0 pr-3 mr-3 border-right"> Пользователи </h1>
+                            
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/admin/">Начало</a></li>
+            <li class="breadcrumb-item"><a href="/admin/auth/">Пользователи и группы</a></li>
+            <li class="breadcrumb-item">
+                
+                    <a href="/admin/auth/user/">Пользователи</a>
+                
+            </li>
+            <li class="breadcrumb-item active">
+                
+                    Admin_Aspect
+                
+            </li>
+        </ol>
+    
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>
+            
+
+            <div class="content">
+                <div class="container-fluid">
+                    <section id="content" class="content">
+                        
+                            
+                        
+                        <div class="row">
+                            
+
+    <div id="content-main" class="col-12">
+        <form action="" method="post" id="user_form" novalidate="">
+            <input type="hidden" name="csrfmiddlewaretoken" value="m3UYkF0laAXhH63uF70hw5xvK6lE2lSSqzG0snyUTUQV9rXbQSONL2YPXHK6J18S" style="">
+            
+
+<div class="global-submit-row">
+    <input type="submit" name="_save" value="Сохранить" style="">
+    
+    <a href="/admin/auth/user/" class="close-form-link">Закрыть</a>
+    
+</div>
+
+
+            
+
+            <div class="row">
+                
+                
+
+                
+                    <div class="col-12 col-lg-9">
+                        <div class="card">
+                            <div class="card-body">
+                                
+                                
+
+
+
+
+<ul class="nav nav-tabs mb-3" role="tablist" id="jazzy-tabs">
+    
+        <li class="nav-item">
+            <a class="nav-link active" data-toggle="pill" role="tab" aria-controls="основная-информация-tab" aria-selected="true" href="#основная-информация-tab">
+                Основная информация
+            </a>
+        </li>
+    
+        <li class="nav-item">
+            <a class="nav-link" data-toggle="pill" role="tab" aria-controls="личные-данные-tab" aria-selected="false" href="#личные-данные-tab">
+                Личные данные
+            </a>
+        </li>
+    
+        <li class="nav-item">
+            <a class="nav-link" data-toggle="pill" role="tab" aria-controls="права-доступа-tab" aria-selected="false" href="#права-доступа-tab">
+                Права доступа
+            </a>
+        </li>
+    
+</ul>
+
+
+<div class="tab-content">
+    
+        <div id="основная-информация-tab" class="tab-pane fade active show wide" role="tabpanel" aria-labelledby="основная-информация-tab">
+            
+                
+
+<div class="card wide">
+    
+
+    <div class="p-5 card-body">
+
+
+    
+    <div class="form-group field-username">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_username">
+                    Имя пользователя
+                    
+                    <span class="text-red">* </span>
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-username
+                             
+                             
+                             ">
+                    
+                        <input type="text" name="username" value="Admin_Aspect" class="vTextField" maxlength="150" autocapitalize="none" autocomplete="username" required="" aria-describedby="id_username_helptext" id="id_username" style="">
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                        <div class="help-block">Обязательное поле. Не более 150 символов. Только буквы, цифры и символы @/./+/-/_.</div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-password">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_password">
+                    Пароль
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-password
+                             
+                             
+                             ">
+                    
+                        <div class="table table-fixed w-full">
+    <div class="readonly bg-base-50 border border-base-200 font-medium max-w-2xl px-3 py-2 rounded-default shadow-xs dark:bg-white/[.02] dark:border-base-700 " disabled="" aria-describedby="id_password_helptext" id="id_password">
+        
+            
+        
+    </div>
+</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                        <div class="help-block">Мы не храним сырые пароли, поэтому не существует способа посмотреть пароль пользователя.</div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-first_name">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_first_name">
+                    Имя
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-first_name
+                             
+                             
+                             ">
+                    
+                        <input type="text" name="first_name" value="Владимир" class="vTextField" maxlength="150" id="id_first_name" style="">
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-last_name">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_last_name">
+                    Фамилия
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-last_name
+                             
+                             
+                             ">
+                    
+                        <input type="text" name="last_name" value="Черникин" class="vTextField" maxlength="150" id="id_last_name" style="">
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-email">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_email">
+                    Адрес электронной почты
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-email
+                             
+                             
+                             ">
+                    
+                        <input type="email" name="email" value="admin@komunal-dom.ru" class="vTextField" maxlength="254" id="id_email" style="">
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-get_company_link">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_get_company_link">
+                    Компания
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-get_company_link
+                             
+                             
+                             ">
+                    
+                        <div class="readonly"><span class="badge bg-secondary">Нет компании</span></div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-get_timezone">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_get_timezone">
+                    Часовой пояс
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-get_timezone
+                             
+                             
+                             ">
+                    
+                        <div class="readonly">Europe/Moscow</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-get_dates_info">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_get_dates_info">
+                    Даты
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-get_dates_info
+                             
+                             
+                             ">
+                    
+                        <div class="readonly"><span class="text-muted">Создан 12.12.2025 20:33, последний вход 06.04.2026 14:21</span></div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+
+
+    </div>
+</div>
+
+
+            
+        </div>
+    
+        <div id="личные-данные-tab" class="tab-pane fade wide" role="tabpanel" aria-labelledby="личные-данные-tab">
+            
+                
+
+<div class="card wide">
+    
+
+    <div class="p-5 card-body">
+
+
+    
+    <div class="form-group field-get_phone">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_get_phone">
+                    Телефон
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-get_phone
+                             
+                             
+                             ">
+                    
+                        <div class="readonly">Не указан</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-get_address">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_get_address">
+                    Адрес
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-get_address
+                             
+                             
+                             ">
+                    
+                        <div class="readonly">Не указан</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-get_specialization">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_get_specialization">
+                    Специализация
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-get_specialization
+                             
+                             
+                             ">
+                    
+                        <div class="readonly">Не указана</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-get_job_title">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_get_job_title">
+                    Должность
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-get_job_title
+                             
+                             
+                             ">
+                    
+                        <div class="readonly">Не указана</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-get_responsibilities">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_get_responsibilities">
+                    Обязанности
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-get_responsibilities
+                             
+                             
+                             ">
+                    
+                        <div class="readonly">Не указаны</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+
+
+    </div>
+</div>
+
+
+            
+        </div>
+    
+        <div id="права-доступа-tab" class="tab-pane fade wide" role="tabpanel" aria-labelledby="права-доступа-tab">
+            
+                
+
+<div class="card wide">
+    
+    <div class="card-header">
+        <div class="card-title">
+            <strong>ВНИМАНИЕ:</strong> is_staff = true означает доступ к системе. is_superuser = true означает доступ к Django Admin (/admin/).
+        </div>
+    </div>
+    
+
+    <div class="p-5 card-body">
+
+
+    
+    <div class="form-group field-is_active">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_is_active">
+                    Активный
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-is_active
+                             
+                             
+                             ">
+                    
+                        <input type="checkbox" name="is_active" aria-describedby="id_is_active_helptext" id="id_is_active" checked="" style="">
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                        <div class="help-block">Отметьте, если пользователь должен считаться активным. Уберите эту отметку вместо удаления учётной записи.</div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-is_staff">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_is_staff">
+                    Статус персонала
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-is_staff
+                             
+                             
+                             ">
+                    
+                        <input type="checkbox" name="is_staff" aria-describedby="id_is_staff_helptext" id="id_is_staff" checked="" style="">
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                        <div class="help-block">Отметьте, если пользователь может входить в административную часть сайта.</div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-is_superuser">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_is_superuser">
+                    Статус суперпользователя
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-is_superuser
+                             
+                             
+                             ">
+                    
+                        <input type="checkbox" name="is_superuser" aria-describedby="id_is_superuser_helptext" id="id_is_superuser" checked="" style="">
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                        <div class="help-block">Указывает, что пользователь имеет все права без явного их назначения.</div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-groups">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_groups">
+                    Группы
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-groups
+                             
+                             
+                             ">
+                    
+                        <div class="related-widget-wrapper" data-model-ref="group"><div class="selector"><div class="selector-available"><div id="id_groups_from_title" class="selector-available-title"><label id="id_groups_from_label" for="id_groups_from">Доступные группы </label><p id="id_groups_choose_helptext" class="helptext">Выделите элементы в списке "группы" и нажмите кнопку со стрелкой вправо, чтобы добавить их к выбранным.</p></div><p id="id_groups_filter" class="selector-filter"><label for="id_groups_input"><span class="help-tooltip search-label-icon" aria-label="Начните вводить текст в этом поле, чтобы отфитровать список доступных группы."></span></label> <input type="text" placeholder="Фильтр" id="id_groups_input" style=""></p><select name="groups_old" data-context="available-source" id="id_groups_from" multiple="" class="filtered" data-field-name="группы" data-is-stacked="0" aria-labelledby="id_groups_from_label" aria-describedby="id_groups_helptext id_groups_choose_helptext"></select><button id="id_groups_add_all" class="selector-chooseall" type="button" disabled="">Выбрать все группы</button></div><ul class="selector-chooser"><li><button id="id_groups_add" class="selector-add" type="button" disabled="">Выбрать отмеченные группы</button></li><li><button id="id_groups_remove" class="selector-remove" type="button" disabled="">Удалить отмеченные группы</button></li></ul><div id="id_groups_selector_chosen" class="selector-chosen"><div class="selector-chosen-title" id="id_groups_to_title"><label id="id_groups_to_label" for="id_groups_to">Выбранные группы </label><p id="id_groups_remove_helptext" class="helptext">Выделите элементы в списке "группы" и и нажмите стрелку влево, чтобы убрать их из выбранных.</p></div><p id="id_groups_filter_selected" class="selector-filter"><label for="id_groups_selected_input"><span class="help-tooltip search-label-icon" aria-label="Набирайте символы в этом поле, чтобы отфильтровать список выбранных группы."></span></label> <input type="text" placeholder="Фильтр" id="id_groups_selected_input" style=""></p><select id="id_groups_to" multiple="" size="0" name="groups" aria-labelledby="id_groups_to_label" aria-describedby="id_groups_helptext id_groups_remove_helptext" class="filtered"></select><div class="list-footer-display"><span id="id_groups_list-footer-display-text"></span><span class="list-footer-display__clear"> (нажмите, чтобы очистить)</span></div><button id="id_groups_remove_all" class="selector-clearall" type="button" disabled="">Удалить все группы</button></div></div>
+    
+    
+        <a class="related-widget-wrapper-link add-related" id="add_id_groups" data-popup="yes" href="/admin/auth/group/add/?_to_field=id&amp;_popup=1" title="Добавить ещё один объект типа " группа""=""><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a>
+    
+</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                        <div class="help-block">Группы, к которым принадлежит данный пользователь. Пользователь получит все права, указанные в каждой из его/её групп. Удерживайте “Control“ (или “Command“ на Mac), чтобы выбрать несколько значений.</div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+    <div class="form-group field-user_permissions">
+        <div class="row">
+            
+                <label class="col-sm-3 text-left" for="id_user_permissions">
+                    Права пользователя
+                    
+                </label>
+                <div class=" col-sm-7 
+                              field-user_permissions
+                             
+                             
+                             ">
+                    
+                        <div class="related-widget-wrapper" data-model-ref="permission"><div class="selector"><div class="selector-available"><div id="id_user_permissions_from_title" class="selector-available-title"><label id="id_user_permissions_from_label" for="id_user_permissions_from">Доступные права пользователя </label><p id="id_user_permissions_choose_helptext" class="helptext">Выделите элементы в списке "права пользователя" и нажмите кнопку со стрелкой вправо, чтобы добавить их к выбранным.</p></div><p id="id_user_permissions_filter" class="selector-filter"><label for="id_user_permissions_input"><span class="help-tooltip search-label-icon" aria-label="Начните вводить текст в этом поле, чтобы отфитровать список доступных права пользователя."></span></label> <input type="text" placeholder="Фильтр" id="id_user_permissions_input" style=""></p><select name="user_permissions_old" data-context="available-source" id="id_user_permissions_from" multiple="" class="filtered" data-field-name="права пользователя" data-is-stacked="0" aria-labelledby="id_user_permissions_from_label" aria-describedby="id_user_permissions_helptext id_user_permissions_choose_helptext"><option value="1" title="Администрирование | запись в журнале | Can add log entry">Администрирование | запись в журнале | Can add log entry</option><option value="2" title="Администрирование | запись в журнале | Can change log entry">Администрирование | запись в журнале | Can change log entry</option><option value="3" title="Администрирование | запись в журнале | Can delete log entry">Администрирование | запись в журнале | Can delete log entry</option><option value="4" title="Администрирование | запись в журнале | Can view log entry">Администрирование | запись в журнале | Can view log entry</option><option value="9" title="Пользователи и группы | группа | Can add group">Пользователи и группы | группа | Can add group</option><option value="10" title="Пользователи и группы | группа | Can change group">Пользователи и группы | группа | Can change group</option><option value="11" title="Пользователи и группы | группа | Can delete group">Пользователи и группы | группа | Can delete group</option><option value="12" title="Пользователи и группы | группа | Can view group">Пользователи и группы | группа | Can view group</option><option value="5" title="Пользователи и группы | право | Can add permission">Пользователи и группы | право | Can add permission</option><option value="6" title="Пользователи и группы | право | Can change permission">Пользователи и группы | право | Can change permission</option><option value="7" title="Пользователи и группы | право | Can delete permission">Пользователи и группы | право | Can delete permission</option><option value="8" title="Пользователи и группы | право | Can view permission">Пользователи и группы | право | Can view permission</option><option value="13" title="Пользователи и группы | пользователь | Can add user">Пользователи и группы | пользователь | Can add user</option><option value="14" title="Пользователи и группы | пользователь | Can change user">Пользователи и группы | пользователь | Can change user</option><option value="15" title="Пользователи и группы | пользователь | Can delete user">Пользователи и группы | пользователь | Can delete user</option><option value="16" title="Пользователи и группы | пользователь | Can view user">Пользователи и группы | пользователь | Can view user</option><option value="17" title="Типы содержимого | тип содержимого | Can add content type">Типы содержимого | тип содержимого | Can add content type</option><option value="18" title="Типы содержимого | тип содержимого | Can change content type">Типы содержимого | тип содержимого | Can change content type</option><option value="19" title="Типы содержимого | тип содержимого | Can delete content type">Типы содержимого | тип содержимого | Can delete content type</option><option value="20" title="Типы содержимого | тип содержимого | Can view content type">Типы содержимого | тип содержимого | Can view content type</option><option value="25" title="Файлы | Файл пользователя | Can add Файл пользователя">Файлы | Файл пользователя | Can add Файл пользователя</option><option value="26" title="Файлы | Файл пользователя | Can change Файл пользователя">Файлы | Файл пользователя | Can change Файл пользователя</option><option value="27" title="Файлы | Файл пользователя | Can delete Файл пользователя">Файлы | Файл пользователя | Can delete Файл пользователя</option><option value="28" title="Файлы | Файл пользователя | Can view Файл пользователя">Файлы | Файл пользователя | Can view Файл пользователя</option><option value="45" title="КЛАДР | Здание | Can add Здание">КЛАДР | Здание | Can add Здание</option><option value="46" title="КЛАДР | Здание | Can change Здание">КЛАДР | Здание | Can change Здание</option><option value="47" title="КЛАДР | Здание | Can delete Здание">КЛАДР | Здание | Can delete Здание</option><option value="48" title="КЛАДР | Здание | Can view Здание">КЛАДР | Здание | Can view Здание</option><option value="37" title="КЛАДР | Лог импорта данных | Can add Лог импорта данных">КЛАДР | Лог импорта данных | Can add Лог импорта данных</option><option value="38" title="КЛАДР | Лог импорта данных | Can change Лог импорта данных">КЛАДР | Лог импорта данных | Can change Лог импорта данных</option><option value="39" title="КЛАДР | Лог импорта данных | Can delete Лог импорта данных">КЛАДР | Лог импорта данных | Can delete Лог импорта данных</option><option value="40" title="КЛАДР | Лог импорта данных | Can view Лог импорта данных">КЛАДР | Лог импорта данных | Can view Лог импорта данных</option><option value="41" title="КЛАДР | Адресный объект КЛАДР | Can add Адресный объект КЛАДР">КЛАДР | Адресный объект КЛАДР | Can add Адресный объект КЛАДР</option><option value="42" title="КЛАДР | Адресный объект КЛАДР | Can change Адресный объект КЛАДР">КЛАДР | Адресный объект КЛАДР | Can change Адресный объект КЛАДР</option><option value="43" title="КЛАДР | Адресный объект КЛАДР | Can delete Адресный объект КЛАДР">КЛАДР | Адресный объект КЛАДР | Can delete Адресный объект КЛАДР</option><option value="44" title="КЛАДР | Адресный объект КЛАДР | Can view Адресный объект КЛАДР">КЛАДР | Адресный объект КЛАДР | Can view Адресный объект КЛАДР</option><option value="33" title="КЛАДР | Тип объекта КЛАДР | Can add Тип объекта КЛАДР">КЛАДР | Тип объекта КЛАДР | Can add Тип объекта КЛАДР</option><option value="34" title="КЛАДР | Тип объекта КЛАДР | Can change Тип объекта КЛАДР">КЛАДР | Тип объекта КЛАДР | Can change Тип объекта КЛАДР</option><option value="35" title="КЛАДР | Тип объекта КЛАДР | Can delete Тип объекта КЛАДР">КЛАДР | Тип объекта КЛАДР | Can delete Тип объекта КЛАДР</option><option value="36" title="КЛАДР | Тип объекта КЛАДР | Can view Тип объекта КЛАДР">КЛАДР | Тип объекта КЛАДР | Can view Тип объекта КЛАДР</option><option value="49" title="КЛАДР | Зона обслуживания | Can add Зона обслуживания">КЛАДР | Зона обслуживания | Can add Зона обслуживания</option><option value="50" title="КЛАДР | Зона обслуживания | Can change Зона обслуживания">КЛАДР | Зона обслуживания | Can change Зона обслуживания</option><option value="51" title="КЛАДР | Зона обслуживания | Can delete Зона обслуживания">КЛАДР | Зона обслуживания | Can delete Зона обслуживания</option><option value="52" title="КЛАДР | Зона обслуживания | Can view Зона обслуживания">КЛАДР | Зона обслуживания | Can view Зона обслуживания</option><option value="81" title="llmtestresult | Can add Результат теста LLM">llmtestresult | Can add Результат теста LLM</option><option value="82" title="llmtestresult | Can change Результат теста LLM">llmtestresult | Can change Результат теста LLM</option><option value="83" title="llmtestresult | Can delete Результат теста LLM">llmtestresult | Can delete Результат теста LLM</option><option value="84" title="llmtestresult | Can view Результат теста LLM">llmtestresult | Can view Результат теста LLM</option><option value="73" title="promptpreset | Can add Пресет промпта">promptpreset | Can add Пресет промпта</option><option value="74" title="promptpreset | Can change Пресет промпта">promptpreset | Can change Пресет промпта</option><option value="75" title="promptpreset | Can delete Пресет промпта">promptpreset | Can delete Пресет промпта</option><option value="76" title="promptpreset | Can view Пресет промпта">promptpreset | Can view Пресет промпта</option><option value="77" title="prompttemplate | Can add Шаблон промпта">prompttemplate | Can add Шаблон промпта</option><option value="78" title="prompttemplate | Can change Шаблон промпта">prompttemplate | Can change Шаблон промпта</option><option value="79" title="prompttemplate | Can delete Шаблон промпта">prompttemplate | Can delete Шаблон промпта</option><option value="80" title="prompttemplate | Can view Шаблон промпта">prompttemplate | Can view Шаблон промпта</option><option value="89" title="Логи диалогов | Лог ошибок API | Can add Лог ошибок API">Логи диалогов | Лог ошибок API | Can add Лог ошибок API</option><option value="90" title="Логи диалогов | Лог ошибок API | Can change Лог ошибок API">Логи диалогов | Лог ошибок API | Can change Лог ошибок API</option><option value="91" title="Логи диалогов | Лог ошибок API | Can delete Лог ошибок API">Логи диалогов | Лог ошибок API | Can delete Лог ошибок API</option><option value="92" title="Логи диалогов | Лог ошибок API | Can view Лог ошибок API">Логи диалогов | Лог ошибок API | Can view Лог ошибок API</option><option value="65" title="Логи диалогов | Коммуникативный скрипт | Can add Коммуникативный скрипт">Логи диалогов | Коммуникативный скрипт | Can add Коммуникативный скрипт</option><option value="66" title="Логи диалогов | Коммуникативный скрипт | Can change Коммуникативный скрипт">Логи диалогов | Коммуникативный скрипт | Can change Коммуникативный скрипт</option><option value="67" title="Логи диалогов | Коммуникативный скрипт | Can delete Коммуникативный скрипт">Логи диалогов | Коммуникативный скрипт | Can delete Коммуникативный скрипт</option><option value="68" title="Логи диалогов | Коммуникативный скрипт | Can view Коммуникативный скрипт">Логи диалогов | Коммуникативный скрипт | Can view Коммуникативный скрипт</option><option value="61" title="Логи диалогов | Лог сообщения | Can add Лог сообщения">Логи диалогов | Лог сообщения | Can add Лог сообщения</option><option value="62" title="Логи диалогов | Лог сообщения | Can change Лог сообщения">Логи диалогов | Лог сообщения | Can change Лог сообщения</option><option value="63" title="Логи диалогов | Лог сообщения | Can delete Лог сообщения">Логи диалогов | Лог сообщения | Can delete Лог сообщения</option><option value="64" title="Логи диалогов | Лог сообщения | Can view Лог сообщения">Логи диалогов | Лог сообщения | Can view Лог сообщения</option><option value="101" title="НСИ | Компания | Can add Компания">НСИ | Компания | Can add Компания</option><option value="102" title="НСИ | Компания | Can change Компания">НСИ | Компания | Can change Компания</option><option value="103" title="НСИ | Компания | Can delete Компания">НСИ | Компания | Can delete Компания</option><option value="104" title="НСИ | Компания | Can view Компания">НСИ | Компания | Can view Компания</option><option value="105" title="НСИ | Вид оборудования | Can add Вид оборудования">НСИ | Вид оборудования | Can add Вид оборудования</option><option value="106" title="НСИ | Вид оборудования | Can change Вид оборудования">НСИ | Вид оборудования | Can change Вид оборудования</option><option value="107" title="НСИ | Вид оборудования | Can delete Вид оборудования">НСИ | Вид оборудования | Can delete Вид оборудования</option><option value="108" title="НСИ | Вид оборудования | Can view Вид оборудования">НСИ | Вид оборудования | Can view Вид оборудования</option><option value="109" title="НСИ | Категория услуг | Can add Категория услуг">НСИ | Категория услуг | Can add Категория услуг</option><option value="110" title="НСИ | Категория услуг | Can change Категория услуг">НСИ | Категория услуг | Can change Категория услуг</option><option value="111" title="НСИ | Категория услуг | Can delete Категория услуг">НСИ | Категория услуг | Can delete Категория услуг</option><option value="112" title="НСИ | Категория услуг | Can view Категория услуг">НСИ | Категория услуг | Can view Категория услуг</option><option value="113" title="НСИ | Локализация | Can add Локализация">НСИ | Локализация | Can add Локализация</option><option value="114" title="НСИ | Локализация | Can change Локализация">НСИ | Локализация | Can change Локализация</option><option value="115" title="НСИ | Локализация | Can delete Локализация">НСИ | Локализация | Can delete Локализация</option><option value="116" title="НСИ | Локализация | Can view Локализация">НСИ | Локализация | Can view Локализация</option><option value="117" title="НСИ | Тип услуги | Can add Тип услуги">НСИ | Тип услуги | Can add Тип услуги</option><option value="118" title="НСИ | Тип услуги | Can change Тип услуги">НСИ | Тип услуги | Can change Тип услуги</option><option value="119" title="НСИ | Тип услуги | Can delete Тип услуги">НСИ | Тип услуги | Can delete Тип услуги</option><option value="120" title="НСИ | Тип услуги | Can view Тип услуги">НСИ | Тип услуги | Can view Тип услуги</option><option value="53" title="УК Аспект | AI и Промпты: Промпт | Can add AI промпт">УК Аспект | AI и Промпты: Промпт | Can add AI промпт</option><option value="54" title="УК Аспект | AI и Промпты: Промпт | Can change AI промпт">УК Аспект | AI и Промпты: Промпт | Can change AI промпт</option><option value="55" title="УК Аспект | AI и Промпты: Промпт | Can delete AI промпт">УК Аспект | AI и Промпты: Промпт | Can delete AI промпт</option><option value="56" title="УК Аспект | AI и Промпты: Промпт | Can view AI промпт">УК Аспект | AI и Промпты: Промпт | Can view AI промпт</option><option value="93" title="company | Can add Компания">company | Can add Компания</option><option value="94" title="company | Can change Компания">company | Can change Компания</option><option value="95" title="company | Can delete Компания">company | Can delete Компания</option><option value="96" title="company | Can view Компания">company | Can view Компания</option><option value="97" title="equipmenttype | Can add Вид оборудования">equipmenttype | Can add Вид оборудования</option><option value="98" title="equipmenttype | Can change Вид оборудования">equipmenttype | Can change Вид оборудования</option><option value="99" title="equipmenttype | Can delete Вид оборудования">equipmenttype | Can delete Вид оборудования</option><option value="100" title="equipmenttype | Can view Вид оборудования">equipmenttype | Can view Вид оборудования</option><option value="125" title="УК Аспект | AI и Промпты: Результат теста LLM | Can add AI и Промпты: Результат теста LLM">УК Аспект | AI и Промпты: Результат теста LLM | Can add AI и Промпты: Результат теста LLM</option><option value="126" title="УК Аспект | AI и Промпты: Результат теста LLM | Can change AI и Промпты: Результат теста LLM">УК Аспект | AI и Промпты: Результат теста LLM | Can change AI и Промпты: Результат теста LLM</option><option value="127" title="УК Аспект | AI и Промпты: Результат теста LLM | Can delete AI и Промпты: Результат теста LLM">УК Аспект | AI и Промпты: Результат теста LLM | Can delete AI и Промпты: Результат теста LLM</option><option value="128" title="УК Аспект | AI и Промпты: Результат теста LLM | Can view AI и Промпты: Результат теста LLM">УК Аспект | AI и Промпты: Результат теста LLM | Can view AI и Промпты: Результат теста LLM</option><option value="121" title="УК Аспект | AI и Промпты: Тестовый пресет | Can add AI и Промпты: Тестовый пресет">УК Аспект | AI и Промпты: Тестовый пресет | Can add AI и Промпты: Тестовый пресет</option><option value="122" title="УК Аспект | AI и Промпты: Тестовый пресет | Can change AI и Промпты: Тестовый пресет">УК Аспект | AI и Промпты: Тестовый пресет | Can change AI и Промпты: Тестовый пресет</option><option value="123" title="УК Аспект | AI и Промпты: Тестовый пресет | Can delete AI и Промпты: Тестовый пресет">УК Аспект | AI и Промпты: Тестовый пресет | Can delete AI и Промпты: Тестовый пресет</option><option value="124" title="УК Аспект | AI и Промпты: Тестовый пресет | Can view AI и Промпты: Тестовый пресет">УК Аспект | AI и Промпты: Тестовый пресет | Can view AI и Промпты: Тестовый пресет</option><option value="129" title="УК Аспект | AI и Промпты: Шаблон промпта | Can add AI и Промпты: Шаблон промпта">УК Аспект | AI и Промпты: Шаблон промпта | Can add AI и Промпты: Шаблон промпта</option><option value="130" title="УК Аспект | AI и Промпты: Шаблон промпта | Can change AI и Промпты: Шаблон промпта">УК Аспект | AI и Промпты: Шаблон промпта | Can change AI и Промпты: Шаблон промпта</option><option value="131" title="УК Аспект | AI и Промпты: Шаблон промпта | Can delete AI и Промпты: Шаблон промпта">УК Аспект | AI и Промпты: Шаблон промпта | Can delete AI и Промпты: Шаблон промпта</option><option value="132" title="УК Аспект | AI и Промпты: Шаблон промпта | Can view AI и Промпты: Шаблон промпта">УК Аспект | AI и Промпты: Шаблон промпта | Can view AI и Промпты: Шаблон промпта</option><option value="69" title="УК Аспект | Семантический паттерн | Can add Семантический паттерн">УК Аспект | Семантический паттерн | Can add Семантический паттерн</option><option value="70" title="УК Аспект | Семантический паттерн | Can change Семантический паттерн">УК Аспект | Семантический паттерн | Can change Семантический паттерн</option><option value="71" title="УК Аспект | Семантический паттерн | Can delete Семантический паттерн">УК Аспект | Семантический паттерн | Can delete Семантический паттерн</option><option value="72" title="УК Аспект | Семантический паттерн | Can view Семантический паттерн">УК Аспект | Семантический паттерн | Can view Семантический паттерн</option><option value="57" title="service | Can add Услуга">service | Can add Услуга</option><option value="58" title="service | Can change Услуга">service | Can change Услуга</option><option value="59" title="service | Can delete Услуга">service | Can delete Услуга</option><option value="60" title="service | Can view Услуга">service | Can view Услуга</option><option value="133" title="УК Аспект | Объект обслуживания | Can add Объект обслуживания">УК Аспект | Объект обслуживания | Can add Объект обслуживания</option><option value="134" title="УК Аспект | Объект обслуживания | Can change Объект обслуживания">УК Аспект | Объект обслуживания | Can change Объект обслуживания</option><option value="135" title="УК Аспект | Объект обслуживания | Can delete Объект обслуживания">УК Аспект | Объект обслуживания | Can delete Объект обслуживания</option><option value="136" title="УК Аспект | Объект обслуживания | Can view Объект обслуживания">УК Аспект | Объект обслуживания | Can view Объект обслуживания</option><option value="85" title="УК Аспект | Услуга | Can add Услуга">УК Аспект | Услуга | Can add Услуга</option><option value="86" title="УК Аспект | Услуга | Can change Услуга">УК Аспект | Услуга | Can change Услуга</option><option value="87" title="УК Аспект | Услуга | Can delete Услуга">УК Аспект | Услуга | Can delete Услуга</option><option value="88" title="УК Аспект | Услуга | Can view Услуга">УК Аспект | Услуга | Can view Услуга</option><option value="29" title="УК Аспект | Профиль пользователя | Can add Профиль пользователя">УК Аспект | Профиль пользователя | Can add Профиль пользователя</option><option value="30" title="УК Аспект | Профиль пользователя | Can change Профиль пользователя">УК Аспект | Профиль пользователя | Can change Профиль пользователя</option><option value="31" title="УК Аспект | Профиль пользователя | Can delete Профиль пользователя">УК Аспект | Профиль пользователя | Can delete Профиль пользователя</option><option value="32" title="УК Аспект | Профиль пользователя | Can view Профиль пользователя">УК Аспект | Профиль пользователя | Can view Профиль пользователя</option><option value="21" title="Сессии | сессия | Can add session">Сессии | сессия | Can add session</option><option value="22" title="Сессии | сессия | Can change session">Сессии | сессия | Can change session</option><option value="23" title="Сессии | сессия | Can delete session">Сессии | сессия | Can delete session</option><option value="24" title="Сессии | сессия | Can view session">Сессии | сессия | Can view session</option><option value="137" title="Work_Orders | Подразделение компании | Can add Подразделение компании">Work_Orders | Подразделение компании | Can add Подразделение компании</option><option value="138" title="Work_Orders | Подразделение компании | Can change Подразделение компании">Work_Orders | Подразделение компании | Can change Подразделение компании</option><option value="139" title="Work_Orders | Подразделение компании | Can delete Подразделение компании">Work_Orders | Подразделение компании | Can delete Подразделение компании</option><option value="140" title="Work_Orders | Подразделение компании | Can view Подразделение компании">Work_Orders | Подразделение компании | Can view Подразделение компании</option><option value="141" title="Work_Orders | Период обслуживания объекта | Can add Период обслуживания объекта">Work_Orders | Период обслуживания объекта | Can add Период обслуживания объекта</option><option value="142" title="Work_Orders | Период обслуживания объекта | Can change Период обслуживания объекта">Work_Orders | Период обслуживания объекта | Can change Период обслуживания объекта</option><option value="143" title="Work_Orders | Период обслуживания объекта | Can delete Период обслуживания объекта">Work_Orders | Период обслуживания объекта | Can delete Период обслуживания объекта</option><option value="144" title="Work_Orders | Период обслуживания объекта | Can view Период обслуживания объекта">Work_Orders | Период обслуживания объекта | Can view Период обслуживания объекта</option><option value="157" title="Work_Orders | Маппинг маршрута компании | Can add Маппинг маршрута компании">Work_Orders | Маппинг маршрута компании | Can add Маппинг маршрута компании</option><option value="158" title="Work_Orders | Маппинг маршрута компании | Can change Маппинг маршрута компании">Work_Orders | Маппинг маршрута компании | Can change Маппинг маршрута компании</option><option value="159" title="Work_Orders | Маппинг маршрута компании | Can delete Маппинг маршрута компании">Work_Orders | Маппинг маршрута компании | Can delete Маппинг маршрута компании</option><option value="160" title="Work_Orders | Маппинг маршрута компании | Can view Маппинг маршрута компании">Work_Orders | Маппинг маршрута компании | Can view Маппинг маршрута компании</option><option value="145" title="Work_Orders | Подрядная организация | Can add Подрядная организация">Work_Orders | Подрядная организация | Can add Подрядная организация</option><option value="146" title="Work_Orders | Подрядная организация | Can change Подрядная организация">Work_Orders | Подрядная организация | Can change Подрядная организация</option><option value="147" title="Work_Orders | Подрядная организация | Can delete Подрядная организация">Work_Orders | Подрядная организация | Can delete Подрядная организация</option><option value="148" title="Work_Orders | Подрядная организация | Can view Подрядная организация">Work_Orders | Подрядная организация | Can view Подрядная организация</option><option value="177" title="Work_Orders | Уведомление | Can add Уведомление">Work_Orders | Уведомление | Can add Уведомление</option><option value="178" title="Work_Orders | Уведомление | Can change Уведомление">Work_Orders | Уведомление | Can change Уведомление</option><option value="179" title="Work_Orders | Уведомление | Can delete Уведомление">Work_Orders | Уведомление | Can delete Уведомление</option><option value="180" title="Work_Orders | Уведомление | Can view Уведомление">Work_Orders | Уведомление | Can view Уведомление</option><option value="149" title="Work_Orders | Входящее событие | Can add Входящее событие">Work_Orders | Входящее событие | Can add Входящее событие</option><option value="150" title="Work_Orders | Входящее событие | Can change Входящее событие">Work_Orders | Входящее событие | Can change Входящее событие</option><option value="151" title="Work_Orders | Входящее событие | Can delete Входящее событие">Work_Orders | Входящее событие | Can delete Входящее событие</option><option value="152" title="Work_Orders | Входящее событие | Can view Входящее событие">Work_Orders | Входящее событие | Can view Входящее событие</option><option value="153" title="Work_Orders | Типовой маршрут | Can add Типовой маршрут">Work_Orders | Типовой маршрут | Can add Типовой маршрут</option><option value="154" title="Work_Orders | Типовой маршрут | Can change Типовой маршрут">Work_Orders | Типовой маршрут | Can change Типовой маршрут</option><option value="155" title="Work_Orders | Типовой маршрут | Can delete Типовой маршрут">Work_Orders | Типовой маршрут | Can delete Типовой маршрут</option><option value="156" title="Work_Orders | Типовой маршрут | Can view Типовой маршрут">Work_Orders | Типовой маршрут | Can view Типовой маршрут</option><option value="173" title="Work_Orders | SLA экземпляр | Can add SLA экземпляр">Work_Orders | SLA экземпляр | Can add SLA экземпляр</option><option value="174" title="Work_Orders | SLA экземпляр | Can change SLA экземпляр">Work_Orders | SLA экземпляр | Can change SLA экземпляр</option><option value="175" title="Work_Orders | SLA экземпляр | Can delete SLA экземпляр">Work_Orders | SLA экземпляр | Can delete SLA экземпляр</option><option value="176" title="Work_Orders | SLA экземпляр | Can view SLA экземпляр">Work_Orders | SLA экземпляр | Can view SLA экземпляр</option><option value="161" title="Work_Orders | SLA-политика | Can add SLA-политика">Work_Orders | SLA-политика | Can add SLA-политика</option><option value="162" title="Work_Orders | SLA-политика | Can change SLA-политика">Work_Orders | SLA-политика | Can change SLA-политика</option><option value="163" title="Work_Orders | SLA-политика | Can delete SLA-политика">Work_Orders | SLA-политика | Can delete SLA-политика</option><option value="164" title="Work_Orders | SLA-политика | Can view SLA-политика">Work_Orders | SLA-политика | Can view SLA-политика</option><option value="165" title="Work_Orders | Членство в компании | Can add Членство в компании">Work_Orders | Членство в компании | Can add Членство в компании</option><option value="166" title="Work_Orders | Членство в компании | Can change Членство в компании">Work_Orders | Членство в компании | Can change Членство в компании</option><option value="167" title="Work_Orders | Членство в компании | Can delete Членство в компании">Work_Orders | Членство в компании | Can delete Членство в компании</option><option value="168" title="Work_Orders | Членство в компании | Can view Членство в компании">Work_Orders | Членство в компании | Can view Членство в компании</option><option value="169" title="Work_Orders | Заявка | Can add Заявка">Work_Orders | Заявка | Can add Заявка</option><option value="170" title="Work_Orders | Заявка | Can change Заявка">Work_Orders | Заявка | Can change Заявка</option><option value="171" title="Work_Orders | Заявка | Can delete Заявка">Work_Orders | Заявка | Can delete Заявка</option><option value="172" title="Work_Orders | Заявка | Can view Заявка">Work_Orders | Заявка | Can view Заявка</option><option value="185" title="Work_Orders | Вложение заявки | Can add Вложение заявки">Work_Orders | Вложение заявки | Can add Вложение заявки</option><option value="186" title="Work_Orders | Вложение заявки | Can change Вложение заявки">Work_Orders | Вложение заявки | Can change Вложение заявки</option><option value="187" title="Work_Orders | Вложение заявки | Can delete Вложение заявки">Work_Orders | Вложение заявки | Can delete Вложение заявки</option><option value="188" title="Work_Orders | Вложение заявки | Can view Вложение заявки">Work_Orders | Вложение заявки | Can view Вложение заявки</option><option value="181" title="Work_Orders | Событие заявки | Can add Событие заявки">Work_Orders | Событие заявки | Can add Событие заявки</option><option value="182" title="Work_Orders | Событие заявки | Can change Событие заявки">Work_Orders | Событие заявки | Can change Событие заявки</option><option value="183" title="Work_Orders | Событие заявки | Can delete Событие заявки">Work_Orders | Событие заявки | Can delete Событие заявки</option><option value="184" title="Work_Orders | Событие заявки | Can view Событие заявки">Work_Orders | Событие заявки | Can view Событие заявки</option><option value="197" title="Work_Orders | История изменения статуса | Can add История изменения статуса">Work_Orders | История изменения статуса | Can add История изменения статуса</option><option value="198" title="Work_Orders | История изменения статуса | Can change История изменения статуса">Work_Orders | История изменения статуса | Can change История изменения статуса</option><option value="199" title="Work_Orders | История изменения статуса | Can delete История изменения статуса">Work_Orders | История изменения статуса | Can delete История изменения статуса</option><option value="200" title="Work_Orders | История изменения статуса | Can view История изменения статуса">Work_Orders | История изменения статуса | Can view История изменения статуса</option><option value="189" title="Work_Orders | Статус заявки | Can add Статус заявки">Work_Orders | Статус заявки | Can add Статус заявки</option><option value="190" title="Work_Orders | Статус заявки | Can change Статус заявки">Work_Orders | Статус заявки | Can change Статус заявки</option><option value="191" title="Work_Orders | Статус заявки | Can delete Статус заявки">Work_Orders | Статус заявки | Can delete Статус заявки</option><option value="192" title="Work_Orders | Статус заявки | Can view Статус заявки">Work_Orders | Статус заявки | Can view Статус заявки</option><option value="193" title="Work_Orders | Переход статуса | Can add Переход статуса">Work_Orders | Переход статуса | Can add Переход статуса</option><option value="194" title="Work_Orders | Переход статуса | Can change Переход статуса">Work_Orders | Переход статуса | Can change Переход статуса</option><option value="195" title="Work_Orders | Переход статуса | Can delete Переход статуса">Work_Orders | Переход статуса | Can delete Переход статуса</option><option value="196" title="Work_Orders | Переход статуса | Can view Переход статуса">Work_Orders | Переход статуса | Can view Переход статуса</option></select><button id="id_user_permissions_add_all" class="selector-chooseall" type="button">Выбрать все права пользователя</button></div><ul class="selector-chooser"><li><button id="id_user_permissions_add" class="selector-add" type="button" disabled="">Выбрать отмеченные права пользователя</button></li><li><button id="id_user_permissions_remove" class="selector-remove" type="button" disabled="">Удалить отмеченные права пользователя</button></li></ul><div id="id_user_permissions_selector_chosen" class="selector-chosen"><div class="selector-chosen-title" id="id_user_permissions_to_title"><label id="id_user_permissions_to_label" for="id_user_permissions_to">Выбранные права пользователя </label><p id="id_user_permissions_remove_helptext" class="helptext">Выделите элементы в списке "права пользователя" и и нажмите стрелку влево, чтобы убрать их из выбранных.</p></div><p id="id_user_permissions_filter_selected" class="selector-filter"><label for="id_user_permissions_selected_input"><span class="help-tooltip search-label-icon" aria-label="Набирайте символы в этом поле, чтобы отфильтровать список выбранных права пользователя."></span></label> <input type="text" placeholder="Фильтр" id="id_user_permissions_selected_input" style=""></p><select id="id_user_permissions_to" multiple="" size="0" name="user_permissions" aria-labelledby="id_user_permissions_to_label" aria-describedby="id_user_permissions_helptext id_user_permissions_remove_helptext" class="filtered"></select><div class="list-footer-display"><span id="id_user_permissions_list-footer-display-text"></span><span class="list-footer-display__clear"> (нажмите, чтобы очистить)</span></div><button id="id_user_permissions_remove_all" class="selector-clearall" type="button" disabled="">Удалить все права пользователя</button></div></div>
+    
+    
+        
+    
+</div>
+                    
+                    <div class="help-block red">
+                        
+                    </div>
+                    
+                        <div class="help-block">Индивидуальные права данного пользователя. Удерживайте “Control“ (или “Command“ на Mac), чтобы выбрать несколько значений.</div>
+                    
+                    <div class="help-block text-red">
+                        
+                    </div>
+                </div>
+            
+        </div>
+    </div>
+    
+
+
+    </div>
+</div>
+
+
+            
+        </div>
+    
+</div>
+
+                            </div>
+                        </div>
+                    </div>
+                
+
+                
+
+                
+
+                
+
+                <div class="col-12 col-lg-3">
+                    <div id="jazzy-actions" class="">
+                        
+                    </div>
+                </div>
+
+                
+                    <script type="text/javascript" id="django-admin-form-add-constants" src="/static/admin/js/change_form.js"></script>
+                
+
+                
+<script id="django-admin-prepopulated-fields-constants" src="/static/admin/js/prepopulate_init.js" data-prepopulated-fields="[]">
+</script>
+
+            </div>
+        </form>
+    </div>
+
+
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+
+        
+    </div>
+
+
+<div id="footer">
+    <p class="text-center text-muted mb-0">
+        © 2025 ООО "Аспект". Все права защищены.
+    </p>
+</div>
+
+
+<div id="sidebar-overlay"></div></div>
+
+
+
+<!-- jQuery -->
+<script src="/static/admin/js/vendor/jquery/jquery.js"></script>
+<!-- Bootstrap 4 -->
+<script src="/static/vendor/bootstrap/js/bootstrap.min.js"></script>
+<!-- AdminLTE App -->
+<script src="/static/vendor/adminlte/js/adminlte.min.js"></script>
+<!-- Django customisations -->
+<script src="/static/jazzmin/js/main.js"></script>
+
+
+
+
+
+
+    
+    <script type="text/javascript" src="/static/vendor/select2/js/select2.min.js"></script>
+    <script type="text/javascript" src="/static/jazzmin/js/change_form.js"></script>
+    
+
+
+
+
+</body></html>

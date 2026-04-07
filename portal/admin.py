@@ -7,8 +7,9 @@ from django.urls import reverse
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 from .models import UserProfile, AIPrompt, SemanticPattern, ServicesCatalog
+from .forms import UserAdminChangeForm
 from nsi.models import RefCategory
-from work_orders.models import UserCompanyMembership, CompanyDepartment
+from work_orders.models import UserCompanyMembership
 
 
 # ============================================
@@ -22,15 +23,63 @@ class UserCompanyMembershipInline(admin.TabularInline):
     ПОКАЗЫВАЕТСЯ внизу формы пользователя
     """
     model = UserCompanyMembership
+    verbose_name_plural = 'Членства в компаниях'
     extra = 0
-    can_delete = True
-    show_change_link = True
-    fields = ('company', 'department', 'role_code', 'is_primary', 'is_active', 'date_from', 'date_to')
-    readonly_fields = ()
+    can_delete = False
+    show_change_link = False
+    classes = ('user-membership-inline',)
+    fields = (
+        'company_display',
+        'department_display',
+        'role_display',
+        'primary_display',
+        'active_display',
+        'date_from',
+        'date_to',
+    )
+    readonly_fields = fields
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.select_related('company', 'department').order_by('-is_primary', 'company__name')
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return True
+
+    def has_view_permission(self, request, obj=None):
+        return True
+
+    def get_formset(self, request, obj=None, **kwargs):
+        add_url = reverse('admin:work_orders_usercompanymembership_add')
+        if obj and obj.pk:
+            add_url = f'{add_url}?user={obj.pk}'
+        self.verbose_name_plural = mark_safe(
+            f'Членства в компаниях <a href="{add_url}" class="button" style="margin-left: 12px;">+ Добавить</a>'
+        )
+        return super().get_formset(request, obj, **kwargs)
+
+    def company_display(self, obj):
+        return obj.company.name if obj.company else '-'
+    company_display.short_description = 'Компания'
+
+    def department_display(self, obj):
+        return obj.department.department_name if obj.department else '-'
+    department_display.short_description = 'Подразделение'
+
+    def role_display(self, obj):
+        return obj.get_role_code_display()
+    role_display.short_description = 'Роль'
+
+    def primary_display(self, obj):
+        return 'Да' if obj.is_primary else 'Нет'
+    primary_display.short_description = 'Основная привязка'
+
+    def active_display(self, obj):
+        return 'Да' if obj.is_active else 'Нет'
+    active_display.short_description = 'Активен'
 
 
 # Отключаем стандартную регистрацию User
@@ -49,45 +98,21 @@ class UserAdmin(BaseUserAdmin):
     """
 
     list_display = ('username', 'email', 'first_name', 'last_name', 'get_company', 'get_role', 'is_active', 'date_joined')
+    form = UserAdminChangeForm
+    change_form_template = 'admin/portal/user/change_form.html'
     inlines = [UserCompanyMembershipInline]
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        """
-        Ограничение выбора подразделения выбранной компанией
-
-        Если выбрана primary_company, то primary_department фильтруется по этой компании
-        """
-        if db_field.name == 'primary_department':
-            # Пытаемся получить выбранную компанию из формы
-            obj_id = request.resolver_match.kwargs.get('object_id')
-            if obj_id:
-                try:
-                    user = User.objects.get(pk=obj_id)
-                    if user.userprofile.primary_company_id:
-                        kwargs['queryset'] = CompanyDepartment.objects.filter(
-                            company_id=user.userprofile.primary_company_id,
-                            is_active=True
-                        )
-                except (User.DoesNotExist, UserProfile.DoesNotExist):
-                    pass
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
     fieldsets = (
         ('Основная информация', {
-            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'primary_company', 'primary_department', 'get_timezone', 'get_dates_info'),
+            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'primary_company', 'primary_department', 'profile_job_title', 'get_timezone', 'get_dates_info'),
             'classes': ('wide',),
         }),
-        ('Личные данные', {
-            'fields': ('get_phone', 'get_address', 'get_specialization', 'get_job_title', 'get_responsibilities'),
+        ('Профиль пользователя', {
+            'fields': ('get_phone', 'get_address', 'get_specialization', 'get_responsibilities'),
             'classes': ('wide',),
-        }),
-        ('Членства в компаниях (множественные привязки)', {
-            'fields': ('get_memberships_info',),
-            'classes': ('wide',),
-            'description': 'Блок множественных привязок показан ниже. Для редких случаев работы в нескольких компаниях.',
         }),
         ('Права доступа', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
@@ -96,12 +121,17 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    readonly_fields = ('get_timezone', 'get_dates_info', 'get_phone', 'get_address', 'get_specialization', 'get_job_title', 'get_responsibilities', 'get_memberships_info')
+    readonly_fields = ('get_timezone', 'get_dates_info', 'get_phone', 'get_address', 'get_specialization', 'get_responsibilities')
 
     def get_company(self, obj):
-        """Получить основную компанию пользователя"""
+        """???????? ???????? ???????? ????????????"""
         try:
-            from work_orders.models import UserCompanyMembership
+            profile = getattr(obj, 'userprofile', None)
+            if profile and profile.primary_company:
+                return mark_safe(
+                    f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{profile.primary_company.name}</a>'
+                )
+
             membership = UserCompanyMembership.objects.filter(
                 user=obj,
                 is_primary=True,
@@ -109,22 +139,22 @@ class UserAdmin(BaseUserAdmin):
                 date_to__isnull=True
             ).select_related('company').first()
 
-            if membership:
-                return mark_safe(f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>')
-            else:
-                # Если нет primary - берем любую активную
+            if not membership:
                 membership = UserCompanyMembership.objects.filter(
                     user=obj,
                     is_active=True,
                     date_to__isnull=True
                 ).select_related('company').first()
 
-                if membership:
-                    return mark_safe(f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>')
+            if membership:
+                return mark_safe(
+                    f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>'
+                )
 
-                return mark_safe('<span class="badge bg-secondary">Нет компании</span>')
+            return mark_safe('<span class="badge bg-secondary">??? ????????</span>')
         except Exception:
-            return mark_safe('<span class="badge bg-secondary">Ошибка</span>')
+            return mark_safe('<span class="badge bg-secondary">??????</span>')
+
     get_company.short_description = 'Компания'
 
     def get_memberships_info(self, obj):

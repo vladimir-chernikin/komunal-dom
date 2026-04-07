@@ -1,0 +1,192 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .inline-group.user-membership-inline {
+        overflow-x: auto;
+    }
+
+    .tab-pane.user-membership-inline .membership-add-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        margin: 0 0 16px 0;
+    }
+
+    .tab-pane.user-membership-inline .membership-add-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 160px;
+        padding: 10px 18px;
+        border-radius: 6px;
+        background: #28a745;
+        color: #fff !important;
+        text-decoration: none;
+        font-weight: 600;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    .tab-pane.user-membership-inline .membership-add-button:hover {
+        background: #218838;
+        color: #fff !important;
+    }
+
+    .inline-group.user-membership-inline .tabular table {
+        width: 100% !important;
+        table-layout: fixed;
+    }
+
+    .inline-group.user-membership-inline .tabular th,
+    .inline-group.user-membership-inline .tabular td {
+        white-space: normal;
+        word-break: break-word;
+        vertical-align: top;
+    }
+
+    .inline-group.user-membership-inline .tabular th:nth-child(2),
+    .inline-group.user-membership-inline .tabular td:nth-child(2) {
+        width: 19%;
+    }
+
+    .inline-group.user-membership-inline .tabular th:nth-child(3),
+    .inline-group.user-membership-inline .tabular td:nth-child(3) {
+        width: 19%;
+    }
+
+    .inline-group.user-membership-inline .tabular th:nth-child(4),
+    .inline-group.user-membership-inline .tabular td:nth-child(4) {
+        width: 13%;
+    }
+
+    .inline-group.user-membership-inline .tabular th:nth-child(5),
+    .inline-group.user-membership-inline .tabular td:nth-child(5) {
+        width: 10%;
+    }
+
+    .inline-group.user-membership-inline .tabular th:nth-child(6),
+    .inline-group.user-membership-inline .tabular td:nth-child(6) {
+        width: 8%;
+    }
+
+    .inline-group.user-membership-inline .tabular th:nth-child(7),
+    .inline-group.user-membership-inline .tabular td:nth-child(7),
+    .inline-group.user-membership-inline .tabular th:nth-child(8),
+    .inline-group.user-membership-inline .tabular td:nth-child(8) {
+        width: 10%;
+    }
+</style>
+<script>
+(function () {
+    function rebuildPrimaryDepartmentOptions() {
+        var companySelect = document.getElementById('id_primary_company');
+        var departmentSelect = document.getElementById('id_primary_department');
+        if (!companySelect || !departmentSelect) {
+            return;
+        }
+
+        var rawMap = departmentSelect.dataset.departmentsByCompany || '{}';
+        var selectedCompanyId = companySelect.value || '';
+        var initialValue = departmentSelect.dataset.initialValue || '';
+        var previousValue = departmentSelect.dataset.currentValue || departmentSelect.value || initialValue;
+        var departmentsByCompany = {};
+
+        try {
+            departmentsByCompany = JSON.parse(rawMap);
+        } catch (error) {
+            departmentsByCompany = {};
+        }
+
+        var options = departmentsByCompany[selectedCompanyId] || [];
+        departmentSelect.innerHTML = '';
+
+        var emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = selectedCompanyId ? '---------' : 'Сначала выберите компанию';
+        departmentSelect.appendChild(emptyOption);
+
+        options.forEach(function (department) {
+            var option = document.createElement('option');
+            option.value = String(department.id);
+            option.textContent = department.name;
+            if (String(department.id) === String(previousValue)) {
+                option.selected = true;
+            }
+            departmentSelect.appendChild(option);
+        });
+
+        if (!options.some(function (department) { return String(department.id) === String(previousValue); })) {
+            departmentSelect.value = '';
+        }
+
+        if (selectedCompanyId) {
+            departmentSelect.removeAttribute('disabled');
+        } else {
+            departmentSelect.setAttribute('disabled', 'disabled');
+        }
+
+        departmentSelect.dataset.currentValue = departmentSelect.value || '';
+    }
+
+    function bindPrimaryDepartmentOptions() {
+        var companySelect = document.getElementById('id_primary_company');
+        var departmentSelect = document.getElementById('id_primary_department');
+        if (!companySelect || !departmentSelect) {
+            return;
+        }
+
+        rebuildPrimaryDepartmentOptions();
+
+        companySelect.addEventListener('change', function () {
+            departmentSelect.dataset.currentValue = '';
+            rebuildPrimaryDepartmentOptions();
+        });
+
+        departmentSelect.addEventListener('change', function () {
+            departmentSelect.dataset.currentValue = departmentSelect.value || '';
+        });
+    }
+
+    function moveMembershipAddButton() {
+        var navAddLink = Array.from(document.querySelectorAll('a.button')).find(function (link) {
+            return (link.getAttribute('href') || '').indexOf('/admin/work_orders/usercompanymembership/add/') >= 0;
+        });
+        var membershipPane = document.querySelector('.tab-pane.user-membership-inline');
+        var membershipModule = membershipPane ? membershipPane.querySelector('.js-inline-admin-formset, .module.user-membership-inline, .inline-group') : null;
+
+        if (!navAddLink || !membershipPane || !membershipModule) {
+            return;
+        }
+
+        if (!membershipPane.querySelector('.membership-add-toolbar')) {
+            var toolbar = document.createElement('div');
+            toolbar.className = 'membership-add-toolbar';
+
+            var button = document.createElement('a');
+            button.className = 'membership-add-button';
+            button.href = navAddLink.href;
+            button.textContent = '+ Добавить';
+
+            toolbar.appendChild(button);
+            membershipPane.insertBefore(toolbar, membershipModule);
+        }
+
+        navAddLink.remove();
+    }
+
+    window.rebuildPrimaryDepartmentOptions = rebuildPrimaryDepartmentOptions;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () {
+            bindPrimaryDepartmentOptions();
+            moveMembershipAddButton();
+        });
+    } else {
+        bindPrimaryDepartmentOptions();
+        moveMembershipAddButton();
+    }
+    window.addEventListener('load', bindPrimaryDepartmentOptions);
+    window.addEventListener('load', moveMembershipAddButton);
+})();
+</script>
+{% endblock %}

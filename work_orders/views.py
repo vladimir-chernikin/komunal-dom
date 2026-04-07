@@ -15,7 +15,7 @@ from .models import (
     WorkOrderStatusHistory
 )
 from portal.models import ServicesCatalog, ServiceObject
-from portal.mixins import get_role_dashboard_url
+from portal.mixins import get_role_dashboard_url, get_user_scope
 
 
 class ExecutorDashboardView(LoginRequiredMixin, TemplateView):
@@ -28,25 +28,25 @@ class ExecutorDashboardView(LoginRequiredMixin, TemplateView):
         # Получаем текущего пользователя
         user = self.request.user
 
-        # Получаем членства пользователя в компаниях
-        memberships = UserCompanyMembership.objects.filter(
-            user=user,
-            is_active=True
-        ).select_related('company', 'department')
+        scope = get_user_scope(user, role_codes=['executor'])
+        memberships = scope['memberships']
+        primary_membership = scope['primary_membership']
+        company_ids = scope['company_ids']
+        department_ids = scope['department_ids']
 
-        if not memberships.exists():
+        if not memberships:
             context['error'] = 'У вас нет назначенных ролей в компаниях'
             return context
 
-        # Основное членство
-        primary_membership = memberships.filter(is_primary=True).first() or memberships.first()
         context['membership'] = primary_membership
         context['company'] = primary_membership.company
         context['department'] = primary_membership.department
+        context['memberships'] = memberships
 
         # Мои заявки (назначенные на пользователя)
         my_requests = WorkOrder.objects.filter(
             responsible_user=user,
+            company_id__in=company_ids,
             is_test=False
         ).select_related(
             'current_internal_status', 'service', 'object'
@@ -61,7 +61,7 @@ class ExecutorDashboardView(LoginRequiredMixin, TemplateView):
 
         # Пул подразделения (заявки, не назначенные на исполнителя)
         pool_requests = WorkOrder.objects.filter(
-            department=primary_membership.department,
+            department_id__in=department_ids,
             responsible_user__isnull=True,
             is_test=False
         ).select_related(
@@ -88,8 +88,12 @@ class ExecutorMyRequestsView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
 
         # Мои заявки
+        scope = get_user_scope(self.request.user, role_codes=['executor'])
+        company_ids = scope['company_ids']
+
         my_requests = WorkOrder.objects.filter(
             responsible_user=self.request.user,
+            company_id__in=company_ids,
             is_test=False
         ).select_related(
             'current_internal_status', 'service', 'object'
@@ -118,11 +122,9 @@ class ExecutorPoolView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        # Получаем членство пользователя
-        membership = UserCompanyMembership.objects.filter(
-            user=self.request.user,
-            is_active=True
-        ).select_related('department').first()
+        scope = get_user_scope(self.request.user, role_codes=['executor'])
+        membership = scope['primary_membership']
+        department_ids = scope['department_ids']
 
         if not membership:
             context['error'] = 'У вас нет назначенных ролей'
@@ -130,7 +132,7 @@ class ExecutorPoolView(LoginRequiredMixin, TemplateView):
 
         # Пул заявок
         pool_requests = WorkOrder.objects.filter(
-            department=membership.department,
+            department_id__in=department_ids,
             responsible_user__isnull=True,
             is_test=False
         ).select_related(
@@ -139,6 +141,7 @@ class ExecutorPoolView(LoginRequiredMixin, TemplateView):
 
         context['pool_requests'] = pool_requests
         context['department'] = membership.department
+        context['departments'] = [item.department for item in scope['memberships']]
 
         # Breadcrumbs для возврата на правильный дашборд
         dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
@@ -154,6 +157,41 @@ class WorkOrderDetailView(LoginRequiredMixin, DetailView):
     template_name = 'work_orders/work_order_detail.html'
     context_object_name = 'work_order'
     pk_url_kwarg = 'work_order_id'
+
+    def get_queryset(self):
+        queryset = WorkOrder.objects.filter(is_test=False).select_related(
+            'company',
+            'department',
+            'service',
+            'object',
+            'responsible_user',
+            'resident_user',
+            'current_internal_status',
+        )
+        user = self.request.user
+        if user.is_superuser:
+            return queryset
+        if not user.is_authenticated:
+            return queryset.none()
+        if not user.is_staff:
+            return queryset.filter(resident_user=user)
+
+        scope = get_user_scope(user)
+        memberships = scope['memberships']
+        company_ids = scope['company_ids']
+        department_ids = scope['department_ids']
+        role_codes = {membership.role_code for membership in memberships}
+
+        if not memberships:
+            return queryset.none()
+        if role_codes & {'direktor_uk', 'chief_engineer', 'django_admin'}:
+            return queryset.filter(company_id__in=company_ids)
+        if role_codes & {'executor', 'contractor'}:
+            return queryset.filter(
+                Q(responsible_user=user) |
+                Q(responsible_user__isnull=True, department_id__in=department_ids)
+            )
+        return queryset.filter(company_id__in=company_ids)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -187,10 +225,8 @@ class WorkOrderCreateView(LoginRequiredMixin, CreateView):
 
     def form_valid(self, form):
         # Получаем членство пользователя
-        membership = UserCompanyMembership.objects.filter(
-            user=self.request.user,
-            is_active=True
-        ).select_related('company', 'department').first()
+        scope = get_user_scope(self.request.user)
+        membership = scope['primary_membership']
 
         if not membership:
             form.add_error(None, 'У вас нет назначенных ролей')
@@ -246,22 +282,21 @@ class ManagementListView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
 
-        # Получаем членства пользователя (должен быть директор или главный инженер)
-        memberships = UserCompanyMembership.objects.filter(
-            user=self.request.user,
-            is_active=True,
-            role_code__in=['direktor_uk', 'chief_engineer']
-        ).select_related('company', 'department')
+        scope = get_user_scope(
+            self.request.user,
+            role_codes=['direktor_uk', 'chief_engineer'],
+        )
+        memberships = scope['memberships']
+        primary_membership = scope['primary_membership']
 
-        if not memberships.exists():
+        if not memberships:
             context['error'] = 'У вас нет прав для просмотра управленческого списка'
             return context
 
-        # Получаем заявки компании
-        primary_membership = memberships.filter(is_primary=True).first() or memberships.first()
+        company_ids = scope['company_ids']
 
         work_orders = WorkOrder.objects.filter(
-            company=primary_membership.company,
+            company_id__in=company_ids,
             is_test=False
         ).select_related(
             'current_internal_status', 'service', 'object', 'responsible_user', 'department'
@@ -281,13 +316,14 @@ class ManagementListView(LoginRequiredMixin, TemplateView):
 
         context['work_orders'] = work_orders
         context['company'] = primary_membership.company
+        context['companies'] = [membership.company for membership in memberships]
         context['status_filter'] = status_filter
         context['department_filter'] = department_filter
         context['priority_filter'] = priority_filter
 
         # Список подразделений для фильтра
         context['departments'] = CompanyDepartment.objects.filter(
-            company=primary_membership.company,
+            company_id__in=company_ids,
             is_active=True
         )
 
@@ -340,21 +376,18 @@ class ContractorDashboardView(LoginRequiredMixin, TemplateView):
         user = self.request.user
 
         # Получаем членства пользователя в компаниях (может быть несколько для подрядчика)
-        memberships = UserCompanyMembership.objects.filter(
-            user=user,
-            is_active=True,
-            role_code='contractor'
-        ).select_related('company', 'department')
+        scope = get_user_scope(user, role_codes=['contractor'])
+        memberships = scope['memberships']
+        primary_membership = scope['primary_membership']
+        company_ids = scope['company_ids']
 
-        if not memberships.exists():
+        if not memberships:
             context['error'] = 'У вас нет назначенных ролей подрядчика'
             return context
 
         # Все членства подрядчика
         context['memberships'] = memberships
 
-        # Основное членство
-        primary_membership = memberships.filter(is_primary=True).first() or memberships.first()
         context['primary_membership'] = primary_membership
         context['company'] = primary_membership.company
         context['department'] = primary_membership.department
@@ -362,6 +395,7 @@ class ContractorDashboardView(LoginRequiredMixin, TemplateView):
         # Мои заявки (назначенные на подрядчика)
         my_requests = WorkOrder.objects.filter(
             responsible_user=user,
+            company_id__in=company_ids,
             is_test=False
         ).select_related(
             'current_internal_status', 'service', 'object', 'company'
@@ -375,7 +409,6 @@ class ContractorDashboardView(LoginRequiredMixin, TemplateView):
         context['my_requests_total'] = my_requests.count()
 
         # Пул заявок по всем компаниям подрядчика
-        company_ids = memberships.values_list('company_id', flat=True)
         pool_requests = WorkOrder.objects.filter(
             company_id__in=company_ids,
             responsible_user__isnull=True,

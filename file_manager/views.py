@@ -49,6 +49,13 @@ def file_list(request):
         'total_size': total_size,
         'show_all_users': show_all_users,
     }
+
+    # Breadcrumbs для возврата на правильный дашборд
+    from portal.mixins import get_role_dashboard_url
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+
     return render(request, 'file_manager/file_list.html', context)
 
 

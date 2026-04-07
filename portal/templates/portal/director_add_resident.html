@@ -1,0 +1,186 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Добавить пользователя - {{ company.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'portal:director_residents' %}">Жители</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Добавить пользователя</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h3 mb-4">
+                <i class="fas fa-user-plus"></i>
+                Добавить пользователя - {{ company.name }}
+            </h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Данные пользователя</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <!-- Основная информация -->
+                        <div class="mb-4">
+                            <h6 class="mb-3">Основная информация</h6>
+
+                            <div class="mb-3">
+                                <label for="{{ form.username.id_for_label }}" class="form-label">
+                                    Логин <span class="text-danger">*</span>
+                                </label>
+                                {{ form.username }}
+                                {% if form.username.errors %}
+                                <div class="text-danger">{{ form.username.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">{{ form.username.help_text }}</div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="{{ form.first_name.id_for_label }}" class="form-label">Имя</label>
+                                        {{ form.first_name }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="{{ form.last_name.id_for_label }}" class="form-label">Фамилия</label>
+                                        {{ form.last_name }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="{{ form.email.id_for_label }}" class="form-label">Email</label>
+                                {{ form.email }}
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="{{ form.password.id_for_label }}" class="form-label">
+                                    Пароль <span class="text-danger">*</span>
+                                </label>
+                                {{ form.password }}
+                                {% if form.password.errors %}
+                                <div class="text-danger">{{ form.password.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">{{ form.password.help_text }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Роль и подразделение -->
+                        <div class="mb-4">
+                            <h6 class="mb-3">Роль и подразделение</h6>
+
+                            <div class="mb-3">
+                                <label for="{{ form.role.id_for_label }}" class="form-label">
+                                    Роль <span class="text-danger">*</span>
+                                </label>
+                                {{ form.role }}
+                                {% if form.role.errors %}
+                                <div class="text-danger">{{ form.role.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">
+                                    <strong>Житель</strong> - может создавать заявки<br>
+                                    <strong>Исполнитель</strong> - может выполнять заявки<br>
+                                    <strong>Главный инженер</strong> - управляет заявками
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="department" class="form-label">Подразделение</label>
+                                <select name="department" id="department" class="form-select">
+                                    <option value="">-- Не указано --</option>
+                                    {% for dept in departments %}
+                                    <option value="{{ dept.id }}">{{ dept.department_name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Обязательно для сотрудников (исполнителей, инженеров)</div>
+                            </div>
+                        </div>
+
+                        <!-- Контактная информация -->
+                        <div class="mb-4">
+                            <h6 class="mb-3">Контактная информация</h6>
+
+                            <div class="mb-3">
+                                <label for="{{ form.phone.id_for_label }}" class="form-label">Телефон</label>
+                                {{ form.phone }}
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="{{ form.address.id_for_label }}" class="form-label">Адрес</label>
+                                {{ form.address }}
+                            </div>
+                        </div>
+
+                        <!-- Заметки -->
+                        <div class="mb-4">
+                            <label for="{{ form.notes.id_for_label }}" class="form-label">Заметки</label>
+                            {{ form.notes }}
+                        </div>
+
+                        <!-- Кнопки -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'portal:director_residents' %}" class="btn btn-secondary">Отмена</a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i>
+                                Создать пользователя
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle"></i>
+                        Подсказка
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-3">При создании пользователя:</p>
+                    <ul class="mb-0">
+                        <li>Логин должен быть уникальным</li>
+                        <li>Пароль минимум 8 символов</li>
+                        <li>Email - необязательно</li>
+                        <li>Жителям подразделение можно не указывать</li>
+                        <li>Сотрудникам обязательно укажите подразделение</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Добавляем классы формы Bootstrap
+    const fields = ['username', 'email', 'first_name', 'last_name', 'password', 'phone', 'address', 'role', 'notes'];
+    fields.forEach(field => {
+        const element = document.getElementById('id_' + field);
+        if (element) {
+            element.classList.add('form-control');
+        }
+    });
+});
+</script>
+
+{% endblock %}

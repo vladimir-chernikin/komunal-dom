@@ -18,10 +18,38 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
+        /* ТЕМНАЯ И СВЕТЛАЯ ТЕМА */
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-card: #ffffff;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --border-color: #e8e8e8;
+            --navbar-bg: #ffffff;
+            --navbar-text: #212529;
+            --footer-bg: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-card: #242424;
+            --text-primary: #e4e4e4;
+            --text-secondary: #a0a0a0;
+            --border-color: #404040;
+            --navbar-bg: #242424;
+            --navbar-text: #e4e4e4;
+            --footer-bg: #1a1a1a;
+        }
+
         body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
             display: flex;
             flex-direction: column;
             min-height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
         }
 
         main {
@@ -51,8 +79,9 @@
 
         /* Кастомная навигация */
         .navbar-custom {
-            background: white;
-            border-bottom: 1px solid #e8e8e8;
+            background: var(--navbar-bg);
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.3s, border-color 0.3s;
         }
         .navbar-custom .navbar-nav {
             align-items: flex-end;
@@ -69,17 +98,17 @@
         .nav-link {
             font-weight: normal;
             font-size: 1rem;
-            color: #212529 !important;
+            color: var(--navbar-text) !important;
             padding: 0.5rem 1rem;
             padding-bottom: 0.3rem;
         }
         .navbar-brand:hover,
         .nav-link:hover {
-            color: #374151 !important;
+            color: var(--text-primary) !important;
         }
 
         .nav-link.active {
-            color: #374151 !important;
+            color: var(--text-primary) !important;
             font-weight: 500;
         }
         .nav-link i {
@@ -90,20 +119,54 @@
         .navbar-brand-custom {
             font-size: 1.1rem;
             font-weight: 700;
-            color: #374151;
+            color: var(--navbar-text);
         }
 
         /* Футер */
         .footer-custom {
-            background: white !important;
-            border-top: 1px solid #e8e8e8;
+            background: var(--footer-bg) !important;
+            border-top: 1px solid var(--border-color);
             padding: 2rem 0;
         }
 
         .footer-text {
-            color: #999;
+            color: var(--text-secondary);
             font-size: 0.85rem;
             font-weight: 400;
+        }
+
+        /* Dropdown menu в темной теме */
+        [data-theme="dark"] .dropdown-menu {
+            background-color: #2d2d2d;
+            border-color: #404040;
+        }
+
+        [data-theme="dark"] .dropdown-item {
+            color: #e4e4e4;
+        }
+
+        [data-theme="dark"] .dropdown-item:hover {
+            background-color: #404040;
+            color: #e4e4e4;
+        }
+
+        /* Form controls в темной теме */
+        [data-theme="dark"] .form-control,
+        [data-theme="dark"] .form-select {
+            background-color: #2d2d2d;
+            border-color: #404040;
+            color: #e4e4e4;
+        }
+
+        [data-theme="dark"] .form-control:focus,
+        [data-theme="dark"] .form-select:focus {
+            background-color: #2d2d2d;
+            border-color: #667eea;
+            color: #e4e4e4;
+        }
+
+        [data-theme="dark"] .form-label {
+            color: #e4e4e4;
         }
 
         /* Кнопка выхода в меню */
@@ -187,6 +250,71 @@
 
         /* ========== КОНЕЦ ОБЩИХ СТИЛЕЙ ========== */
 
+        /* ========== ТЕМНАЯ ТЕМА ДЛЯ BOOTSTRAP ЭЛЕМЕНТОВ ========== */
+        [data-theme="dark"] .bg-info {
+            background-color: #1e3a5f !important;
+            color: #e4e4e4 !important;
+        }
+
+        [data-theme="dark"] .bg-warning {
+            background-color: #5c4a1f !important;
+            color: #e4e4e4 !important;
+        }
+
+        [data-theme="dark"] .text-info {
+            color: #6cb2eb !important;
+        }
+
+        [data-theme="dark"] .text-warning {
+            color: #ffc107 !important;
+        }
+
+        [data-theme="dark"] .text-muted {
+            color: #a0a0a0 !important;
+        }
+
+        [data-theme="dark"] .text-dark {
+            color: #e4e4e4 !important;
+        }
+
+        /* Table styles in dark theme */
+        [data-theme="dark"] .table {
+            color: #e4e4e4;
+            border-color: #404040;
+        }
+
+        [data-theme="dark"] .table thead th {
+            border-color: #404040;
+            color: #e4e4e4;
+        }
+
+        [data-theme="dark"] .table tbody tr {
+            border-color: #404040;
+        }
+
+        [data-theme="dark"] .table-hover tbody tr:hover {
+            background-color: #2d2d2d;
+        }
+
+        /* Badge styles in dark theme */
+        [data-theme="dark"] .badge {
+            border: 1px solid #404040;
+        }
+
+        /* Headers in dark theme */
+        [data-theme="dark"] h1,
+        [data-theme="dark"] h2,
+        [data-theme="dark"] h3,
+        [data-theme="dark"] h4,
+        [data-theme="dark"] h5,
+        [data-theme="dark"] h6 {
+            color: #e4e4e4;
+        }
+
+        [data-theme="dark"] .card-title {
+            color: #e4e4e4;
+        }
+
         /* ========== АДАПТИВНОСТЬ ========== */
         @media (max-width: 768px) {
             .navbar-custom .navbar-nav {
@@ -256,6 +384,13 @@
                 </ul>
 
                 <ul class="navbar-nav">
+                    <!-- Переключатель темы -->
+                    <li class="nav-item">
+                        <button class="btn btn-link nav-link" id="themeToggle" onclick="toggleTheme()" aria-label="Переключить тему">
+                            <i class="fas fa-moon" id="themeIcon"></i>
+                        </button>
+                    </li>
+
                     {% if user.is_authenticated %}
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
@@ -263,11 +398,8 @@
                                 <i class="fas fa-user"></i> {{ user.username }}
                             </a>
                             <ul class="dropdown-menu" aria-labelledby="navbarDropdown" role="menu">
-                                {% if user.userprofile.is_django_admin %}
-                                {# <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Кабинет DBA</a></li> #}
+                                {% if user.is_superuser %}
                                 <li role="none"><a class="dropdown-item" href="/admin/" role="menuitem">Админ-панель Django</a></li>
-                                {% elif user.userprofile.is_dba %}
-                                {# <li role="none"><a class="dropdown-item" href="{% url 'portal:dba_page' %}" role="menuitem">Кабинет DBA</a></li> #}
                                 {% endif %}
                                 <li role="none"><hr class="dropdown-divider"></li>
                                 <li role="none">
@@ -306,6 +438,47 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Переключатель темы -->
+    <script>
+        // Функция переключения темы
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const themeIcon = document.getElementById('themeIcon');
+
+            if (currentTheme === 'dark') {
+                // Переключаем на светлую
+                html.removeAttribute('data-theme');
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+                localStorage.setItem('theme', 'light');
+            } else {
+                // Переключаем на темную
+                html.setAttribute('data-theme', 'dark');
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // Загрузка сохраненной темы при старте
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme');
+            const themeIcon = document.getElementById('themeIcon');
+
+            if (savedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+            } else {
+                // По умолчанию светлая тема
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+            }
+        });
+    </script>
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>

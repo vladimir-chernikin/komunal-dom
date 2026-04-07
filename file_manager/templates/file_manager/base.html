@@ -9,8 +9,13 @@
         color: #0d6efd;
     }
     .file-size {
-        color: #6c757d;
+        color: var(--text-secondary);
         font-size: 0.85rem;
+    }
+
+    /* Темная тема для иконок файлов */
+    [data-theme="dark"] .file-icon {
+        color: #4a9eff;
     }
 </style>
 {% endblock %}

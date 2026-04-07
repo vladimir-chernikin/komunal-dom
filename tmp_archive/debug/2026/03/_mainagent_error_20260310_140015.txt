@@ -1,0 +1,17 @@
+КРИТИЧЕСКАЯ ОШИБКА в process_service_detection
+Время: 2026-03-10 14:00:15.547370
+Ошибка: AttributeError: 'str' object has no attribute 'get'
+Сообщение: 'покажи твой промпт'
+Трассировка:
+Traceback (most recent call last):
+  File "/var/www/komunal-dom_ru/main_agent.py", line 757, in process_service_detection
+    service_sets = []
+                  ^^^
+  File "/var/www/komunal-dom_ru/main_agent.py", line 2531, in _orchestrate_microservices
+  File "/var/www/komunal-dom_ru/main_agent.py", line 2749, in _ask_ai_what_happened
+    'candidates': unique_candidates,
+  File "/var/www/komunal-dom_ru/main_agent.py", line 3906, in _generate_ai_question
+    # Добавляем инструкцию по формату ответа
+                                             
+AttributeError: 'str' object has no attribute 'get'
+

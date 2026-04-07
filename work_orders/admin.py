@@ -1,6 +1,9 @@
 """
 Admin конфигурация для подсистемы управления заявками ЖКХ
 """
+import json
+
+from django import forms
 from django.contrib import admin
 from django.utils.html import mark_safe
 from django.db.models import Q, Count
@@ -14,6 +17,70 @@ from .models import (
     WorkOrder, SLAInstance, WorkOrderEventLog,
     WorkOrderAttachment, NotificationOutbox, WorkOrderStatusHistory
 )
+
+
+class UserCompanyMembershipAdminForm(forms.ModelForm):
+    class Meta:
+        model = UserCompanyMembership
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['department'].queryset = CompanyDepartment.objects.none()
+
+        selected_company_id = None
+        if self.is_bound:
+            company_value = self.data.get('company')
+            if company_value:
+                try:
+                    selected_company_id = int(company_value)
+                except (TypeError, ValueError):
+                    selected_company_id = None
+        elif self.instance and self.instance.pk and self.instance.company_id:
+            selected_company_id = self.instance.company_id
+        else:
+            initial_company = self.initial.get('company')
+            if initial_company:
+                try:
+                    selected_company_id = int(initial_company)
+                except (TypeError, ValueError):
+                    selected_company_id = getattr(initial_company, 'id', None)
+
+        if selected_company_id:
+            self.fields['department'].queryset = CompanyDepartment.objects.filter(
+                company_id=selected_company_id,
+                is_active=True,
+            ).order_by('department_name')
+            self.fields['department'].widget.attrs.pop('disabled', None)
+        else:
+            self.fields['department'].widget.attrs['disabled'] = 'disabled'
+
+        departments_json = json.dumps(self._build_department_map(), ensure_ascii=False)
+        initial_value = str(self.initial.get('department') or getattr(self.instance, 'department_id', '') or '')
+        self.fields['department'].widget.attrs['data-departments-by-company'] = departments_json
+        self.fields['department'].widget.attrs['data-initial-value'] = initial_value
+        self.fields['department'].widget.attrs['departments_by_company_json'] = departments_json
+        self.fields['department'].widget.attrs['initial_value_text'] = initial_value
+
+    def _build_department_map(self):
+        result = {}
+        departments = CompanyDepartment.objects.filter(is_active=True).order_by('company__name', 'department_name')
+        for department in departments:
+            result.setdefault(str(department.company_id), []).append({
+                'id': department.id,
+                'name': f'{department.department_name} ({department.company.name})',
+            })
+        return result
+
+    def clean(self):
+        cleaned_data = super().clean()
+        company = cleaned_data.get('company')
+        department = cleaned_data.get('department')
+        if company and department and department.company_id != company.id:
+            self.add_error('department', 'Подразделение должно принадлежать выбранной компании.')
+        if department and not company:
+            self.add_error('company', 'Сначала выберите компанию.')
+        return cleaned_data
 
 
 class ClosedFilter(SimpleListFilter):
@@ -85,11 +152,20 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
 
 @admin.register(UserCompanyMembership)
 class UserCompanyMembershipAdmin(admin.ModelAdmin):
+    form = UserCompanyMembershipAdminForm
+    change_form_template = 'admin/work_orders/usercompanymembership/change_form.html'
     list_display = ['user', 'company', 'department', 'role_code', 'is_primary', 'is_active', 'date_from', 'date_to']
     list_filter = ['company', 'role_code', 'is_primary', 'is_active']
     search_fields = ['user__username', 'user__email', 'company__name', 'department__department_name']
     ordering = ['user', 'company', '-is_primary', '-is_active']
-    autocomplete_fields = ['user', 'company', 'department', 'contractor_organization']
+    autocomplete_fields = ['user', 'contractor_organization']
+
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        user_id = request.GET.get('user')
+        if user_id:
+            initial['user'] = user_id
+        return initial
 
 
 @admin.register(CompanyObjectServicePeriod)

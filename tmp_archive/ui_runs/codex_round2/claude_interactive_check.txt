@@ -1,0 +1,5 @@
+permission_prompts=0
+edit_prompts=0
+launcher_status=ok
+permission_mode=dontAsk
+screen_hint=don't ask on

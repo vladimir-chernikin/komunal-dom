@@ -1,0 +1,148 @@
+{% extends 'database_viewer/base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h4><i class="fas fa-project-diagram me-2"></i>ER диаграмма - связи между таблицами</h4>
+            </div>
+            <div class="card-body">
+                <div id="er-diagram" style="height: 600px; border: 1px solid #ddd; background: #f8f9fa;"></div>
+
+                <h6 class="mt-4">Список связей ({{ relations|length }}):</h6>
+                <div class="table-responsive" style="max-height: 400px;">
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Таблица</th>
+                                <th>Колонка</th>
+                                <th><i class="fas fa-arrow-right"></i></th>
+                                <th>Ссылается на</th>
+                                <th>Колонка</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rel in relations %}
+                            <tr>
+                                <td><code>{{ rel.from_table }}</code></td>
+                                <td><span class="badge fk-badge">{{ rel.from_column }}</span></td>
+                                <td class="text-center">
+                                    <i class="fas fa-long-arrow-alt-right text-primary"></i>
+                                </td>
+                                <td><code>{{ rel.to_table }}</code></td>
+                                <td><span class="badge fk-badge">{{ rel.to_column }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script>
+const tables = {{ tables|safe }};
+const relations = {{ relations|safe }};
+
+// Подготовка данных для vis.js
+const nodes = tables.map(t => ({
+    id: t.id,
+    label: t.name,
+    title: t.schema + '.' + t.name,
+    group: t.schema,
+    font: { size: 14 }
+}));
+
+const edges = relations.map(r => ({
+    from: r.from_table,
+    to: r.to_table,
+    title: `${r.from_column} -> ${r.to_column}`,
+    arrows: 'to',
+    smooth: { type: 'cubicCurve' }
+}));
+
+// Конфигурация сети
+const container = document.getElementById('er-diagram');
+const data = {
+    nodes: new vis.DataSet(nodes),
+    edges: new vis.DataSet(edges)
+};
+
+const options = {
+    nodes: {
+        shape: 'box',
+        margin: 10,
+        widthConstraint: {
+            maximum: 200
+        },
+        color: {
+            background: '#ffffff',
+            border: '#0d6efd',
+            highlight: {
+                background: '#fff3cd',
+                border: '#ffc107'
+            }
+        },
+        borderWidth: 2
+    },
+    edges: {
+        width: 2,
+        color: {
+            color: '#6c757d',
+            highlight: '#0d6efd'
+        },
+        arrows: {
+            to: {
+                enabled: true,
+                scaleFactor: 0.5
+            }
+        },
+        smooth: {
+            type: 'cubicCurve',
+            forceDirection: 'horizontal',
+            roundness: 0.4
+        }
+    },
+    layout: {
+        improvedLayout: true,
+        hierarchical: {
+            enabled: false,
+            direction: 'UD',
+            sortMethod: 'directed'
+        }
+    },
+    physics: {
+        enabled: true,
+        barnesHut: {
+            gravitationalConstant: -30000,
+            centralGravity: 0.3,
+            springLength: 95,
+            springConstant: 0.04,
+            damping: 0.09,
+            avoidOverlap: 0.1
+        },
+        stabilization: {
+            iterations: 200
+        }
+    },
+    interaction: {
+        hover: true,
+        tooltipDelay: 200,
+        zoomView: true,
+        dragView: true
+    }
+};
+
+const network = new vis.Network(container, data, options);
+
+// Fit network после загрузки
+network.once('stabilizationIterationsDone', function() {
+    network.fit({ animation: true });
+});
+</script>
+{% endblock %}

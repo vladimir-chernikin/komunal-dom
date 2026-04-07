@@ -1,0 +1,88 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    #content-main,
+    #content-main > form,
+    #content-main .card,
+    #content-main .card-body,
+    #content-main .module,
+    #content-main .module.aligned,
+    #content-main .tab-content,
+    #content-main .tab-pane,
+    #content-main .tab-pane.active,
+    #content-main .form-horizontal,
+    #content-main .form-horizontal .card {
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    .change-form .row,
+    .change-form .row > [class*="col-"],
+    .change-form #jazzy-main-column,
+    .change-form .col-lg-9,
+    .change-form .col-xl-8,
+    .change-form .col-12 {
+        max-width: 100% !important;
+    }
+
+    .change-form #content-main .form-group > .row,
+    .change-form #content-main .aligned .form-row,
+    .change-form #content-main .form-horizontal .form-group.row {
+        display: grid !important;
+        grid-template-columns: minmax(160px, 210px) minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+    }
+
+    .change-form #content-main .form-group > .row > label.col-sm-3,
+    .change-form #content-main .form-horizontal .form-group.row > label,
+    .change-form #content-main .aligned .form-row > div:first-child {
+        width: auto !important;
+        max-width: none !important;
+        flex: none !important;
+        margin-bottom: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    .change-form #content-main .form-group > .row > div.col-sm-7,
+    .change-form #content-main .form-horizontal .form-group.row > div:not(:first-child),
+    .change-form #content-main .aligned .form-row > div:not(:first-child) {
+        width: 100% !important;
+        max-width: none !important;
+        flex: 1 1 auto !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    .change-form #content-main .form-group > .row > div.col-sm-7 .related-widget-wrapper,
+    .change-form #content-main .form-group > .row > div.col-sm-7 .select2,
+    .change-form #content-main .form-group > .row > div.col-sm-7 .select2-container,
+    .change-form #content-main .form-group > .row > div.col-sm-7 .select2-selection,
+    .change-form #content-main select,
+    .change-form #content-main input[type="text"],
+    .change-form #content-main input[type="number"],
+    .change-form #content-main input[type="email"],
+    .change-form #content-main textarea {
+        width: 100% !important;
+        max-width: none !important;
+    }
+
+    .change-form #content-main .form-group > .row > div.col-sm-7 .related-widget-wrapper {
+        display: block !important;
+    }
+
+    .change-form #content-main .form-group > .row > div.col-sm-7 .related-widget-wrapper > .select2 {
+        width: 100% !important;
+    }
+
+    @media (max-width: 991px) {
+        .change-form #content-main .form-group > .row,
+        .change-form #content-main .aligned .form-row,
+        .change-form #content-main .form-horizontal .form-group.row {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}

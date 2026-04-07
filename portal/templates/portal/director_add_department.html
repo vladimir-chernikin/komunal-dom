@@ -1,0 +1,139 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Добавить подразделение - {{ company.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'portal:director_departments' %}">Подразделения</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Добавить подразделение</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h3 mb-4">
+                <i class="fas fa-building"></i>
+                Добавить подразделение - {{ company.name }}
+            </h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Данные подразделения</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="mb-3">
+                            <label for="{{ form.department_code.id_for_label }}" class="form-label">
+                                Код подразделения <span class="text-danger">*</span>
+                            </label>
+                            {{ form.department_code }}
+                            {% if form.department_code.errors %}
+                            <div class="text-danger">{{ form.department_code.errors }}</div>
+                            {% endif %}
+                            <div class="form-text">{{ form.department_code.help_text }}</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="{{ form.department_name.id_for_label }}" class="form-label">
+                                Название <span class="text-danger">*</span>
+                            </label>
+                            {{ form.department_name }}
+                            {% if form.department_name.errors %}
+                            <div class="text-danger">{{ form.department_name.errors }}</div>
+                            {% endif %}
+                            <div class="form-text">{{ form.department_name.help_text }}</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="{{ form.parent_department.id_for_label }}" class="form-label">Родительское подразделение</label>
+                            {{ form.parent_department }}
+                            {% if form.parent_department.errors %}
+                            <div class="text-danger">{{ form.parent_department.errors }}</div>
+                            {% endif %}
+                            <div class="form-text">{{ form.parent_department.help_text }}</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="{{ form.description.id_for_label }}" class="form-label">Описание</label>
+                            {{ form.description }}
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'portal:director_departments' %}" class="btn btn-secondary">Отмена</a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i>
+                                Создать подразделение
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle"></i>
+                        Подсказка
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-3">При создании подразделения:</p>
+                    <ul class="mb-0">
+                        <li>Код должен быть уникальным (латинские буквы)</li>
+                        <li>Название - понятно для пользователей</li>
+                        <li>Родительское подразделение - опционально</li>
+                        <li>Можно создавать иерархию (например: Сантехника → 1-й участок)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-lightbulb"></i>
+                        Примеры
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2"><strong>Коды подразделений:</strong></p>
+                    <ul class="mb-0 small">
+                        <li><code>admin</code> - Администрация</li>
+                        <li><code>plum</code> - Сантехническая служба</li>
+                        <li><code>elect</code> - Электрическая служба</li>
+                        <li><code>elev</code> - Лифтовая служба</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Добавляем классы формы Bootstrap
+    const fields = ['department_code', 'department_name', 'parent_department', 'description'];
+    fields.forEach(field => {
+        const element = document.getElementById('id_' + field);
+        if (element) {
+            element.classList.add('form-control');
+        }
+    });
+});
+</script>
+
+{% endblock %}

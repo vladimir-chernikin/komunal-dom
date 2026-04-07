@@ -1,13 +1,14 @@
 {% extends 'work_orders/base.html' %}
 
-{% block title %}Заявка {{ work_order.work_order_no }} - УК Комфорт{% endblock %}
+{% block title %}{{ block.super }}{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-12">
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'work_orders:executor_dashboard' %}">Дашборд</a></li>
+                <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'work_orders:management_list' %}">Список заявок</a></li>
                 <li class="breadcrumb-item active" aria-current="page">{{ work_order.work_order_no }}</li>
             </ol>
         </nav>

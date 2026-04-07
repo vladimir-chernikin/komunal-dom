@@ -1,0 +1,77 @@
+<div data-schema="{{ schema }}" data-table="{{ table_name }}">
+    <h5><code>{{ schema }}.{{ table_name }}</code></h5>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <span>
+            Всего записей: <strong>{{ total_count }}</strong>
+        </span>
+        <span>
+            Показано: <strong>{{ page_obj.start_index }}-{{ page_obj.end_index }}</strong>
+        </span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-bordered table-hover">
+            <thead class="table-light sticky-top">
+                <tr>
+                    <th>#</th>
+                    {% for col in columns %}
+                    <th><code>{{ col }}</code></th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data %}
+                <tr>
+                    <td>{{ forloop.counter0|add:page_obj.start_index }}</td>
+                    {% for value in row %}
+                    <td>{{ value|safe }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    <nav aria-label="Пагинация">
+        <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="loadDataPage({{ page_obj.previous_page_number }}); return false;">
+                    <i class="fas fa-chevron-left"></i> Назад
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link"><i class="fas fa-chevron-left"></i> Назад</span>
+            </li>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="#" onclick="loadDataPage({{ num }}); return false;">{{ num }}</a>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="loadDataPage({{ page_obj.next_page_number }}); return false;">
+                    Вперед <i class="fas fa-chevron-right"></i>
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link">Вперед <i class="fas fa-chevron-right"></i></span>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>

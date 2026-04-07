@@ -507,184 +507,11 @@ def dialog_report_view_page(request, filename):
 
 @login_required
 def executor_dashboard(request):
-    """Кабинет исполнителя - просмотр заявок"""
-    from datetime import datetime, timezone
-    from work_orders.models import WorkOrder, WorkOrderStatusRef
+    """Совместимый alias: старый executor path использует новый work_orders dashboard."""
+    from work_orders.views import ExecutorDashboardView
 
-    try:
-        profile = request.user.userprofile
-    except UserProfile.DoesNotExist:
-        profile = UserProfile.objects.create(user=request.user, role='uk_user')
-
-    # Получаем membership для определения department
-    from portal.mixins import get_primary_membership
-    membership = get_primary_membership(request.user)
-
-    if not membership:
-        return render(request, 'executor_dashboard.html', {
-            'user_profile': profile,
-            'my_requests': [],
-            'available_requests': [],
-            'error': 'У вас нет привязки к компании'
-        })
-
-    # Получаем параметры фильтрации
-    status_filter = request.GET.get('status', '')
-    search_query = request.GET.get('q', '')
-
-    # Базовый QuerySet заявок:
-    # - Мои заявки: назначенные на меня (любой отдел)
-    # - Доступные заявки: моего отдела (не назначенные)
-    work_orders_qs = WorkOrder.objects.filter(
-        is_test=False
-    ).filter(
-        models.Q(responsible_user_id=request.user.id) |
-        models.Q(responsible_user_id__isnull=True, department_id=membership.department_id)
-    ).select_related(
-        'current_internal_status',
-        'service',
-        'responsible_user'
-    ).order_by('-created_at')
-
-    # Фильтр по статусу
-    if status_filter:
-        work_orders_qs = work_orders_qs.filter(
-            current_internal_status__short_code_en=status_filter
-        )
-
-    # Поиск по описанию
-    if search_query:
-        work_orders_qs = work_orders_qs.filter(
-            original_request_text__icontains=search_query
-        )
-
-    # Форматируем заявки для шаблона
-    requests = []
-    for wo in work_orders_qs:
-        req = {
-            'id': wo.id,
-            'work_order_no': wo.work_order_no,
-            'created_at': wo.created_at,
-            'description': wo.original_request_text,
-            'status': wo.current_internal_status.short_code_en if wo.current_internal_status else 'unknown',
-            'service_name': wo.service.scenario_name if wo.service else '—',
-            'urgency_level': 'emergency' if wo.is_emergency else 'normal',
-            'assigned_to': wo.responsible_user_id,
-            'priority_code': wo.priority_code,
-        }
-
-        # Форматируем дату
-        if req['created_at']:
-            req['created_at_formatted'] = req['created_at'].strftime('%d.%m.%Y %H:%M')
-
-        # Адрес (заглушка, данные о адресе нужно добавить в модель)
-        req['address_formatted'] = f"Объект #{wo.object_id}" if wo.object_id else '—'
-        req['address_details'] = []
-        req['address_details_str'] = ''
-
-        # Категория
-        req['category_badge'] = '—'
-
-        # Вычисляем просрочку для аварийных заявок
-        req['is_overdue'] = False
-        req['remaining_seconds'] = 0
-        req['remaining_time_formatted'] = ''
-        req['deadline_at'] = None
-
-        # Маппинг статусов на русский язык
-        status_map = {
-            'new': 'Новая',
-            'accepted_by_executor': 'Принята',
-            'in_progress': 'В работе',
-            'completed': 'Выполнена',
-            'cancelled': 'Отменена',
-            'on_hold': 'Отложена',
-        }
-        req['status_display'] = status_map.get(req['status'], req['status'])
-
-        # Таймер для заявок "В работе"
-        if req['status'] == 'in_progress' and req['created_at']:
-            now = datetime.now(timezone.utc)
-            time_in_work = now - req['created_at']
-            total_seconds_work = int(time_in_work.total_seconds())
-            mins_work = total_seconds_work // 60
-            hrs_work = mins_work // 60
-            mins_work = mins_work % 60
-
-            if hrs_work > 0:
-                req['status_display'] = f"{hrs_work} ч {mins_work} мин в работе"
-            else:
-                req['status_display'] = f"{mins_work} мин в работе"
-
-        if req['urgency_level'] == 'emergency' and req['assigned_to'] is None:
-            now = datetime.now(timezone.utc)
-            time_diff = now - req['created_at']
-            total_seconds = time_diff.total_seconds()
-            arrival_deadline = 30 * 60  # 30 минут
-
-            if total_seconds < 300:  # < 5 минут
-                req['is_take_deadline'] = True
-                req['remaining_seconds'] = int(300 - total_seconds)
-                mins = req['remaining_seconds'] // 60
-                secs = req['remaining_seconds'] % 60
-                req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
-                req['status_display'] = 'Новая'
-            elif total_seconds < arrival_deadline:
-                req['is_overdue'] = True
-                remaining_arrival = int(arrival_deadline - total_seconds)
-                req['remaining_seconds'] = remaining_arrival
-                mins = remaining_arrival // 60
-                secs = remaining_arrival % 60
-                req['remaining_time_formatted'] = f"{mins}:{secs:02d}"
-                req['status_display'] = req['remaining_time_formatted']
-            else:
-                req['is_overdue'] = True
-                req['is_late'] = True
-                late_seconds = int(total_seconds - arrival_deadline)
-                req['remaining_seconds'] = late_seconds
-                late_mins = late_seconds // 60
-                late_secs = late_seconds % 60
-                req['status_display'] = f"{late_mins}:{late_secs:02d} опоздание"
-
-        req['can_mark_arrived'] = False
-        requests.append(req)
-
-    # Разделяем на "Мои заявки" и "Доступные"
-    my_requests = [r for r in requests if r['assigned_to'] == request.user.id]
-    available_requests = [r for r in requests if r['assigned_to'] is None]
-
-    # Сортировка
-    def sort_key(req):
-        if req.get('is_overdue'):
-            return (0, req['created_at'])
-        elif req.get('urgency_level') == 'emergency' and req.get('remaining_seconds', 0) > 0:
-            return (1, req['created_at'])
-        else:
-            return (2, -req['created_at'].timestamp())
-
-    my_requests.sort(key=sort_key)
-    available_requests.sort(key=sort_key)
-
-    # Считаем счетчики
-    all_requests_count = len(my_requests)
-    status_new_count = len([r for r in my_requests if r['status'] in ['new', 'accepted_by_executor']])
-    status_in_work_count = len([r for r in my_requests if r['status'] == 'in_progress'])
-    status_done_count = len([r for r in my_requests if r['status'] == 'completed'])
-    status_cancelled_count = len([r for r in my_requests if r['status'] == 'cancelled'])
-
-    context = {
-        'user_profile': profile,
-        'my_requests': my_requests,
-        'available_requests': available_requests,
-        'status': status_filter,
-        'q': search_query,
-        'all_requests_count': all_requests_count,
-        'status_new_count': status_new_count,
-        'status_in_work_count': status_in_work_count,
-        'status_done_count': status_done_count,
-        'status_cancelled_count': status_cancelled_count,
-    }
-    return render(request, 'portal/executor_dashboard.html', context)
+    view = ExecutorDashboardView.as_view()
+    return view(request)
 
 
 @login_required
@@ -859,10 +686,15 @@ def executor_complete_request(request, request_id):
 
 @login_required
 def executor_report(request, request_id):
-    """Генерация HTML отчета по выполненной заявке"""
+    """Совместимый alias: сначала пытаемся открыть новую карточку WorkOrder."""
     from django.http import HttpResponse
     from django.template import loader
     from django.db import connection
+    from work_orders.models import WorkOrder
+
+    work_order = WorkOrder.objects.filter(pk=request_id, is_test=False).first()
+    if work_order:
+        return redirect('work_orders:work_order_detail', work_order_id=work_order.id)
 
     with connection.cursor() as cursor:
         cursor.execute("""

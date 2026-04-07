@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+import json, sys
+raw = sys.stdin.read()
+try:
+ data = json.loads(raw or '{}')
+except Exception:
+ sys.exit(0)
+text = json.dumps(data, ensure_ascii=False).lower()
+if 'форма' in text or 'button' in text or 'change_form' in text:
+ if 'screenshot' not in text and 'playwright' not in text:
+ print('[komunal-dom-ui-ops] Stop check: для UI-задач желательно приложить screenshot/DOM verification.', file=sys.stderr)

@@ -1,0 +1,1060 @@
+# ============================================================
+# WORK ORDER FORM CONTRACT v0.2 (NORMALIZED)
+# ============================================================
+# Screen: Заявка ЖКХ (Work Order Detail)
+# Entity: work_orders.WorkOrder
+# Stack: Server-rendered Django + Bootstrap 5
+# Target: Django → Figma → Claude pipeline
+#
+# Profiles:
+#   - detail_operator: Custom UI для исполнителей (усеченный набор полей)
+#   - detail_full: Django Admin для администраторов (полный набор)
+#   - create: Форма создания (5 полей)
+#
+# conventions:
+#   - source = model|derived|relation|action_input|system
+#   - importance = primary|secondary|technical|hidden_by_default
+#   - editable = true|false|condition
+#   - backend_status = implemented|deferred|excluded_from_v0_2
+# ============================================================
+
+screen:
+  code: "work_order"
+  name: "Заявка ЖКХ"
+  description: "Карточка заявки с жизненным циклом"
+  version: "0.2.0"
+  status: "normalized"
+  last_updated: "2026-03-28"
+
+  implementation:
+    django_admin:
+      admin_class: "WorkOrderAdmin"
+      file: "work_orders/admin.py:106"
+      fieldsets_count: 6
+
+    custom_ui:
+      view_class: "WorkOrderDetailView"
+      template: "work_orders/work_order_detail.html"
+      url_pattern: "/work_orders/request/<id>/"
+
+entity:
+  app: "work_orders"
+  model: "WorkOrder"
+  table: "request_mgmt.work_order"
+  primary_key: "id"
+  display_field: "work_order_no"
+  display_format: "#{work_order_no}"
+
+# ============================================================
+# FIELDS (normalized)
+# ============================================================
+# source:
+#   model - поле существует в Django модели
+#   derived - вычисляемое поле (агрегация, related field display)
+#   relation - FK или related field
+#   action_input - поле только для ввода в action (не хранится)
+#   system - системное поле (created_at, updated_at)
+#
+# importance:
+#   primary - обязательно показать на первом экране
+#   secondary - показать на expanded view
+#   technical - техническое поле, скрыто по умолчанию
+#   hidden_by_default - вообще не показывать в UI
+# ============================================================
+
+fields:
+  # === TAB: MAIN_INFO ===
+
+  - code: "work_order_no"
+    label: "Номер заявки"
+    type: "text"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "main_info"
+    group: "identity"
+    editable: false
+    importance: "primary"
+    constraints:
+      max_length: 30
+      unique: true
+
+  - code: "company"
+    label: "Компания"
+    type: "fk"
+    source: "relation"
+    target_model: "nsi.Company"
+    target_display: "name"
+    profiles: ["detail_full"]
+    tab: "main_info"
+    group: "assignment"
+    editable: true
+    importance: "secondary"
+    widget: "autocomplete"
+
+  - code: "object"
+    label: "Объект обслуживания"
+    type: "fk"
+    source: "relation"
+    target_model: "portal.ServiceObject"
+    target_display: "service_object_id"
+    profiles: ["detail_full", "create"]
+    tab: "main_info"
+    group: "assignment"
+    editable: true
+    importance: "primary"
+    widget: "autocomplete"
+    validation:
+      required: true
+
+  - code: "service"
+    label: "Услуга"
+    type: "fk"
+    source: "relation"
+    target_model: "portal.ServicesCatalog"
+    target_display: "scenario_name"
+    profiles: ["detail_full", "create", "detail_operator"]
+    tab: "main_info"
+    group: "assignment"
+    editable: true
+    importance: "primary"
+    widget: "autocomplete"
+    validation:
+      required: true
+
+  - code: "route"
+    label: "Маршрут"
+    type: "fk"
+    source: "relation"
+    target_model: "work_orders.RouteRef"
+    target_display: "route_name"
+    profiles: ["detail_full"]
+    tab: "main_info"
+    group: "assignment"
+    editable: true
+    importance: "technical"
+
+  - code: "department"
+    label: "Подразделение"
+    type: "fk"
+    source: "relation"
+    target_model: "work_orders.CompanyDepartment"
+    target_display: "department_name"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "main_info"
+    group: "assignment"
+    editable: false
+    importance: "primary"
+    widget: "autocomplete"
+
+  - code: "responsible_user"
+    label: "Ответственный исполнитель"
+    type: "fk"
+    source: "relation"
+    target_model: "auth.User"
+    target_display: "get_full_name|username"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "main_info"
+    group: "assignment"
+    editable: false  # Только через actions
+    importance: "primary"
+    widget: "autocomplete"
+    display_format: "{get_full_name|default:username}"
+    empty_display: "Не назначен"
+
+  # === TAB: CURRENT_STATE ===
+
+  - code: "current_internal_status"
+    label: "Статус (внутренний)"
+    type: "fk"
+    source: "relation"
+    target_model: "work_orders.WorkOrderStatusRef"
+    target_display: "short_name_ru"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "current_state"
+    group: "status"
+    editable: false  # Через transitions
+    importance: "primary"
+    widget: "badge"
+    filter: "status_scope='internal'"
+    ui_hint: "color_primary"
+
+  - code: "current_external_status"
+    label: "Статус (внешний)"
+    type: "fk"
+    source: "relation"
+    target_model: "work_orders.WorkOrderStatusRef"
+    target_display: "short_name_ru"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "current_state"
+    group: "status"
+    editable: false
+    importance: "primary"
+    widget: "badge"
+    filter: "status_scope='external'"
+    ui_hint: "color_info"
+
+  - code: "priority_code"
+    label: "Приоритет"
+    type: "select"
+    source: "model"
+    profiles: ["detail_full", "detail_operator", "create"]
+    tab: "current_state"
+    group: "priority"
+    editable: true
+    importance: "primary"
+    widget: "badge"
+    choices:
+      - value: "low"
+        label: "Низкий"
+      - value: "normal"
+        label: "Обычный"
+        default: true
+      - value: "high"
+        label: "Высокий"
+      - value: "critical"
+        label: "Критический"
+
+  - code: "is_emergency"
+    label: "Аварийная заявка"
+    type: "bool"
+    source: "model"
+    profiles: ["detail_full", "detail_operator", "create"]
+    tab: "current_state"
+    group: "priority"
+    editable: true
+    importance: "primary"
+    default: false
+    ui_hint: "emergency_badge_pulse"
+
+  # === TAB: REQUEST_TEXT ===
+
+  - code: "original_request_text"
+    label: "Описание заявки"
+    type: "textarea"
+    source: "model"
+    profiles: ["detail_full", "detail_operator", "create"]
+    tab: "request_text"
+    group: "content"
+    editable: false  # Только при создании
+    importance: "primary"
+    rows: 5
+    placeholder: "Опишите проблему подробно"
+    validation:
+      required_on_create: true
+
+  - code: "additional_info_text"
+    label: "Дополнительные сведения"
+    type: "textarea"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "request_text"
+    group: "content"
+    editable: true
+    importance: "secondary"
+    rows: 3
+
+  - code: "resolution_text"
+    label: "Решение"
+    type: "textarea"
+    source: "model"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "request_text"
+    group: "content"
+    editable: "condition"  # Только при complete action
+    importance: "primary"
+    rows: 5
+    placeholder: "Опишите, что было сделано"
+    validation:
+      required_when: "action=complete"
+    ui_hint: "alert_success"
+
+  # === TAB: RELATIONS ===
+
+  - code: "request_intake"
+    label: "Входящее событие"
+    type: "fk"
+    source: "relation"
+    target_model: "work_orders.RequestIntake"
+    target_display: "id"
+    profiles: ["detail_full"]
+    tab: "relations"
+    group: "links"
+    editable: false
+    importance: "technical"
+    note: "OneToOne from bot JSON"
+
+  - code: "resident_user"
+    label: "Авторизованный житель"
+    type: "fk"
+    source: "relation"
+    target_model: "auth.User"
+    target_display: "get_full_name|username"
+    profiles: ["detail_full"]
+    tab: "relations"
+    group: "links"
+    editable: true
+    importance: "technical"
+
+  - code: "parent_work_order"
+    label: "Родительская заявка"
+    type: "fk"
+    source: "relation"
+    target_model: "work_orders.WorkOrder"
+    target_display: "work_order_no"
+    profiles: ["detail_full"]
+    tab: "relations"
+    group: "links"
+    editable: true
+    importance: "technical"
+
+  # === TAB: LIFECYCLE ===
+
+  - code: "creation_source"
+    label: "Источник создания"
+    type: "select"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "technical"
+    choices:
+      - value: "bot_json"
+        label: "Бот (JSON)"
+      - value: "manual_operator"
+        label: "Вручную оператором"
+      - value: "manual_employee"
+        label: "Вручную сотрудником"
+      - value: "manual_chief_engineer"
+        label: "Вручную главным инженером"
+      - value: "manual_director"
+        label: "Вручную директором"
+      - value: "manual_django_admin"
+        label: "Вручную Django-админом"
+
+  - code: "created_at"
+    label: "Создана"
+    type: "datetime"
+    source: "system"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "primary"
+    auto_mode: "on_create"
+
+  - code: "assigned_at"
+    label: "Назначена"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "primary"
+    visibility: "when_not_null"
+
+  - code: "in_progress_at"
+    label: "В работе с"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "primary"
+    visibility: "when_not_null"
+
+  - code: "completed_at"
+    label: "Выполнена"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full", "detail_operator"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "primary"
+    visibility: "when_not_null"
+
+  - code: "accepted_at"
+    label: "Взят в работу"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "secondary"
+    visibility: "when_not_null"
+
+  - code: "resident_contacted_at"
+    label: "Контакт с заявителем"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "secondary"
+    visibility: "when_not_null"
+
+  - code: "localized_at"
+    label: "Локализовано"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "secondary"
+    visibility: "when_not_null"
+
+  - code: "closed_at"
+    label: "Закрыта"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "secondary"
+    visibility: "when_not_null"
+
+  - code: "cancelled_at"
+    label: "Отменена"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "secondary"
+    visibility: "when_not_null"
+
+  - code: "reopened_at"
+    label: "Переоткрыта"
+    type: "datetime"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "lifecycle"
+    group: "dates"
+    editable: false
+    importance: "secondary"
+    visibility: "when_not_null"
+
+  # === TAB: SERVICE (collapsible) ===
+
+  - code: "message_log_ref"
+    label: "Ссылка на MessageLog"
+    type: "text"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "service"
+    group: "system"
+    editable: true
+    importance: "technical"
+    constraints:
+      max_length: 255
+      blank: true
+
+  - code: "completed_by_user"
+    label: "Выполнено пользователем"
+    type: "fk"
+    source: "relation"
+    target_model: "auth.User"
+    target_display: "get_full_name|username"
+    profiles: ["detail_full"]
+    tab: "service"
+    group: "audit"
+    editable: false
+    importance: "technical"
+
+  - code: "closed_by_user"
+    label: "Закрыто пользователем"
+    type: "fk"
+    source: "relation"
+    target_model: "auth.User"
+    target_display: "get_full_name|username"
+    profiles: ["detail_full"]
+    tab: "service"
+    group: "audit"
+    editable: false
+    importance: "technical"
+
+  - code: "cancelled_by_user"
+    label: "Отменено пользователем"
+    type: "fk"
+    source: "relation"
+    target_model: "auth.User"
+    target_display: "get_full_name|username"
+    profiles: ["detail_full"]
+    tab: "service"
+    group: "audit"
+    editable: false
+    importance: "technical"
+
+  - code: "updated_at"
+    label: "Обновлена"
+    type: "datetime"
+    source: "system"
+    profiles: ["detail_full"]
+    tab: "service"
+    group: "system"
+    editable: false
+    importance: "hidden_by_default"
+    auto_mode: "on_update"
+
+  - code: "is_test"
+    label: "Тестовый"
+    type: "bool"
+    source: "model"
+    profiles: ["detail_full"]
+    tab: "service"
+    group: "system"
+    editable: true
+    importance: "hidden_by_default"
+    default: false
+
+# ============================================================
+# TABS (normalized)
+# ============================================================
+
+tabs:
+  - code: "main_info"
+    name: "Основная информация"
+    order: 1
+    collapsed: false
+    profiles: ["detail_full", "detail_operator"]
+    groups:
+      - code: "identity"
+        name: "Идентификация"
+        order: 1
+      - code: "assignment"
+        name: "Привязка"
+        order: 2
+
+  - code: "current_state"
+    name: "Текущее состояние"
+    order: 2
+    collapsed: false
+    profiles: ["detail_full", "detail_operator"]
+    groups:
+      - code: "status"
+        name: "Статус"
+        order: 1
+      - code: "priority"
+        name: "Приоритет"
+        order: 2
+
+  - code: "request_text"
+    name: "Текст заявки"
+    order: 3
+    collapsed: false
+    profiles: ["detail_full", "detail_operator"]
+    groups:
+      - code: "content"
+        name: "Содержание"
+        order: 1
+
+  - code: "relations"
+    name: "Связи"
+    order: 4
+    collapsed: false
+    profiles: ["detail_full"]
+    groups:
+      - code: "links"
+        name: "Связанные объекты"
+        order: 1
+
+  - code: "lifecycle"
+    name: "Жизненный цикл"
+    order: 5
+    collapsed: false
+    profiles: ["detail_full", "detail_operator"]
+    groups:
+      - code: "dates"
+        name: "Даты"
+        order: 1
+
+  - code: "service"
+    name: "Служебное"
+    order: 6
+    collapsed: true
+    profiles: ["detail_full"]
+    groups:
+      - code: "system"
+        name: "Системные"
+        order: 1
+      - code: "audit"
+        name: "Аудит"
+        order: 2
+
+# ============================================================
+# ACTIONS (normalized)
+# ============================================================
+# kind:
+#   inline_button - кнопка на карточке
+#   modal_submit - кнопка, открывающая модал
+#   page_action - действие на уровне страницы (breadcrumb)
+#
+# backend_status:
+#   implemented - работает в Django
+#   deferred - планируется (pause/resume)
+#   excluded_from_v0_2 - не входит в v0.2
+# ============================================================
+
+actions:
+  - code: "take_work_order"
+    label: "Взять заявку в работу"
+    icon: "bi-hand-index-thumb"
+    kind: "inline_button"
+    backend_status: "implemented"
+    profiles: ["detail_operator"]
+    ui_visibility_rule_ref: "take_button_visible"
+    server_handler_ref: "views.api_take_work_order"
+    effects:
+      - field: "responsible_user"
+        value: "current_user"
+      - field: "assigned_at"
+        value: "now()"
+      - field: "current_internal_status"
+        value: "accepted_by_executor"
+
+  - code: "start_work_order"
+    label: "Начать выполнение"
+    icon: "bi-play-circle"
+    kind: "inline_button"
+    backend_status: "implemented"
+    profiles: ["detail_operator"]
+    ui_visibility_rule_ref: "start_button_visible"
+    server_handler_ref: "views.api_start_work_order"
+    effects:
+      - field: "current_internal_status"
+        value: "in_progress"
+      - field: "in_progress_at"
+        value: "now()"
+
+  - code: "complete_work_order"
+    label: "Завершить выполнение"
+    icon: "bi-check-circle"
+    kind: "modal_submit"
+    modal_id: "completeModal"
+    backend_status: "implemented"
+    profiles: ["detail_operator"]
+    ui_visibility_rule_ref: "complete_button_visible"
+    server_handler_ref: "views.api_complete_work_order"
+    input_fields:
+      - code: "resolution_text"
+        type: "textarea"
+        required: true
+        rows: 5
+        placeholder: "Опишите, что было сделано"
+    effects:
+      - field: "current_internal_status"
+        value: "completed"
+      - field: "current_external_status"
+        value: "completed_external"
+      - field: "resolution_text"
+        value: "user_input"
+      - field: "completed_at"
+        value: "now()"
+      - field: "completed_by_user"
+        value: "current_user"
+
+  - code: "close_work_order"
+    label: "Закрыть заявку"
+    icon: "bi-x-circle"
+    kind: "inline_button"
+    backend_status: "implemented"
+    profiles: ["detail_full"]
+    ui_visibility_rule_ref: "close_button_visible"
+    server_handler_ref: "views.api_close_work_order"
+    effects:
+      - field: "current_internal_status"
+        value: "closed"
+      - field: "current_external_status"
+        value: "closed_external"
+      - field: "closed_at"
+        value: "now()"
+      - field: "closed_by_user"
+        value: "current_user"
+
+  - code: "pause_work_order"
+    label: "Приостановить"
+    icon: "bi-pause-circle"
+    kind: "inline_button"
+    backend_status: "deferred"
+    profiles: ["detail_operator"]
+    ui_visibility_rule_ref: "pause_button_visible"
+    server_handler_ref: "NOT_IMPLEMENTED"
+    note: "Button exists in template but NO backend"
+
+  - code: "resume_work_order"
+    label: "Возобновить"
+    icon: "bi-play-circle"
+    kind: "inline_button"
+    backend_status: "deferred"
+    profiles: ["detail_operator"]
+    ui_visibility_rule_ref: "resume_button_visible"
+    server_handler_ref: "NOT_IMPLEMENTED"
+    note: "Button exists in template but NO backend"
+
+  - code: "create_work_order"
+    label: "Создать заявку"
+    icon: "bi-plus-circle"
+    kind: "page_action"
+    backend_status: "implemented"
+    profiles: ["create"]
+    server_handler_ref: "views.WorkOrderCreateView"
+    url: "/work_orders/create/"
+    input_fields:
+      - code: "object"
+        type: "fk"
+        required: true
+      - code: "service"
+        type: "fk"
+        required: true
+      - code: "original_request_text"
+        type: "textarea"
+        required: true
+        rows: 5
+      - code: "priority_code"
+        type: "select"
+        required: false
+        default: "normal"
+      - code: "is_emergency"
+        type: "bool"
+        required: false
+        default: false
+
+# ============================================================
+# UI RULES (только визуальная логика)
+# ============================================================
+# visible_when - показывать элемент?
+# enabled_when - элемент активен?
+# required_when - поле обязательно?
+#
+# ВАЖНО: permission guards, business logic - в server_rule_refs
+# ============================================================
+
+ui_rules:
+  # === BUTTON VISIBILITY ===
+
+  - code: "take_button_visible"
+    type: "visible_when"
+    applies_to: "actions.take_work_order"
+    condition: "responsible_user is NULL"
+    source: "template"
+    location: "work_order_detail.html:161"
+
+  - code: "start_button_visible"
+    type: "visible_when"
+    applies_to: "actions.start_work_order"
+    condition: "current_internal_status == 'accepted_by_executor' AND responsible_user == current_user"
+    source: "template"
+    location: "work_order_detail.html:137"
+
+  - code: "complete_button_visible"
+    type: "visible_when"
+    applies_to: "actions.complete_work_order"
+    condition: "current_internal_status == 'in_progress' AND responsible_user == current_user"
+    source: "template"
+    location: "work_order_detail.html:143"
+
+  - code: "pause_button_visible"
+    type: "visible_when"
+    applies_to: "actions.pause_work_order"
+    condition: "current_internal_status == 'in_progress' AND responsible_user == current_user"
+    source: "template"
+    location: "work_order_detail.html:147"
+    note: "Backend NOT implemented"
+
+  - code: "resume_button_visible"
+    type: "visible_when"
+    applies_to: "actions.resume_work_order"
+    condition: "current_internal_status == 'on_hold' AND responsible_user == current_user"
+    source: "template"
+    location: "work_order_detail.html:152"
+    note: "Backend NOT implemented, status 'on_hold' NOT in model"
+
+  - code: "close_button_visible"
+    type: "visible_when"
+    applies_to: "actions.close_work_order"
+    condition: "completed_at is NOT NULL AND user.role in ['direktor_uk', 'chief_engineer']"
+    source: "inferred"
+    location: "views.py:415"
+
+  # === FIELD VISIBILITY ===
+
+  - code: "actions_card_visible"
+    type: "visible_when"
+    applies_to: "ui.components.actions_card"
+    condition: "responsible_user == current_user"
+    source: "template"
+    location: "work_order_detail.html:131"
+
+  - code: "datetime_field_visible"
+    type: "visible_when"
+    applies_to: "fields.assigned_at, fields.in_progress_at, fields.completed_at"
+    condition: "field is NOT NULL"
+    source: "template"
+    location: "work_order_detail.html:108-125"
+
+  # === FIELD REQUIREMENTS ===
+
+  - code: "resolution_required_on_complete"
+    type: "required_when"
+    applies_to: "actions.complete_work_order.input_fields.resolution_text"
+    condition: "action == 'complete_work_order'"
+    source: "view_validation"
+    location: "views.py:378"
+
+  - code: "create_fields_required"
+    type: "required_when"
+    applies_to: "actions.create_work_order.input_fields.object, .service, .original_request_text"
+    condition: "action == 'create_work_order'"
+    source: "view_definition"
+    location: "views.py:160"
+
+# ============================================================
+# SERVER RULE REFS (ссылки на Django code)
+# ============================================================
+# ВАЖНО: здесь только ССЫЛКИ, не дублируем логику!
+# - permission guards
+# - DB constraints
+# - validation logic
+# - business rules
+# ============================================================
+
+server_rule_refs:
+  # === PERMISSION GUARDS ===
+
+  - code: "take_permission"
+    type: "permission_guard"
+    applies_to: "actions.take_work_order"
+    implementation: "views.api_take_work_order:301-308"
+    condition: "user.is_authenticated AND user.has_membership(work_order.department)"
+    error_message: "У вас нет прав для выполнения этой заявки"
+
+  - code: "start_permission"
+    type: "permission_guard"
+    applies_to: "actions.start_work_order"
+    implementation: "views.api_start_work_order:341"
+    condition: "work_order.responsible_user == request.user"
+    error_message: "Заявка назначена на другого пользователя"
+
+  - code: "complete_permission"
+    type: "permission_guard"
+    applies_to: "actions.complete_work_order"
+    implementation: "views.api_complete_work_order:374"
+    condition: "work_order.responsible_user == request.user"
+    error_message: "Заявка назначена на другого пользователя"
+
+  - code: "close_permission"
+    type: "permission_guard"
+    applies_to: "actions.close_work_order"
+    implementation: "views.api_close_work_order:415-420"
+    condition: "role_code in ['direktor_uk', 'chief_engineer']"
+    error_message: "У вас нет прав для закрытия заявок"
+
+  # === DB CONSTRAINTS ===
+
+  - code: "parent_no_self"
+    type: "check_constraint"
+    applies_to: "fields.parent_work_order"
+    implementation: "models.WorkOrder:710-712"
+    condition: "parent_work_order is NULL OR parent_work_order != self.id"
+
+  - code: "priority_in_choices"
+    type: "check_constraint"
+    applies_to: "fields.priority_code"
+    implementation: "models.WorkOrder:722-724"
+    condition: "priority_code in ['low', 'normal', 'high', 'critical']"
+
+  - code: "close_requires_complete"
+    type: "check_constraint"
+    applies_to: "fields.closed_at"
+    implementation: "models.WorkOrder:726-728"
+    condition: "closed_at is NULL OR (completed_at is NOT NULL OR cancelled_at is NOT NULL)"
+
+  - code: "complete_requires_resolution"
+    type: "check_constraint"
+    applies_to: "fields.completed_at"
+    implementation: "models.WorkOrder:730-732"
+    condition: "completed_at is NULL OR resolution_text is NOT NULL"
+
+  # === SIDE EFFECTS ===
+
+  - code: "create_event_log_on_action"
+    type: "side_effect"
+    applies_to: "actions.*"
+    implementation: "views.api_*_work_order"
+    effect: "WorkOrderEventLog.objects.create(...)"
+    note: "Все действия создают запись в журнале событий"
+
+  - code: "notify_resident_on_status_change"
+    type: "side_effect"
+    applies_to: "actions.start_work_order, actions.complete_work_order, actions.close_work_order"
+    implementation: "views.api_*_work_order"
+    effect: "NotificationOutbox (is_visible_to_resident=true)"
+    note: "Некоторые уведомления видны жителю"
+
+# ============================================================
+# FIGMA MAPPING
+# ============================================================
+
+figma_mapping:
+  screen_frame_name: "Work Order / Detail / Operator"
+
+  tab_frames:
+    - code: "main_info"
+      frame_name: "Tab / Main Info"
+      auto_layout: "vertical"
+      spacing: 16
+
+    - code: "current_state"
+      frame_name: "Tab / Current State"
+      auto_layout: "horizontal"
+      spacing: 8
+
+    - code: "request_text"
+      frame_name: "Tab / Request Text"
+      auto_layout: "vertical"
+      spacing: 16
+
+    - code: "lifecycle"
+      frame_name: "Tab / Lifecycle"
+      auto_layout: "grid"
+      columns: 2
+      spacing: 8
+
+  component_hints:
+    # === TYPOGRAPHY ===
+    header_title: "Heading 5 (h5)"
+    section_title: "Heading 6 (h6)"
+    field_label: "Small text-muted"
+    field_value: "Body"
+
+    # === COLORS ===
+    primary_badge: "Bootstrap Primary (#0d6efd)"
+    info_badge: "Bootstrap Info (#0dcaf0)"
+    emergency_badge: "Bootstrap Danger (#dc3545) + pulse animation"
+    success_alert: "Bootstrap Success (#198754)"
+
+    # === SPACING ===
+    card_margin_bottom: "1rem (16px)"
+    section_spacing: "1rem (16px)"
+    field_spacing: "0.5rem (8px)"
+
+    # === COMPONENTS ===
+    badge_component: "Bootstrap Badge (fs-6)"
+    card_component: "Bootstrap Card (with shadow)"
+    button_component: "Bootstrap Button (with icon)"
+
+    # === SPECIAL ===
+    emergency_badge_animation: "@keyframes pulse (2s infinite)"
+
+  density: "dense"  # Компактный, много информации на экране
+  layout_pattern: "operator_console"  # Шаблон: консоль оператора
+
+  layout_structure:
+    main_columns: 2
+    sidebar_width: "col-lg-4"
+    main_width: "col-lg-8"
+    sidebar_content: "timeline (WorkOrderEventLog)"
+
+  responsive_breakpoints:
+    mobile: "< 768px - stack columns"
+    tablet: "768px - 992px - adjust grid"
+    desktop: ">= 992px - 2 columns + sidebar"
+
+# ============================================================
+# EXPORT NOTES
+# ============================================================
+
+export_notes:
+  automatic:
+    - "Model fields from work_orders/models.py (lines 550-748)"
+    - "Fieldsets from work_orders/admin.py (lines 108-129)"
+    - "Choices from models (PRIORITY_CHOICES, CREATION_SOURCE_CHOICES)"
+    - "FK relationships (14 foreign keys)"
+    - "Datetime fields (11 lifecycle dates)"
+    - "Check constraints (5 constraints)"
+    - "Actions from views.py (4 implemented, 2 deferred)"
+
+  manual:
+    - "Field importance (primary/secondary/technical) - UX decision"
+    - "Tab arrangement and grouping - UX decision"
+    - "Figma component hints - design decision"
+    - "Density and layout pattern - UX decision"
+    - "UI rule priority when multiple rules apply - product decision"
+    - "Field display formats (get_full_name|default:username) - UX decision"
+
+  clarification_needed:
+    - "Отображать ли creation_source в detail_operator?"
+    - "Показывать ли parent_work_order в UI (теперь hidden)?"
+    - "Реализовать ли pause/resume или исключить из UI?"
+    - "Нужно ли показывать SLAInstance timers?"
+    - "Нужно ли показывать WorkOrderAttachment?"
+    - "Какое поле является primary identifier для пользователя (work_order_no or id)?"
+
+# ============================================================
+# RELATED ENTITIES (для Figma)
+# ============================================================
+
+related_entities:
+  - code: "WorkOrderEventLog"
+    relation: "ForeignKey (work_order → events)"
+    display_in_ui: "timeline in sidebar"
+    profiles: ["detail_full", "detail_operator"]
+
+  - code: "WorkOrderAttachment"
+    relation: "ForeignKey (work_order → attachments)"
+    display_in_ui: "NOT SHOWN in v0.2"
+    profiles: ["detail_full"]
+    note: "Модель существует, но UI не реализован"
+
+  - code: "SLAInstance"
+    relation: "OneToOneField (work_order → sla)"
+    display_in_ui: "NOT SHOWN in v0.2"
+    profiles: ["detail_full"]
+    note: "Модель существует, но UI не реализован"
+
+  - code: "NotificationOutbox"
+    relation: "ForeignKey (work_order → notifications)"
+    display_in_ui: "NOT SHOWN in v0.2"
+    profiles: ["detail_full"]
+    note: "Системная таблица, не для UI"
+
+# ============================================================
+# END OF CONTRACT v0.2
+# ============================================================
+
+metadata:
+  format_version: "0.2.0"
+  extracted_from: "work_order_screen_analysis.md"
+  normalized_by: "Claude (Senior Metadata-Driven UI Architect)"
+  normalization_date: "2026-03-28"
+
+  changes_from_v0.1:
+    - "Introduced PROFILES (detail_operator, detail_full, create)"
+    - "Added SOURCE attribution (model/derived/relation/action_input/system)"
+    - "Added IMPORTANCE tiering (primary/secondary/technical/hidden_by_default)"
+    - "Split rules into UI_RULES and SERVER_RULE_REFS"
+    - "Removed implementation details from UI_RULES"
+    - "Added FIGMA_MAPPING section"
+    - "Added EXPORT_NOTES section"
+    - "Normalized ACTIONS (kind, backend_status, visibility_rule_ref, handler_ref)"
+    - "Deferred pause/resume (backend_status: deferred)"
+    - "Reduced verbosity (3-5 lines per field vs 15+ in raw)"
+
+  reliability:
+    field_structure: "exact"
+    field_types: "exact"
+    field_sources: "exact"
+    actions_implemented: "exact"
+    actions_deferred: "exact"
+    ui_rules: "exact"
+    server_rules: "exact"
+    figma_hints: "inferred"
+    importance_rating: "manual_ux_decision"

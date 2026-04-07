@@ -11,6 +11,7 @@ Middleware для защиты Django Admin и контроля доступа
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.http import HttpResponseForbidden
+from portal.mixins import get_user_scope
 
 
 class DjangoAdminProtectionMiddleware:
@@ -88,75 +89,28 @@ class CompanyMembershipMiddleware:
         # Только для авторизованных пользователей
         if request.user.is_authenticated and request.user.is_staff:
             try:
-                from work_orders.models import UserCompanyMembership
+                scope = get_user_scope(request.user)
+                primary_membership = scope['primary_membership']
+                request.user_company_ids = scope['company_ids']
+                request.user_department_ids = scope['department_ids']
 
-                # ПРИОРИТЕТ 1: Читаем из UserProfile (новый механизм)
-                try:
-                    profile = request.user.userprofile
-                    if profile.primary_company_id and profile.primary_department_id:
-                        request.user_company_id = profile.primary_company_id
-                        request.user_department_id = profile.primary_department_id
-
-                        # Ищем membership для роли
-                        membership = UserCompanyMembership.objects.filter(
-                            user=request.user,
-                            company_id=profile.primary_company_id,
-                            department_id=profile.primary_department_id,
-                            is_active=True,
-                            date_to__isnull=True
-                        ).select_related('company', 'department').first()
-
-                        if membership:
-                            request.user_role_code = membership.role_code
-                            request.user_primary_membership = membership
-                        else:
-                            # Если нет membership - используем fallback
-                            request.user_role_code = profile.role  # Fallback на UserProfile.role
-                            request.user_primary_membership = None
-
-                        return self.get_response(request)
-                except Exception:
-                    pass  # Profile не существует или ошибка, идем к fallback
-
-                # ПРИОРИТЕТ 2: Fallback на UserCompanyMembership.is_primary=True
-                membership = UserCompanyMembership.objects.filter(
-                    user=request.user,
-                    is_primary=True,
-                    is_active=True,
-                    date_to__isnull=True
-                ).select_related('company', 'department').first()
-
-                if membership:
-                    request.user_company_id = membership.company_id
-                    request.user_department_id = membership.department_id
-                    request.user_role_code = membership.role_code
-                    request.user_primary_membership = membership
-                    return self.get_response(request)
-
-                # ПРИОРИТЕТ 3: Последний fallback - любая активная membership
-                membership = UserCompanyMembership.objects.filter(
-                    user=request.user,
-                    is_active=True,
-                    date_to__isnull=True
-                ).select_related('company', 'department').first()
-
-                if membership:
-                    request.user_company_id = membership.company_id
-                    request.user_department_id = membership.department_id
-                    request.user_role_code = membership.role_code
-                    request.user_primary_membership = membership
+                if primary_membership:
+                    request.user_company_id = primary_membership.company_id
+                    request.user_department_id = primary_membership.department_id
+                    request.user_role_code = primary_membership.role_code
+                    request.user_primary_membership = primary_membership
                 else:
-                    # Нет membership - это проблема!
                     request.user_company_id = None
                     request.user_department_id = None
                     request.user_role_code = None
                     request.user_primary_membership = None
-
             except Exception:
                 # В случае ошибки (например, при миграциях) - игнорируем
                 request.user_company_id = None
                 request.user_department_id = None
                 request.user_role_code = None
                 request.user_primary_membership = None
+                request.user_company_ids = []
+                request.user_department_ids = []
 
         return self.get_response(request)

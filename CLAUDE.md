@@ -6,6 +6,53 @@
 
 ---
 
+## ГЛОБАЛЬНЫЕ REUSABLE DB-ПРАВИЛА
+
+Этот проект задаёт project-specific правила. Глобальные reusable DB-правила живут в:
+
+- **Глобальный CLAUDE.md:** `~/.claude/CLAUDE.md`
+- **Глобальный skill:** `~/.claude/skills/prod-db-access/SKILL.md`
+- **Reusable wrapper:** `~/.claude/bin/komunal_dom_db.sh`
+
+### ДОСТУП К PROD DB
+
+Для доступа к БД этого проекта использовать **в первую очередь**:
+
+```bash
+~/.claude/bin/komunal_dom_db.sh <команда>
+```
+
+### ПРИМЕРЫ:
+
+```bash
+~/.claude/bin/komunal_dom_db.sh ping
+~/.claude/bin/komunal_dom_db.sh read "SELECT current_database(), current_user;"
+~/.claude/bin/komunal_dom_db.sh schema public.ai_models
+~/.claude/bin/komunal_dom_db.sh table public.ai_models
+```
+
+### ЗАПРЕЩЕННЫЕ ПАТТЕРНЫ:
+
+❌ **ЗАПРЕЩЕНО:**
+- `export $(cat .env | xargs)`
+- `.env | xargs`
+- psql meta-команды как SQL (\d, \dt, \l, \du, \conninfo)
+- Прямые вызовы `/var/www/komunal-dom_ru/bin/db_*.sh` из чата
+- Печатать значения секретов
+
+✅ **РАЗРЕШЕНО:**
+- Использовать `~/.claude/bin/komunal_dom_db.sh` для всех DB операций
+- Helper scripts в `/var/www/komunal-dom_ru/bin/` считать внутренним механизмом, а не интерфейсом прямого вызова из чата
+
+### AUTOMATIC FALLBACK
+
+При ошибках:
+- Пробовать automatic fallback chain
+- НЕ спрашивать "как продолжить?" если есть следующий автоматический fallback
+- Для read-only задач не пытаться делать write
+
+---
+
 ## 0. САМООБУЧЕНИЕ И ЧАСТЫЕ ОШИБКИ
 
 **ПРАВИЛО:** После каждой ошибки НЕМЕДЛЕННО добавить инструкцию в этот раздел!
@@ -164,31 +211,31 @@ def method2(self, obj):
 **ПРАВИЛО:**
 - ✅ **ЕДИНСТВЕННЫЙ источник истины** - файл `.env` в корне проекта
 - ✅ **СНАЧАЛА** прочитать `MD_DB/DB_ACCESS.md` перед любым SQL/psql
-- ✅ Использовать переменные окружения: `export $(cat .env | grep -v '^#' | xargs)`
+- ✅ Использовать глобальный wrapper: `~/.claude/bin/komunal_dom_db.sh`
 - ✅ Использовать `$DB_PASSWORD` вместо literal values
 - ✅ Проверить соединение тестом перед сложными запросами
 - ❌ **ЗАПРЕЩЕНО:** Угадывать пароль из памяти или старых сессий
 - ❌ **ЗАПРЕЩЕНО:** Использовать placeholder `[ПАРОЛЬ БД]` как реальное значение
 - ❌ **ЗАПРЕЩЕНО:** Брать пароль из документации (MD_DB, markdown)
 - ❌ **ЗАПРЕЩЕНО:** Подставлять literal password в команды
+- ❌ **ЗАПРЕЩЕНО:** Использовать `export $(cat .env | grep -v '^#' | xargs)`
 - ⚠️ **КРИТИЧНО:** Пароль PostgreSQL (`.env` → `DB_PASSWORD`) ≠ пароль Django-админки
 
 **ПРАВИЛЬНЫЙ ПАТТЕРН:**
 ```bash
-# 1. Загрузить credentials из .env (source of truth!)
-cd /var/www/komunal-dom_ru
-export $(cat .env | grep -v '^#' | xargs)
+# 1. Использовать глобальный wrapper (автоматически загрузит credentials из .env)
+~/.claude/bin/komunal_dom_db.sh ping
+~/.claude/bin/komunal_dom_db.sh read "SELECT current_database(), current_user;"
 
-# 2. Использовать переменные окружения
-PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c "..."
+# 2. Для сложных запросов
+~/.claude/bin/komunal_dom_db.sh read "SELECT * FROM ai_models WHERE is_active = true;"
 ```
 
 **ПРОВЕРКА ПЕРЕД SQL:**
 - [ ] Я прочитал `MD_DB/DB_ACCESS.md`?
-- [ ] Я загрузил credentials из `.env`?
-- [ ] Я использую `$DB_PASSWORD`, НЕ literal value?
+- [ ] Я использую `~/.claude/bin/komunal_dom_db.sh`?
 - [ ] Я НЕ перепутал пароль БД и пароль админки?
-- [ ] Я выполнил тест соединения?
+- [ ] Я выполнил тест соединения через wrapper?
 
 **ЕСЛИ ХОТЬ ОДИН ОТВЕТ "НЕТ" - ОСТАНОВИТЬСЯ!**
 
@@ -630,6 +677,55 @@ ls -la файл                    # Проверить владельца и п
 
 ---
 
+#### Figma + Django UI Workflow
+
+**Официальный skill:** `.claude/skills/figma-django-ui-workflow/SKILL.md`
+
+**Назначение:** Анализ и перестройка Django UI по form contract и Figma дизайну.
+
+**КОГДА используется:**
+- ✅ Изменение Django templates (.html)
+- ✅ Изменение views, forms, admin для UI
+- ✅ Перестройка экранов по Figma design
+- ✅ Синхронизация UI с form contract
+
+**КОГДА НЕ используется:**
+- ❌ Изменение models.py (это DB schema, не UI)
+- ❌ Изменение business logic без UI impact
+
+**Стандартный режим:** Анализ → Contract → Figma → Diff-plan → Изменения (после подтверждения)
+
+**WorkOrder специфика:**
+- Contract: `tmp_archive/work_order_contract_v0.2_normalized.yaml`
+- Профили: detail_operator, detail_full, create
+- Template: `work_orders/templates/work_orders/work_order_detail.html`
+
+---
+
+### UI TOOLCHAIN
+
+Use this toolchain in this project:
+- Plugin: komunal-dom-ui-ops
+- Plugin: frontend-design
+- Plugin: hookify
+- Plugin: figma
+- MCP: playwright
+
+Config locations:
+- .claude-plugin/marketplace.json
+- .mcp.json
+- .claude/hookify.*.local.md
+- bin/claude-project.sh
+
+Rules:
+- For form and layout tasks, use playwright and save screenshots under tmp_archive/ui_runs/<run_id>/
+- For form tasks, do not stop at diff-plan; carry through patch -> restart/reload -> browser verification -> screenshots
+- For field moves between tables, use schema-lift-fields first and inspect models, migrations, RunSQL, raw SQL, admin, and templates
+- Use frontend-design for layout and visual composition improvements
+- Use hookify as a reminder layer, not as the only protection for prod DB or dangerous shell commands
+
+---
+
 ### КАК ДОБАВЛЯТЬ НОВЫЕ HOOKS/SKILLS
 
 **Когда создавать Hook:**
@@ -663,3 +759,33 @@ ls -la файл                    # Проверить владельца и п
 - [ ] Я установлю права на новые файлы?
 
 **ЕСЛИ ХОТЬ ОДИН ОТВЕТ "НЕТ" - ОСТАНОВИТЬСЯ!**
+
+
+### MIGRATION AND UI GUARDRAILS
+
+Before schema migrations:
+- verify real schemas/tables via information_schema or Django introspection
+- do not assume public vs request_mgmt from model names alone
+- do not report success if admin form construction raises FieldError or if browser artifacts are missing
+
+Before manage.py usage:
+- do not pass --skip-checks to `python manage.py check`
+- use app-specific migrate only after verifying migration dependencies
+
+For User admin changes:
+- if fields live on UserProfile, do not place them directly into BaseUserAdmin fieldsets as native User fields without a custom form layer
+
+For browser verification:
+- use project MCP server `playwright`
+- save screenshots and report.json under tmp_archive/ui_runs/<run_id>/
+
+### ADMIN SELF-CHECK
+
+After any changes to `portal/admin.py`, `templates/admin/`, `forms.py`, `models.py`, or `migrations/`:
+- run a page-level smoke check before reporting success
+- open the changed admin form in a browser or run `bin/run_admin_ui_smoke.sh <run_id>`
+- if the page shows `FieldError`, `Traceback`, `Server Error (500)`, or missing expected controls, do not stop
+- if a dependent form control is part of the task, verify the real browser behavior after changing the parent field
+- if a parent-child pair like `company -> department` still allows invalid combinations in the browser, treat that as a failed task even if server-side validation exists
+- treat that result as an unfinished task and immediately start the next fix cycle
+- only report success after the smoke check exits with code 0 and screenshots/report.json are saved

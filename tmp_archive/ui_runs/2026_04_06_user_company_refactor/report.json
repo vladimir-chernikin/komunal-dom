@@ -1,0 +1,78 @@
+{
+  "task_id": "2026-04-06-user-company-refactor",
+  "timestamp": "2026-04-06T15:13:00Z",
+  "status": "completed",
+  "results": {
+    "database_migration": {
+      "status": "success",
+      "migration_files": [
+        "portal/migrations/0018_add_primary_company_and_department_to_userprofile.py",
+        "portal/migrations/0019_migrate_primary_company_and_department.py"
+      ],
+      "data_migration_check": {
+        "staff_users_with_primary": 4,
+        "staff_users_total": 7,
+        "migration_success_rate": "57%",
+        "sample_users": [
+          {"username": "goncharov_ms", "primary_company_id": 4, "primary_department_id": 89, "company_name": "ТСЖ \"Зарядье\""},
+          {"username": "morozov_vp", "primary_company_id": 3, "primary_department_id": 86, "company_name": "ТСЖ Сосновый Двор"},
+          {"username": "petrov_is", "primary_company_id": 2, "primary_department_id": 80, "company_name": "ООО УК Комфорт-Сервис"},
+          {"username": "lebedev_av", "primary_company_id": 2, "primary_department_id": 83, "company_name": "ООО УК Комфорт-Сервис"}
+        ]
+      }
+    },
+    "code_changes": {
+      "models_updated": [
+        "portal/models.py - добавлены поля primary_company и primary_department в UserProfile"
+      ],
+      "admin_updated": [
+        "portal/admin.py - добавлены поля в fieldsets",
+        "portal/admin.py - добавлен UserCompanyMembershipInline",
+        "portal/admin.py - добавлен метод get_memberships_info()",
+        "portal/admin.py - удален метод get_company_link()"
+      ],
+      "middleware_updated": [
+        "portal/middleware.py - CompanyMembershipMiddleware теперь читает primary из UserProfile с fallback на UserCompanyMembership"
+      ],
+      "mixins_updated": [
+        "portal/mixins.py - get_primary_membership() теперь читает primary из UserProfile с fallback на UserCompanyMembership"
+      ]
+    },
+    "server_check": {
+      "gunicorn_status": "running",
+      "gunicorn_restart_time": "2026-04-06T15:12:13Z",
+      "admin_availability": "HTTP/1.1 200 OK",
+      "django_check": "1 issue found (unrelated to this task: work_orders.admin.WorkOrderAdmin autocomplete_fields)"
+    },
+    "ui_changes": {
+      "close_button_style": "already white (color: #fff in change_form.html line 72)"
+    },
+    "browser_verification": {
+      "status": "manual_check_required",
+      "reason": "Playwright not installed, manual verification needed",
+      "manual_check_list": [
+        "Open user form in admin: /admin/auth/user/1/change/",
+        "Verify primary_company and primary_department fields are visible and editable",
+        "Verify UserCompanyMembership inline is shown at the bottom",
+        "Verify close button has white text"
+      ]
+    }
+  },
+  "artifacts": {
+    "migrations_created": 2,
+    "code_files_changed": 4,
+    "screenshots_saved": 0
+  },
+  "remaining_risks": [
+    "Playwright не установлен - нужна ручная проверка UI через браузер",
+    "System check показал 1 issue в work_orders.admin.WorkOrderAdmin (не связано с задачей)",
+    "Некоторым staff пользователям (3 из 7) не назначена primary_company - нужны legacy membership или проверка данных",
+    "Кнопка 'Закрыть' уже была белой, изменений не требовалось"
+  ],
+  "next_steps": [
+    "Ручная проверка формы пользователя в браузере",
+    "Проверить работу middleware и mixins для пользователей с и без primary_company",
+    "Исправить work_orders.admin.WorkOrderAdmin autocomplete_fields issue",
+    "Установить Playwright для автоматизированного browser verification"
+  ]
+}

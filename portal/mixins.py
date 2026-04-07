@@ -196,6 +196,9 @@ class CompanyFilterMixin:
         """
         Фильтрация queryset по компании пользователя
         """
+        company_ids = getattr(self.request, 'user_company_ids', None)
+        if company_ids:
+            return queryset.filter(company_id__in=company_ids)
         if hasattr(self.request, 'user_company_id') and self.request.user_company_id:
             return queryset.filter(company_id=self.request.user_company_id)
         return queryset.none()  # Нет компании - нет данных
@@ -204,9 +207,66 @@ class CompanyFilterMixin:
         """
         Фильтрация queryset по подразделению пользователя
         """
+        department_ids = getattr(self.request, 'user_department_ids', None)
+        if department_ids:
+            return queryset.filter(department_id__in=department_ids)
         if hasattr(self.request, 'user_department_id') and self.request.user_department_id:
             return queryset.filter(department_id=self.request.user_department_id)
         return queryset.none()  # Нет подразделения - нет данных
+
+
+def get_active_memberships(user, role_codes=None):
+    """
+    Возвращает активные membership пользователя с уже загруженными company/department.
+    """
+    from work_orders.models import UserCompanyMembership
+
+    memberships = UserCompanyMembership.objects.filter(
+        user=user,
+        is_active=True,
+        date_to__isnull=True,
+    )
+    if role_codes:
+        memberships = memberships.filter(role_code__in=role_codes)
+    return memberships.select_related('company', 'department').order_by('-is_primary', 'company__name', 'department__department_name')
+
+
+def get_user_scope(user, role_codes=None):
+    """
+    Возвращает primary membership и полный scope пользователя по компаниям/подразделениям.
+    """
+    try:
+        memberships = list(get_active_memberships(user, role_codes=role_codes))
+    except Exception:
+        memberships = []
+
+    primary_membership = None
+    try:
+        profile = user.userprofile
+    except Exception:
+        profile = None
+
+    if profile and profile.primary_company_id and profile.primary_department_id:
+        for membership in memberships:
+            if (
+                membership.company_id == profile.primary_company_id
+                and membership.department_id == profile.primary_department_id
+            ):
+                primary_membership = membership
+                break
+
+    if primary_membership is None:
+        primary_membership = next((membership for membership in memberships if membership.is_primary), None)
+
+    if primary_membership is None and memberships:
+        primary_membership = memberships[0]
+
+    return {
+        'memberships': memberships,
+        'primary_membership': primary_membership,
+        'company_ids': sorted({membership.company_id for membership in memberships}),
+        'department_ids': sorted({membership.department_id for membership in memberships}),
+    }
 
 
 def get_primary_membership(user):
@@ -239,60 +299,7 @@ def get_primary_membership(user):
     - 2026-04-06: Обновлен для чтения primary из UserProfile с fallback на membership
     """
     try:
-        from work_orders.models import UserCompanyMembership
-
-        # ПРИОРИТЕТ 1: Читаем из UserProfile (новый механизм)
-        try:
-            profile = user.userprofile
-            if profile.primary_company_id and profile.primary_department_id:
-                # Ищем соответствующую membership
-                membership = UserCompanyMembership.objects.filter(
-                    user=user,
-                    company_id=profile.primary_company_id,
-                    department_id=profile.primary_department_id,
-                    is_active=True,
-                    date_to__isnull=True
-                ).select_related('company', 'department').first()
-
-                if membership:
-                    return membership
-                else:
-                    # Если нет membership, создаем объект-заглушку
-                    # Это нужно для обратной совместимости с кодом, который ожидает membership
-                    class FakeMembership:
-                        def __init__(self, profile):
-                            self.user = profile.user
-                            self.company_id = profile.primary_company_id
-                            self.department_id = profile.primary_department_id
-                            self.company = profile.primary_company
-                            self.department = profile.primary_department
-                            self.role_code = profile.role
-                            self.is_primary = True
-
-                    return FakeMembership(profile)
-        except Exception:
-            pass  # Profile не существует или ошибка, идем к fallback
-
-        # ПРИОРИТЕТ 2: Fallback на UserCompanyMembership.is_primary=True
-        membership = UserCompanyMembership.objects.filter(
-            user=user,
-            is_primary=True,
-            is_active=True,
-            date_to__isnull=True
-        ).select_related('company', 'department').first()
-
-        if membership:
-            return membership
-
-        # ПРИОРИТЕТ 3: Последний fallback - любая активная membership
-        membership = UserCompanyMembership.objects.filter(
-            user=user,
-            is_active=True,
-            date_to__isnull=True
-        ).select_related('company', 'department').first()
-
-        return membership
-
+        return get_user_scope(user)['primary_membership']
     except Exception:
         return None
 
