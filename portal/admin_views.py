@@ -539,8 +539,7 @@ def director_add_resident(request):
                 role_code=form.cleaned_data['role'],
                 is_primary=True,
                 is_active=True,
-                date_from=timezone.now(),
-                notes=form.cleaned_data.get('notes', '')
+                date_from=timezone.now()
             )
 
             messages.success(request, f'Пользователь {user.username} успешно создан!')
