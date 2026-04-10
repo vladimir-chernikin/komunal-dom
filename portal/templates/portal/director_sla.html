@@ -205,27 +205,21 @@
                             <tr>
                                 <th>Компания</th>
                                 <th>Услуга</th>
-                                <th>Приоритет</th>
                                 <th>Время реакции</th>
-                                <th>Время решения</th>
+                                <th>Время локализации</th>
+                                <th>Время выполнения</th>
                                 <th>Календарь</th>
-                                <th>Создано</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for sla in sla_policies %}
                             <tr>
                                 <td>{{ sla.company.name }}</td>
-                                <td>{{ sla.service.name }}</td>
-                                <td>
-                                    <span class="badge badge-{{ sla.priority_code }}">
-                                        {{ sla.get_priority_code_display }}
-                                    </span>
-                                </td>
-                                <td>{{ sla.response_time_minutes }} мин</td>
-                                <td>{{ sla.resolution_time_minutes }} мин</td>
+                                <td>{{ sla.service.scenario_name }}</td>
+                                <td>{{ sla.reaction_minutes }} мин</td>
+                                <td>{{ sla.localization_minutes }} мин</td>
+                                <td>{{ sla.completion_minutes }} мин</td>
                                 <td>{{ sla.get_calendar_type_display }}</td>
-                                <td>{{ sla.created_at|date:"d.m.Y" }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
