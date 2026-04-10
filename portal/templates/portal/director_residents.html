@@ -207,7 +207,7 @@
                         </thead>
                         <tbody>
                             {% for membership in residents %}
-                            <tr data-href="{% url 'admin:portal_user_change' membership.user.id %}">
+                            <tr data-href="{% url 'admin:auth_user_change' membership.user.id %}">
                                 <td>
                                     <strong>{{ membership.user.get_full_name|default:membership.user.username }}</strong>
                                 </td>
@@ -219,7 +219,7 @@
                                 </td>
                                 <td>{{ membership.department.name|default:"-" }}</td>
                                 <td>
-                                    <a href="{% url 'admin:portal_user_change' membership.user.id %}" class="btn btn-sm btn-primary" onclick="event.stopPropagation()">
+                                    <a href="{% url 'admin:auth_user_change' membership.user.id %}" class="btn btn-sm btn-primary" onclick="event.stopPropagation()">
                                         <i class="fas fa-edit"></i>
                                     </a>
                                 </td>
@@ -250,7 +250,7 @@
                         </thead>
                         <tbody>
                             {% for membership in staff %}
-                            <tr data-href="{% url 'admin:portal_user_change' membership.user.id %}">
+                            <tr data-href="{% url 'admin:auth_user_change' membership.user.id %}">
                                 <td>
                                     <strong>{{ membership.user.get_full_name|default:membership.user.username }}</strong>
                                 </td>
@@ -266,7 +266,7 @@
                                 </td>
                                 <td>{{ membership.department.name|default:"-" }}</td>
                                 <td>
-                                    <a href="{% url 'admin:portal_user_change' membership.user.id %}" class="btn btn-sm btn-primary" onclick="event.stopPropagation()">
+                                    <a href="{% url 'admin:auth_user_change' membership.user.id %}" class="btn btn-sm btn-primary" onclick="event.stopPropagation()">
                                         <i class="fas fa-edit"></i>
                                     </a>
                                 </td>
