@@ -27,6 +27,23 @@ except ImportError:
     KLADR_AVAILABLE = False
 
 
+def _workspace_context(request, membership):
+    if request.user.is_superuser and not membership:
+        return {
+            'company': {'name': 'Все компании'},
+            'department': None,
+            'user_role': 'superuser',
+            'company_scope': None,
+        }
+
+    return {
+        'company': membership.company,
+        'department': membership.department,
+        'user_role': membership.role_code,
+        'company_scope': getattr(request, 'user_company_ids', None) or [membership.company_id],
+    }
+
+
 @login_required
 def admin_page(request):
     """
@@ -42,11 +59,16 @@ def admin_page(request):
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
-        messages.warning(request, 'Вы не привязаны к компании')
-        return redirect('portal:no_membership')
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
 
     # Фильтрация по компании
-    company_scope = getattr(request, 'user_company_ids', None) or [membership.company_id]
+    company_scope = workspace['company_scope']
 
     # Статистика по пользователям компании
     from work_orders.models import UserCompanyMembership
@@ -54,9 +76,9 @@ def admin_page(request):
     user_stats = get_user_statistics(company_scope)
 
     context = {
-        'company': membership.company,
-        'department': membership.department,
-        'user_role': membership.role_code,
+        'company': workspace['company'],
+        'department': workspace['department'],
+        'user_role': workspace['user_role'],
         'total_users': user_stats['total'],
         'django_admin_count': user_stats['by_role'].get('Django администратор', 0),
         'director_count': user_stats['by_role'].get('Директор УК', 0),
@@ -87,24 +109,29 @@ def director_page(request):
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
-        messages.warning(request, 'Вы не привязаны к компании')
-        return redirect('portal:no_membership')
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
 
     # Проверка роли
-    if membership.role_code != 'direktor_uk':
+    if not request.user.is_superuser and membership.role_code != 'direktor_uk':
         messages.error(request, 'Доступ разрешен только Директорам УК')
         return redirect('portal:welcome')
 
     # Фильтрация по компании
-    company_scope = getattr(request, 'user_company_ids', None) or [membership.company_id]
+    company_scope = workspace['company_scope']
 
     # Статистика по пользователям компании
     user_stats = get_user_statistics(company_scope)
 
     context = {
-        'company': membership.company,
-        'department': membership.department,
-        'user_role': membership.role_code,
+        'company': workspace['company'],
+        'department': workspace['department'],
+        'user_role': workspace['user_role'],
         'total_users': user_stats['total'],
         'django_admin_count': user_stats['by_role'].get('Django администратор', 0),
         'director_count': user_stats['by_role'].get('Директор УК', 0),
@@ -138,24 +165,29 @@ def chief_engineer_page(request):
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
-        messages.warning(request, 'Вы не привязаны к компании')
-        return redirect('portal:no_membership')
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
 
     # Проверка роли
-    if membership.role_code != 'chief_engineer':
+    if not request.user.is_superuser and membership.role_code != 'chief_engineer':
         messages.error(request, 'Доступ разрешен только Главным инженерам')
         return redirect('portal:welcome')
 
     # Фильтрация по компании
-    company_scope = getattr(request, 'user_company_ids', None) or [membership.company_id]
+    company_scope = workspace['company_scope']
 
     # Статистика по пользователям компании
     user_stats = get_user_statistics(company_scope)
 
     context = {
-        'company': membership.company,
-        'department': membership.department,
-        'user_role': membership.role_code,
+        'company': workspace['company'],
+        'department': workspace['department'],
+        'user_role': workspace['user_role'],
         'total_users': user_stats['total'],
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
         'chief_engineer_count': user_stats['by_role'].get('Главный инженер', 0),
@@ -297,30 +329,38 @@ def director_residents(request):
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
-        messages.warning(request, 'Вы не привязаны к компании')
-        return redirect('portal:no_membership')
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
 
     # Проверка роли (доступно директору и главному инженеру)
-    if membership.role_code not in ['direktor_uk', 'chief_engineer']:
+    if not request.user.is_superuser and membership.role_code not in ['direktor_uk', 'chief_engineer']:
         messages.error(request, 'Доступ разрешен только Директорам УК и Главным инженерам')
         return redirect('portal:welcome')
 
     # Фильтрация по компании
-    company_id = membership.company_id
+    company_scope = workspace['company_scope']
 
     # Получаем всех пользователей компании (жители + сотрудники)
     from work_orders.models import UserCompanyMembership
-    company_memberships = UserCompanyMembership.objects.filter(
-        company_id=company_id,
-        is_active=True
-    ).select_related('user', 'department').order_by('user__username')
+    company_memberships = UserCompanyMembership.objects.filter(is_active=True)
+    if company_scope:
+        if isinstance(company_scope, (list, tuple, set)):
+            company_memberships = company_memberships.filter(company_id__in=company_scope)
+        else:
+            company_memberships = company_memberships.filter(company_id=company_scope)
+    company_memberships = company_memberships.select_related('user', 'department').order_by('user__username')
 
     # Разделяем по ролям
     residents = [m for m in company_memberships if m.role_code == 'resident']
     staff = [m for m in company_memberships if m.role_code != 'resident']
 
     context = {
-        'company': membership.company,
+        'company': workspace['company'],
         'residents': residents,
         'staff': staff,
         'total_residents': len(residents),
@@ -345,23 +385,31 @@ def director_departments(request):
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
-        messages.warning(request, 'Вы не привязаны к компании')
-        return redirect('portal:no_membership')
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
 
     # Проверка роли (доступно директору и главному инженеру)
-    if membership.role_code not in ['direktor_uk', 'chief_engineer']:
+    if not request.user.is_superuser and membership.role_code not in ['direktor_uk', 'chief_engineer']:
         messages.error(request, 'Доступ разрешен только Директорам УК и Главным инженерам')
         return redirect('portal:welcome')
 
     # Фильтрация по компании
-    company_id = membership.company_id
+    company_scope = workspace['company_scope']
 
     # Получаем подразделения компании
     from work_orders.models import CompanyDepartment
-    departments = CompanyDepartment.objects.filter(
-        company_id=company_id,
-        is_active=True
-    ).select_related('parent_department').order_by('department_name')
+    departments = CompanyDepartment.objects.filter(is_active=True)
+    if company_scope:
+        if isinstance(company_scope, (list, tuple, set)):
+            departments = departments.filter(company_id__in=company_scope)
+        else:
+            departments = departments.filter(company_id=company_scope)
+    departments = departments.select_related('parent_department').order_by('department_name')
 
     # Статистика по сотрудникам в подразделениях
     from work_orders.models import UserCompanyMembership
@@ -377,10 +425,10 @@ def director_departments(request):
         })
 
     context = {
-        'company': membership.company,
+        'company': workspace['company'],
         'departments': departments_with_stats,
         'total_departments': departments.count(),
-        'can_add_department': membership.role_code == 'direktor_uk',  # Только директор может добавлять
+        'can_add_department': bool(membership and membership.role_code == 'direktor_uk'),  # Только директор может добавлять
     }
 
     # Breadcrumbs для возврата на правильный дашборд
@@ -402,22 +450,53 @@ def director_add_resident(request):
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
-        messages.warning(request, 'Вы не привязаны к компании')
-        return redirect('portal:no_membership')
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
 
     # Проверка роли (доступно директору и главному инженеру)
-    if membership.role_code not in ['direktor_uk', 'chief_engineer']:
+    if not request.user.is_superuser and membership.role_code not in ['direktor_uk', 'chief_engineer']:
         messages.error(request, 'Доступ разрешен только Директорам УК и Главным инженерам')
         return redirect('portal:welcome')
 
-    company_id = membership.company_id
+    superuser_without_membership = request.user.is_superuser and not membership
+    companies = None
+    company_id = membership.company_id if membership else None
+    selected_company_id = request.POST.get('company') or request.GET.get('company')
+
+    if superuser_without_membership:
+        from nsi.models import Company
+        companies = Company.objects.filter(is_active=True).order_by('name')
+        if selected_company_id:
+            try:
+                company_id = int(selected_company_id)
+            except (TypeError, ValueError):
+                company_id = None
 
     # Обработка формы
     if request.method == 'POST':
         from portal.forms import AddResidentForm
         form = AddResidentForm(request.POST)
 
-        if form.is_valid():
+        form_valid = form.is_valid()
+        company = None
+        if superuser_without_membership:
+            from nsi.models import Company
+            if not company_id:
+                form.add_error(None, 'Укажите компанию')
+                form_valid = False
+            else:
+                try:
+                    company = Company.objects.get(id=company_id, is_active=True)
+                except Company.DoesNotExist:
+                    form.add_error(None, 'Выбранная компания недоступна')
+                    form_valid = False
+
+        if form_valid:
             # Создаем пользователя
             user = User.objects.create_user(
                 username=form.cleaned_data['username'],
@@ -472,15 +551,20 @@ def director_add_resident(request):
 
     # Получаем подразделения для выбора
     from work_orders.models import CompanyDepartment
-    departments = CompanyDepartment.objects.filter(
-        company_id=company_id,
-        is_active=True
-    ).order_by('department_name')
+    departments = CompanyDepartment.objects.filter(is_active=True)
+    if superuser_without_membership and not company_id:
+        departments = departments.none()
+    elif company_id:
+        departments = departments.filter(company_id=company_id)
+    departments = departments.select_related('company').order_by('company__name', 'department_name')
 
     context = {
-        'company': membership.company,
+        'company': workspace['company'],
         'form': form,
         'departments': departments,
+        'companies': companies,
+        'selected_company_id': str(company_id) if company_id else '',
+        'superuser_without_membership': superuser_without_membership,
     }
 
     # Breadcrumbs для возврата на правильный дашборд
@@ -503,27 +587,61 @@ def director_add_department(request):
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
-        messages.warning(request, 'Вы не привязаны к компании')
-        return redirect('portal:no_membership')
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
 
     # Проверка роли (доступно только директору)
-    if membership.role_code != 'direktor_uk':
+    if not request.user.is_superuser and membership.role_code != 'direktor_uk':
         messages.error(request, 'Доступ разрешен только Директорам УК')
         return redirect('portal:welcome')
 
-    company_id = membership.company_id
+    superuser_without_membership = request.user.is_superuser and not membership
+    companies = None
+    company_id = membership.company_id if membership else None
+    selected_company_id = request.POST.get('company') or request.GET.get('company')
+
+    if superuser_without_membership:
+        from nsi.models import Company
+        companies = Company.objects.filter(is_active=True).order_by('name')
+        if selected_company_id:
+            try:
+                company_id = int(selected_company_id)
+            except (TypeError, ValueError):
+                company_id = None
+
+    from work_orders.models import CompanyDepartment
+    departments = CompanyDepartment.objects.filter(is_active=True)
+    if superuser_without_membership and not company_id:
+        departments = departments.none()
+    elif company_id:
+        departments = departments.filter(company_id=company_id)
+    departments = departments.select_related('company').order_by('company__name', 'department_name')
 
     # Обработка формы
     if request.method == 'POST':
         from portal.forms import AddDepartmentForm
-        form = AddDepartmentForm(request.POST, departments=[])
+        form = AddDepartmentForm(request.POST, departments=departments)
 
-        if form.is_valid():
+        form_valid = form.is_valid()
+        if superuser_without_membership:
+            from nsi.models import Company
+            if not company_id:
+                form.add_error(None, 'Укажите компанию')
+                form_valid = False
+            elif not Company.objects.filter(id=company_id, is_active=True).exists():
+                form.add_error(None, 'Выбранная компания недоступна')
+                form_valid = False
+
+        if form_valid:
             # Получаем родительское подразделение (если указан)
             parent_id = request.POST.get('parent_department')
             parent = None
             if parent_id and parent_id != '':
-                from work_orders.models import CompanyDepartment
                 try:
                     parent = CompanyDepartment.objects.get(
                         id=int(parent_id),
@@ -533,13 +651,11 @@ def director_add_department(request):
                     pass
 
             # Создаем подразделение
-            from work_orders.models import CompanyDepartment
             department = CompanyDepartment.objects.create(
                 company_id=company_id,
                 department_code=form.cleaned_data['department_code'],
                 department_name=form.cleaned_data['department_name'],
                 parent_department=parent,
-                description=form.cleaned_data.get('description', ''),
                 is_active=True,
                 is_test=False
             )
@@ -549,18 +665,116 @@ def director_add_department(request):
     else:
         from portal.forms import AddDepartmentForm
 
-        # Получаем существующие подразделения для выбора родительского
-        from work_orders.models import CompanyDepartment
-        departments = CompanyDepartment.objects.filter(
-            company_id=company_id,
-            is_active=True
-        ).order_by('department_name')
-
         form = AddDepartmentForm(departments=departments)
 
     context = {
-        'company': membership.company,
+        'company': workspace['company'],
         'form': form,
+        'companies': companies,
+        'selected_company_id': str(company_id) if company_id else '',
+        'superuser_without_membership': superuser_without_membership,
+    }
+
+    # Breadcrumbs для возврата на правильный дашборд
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+
+    return render(request, 'portal/director_add_department.html', context)
+
+
+@login_required
+def director_edit_department(request, department_id):
+    """
+    Редактирование подразделения директором ТСЖ
+
+    ДОСТУП: direktor_uk
+    """
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
+
+    # Проверка роли (доступно только директору)
+    if not request.user.is_superuser and membership.role_code != 'direktor_uk':
+        messages.error(request, 'Доступ разрешен только Директорам УК')
+        return redirect('portal:welcome')
+
+    from work_orders.models import CompanyDepartment
+
+    # Получаем подразделение
+    try:
+        department = CompanyDepartment.objects.get(id=department_id)
+    except CompanyDepartment.DoesNotExist:
+        messages.error(request, 'Подразделение не найдено')
+        return redirect('portal:director_departments')
+
+    # Проверка доступа к компании
+    company_scope = workspace['company_scope']
+    if not request.user.is_superuser:
+        if isinstance(company_scope, (list, tuple, set)):
+            if department.company_id not in company_scope:
+                messages.error(request, 'Доступ к этому подразделению запрещен')
+                return redirect('portal:director_departments')
+        else:
+            if department.company_id != company_scope:
+                messages.error(request, 'Доступ к этому подразделению запрещен')
+                return redirect('portal:director_departments')
+
+    # Получаем все подразделения для выбора родительского
+    departments = CompanyDepartment.objects.filter(
+        is_active=True,
+        company_id=department.company_id
+    ).exclude(id=department_id).select_related('company').order_by('department_name')
+
+    # Обработка формы
+    if request.method == 'POST':
+        from portal.forms import EditDepartmentForm
+        form = EditDepartmentForm(request.POST, departments=departments, instance=department)
+
+        if form.is_valid():
+            # Получаем родительское подразделение (если указан)
+            parent_id = request.POST.get('parent_department')
+            parent = None
+            if parent_id and parent_id != '':
+                try:
+                    parent = CompanyDepartment.objects.get(
+                        id=int(parent_id),
+                        company_id=department.company_id
+                    )
+                except CompanyDepartment.DoesNotExist:
+                    pass
+
+            # Обновляем подразделение
+            department.department_code = form.cleaned_data['department_code']
+            department.department_name = form.cleaned_data['department_name']
+            department.parent_department = parent
+            department.save()
+
+            messages.success(request, f'Подразделение "{department.department_name}" успешно обновлено!')
+            return redirect('portal:director_departments')
+    else:
+        from portal.forms import EditDepartmentForm
+
+        # Инициализируем форму текущими значениями
+        initial_data = {
+            'department_code': department.department_code,
+            'department_name': department.department_name,
+            'parent_department': department.parent_department_id if department.parent_department else '',
+        }
+        form = EditDepartmentForm(initial=initial_data, departments=departments, instance=department)
+
+    context = {
+        'company': workspace['company'],
+        'department': department,
+        'form': form,
+        'is_edit': True,
     }
 
     # Breadcrumbs для возврата на правильный дашборд
@@ -587,16 +801,21 @@ def director_page_new(request):
 
     membership = get_primary_membership(request.user)
     if not membership:
-        messages.warning(request, 'Вы не привязаны к компании')
-        return redirect('portal:no_membership')
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
 
-    company_id = membership.company_id
+    company_scope = workspace['company_scope']
 
     # Статистика
-    user_stats = get_user_statistics(company_id)
+    user_stats = get_user_statistics(company_scope)
 
     context = {
-        'company': membership.company,
+        'company': workspace['company'],
         'total_users': user_stats['total'],
         'resident_count': user_stats['by_role'].get('Житель', 0),
     }
@@ -613,19 +832,128 @@ def chief_engineer_page_new(request):
     """
     # Проверка доступа
     membership = get_primary_membership(request.user)
-    if not membership or membership.role_code != 'chief_engineer':
+    if not membership:
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.error(request, 'Доступ запрещен!')
+            return redirect('portal:welcome')
+    else:
+        workspace = _workspace_context(request, membership)
+
+    if not request.user.is_superuser and membership.role_code != 'chief_engineer':
         messages.error(request, 'Доступ запрещен!')
         return redirect('portal:welcome')
 
-    company_id = membership.company_id
+    company_scope = workspace['company_scope']
 
     # Статистика
-    user_stats = get_user_statistics(company_id)
+    user_stats = get_user_statistics(company_scope)
 
     context = {
-        'company': membership.company,
+        'company': workspace['company'],
         'total_users': user_stats['total'],
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
     }
 
     return render(request, 'portal/chief_engineer_page_new.html', context)
+
+
+@login_required
+def director_sla(request):
+    """
+    Управление SLA политиками организации
+
+    ДОСТУП: direktor_uk
+    """
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
+
+    # Проверка роли
+    if not request.user.is_superuser and membership.role_code != 'direktor_uk':
+        messages.error(request, 'Доступ разрешен только Директорам УК')
+        return redirect('portal:welcome')
+
+    # Фильтрация по компании
+    company_scope = workspace['company_scope']
+
+    # Получаем SLA политики компании
+    from work_orders.models import SLAPolicy
+
+    sla_policies = SLAPolicy.objects.filter(is_active=True)
+    if company_scope:
+        if isinstance(company_scope, (list, tuple, set)):
+            sla_policies = sla_policies.filter(company_id__in=company_scope)
+        else:
+            sla_policies = sla_policies.filter(company_id=company_scope)
+
+    sla_policies = sla_policies.select_related('company', 'service').order_by('-created_at')
+
+    context = {
+        'company': workspace['company'],
+        'sla_policies': sla_policies,
+        'total_policies': sla_policies.count(),
+    }
+
+    return render(request, 'portal/director_sla.html', context)
+
+
+@login_required
+def director_employees(request):
+    """
+    Управление сотрудниками организации
+
+    ДОСТУП: direktor_uk
+    """
+    # Получаем membership
+    membership = get_primary_membership(request.user)
+    if not membership:
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, membership)
+
+    # Проверка роли
+    if not request.user.is_superuser and membership.role_code != 'direktor_uk':
+        messages.error(request, 'Доступ разрешен только Директорам УК')
+        return redirect('portal:welcome')
+
+    # Фильтрация по компании
+    company_scope = workspace['company_scope']
+
+    # Получаем сотрудников компании (все роли кроме "Житель")
+    from work_orders.models import UserCompanyMembership
+
+    employee_roles = ['direktor_uk', 'chief_engineer', 'executor', 'django_admin']
+
+    employees = UserCompanyMembership.objects.filter(
+        is_active=True,
+        role_code__in=employee_roles
+    )
+
+    if company_scope:
+        if isinstance(company_scope, (list, tuple, set)):
+            employees = employees.filter(company_id__in=company_scope)
+        else:
+            employees = employees.filter(company_id=company_scope)
+
+    employees = employees.select_related('user', 'company', 'department').order_by('user__last_name', 'user__first_name')
+
+    context = {
+        'company': workspace['company'],
+        'employees': employees,
+        'total_employees': employees.count(),
+    }
+
+    return render(request, 'portal/director_employees.html', context)

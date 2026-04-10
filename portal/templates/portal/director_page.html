@@ -453,17 +453,31 @@ body {
                 </span>
             </a>
 
-            <!-- Квитанции и оплата -->
-            <a href="#" class="aerial-tile">
+            <!-- SLA по организации -->
+            <a href="{% url 'portal:director_sla' %}" class="aerial-tile">
                 <div class="tile-icon-wrapper">
-                    <i class="fas fa-file-invoice-dollar tile-icon"></i>
+                    <i class="fas fa-clock tile-icon"></i>
                 </div>
-                <div class="tile-title">Квитанции и оплата</div>
+                <div class="tile-title">SLA по организации</div>
                 <div class="tile-description">
-                    Просмотр истории, формирование квитанций, онлайн-оплата услуг ЖКХ
+                    Настройка и управление SLA политиками для вашей организации
                 </div>
                 <span class="tile-badge">
-                    <i class="fas fa-check-circle"></i> Скоро
+                    <i class="fas fa-sliders-h"></i> Настройки
+                </span>
+            </a>
+
+            <!-- Сотрудники -->
+            <a href="{% url 'portal:director_employees' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-user-tie tile-icon"></i>
+                </div>
+                <div class="tile-title">Сотрудники</div>
+                <div class="tile-description">
+                    Управление сотрудниками вашей организации
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-users"></i> Персонал
                 </span>
             </a>
 
