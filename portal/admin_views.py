@@ -517,11 +517,41 @@ def director_add_resident(request):
                 }
             )
 
-            # Получаем подразделение (если есть)
+            # Получаем подразделение (обязательно для сотрудников)
             from work_orders.models import CompanyDepartment
             department_id = request.POST.get('department')
             department = None
-            if department_id and department_id != '':
+            role_code = form.cleaned_data['role']
+
+            # Для исполнителей и главного инженера department обязателен
+            if role_code in ['executor', 'chief_engineer']:
+                if not department_id or department_id == '':
+                    messages.error(request, 'Для сотрудников обязательно укажите подразделение!')
+                    return render(request, 'portal/director_add_resident.html', {
+                        'company': workspace['company'],
+                        'form': form,
+                        'departments': departments,
+                        'companies': companies,
+                        'selected_company_id': str(company_id) if company_id else '',
+                        'superuser_without_membership': superuser_without_membership,
+                    })
+                try:
+                    department = CompanyDepartment.objects.get(
+                        id=int(department_id),
+                        company_id=company_id
+                    )
+                except CompanyDepartment.DoesNotExist:
+                    messages.error(request, 'Указанное подразделение не найдено!')
+                    return render(request, 'portal/director_add_resident.html', {
+                        'company': workspace['company'],
+                        'form': form,
+                        'departments': departments,
+                        'companies': companies,
+                        'selected_company_id': str(company_id) if company_id else '',
+                        'superuser_without_membership': superuser_without_membership,
+                    })
+            elif department_id and department_id != '':
+                # Для жителей department опционален, но если указан - проверяем
                 try:
                     department = CompanyDepartment.objects.get(
                         id=int(department_id),
@@ -536,7 +566,7 @@ def director_add_resident(request):
                 user=user,
                 company_id=company_id,
                 department=department,
-                role_code=form.cleaned_data['role'],
+                role_code=role_code,
                 is_primary=True,
                 is_active=True,
                 date_from=timezone.now()
