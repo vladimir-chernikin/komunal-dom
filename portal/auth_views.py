@@ -40,6 +40,7 @@ class CustomLoginView(LoginView):
 
     template_name = 'portal/login.html'
     form_class = AuthenticationForm
+    redirect_authenticated_user = True
 
     def form_valid(self, form):
         """
@@ -82,6 +83,10 @@ class CustomLoginView(LoginView):
         """
         Определяет URL redirect в зависимости от роли пользователя
         """
+        if self.request.user.is_superuser:
+            # Django Admin
+            return '/admin/'
+
         membership = get_primary_membership(self.request.user)
 
         if not membership:
@@ -90,10 +95,7 @@ class CustomLoginView(LoginView):
         role = membership.role_code
 
         # Redirect по ролям
-        if self.request.user.is_superuser:
-            # Django Admin
-            return '/admin/'
-        elif role == 'direktor_uk':
+        if role == 'direktor_uk':
             # Директор УК
             return '/director/'  # Используем director_page, не admin_page
         elif role == 'chief_engineer':

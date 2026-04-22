@@ -78,6 +78,18 @@
 </style>
 <script>
 (function () {
+    function normalizeLabel(text) {
+        return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function localizeErrorNote() {
+        document.querySelectorAll('.errornote').forEach(function (node) {
+            if ((node.textContent || '').trim() === 'Please correct the errors below.') {
+                node.textContent = 'Пожалуйста, исправьте ошибки ниже.';
+            }
+        });
+    }
+
     function rebuildPrimaryDepartmentOptions() {
         var companySelect = document.getElementById('id_primary_company');
         var departmentSelect = document.getElementById('id_primary_department');
@@ -165,7 +177,7 @@
             var button = document.createElement('a');
             button.className = 'membership-add-button';
             button.href = navAddLink.href;
-            button.textContent = '+ Добавить';
+            button.textContent = 'Добавить членство';
 
             toolbar.appendChild(button);
             membershipPane.insertBefore(toolbar, membershipModule);
@@ -174,19 +186,57 @@
         navAddLink.remove();
     }
 
+    function movePermissionsTabToEnd() {
+        var tabTrigger = Array.from(document.querySelectorAll('a, button')).find(function (element) {
+            return normalizeLabel(element.textContent).indexOf('права доступа') >= 0;
+        });
+        if (!tabTrigger) {
+            return;
+        }
+
+        var navItem = tabTrigger.closest('li') || tabTrigger;
+        var navContainer = navItem.parentElement;
+        if (navContainer && navContainer.lastElementChild !== navItem) {
+            navContainer.appendChild(navItem);
+        }
+
+        var paneId = tabTrigger.getAttribute('aria-controls') || '';
+        if (!paneId) {
+            var dataTarget = tabTrigger.getAttribute('data-bs-target') || tabTrigger.getAttribute('href') || '';
+            if (dataTarget.indexOf('#') === 0) {
+                paneId = dataTarget.slice(1);
+            }
+        }
+
+        if (!paneId) {
+            return;
+        }
+
+        var pane = document.getElementById(paneId);
+        if (pane && pane.parentElement && pane.parentElement.lastElementChild !== pane) {
+            pane.parentElement.appendChild(pane);
+        }
+    }
+
     window.rebuildPrimaryDepartmentOptions = rebuildPrimaryDepartmentOptions;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
+            localizeErrorNote();
             bindPrimaryDepartmentOptions();
             moveMembershipAddButton();
+            movePermissionsTabToEnd();
         });
     } else {
+        localizeErrorNote();
         bindPrimaryDepartmentOptions();
         moveMembershipAddButton();
+        movePermissionsTabToEnd();
     }
+    window.addEventListener('load', localizeErrorNote);
     window.addEventListener('load', bindPrimaryDepartmentOptions);
     window.addEventListener('load', moveMembershipAddButton);
+    window.addEventListener('load', movePermissionsTabToEnd);
 })();
 </script>
 {% endblock %}

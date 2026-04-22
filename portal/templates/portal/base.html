@@ -23,24 +23,56 @@
             --bg-primary: #ffffff;
             --bg-secondary: #f8f9fa;
             --bg-card: #ffffff;
+            --surface-primary: #ffffff;
+            --surface-secondary: #f7f9fb;
+            --surface-elevated: rgba(255, 255, 255, 0.94);
+            --surface-muted: #eef2f5;
             --text-primary: #212529;
             --text-secondary: #6c757d;
+            --text-soft: #495057;
             --border-color: #e8e8e8;
+            --border-strong: #d5dce3;
             --navbar-bg: #ffffff;
             --navbar-text: #212529;
             --footer-bg: #ffffff;
+            --accent-color: #059669;
+            --accent-soft: #ecfdf5;
+            --accent-border: rgba(16, 185, 129, 0.22);
+            --hero-text: #1a1f24;
+            --hero-text-muted: #2f3a43;
+            --hero-bg: linear-gradient(180deg, #87ceeb 0%, #b0e0e6 50%, #98d8aa 100%);
+            --hero-overlay: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.08));
+            --shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.10);
+            --shadow-strong: 0 20px 44px rgba(0, 0, 0, 0.16);
         }
 
-        [data-theme="dark"] {
-            --bg-primary: #1a1a1a;
-            --bg-secondary: #2d2d2d;
-            --bg-card: #242424;
-            --text-primary: #e4e4e4;
-            --text-secondary: #a0a0a0;
-            --border-color: #404040;
-            --navbar-bg: #242424;
-            --navbar-text: #e4e4e4;
-            --footer-bg: #1a1a1a;
+        html[data-theme="dark"] {
+            color-scheme: dark;
+            --bg-primary: #0f1419;
+            --bg-secondary: #141b22;
+            --bg-card: #1a222b;
+            --surface-primary: #1a222b;
+            --surface-secondary: #151c24;
+            --surface-elevated: rgba(21, 30, 38, 0.88);
+            --surface-muted: #202a34;
+            --text-primary: #eef4f8;
+            --text-secondary: #aab7c4;
+            --text-soft: #c5d0da;
+            --border-color: rgba(148, 163, 184, 0.24);
+            --border-strong: rgba(180, 194, 208, 0.34);
+            --navbar-bg: #111820;
+            --navbar-text: #eef4f8;
+            --footer-bg: #0f1419;
+            --accent-color: #34d399;
+            --accent-soft: rgba(52, 211, 153, 0.12);
+            --accent-border: rgba(52, 211, 153, 0.32);
+            --hero-text: #f2f7fb;
+            --hero-text-muted: #cfdae4;
+            --hero-bg: linear-gradient(180deg, #0c1624 0%, #142536 52%, #163326 100%);
+            --hero-overlay: radial-gradient(circle at 28% 20%, rgba(52, 211, 153, 0.16), transparent 32%),
+                            linear-gradient(180deg, rgba(7, 12, 18, 0.12), rgba(7, 12, 18, 0.42));
+            --shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.32);
+            --shadow-strong: 0 24px 60px rgba(0, 0, 0, 0.45);
         }
 
         body {
@@ -153,29 +185,256 @@
         /* Form controls в темной теме */
         [data-theme="dark"] .form-control,
         [data-theme="dark"] .form-select {
-            background-color: #2d2d2d;
-            border-color: #404040;
-            color: #e4e4e4;
+            background-color: var(--surface-secondary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
         }
 
         [data-theme="dark"] .form-control:focus,
         [data-theme="dark"] .form-select:focus {
-            background-color: #2d2d2d;
-            border-color: #667eea;
-            color: #e4e4e4;
+            background-color: var(--surface-secondary);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 211, 153, 0.16);
+            color: var(--text-primary);
         }
 
         [data-theme="dark"] .form-label {
+            color: var(--text-primary);
+        }
+
+        /* Origami sun lantern: светлая тема для рабочих кабинетов */
+        html:not([data-theme="dark"]) .aerial-hero::before {
+            content: '';
+            position: absolute;
+            top: clamp(54px, 9vw, 108px);
+            right: clamp(28px, 9vw, 128px);
+            z-index: 1;
+            width: clamp(58px, 8vw, 96px);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.92) 0 9%, transparent 10%),
+                linear-gradient(135deg, rgba(255, 255, 255, 0.52) 0 24%, transparent 25%),
+                conic-gradient(from -42deg,
+                    #fff1a4 0deg 44deg,
+                    #ffc84b 44deg 92deg,
+                    #f39a3c 92deg 138deg,
+                    #ffd967 138deg 184deg,
+                    #fff4b8 184deg 226deg,
+                    #ffbd42 226deg 276deg,
+                    #f58b32 276deg 318deg,
+                    #ffe082 318deg 360deg);
+            border: 1px solid rgba(180, 103, 34, 0.24);
+            box-shadow:
+                inset 12px -14px 20px rgba(180, 103, 34, 0.22),
+                inset -10px 9px 16px rgba(255, 255, 255, 0.55),
+                0 0 22px rgba(255, 198, 72, 0.34),
+                0 16px 28px rgba(24, 32, 45, 0.15);
+            opacity: 0.95;
+        }
+
+        html:not([data-theme="dark"]) .aerial-hero::after {
+            content: '';
+            position: absolute;
+            top: clamp(18px, 4vw, 52px);
+            right: clamp(4px, 4vw, 72px);
+            z-index: 0;
+            width: clamp(140px, 16vw, 220px);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            pointer-events: none;
+            background:
+                radial-gradient(circle,
+                    rgba(255, 238, 170, 0.34) 0 24%,
+                    rgba(255, 201, 86, 0.18) 25% 46%,
+                    rgba(16, 185, 129, 0.07) 47% 62%,
+                    rgba(255, 255, 255, 0) 68%);
+            filter: blur(2px);
+            opacity: 0.86;
+        }
+
+        /* Night City: темная тема для рабочих кабинетов */
+        [data-theme="dark"] body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .navbar-custom {
+            box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 32px rgba(0, 0, 0, 0.18);
+        }
+
+        [data-theme="dark"] .aerial-hero {
+            background: var(--hero-bg);
+            color: var(--hero-text);
+        }
+
+        [data-theme="dark"] .aerial-hero::before {
+            content: '';
+            position: absolute;
+            top: clamp(54px, 9vw, 108px);
+            right: clamp(28px, 9vw, 128px);
+            z-index: 1;
+            width: clamp(58px, 8vw, 96px);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 38% 36%, rgba(255, 255, 255, 0.98) 0 10%, transparent 11%),
+                radial-gradient(circle at 66% 64%, rgba(255, 255, 255, 0.55) 0 5%, transparent 6%),
+                radial-gradient(circle at 50% 50%, #f8fafc 0 58%, #dbeafe 74%, rgba(191, 219, 254, 0.12) 75%);
+            box-shadow:
+                0 0 28px rgba(191, 219, 254, 0.72),
+                0 0 72px rgba(147, 197, 253, 0.34);
+            opacity: 0.92;
+        }
+
+        [data-theme="dark"] .aerial-hero::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            pointer-events: none;
+            background: var(--hero-overlay);
+        }
+
+        [data-theme="dark"] .city-3d-background {
+            z-index: 0;
+            opacity: 0.56;
+            filter: brightness(0.56) saturate(0.78) contrast(1.08);
+        }
+
+        [data-theme="dark"] .aerial-content {
+            color: var(--hero-text);
+        }
+
+        [data-theme="dark"] .aerial-hero h1,
+        [data-theme="dark"] .aerial-hero h2 {
+            color: var(--hero-text);
+            text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
+        }
+
+        [data-theme="dark"] .aerial-hero .subtitle,
+        [data-theme="dark"] .aerial-hero .breadcrumb,
+        [data-theme="dark"] .aerial-hero .breadcrumb-item,
+        [data-theme="dark"] .aerial-hero .breadcrumb-item.active {
+            color: var(--hero-text-muted);
+            text-shadow: none;
+        }
+
+        [data-theme="dark"] .aerial-hero .breadcrumb a {
+            color: #d9f99d;
+        }
+
+        [data-theme="dark"] .aerial-tile,
+        [data-theme="dark"] .stat-bubble,
+        [data-theme="dark"] .surface-card,
+        [data-theme="dark"] .crumb-card,
+        [data-theme="dark"] .user-card,
+        [data-theme="dark"] .main-card {
+            background: var(--surface-elevated);
+            border-color: var(--border-color);
+            box-shadow: var(--shadow-soft);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .aerial-tile:hover,
+        [data-theme="dark"] .surface-card:hover {
+            border-color: var(--accent-border);
+            box-shadow: var(--shadow-strong);
+        }
+
+        [data-theme="dark"] .aerial-tile::before {
+            background: linear-gradient(90deg, #34d399, #22c55e);
+        }
+
+        [data-theme="dark"] .tile-icon-wrapper {
+            background: linear-gradient(135deg, rgba(52, 211, 153, 0.18), rgba(14, 165, 233, 0.12));
+            border-color: var(--accent-border);
+        }
+
+        [data-theme="dark"] .tile-icon {
+            color: var(--accent-color);
+        }
+
+        [data-theme="dark"] .tile-title,
+        [data-theme="dark"] .stat-bubble-number,
+        [data-theme="dark"] .section-title {
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .tile-description,
+        [data-theme="dark"] .stat-bubble-label,
+        [data-theme="dark"] .company-title,
+        [data-theme="dark"] .user-name {
+            color: var(--text-secondary);
+        }
+
+        [data-theme="dark"] .tile-badge,
+        [data-theme="dark"] .status-chip {
+            background: var(--accent-soft);
+            border-color: var(--accent-border);
+            color: var(--accent-color);
+        }
+
+        [data-theme="dark"] .card,
+        [data-theme="dark"] .modal-content,
+        [data-theme="dark"] .list-group-item {
+            background: var(--surface-primary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .card-header,
+        [data-theme="dark"] .modal-header,
+        [data-theme="dark"] .modal-footer {
+            background: var(--surface-secondary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        /* Единый профиль пользователя в шапке */
+        .navbar-user-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            padding: 0.25rem 0 0.25rem 0.5rem;
+        }
+
+        .navbar-user-name {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            color: var(--navbar-text);
+            font-size: 1rem;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        .navbar-user-name i {
+            font-size: 1.05rem;
+        }
+
+        .navbar-profile-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 31px;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            white-space: nowrap;
+        }
+
+        [data-theme="dark"] .navbar-profile-action {
+            border-color: #a0a0a0;
             color: #e4e4e4;
         }
 
-        /* Кнопка выхода в меню */
-        .logout-btn {
-            border: none;
-            background: none;
-            width: 100%;
-            text-align: left;
-            padding: 0.25rem 1rem;
+        [data-theme="dark"] .navbar-profile-action:hover,
+        [data-theme="dark"] .navbar-profile-action:focus {
+            background-color: #e4e4e4;
+            border-color: #e4e4e4;
+            color: #1a1a1a;
         }
 
         /* ========== ОБЩИЕ СТИЛИ ДЛЯ ВСЕХ СТРАНИЦ ========== */
@@ -183,7 +442,7 @@
         /* Базовые стили тела страницы */
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #f8f9fa;
+            background: var(--bg-secondary);
         }
 
         /* Утилитарные классы */
@@ -198,15 +457,16 @@
 
         /* Карточки */
         .card {
-            border: 1px solid #dee2e6;
+            background: var(--surface-primary);
+            border: 1px solid var(--border-color);
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
         .card-header {
             padding: 8px 12px;
-            background: #fff;
-            color: #1a1a1a;
-            border-bottom: 1px solid #e8e8e8;
+            background: var(--surface-primary);
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color);
             font-size: 0.875rem;
             font-weight: 600;
         }
@@ -279,21 +539,26 @@
 
         /* Table styles in dark theme */
         [data-theme="dark"] .table {
-            color: #e4e4e4;
-            border-color: #404040;
+            --bs-table-bg: transparent;
+            --bs-table-color: var(--text-primary);
+            --bs-table-border-color: var(--border-color);
+            --bs-table-hover-bg: rgba(52, 211, 153, 0.08);
+            color: var(--text-primary);
+            border-color: var(--border-color);
         }
 
         [data-theme="dark"] .table thead th {
-            border-color: #404040;
-            color: #e4e4e4;
+            background: var(--surface-secondary);
+            border-color: var(--border-color);
+            color: var(--text-soft);
         }
 
         [data-theme="dark"] .table tbody tr {
-            border-color: #404040;
+            border-color: var(--border-color);
         }
 
         [data-theme="dark"] .table-hover tbody tr:hover {
-            background-color: #2d2d2d;
+            background-color: rgba(52, 211, 153, 0.08);
         }
 
         /* Badge styles in dark theme */
@@ -333,9 +598,10 @@
                 padding: 1.5rem 0;
             }
 
-            .container {
-                padding-left: 1rem;
-                padding-right: 1rem;
+            .container,
+            .container-fluid {
+                padding-left: max(1rem, env(safe-area-inset-left));
+                padding-right: max(1rem, env(safe-area-inset-right));
             }
 
             .card {
@@ -346,6 +612,14 @@
         @media (max-width: 576px) {
             .navbar-brand-custom {
                 font-size: 1rem;
+            }
+
+            main > .container,
+            main > .container-fluid,
+            main > section > .container,
+            main > section > .container-fluid {
+                padding-left: max(1rem, env(safe-area-inset-left));
+                padding-right: max(1rem, env(safe-area-inset-right));
             }
 
             .card-header {
@@ -392,25 +666,17 @@
                     </li>
 
                     {% if user.is_authenticated %}
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
-                               data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Меню пользователя">
-                                <i class="fas fa-user"></i> {{ user.username }}
+                        <li class="nav-item navbar-user-actions">
+                            {% if user.is_superuser %}
+                            <a class="btn btn-outline-secondary btn-sm navbar-profile-action" href="/admin/">Админка</a>
+                            {% endif %}
+                            <span class="navbar-user-name">
+                                <i class="fas fa-user-circle" aria-hidden="true"></i>
+                                {{ user.get_full_name|default:user.username }}
+                            </span>
+                            <a href="/logout/" class="btn btn-outline-secondary btn-sm navbar-profile-action" aria-label="Выйти из системы">
+                                Выйти
                             </a>
-                            <ul class="dropdown-menu" aria-labelledby="navbarDropdown" role="menu">
-                                {% if user.is_superuser %}
-                                <li role="none"><a class="dropdown-item" href="/admin/" role="menuitem">Админ-панель Django</a></li>
-                                {% endif %}
-                                <li role="none"><hr class="dropdown-divider"></li>
-                                <li role="none">
-                                    <form method="post" action="/logout/" class="d-inline">
-                                        {% csrf_token %}
-                                        <button type="submit" class="dropdown-item text-danger logout-btn" aria-label="Выйти из системы">
-                                            <i class="fas fa-sign-out-alt"></i> Выход
-                                        </button>
-                                    </form>
-                                </li>
-                            </ul>
                         </li>
                     {% else %}
                         <li class="nav-item">

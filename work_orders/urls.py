@@ -32,8 +32,12 @@ urlpatterns = [
     path('resident/', views.ResidentDashboardView.as_view(), name='resident_dashboard'),
 
     # API для действий
+    path('api/objects/search/', views.api_service_object_search, name='api_service_object_search'),
     path('api/<int:work_order_id>/take/', views.api_take_work_order, name='api_take_work_order'),
     path('api/<int:work_order_id>/start/', views.api_start_work_order, name='api_start_work_order'),
+    path('api/<int:work_order_id>/localize/', views.api_localize_work_order, name='api_localize_work_order'),
     path('api/<int:work_order_id>/complete/', views.api_complete_work_order, name='api_complete_work_order'),
     path('api/<int:work_order_id>/close/', views.api_close_work_order, name='api_close_work_order'),
+    path('api/<int:work_order_id>/upload-result-photo/', views.api_upload_result_photo, name='api_upload_result_photo'),
+    path('api/<int:work_order_id>/result-photo/<int:attachment_id>/', views.api_result_photo, name='api_result_photo'),
 ]

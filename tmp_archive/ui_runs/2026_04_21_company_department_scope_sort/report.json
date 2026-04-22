@@ -1,0 +1,26 @@
+{
+  "before": {
+    "url": "http://komunal-dom.ru/admin/work_orders/companydepartment/?company_scope=5",
+    "selectedCompany": "5",
+    "rows": [
+      "−\nКомпания\nАктивно\nКорневой элемент компании. Код: all.\n✎\n+\n◉\n×",
+      "Внешние компании\nАктивно\nРодитель: Компания. Код: вне.\n✎\n+\n◉\n×",
+      "−\nВнутренние подразделение\nАктивно\nРодитель: Компания. Код: вн.\n✎\n+\n◉\n×",
+      "Сантехники\nАктивно\nРодитель: Внутренние подразделение. Код: сант.\n✎\n+\n◉\n×"
+    ]
+  },
+  "after": {
+    "url": "http://komunal-dom.ru/admin/work_orders/companydepartment/?company_scope=1",
+    "selectedCompany": "1",
+    "hasExport": false,
+    "hasOrderText": false,
+    "rowCount": 5,
+    "rows": [
+      "−\nКомпания\nАктивно\nКорневой элемент компании. Код: 1.\n✎\n+\n◉\n×",
+      "Внешние службы\nАктивно\nРодитель: Компания. Код: 3.\n✎\n+\n◉\n×",
+      "−\nВнутренние службы\nАктивно\nРодитель: Компания. Код: 2.\n✎\n+\n◉\n×",
+      "Лифтовая служба\nАктивно\nРодитель: Внутренние службы. Код: elevator.\n✎\n+\n◉\n×",
+      "Тест авто-кода Codex\nАктивно\nКорневой элемент компании. Код: test-avto-koda-codex.\n✎\n+\n◉\n×"
+    ]
+  }
+}

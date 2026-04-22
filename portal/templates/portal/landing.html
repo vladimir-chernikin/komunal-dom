@@ -1,294 +1,133 @@
 {% extends 'portal/base.html' %}
 
-{% block title %}Вход в систему - УК "Аспект"{% endblock %}
+{% block title %}УК "Аспект"{% endblock %}
 
 {% block extra_css %}
 <style>
-/* Стили для landing страницы */
 .hero-section {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    padding: 80px 0 60px;
-    margin-bottom: 40px;
+    padding: 88px 0 72px;
 }
 
-.auth-container {
-    max-width: 900px;
-    margin: -60px auto 40px;
+.entry-card {
+    max-width: 760px;
+    margin: -48px auto 40px;
+    padding: 40px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
     position: relative;
     z-index: 10;
 }
 
-.auth-card {
-    background: white;
-    border-radius: 15px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-    overflow: hidden;
+.entry-card h2 {
+    margin-bottom: 16px;
+    color: #1f2937;
 }
 
-.auth-tabs {
+.entry-card p {
+    color: #6b7280;
+    margin-bottom: 24px;
+    font-size: 1.05rem;
+}
+
+.entry-actions {
     display: flex;
-    background: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
-.auth-tab {
-    flex: 1;
-    padding: 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-weight: 600;
-    color: #6c757d;
+.btn-entry {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border: none;
-    background: transparent;
+    border-radius: 10px;
+    padding: 12px 28px;
+    color: white;
+    font-weight: 600;
+    text-decoration: none;
 }
 
-.auth-tab:hover {
-    background: #e9ecef;
+.btn-entry:hover {
+    color: white;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.35);
 }
 
-.auth-tab.active {
-    background: white;
-    color: #667eea;
-    border-bottom: 3px solid #667eea;
-}
-
-.auth-content {
-    padding: 40px;
-}
-
-.auth-form {
-    display: none;
-}
-
-.auth-form.active {
-    display: block;
-}
-
-.company-list {
+.company-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 15px;
-    margin-top: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 28px;
 }
 
-.company-item {
-    padding: 15px;
-    border: 2px solid #e9ecef;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-align: center;
+.company-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    background: #f8fafc;
 }
 
-.company-item:hover {
-    border-color: #667eea;
-    background: #f8f9ff;
-    transform: translateY(-2px);
+.company-card strong {
+    display: block;
+    color: #111827;
+    margin-bottom: 6px;
 }
 
-.company-name {
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 5px;
-}
-
-.company-domain {
-    font-size: 0.85rem;
-    color: #6c757d;
-}
-
-.form-control {
-    border-radius: 10px;
-    padding: 12px 15px;
-    border: 2px solid #e9ecef;
-}
-
-.form-control:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-}
-
-.btn-primary-custom {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
-    border-radius: 10px;
-    padding: 12px 30px;
-    color: white;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
-
-.btn-primary-custom:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-}
-
-.info-section {
-    padding: 60px 0;
-    background: #f8f9fa;
-}
-
-.info-card {
-    text-align: center;
-    padding: 30px;
-}
-
-.info-icon {
-    width: 70px;
-    height: 70px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 20px;
-    color: white;
-    font-size: 28px;
+.company-card span {
+    color: #6b7280;
+    font-size: 0.95rem;
 }
 
 @media (max-width: 768px) {
     .hero-section {
-        padding: 60px 0 40px;
+        padding: 64px 0 56px;
     }
 
-    .auth-container {
-        margin: -40px 15px 20px;
-    }
-
-    .auth-content {
-        padding: 20px;
-    }
-
-    .company-list {
-        grid-template-columns: 1fr;
+    .entry-card {
+        margin: -32px 16px 28px;
+        padding: 24px;
     }
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
 <div class="hero-section">
     <div class="container text-center">
-        <h1 class="display-4 fw-bold mb-3">Добро пожаловать!</h1>
-        <p class="lead">Система управления услугами ЖКХ</p>
+        <h1 class="display-4 fw-bold mb-3">Единая точка входа</h1>
+        <p class="lead mb-0">Авторизация сотрудников и жителей выполняется только через страницу входа.</p>
     </div>
 </div>
 
-<!-- Auth Container -->
-<div class="auth-container">
-    <div class="auth-card">
-        <!-- Tabs -->
-        <div class="auth-tabs">
-            <button class="auth-tab active" data-tab="login">
-                <i class="fas fa-sign-in-alt me-2"></i>Вход по логину
-            </button>
-            <button class="auth-tab" data-tab="company">
-                <i class="fas fa-building me-2"></i>Выбрать компанию
-            </button>
+<div class="container">
+    <div class="entry-card">
+        <h2>Вход в систему</h2>
+        <p>
+            Главная страница больше не содержит отдельную форму авторизации.
+            Для входа используйте единственный адрес:
+            <a href="{% url 'portal:custom_login' %}">{{ request.scheme }}://{{ request.get_host }}{% url 'portal:custom_login' %}</a>
+        </p>
+
+        <div class="entry-actions">
+            <a class="btn-entry" href="{% url 'portal:custom_login' %}">
+                <i class="fas fa-sign-in-alt me-2"></i>Перейти ко входу
+            </a>
         </div>
 
-        <!-- Login Form -->
-        <div id="login-form" class="auth-form active">
-            <div class="auth-content">
-                <h4 class="text-center mb-4">Вход в систему</h4>
-                <form method="post" action="{% url 'portal:custom_login' %}">
-                    {% csrf_token %}
-                    <div class="mb-3">
-                        <label for="id_username" class="form-label">Логин</label>
-                        <input type="text" class="form-control" name="username" id="id_username" placeholder="Введите логин" required>
+        {% if companies %}
+            <div class="company-grid">
+                {% for company in companies %}
+                    <div class="company-card">
+                        <strong>{{ company.name }}</strong>
+                        {% if company.domain %}
+                            <span>{{ company.domain }}</span>
+                        {% else %}
+                            <span>Домен не указан</span>
+                        {% endif %}
                     </div>
-                    <div class="mb-4">
-                        <label for="id_password" class="form-label">Пароль</label>
-                        <input type="password" class="form-control" name="password" id="id_password" placeholder="Введите пароль" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary-custom w-100">
-                        <i class="fas fa-sign-in-alt me-2"></i>Войти
-                    </button>
-                </form>
+                {% endfor %}
             </div>
-        </div>
-
-        <!-- Company Selection -->
-        <div id="company-form" class="auth-form">
-            <div class="auth-content">
-                <h4 class="text-center mb-4">Выберите компанию</h4>
-                {% if companies %}
-                    <div class="company-list">
-                        {% for company in companies %}
-                            <a href="https://{{ company.domain }}/login/" class="text-decoration-none">
-                                <div class="company-item">
-                                    <div class="company-name">{{ company.name }}</div>
-                                    {% if company.domain %}
-                                        <div class="company-domain">{{ company.domain }}</div>
-                                    {% endif %}
-                                </div>
-                            </a>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    <div class="alert alert-info text-center">
-                        <i class="fas fa-info-circle me-2"></i>
-                        Список компаний пуст. Добавьте компании в справочник.
-                    </div>
-                {% endif %}
-            </div>
-        </div>
+        {% endif %}
     </div>
 </div>
-
-<!-- Info Section -->
-<div class="info-section">
-    <div class="container">
-        <div class="row">
-            <div class="col-md-4">
-                <div class="info-card">
-                    <div class="info-icon">
-                        <i class="fas fa-file-alt"></i>
-                    </div>
-                    <h5>Создание заявок</h5>
-                    <p class="text-muted">Быстрое оформление заявок на коммунальные услуги</p>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="info-card">
-                    <div class="info-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <h5>Отслеживание статуса</h5>
-                    <p class="text-muted">Мониторинг выполнения заявок в реальном времени</p>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="info-card">
-                    <div class="info-icon">
-                        <i class="fas fa-headset"></i>
-                    </div>
-                    <h5>Поддержка 24/7</h5>
-                    <p class="text-muted">Круглосуточная техническая поддержка</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-// Tab switching
-document.querySelectorAll('.auth-tab').forEach(tab => {
-    tab.addEventListener('click', function() {
-        // Remove active class from all tabs
-        document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-
-        // Add active class to clicked tab
-        this.classList.add('active');
-
-        // Show corresponding form
-        const tabName = this.getAttribute('data-tab');
-        document.getElementById(tabName + '-form').classList.add('active');
-    });
-});
-</script>
 {% endblock %}

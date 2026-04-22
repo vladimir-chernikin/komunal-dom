@@ -1,16 +1,74 @@
 {% extends 'portal/base.html' %}
 
-{% block title %}Добавить пользователя - {{ company.name }}{% endblock %}
+{% block title %}{{ page_title }} - {{ company.name }}{% endblock %}
+
+
+{% block extra_css %}
+<style>
+.aerial-hero {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+}
+
+.city-3d-background {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.aerial-content {
+    position: relative;
+    z-index: 2;
+    padding: 2.5rem 0 3rem;
+}
+
+.aerial-content .card,
+.aerial-content .alert,
+.aerial-content .breadcrumb,
+.aerial-content .modal-content {
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.aerial-content .breadcrumb {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+}
+
+@media (max-width: 768px) {
+    .aerial-content {
+        padding: 2rem 1rem;
+    }
+
+    .aerial-content .row {
+        --bs-gutter-x: 0;
+    }
+
+    .aerial-content .card-body {
+        padding: 1rem;
+    }
+}
+</style>
+{% endblock %}
+
 
 {% block content %}
-<div class="container mt-4">
+<section class="aerial-hero">
+    {% include 'work_orders/_aerial_city_background.html' %}
+    <div class="container aerial-content">
+<div class="mt-4">
     <div class="row">
         <div class="col-12">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
                     <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
-                    <li class="breadcrumb-item"><a href="{% url 'portal:director_residents' %}">Жители</a></li>
-                    <li class="breadcrumb-item active" aria-current="page">Добавить пользователя</li>
+                    <li class="breadcrumb-item"><a href="{% url 'portal:director_residents' %}">Учетные записи</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ page_title }}</li>
                 </ol>
             </nav>
         </div>
@@ -20,7 +78,7 @@
         <div class="col-12">
             <h1 class="h3 mb-4">
                 <i class="fas fa-user-plus"></i>
-                Добавить пользователя - {{ company.name }}
+                {{ page_title }} - {{ company.name }}
             </h1>
         </div>
     </div>
@@ -34,6 +92,7 @@
                 <div class="card-body">
                     <form method="post">
                         {% csrf_token %}
+                        <input type="hidden" name="account_type" value="{{ account_type }}">
 
                         <!-- Основная информация -->
                         <div class="mb-4">
@@ -86,6 +145,21 @@
                         <div class="mb-4">
                             <h6 class="mb-3">Роль и подразделение</h6>
 
+                            {% if companies %}
+                            <div class="mb-3">
+                                <label for="company" class="form-label">
+                                    Компания <span class="text-danger">*</span>
+                                </label>
+                                <select name="company" id="company" class="form-select">
+                                    <option value="">-- Выберите компанию --</option>
+                                    {% for item in companies %}
+                                    <option value="{{ item.id }}" {% if selected_company_id == item.id|stringformat:"s" %}selected{% endif %}>{{ item.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Для суперпользователя без привязки компания указывается явно.</div>
+                            </div>
+                            {% endif %}
+
                             <div class="mb-3">
                                 <label for="{{ form.role.id_for_label }}" class="form-label">
                                     Роль <span class="text-danger">*</span>
@@ -95,9 +169,11 @@
                                 <div class="text-danger">{{ form.role.errors }}</div>
                                 {% endif %}
                                 <div class="form-text">
-                                    <strong>Житель</strong> - может создавать заявки<br>
-                                    <strong>Исполнитель</strong> - может выполнять заявки<br>
-                                    <strong>Главный инженер</strong> - управляет заявками
+                                    {% if account_type == 'resident' %}
+                                    Добавляется учетная запись жителя с автоматической привязкой к вашей компании.
+                                    {% else %}
+                                    Добавляется сотрудник вашей компании. Выбор чужой компании недоступен.
+                                    {% endif %}
                                 </div>
                             </div>
 
@@ -106,7 +182,7 @@
                                 <select name="department" id="department" class="form-select">
                                     <option value="">-- Не указано --</option>
                                     {% for dept in departments %}
-                                    <option value="{{ dept.id }}">{{ dept.department_name }}</option>
+                                    <option value="{{ dept.id }}">{% if superuser_without_membership %}{{ dept.company.name }} / {% endif %}{{ dept.department_name }}</option>
                                     {% endfor %}
                                 </select>
                                 <div class="form-text">Обязательно для сотрудников (исполнителей, инженеров)</div>
@@ -139,7 +215,7 @@
                             <a href="{% url 'portal:director_residents' %}" class="btn btn-secondary">Отмена</a>
                             <button type="submit" class="btn btn-success">
                                 <i class="fas fa-save"></i>
-                                Создать пользователя
+                                {{ page_title }}
                             </button>
                         </div>
                     </form>
@@ -156,7 +232,7 @@
                     </h6>
                 </div>
                 <div class="card-body">
-                    <p class="mb-3">При создании пользователя:</p>
+                    <p class="mb-3">При добавлении учетной записи:</p>
                     <ul class="mb-0">
                         <li>Логин должен быть уникальным</li>
                         <li>Пароль минимум 8 символов</li>
@@ -169,9 +245,24 @@
         </div>
     </div>
 </div>
+    </div>
+</section>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const companySelect = document.getElementById('company');
+    if (companySelect) {
+        companySelect.addEventListener('change', function() {
+            const url = new URL(window.location.href);
+            if (this.value) {
+                url.searchParams.set('company', this.value);
+            } else {
+                url.searchParams.delete('company');
+            }
+            window.location.href = url.toString();
+        });
+    }
+
     // Добавляем классы формы Bootstrap
     const fields = ['username', 'email', 'first_name', 'last_name', 'password', 'phone', 'address', 'role', 'notes'];
     fields.forEach(field => {

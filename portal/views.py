@@ -7,7 +7,7 @@ from django.http import Http404
 from django.conf import settings
 from django.db import models
 from .models import UserProfile
-from .mixins import get_primary_membership  # ИСПРАВЛЕНО (2026-04-06): Добавлен для новых dashboard
+from .mixins import get_primary_membership, get_role_dashboard_url  # ИСПРАВЛЕНО (2026-04-06): Добавлен для новых dashboard
 from nsi.models import Company
 import json  # ИСПРАВЛЕНО (2026-01-05): Добавлен для парсинга metadata
 
@@ -26,7 +26,12 @@ def welcome(request):
 
 def landing(request):
     """Стартовая страница для незарегистрированных пользователей"""
-    from django.contrib.auth.forms import AuthenticationForm
+    if request.user.is_authenticated:
+        if request.user.is_superuser:
+            return redirect('/admin/')
+
+        dashboard_url, _ = get_role_dashboard_url(request.user)
+        return redirect(dashboard_url)
 
     # Получаем список активных компаний
     companies = Company.objects.filter(is_active=True).order_by('name')
@@ -93,13 +98,16 @@ def subscriber_page(request):
             'current_internal_status', 'service'
         ).order_by('-created_at')
 
+        terminal_status_codes = ['completed', 'closed', 'cancelled']
+        completed_status_codes = ['completed', 'closed']
+
         # Сначала получаем подсчеты (до среза)
         work_orders_count = all_work_orders.count()
-        active_work_orders = all_work_orders.filter(
-            current_internal_status__short_code_en__in=['accepted_by_executor', 'in_progress']
+        active_work_orders = all_work_orders.exclude(
+            current_internal_status__short_code_en__in=terminal_status_codes
         ).count()
         completed_work_orders = all_work_orders.filter(
-            current_internal_status__short_code_en='completed'
+            current_internal_status__short_code_en__in=completed_status_codes
         ).count()
 
         # Потом применяем срез для отображения
@@ -512,363 +520,6 @@ def executor_dashboard(request):
 
     view = ExecutorDashboardView.as_view()
     return view(request)
-
-
-@login_required
-def executor_take_request(request, request_id):
-    """Взять заявку в работу"""
-    from django.http import JsonResponse
-    from django.db import connection
-
-    # Проверяем метод запроса
-    if request.method != 'POST':
-        return JsonResponse({
-            'success': False,
-            'error': 'Метод не поддерживается'
-        }, status=405)
-
-    # Проверяем существование заявки и что она свободна
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT id, assigned_to, status
-            FROM bot_service_requests
-            WHERE id = %s
-        """, [request_id])
-
-        row = cursor.fetchone()
-
-        if not row:
-            return JsonResponse({
-                'success': False,
-                'error': 'Заявка не найдена'
-            }, status=404)
-
-        request_db_id, assigned_to, status = row
-
-        # Проверяем, что заявка свободна
-        if assigned_to is not None:
-            return JsonResponse({
-                'success': False,
-                'error': 'Заявка уже взята в работу другим исполнителем'
-            }, status=400)
-
-        # Назначаем заявку текущему пользователю
-        cursor.execute("""
-            UPDATE bot_service_requests
-            SET assigned_to = %s,
-                status = 'in_work',
-                updated_at = NOW()
-            WHERE id = %s
-            RETURNING id, status, assigned_to
-        """, [request.user.id, request_id])
-
-        updated_row = cursor.fetchone()
-
-    return JsonResponse({
-        'success': True,
-        'message': 'Заявка успешно взята в работу',
-        'request_id': updated_row[0],
-        'status': updated_row[1],
-        'assigned_to': updated_row[2]
-    })
-
-
-@login_required
-def executor_arrived_request(request, request_id):
-    """Подтвердить прибытие на место"""
-    from django.http import JsonResponse
-    from django.db import connection
-
-    if request.method != 'POST':
-        return JsonResponse({
-            'success': False,
-            'error': 'Метод не поддерживается'
-        }, status=405)
-
-    with connection.cursor() as cursor:
-        # Проверяем существование заявки и что она назначена текущему пользователю
-        cursor.execute("""
-            SELECT id, assigned_to, status, is_at_scene
-            FROM bot_service_requests
-            WHERE id = %s
-        """, [request_id])
-
-        row = cursor.fetchone()
-
-        if not row:
-            return JsonResponse({
-                'success': False,
-                'error': 'Заявка не найдена'
-            }, status=404)
-
-        request_db_id, assigned_to, status, is_at_scene = row
-
-        # Проверяем, что заявка назначена текущему пользователю
-        if assigned_to != request.user.id:
-            return JsonResponse({
-                'success': False,
-                'error': 'Заявка не назначена вам'
-            }, status=400)
-
-        # Устанавливаем флаг прибытия
-        cursor.execute("""
-            UPDATE bot_service_requests
-            SET is_at_scene = TRUE,
-                arrived_at = NOW(),
-                updated_at = NOW()
-            WHERE id = %s
-            RETURNING id, is_at_scene
-        """, [request_id])
-
-        updated_row = cursor.fetchone()
-
-    return JsonResponse({
-        'success': True,
-        'message': 'Прибытие подтверждено',
-        'request_id': updated_row[0],
-        'is_at_scene': updated_row[1]
-    })
-
-
-@login_required
-def executor_complete_request(request, request_id):
-    """Завершить заявку"""
-    from django.http import JsonResponse
-    from django.db import connection
-
-    if request.method != 'POST':
-        return JsonResponse({
-            'success': False,
-            'error': 'Метод не поддерживается'
-        }, status=405)
-
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT id, assigned_to, status
-            FROM bot_service_requests
-            WHERE id = %s
-        """, [request_id])
-
-        row = cursor.fetchone()
-
-        if not row:
-            return JsonResponse({
-                'success': False,
-                'error': 'Заявка не найдена'
-            }, status=404)
-
-        request_db_id, assigned_to, status = row
-
-        if assigned_to != request.user.id:
-            return JsonResponse({
-                'success': False,
-                'error': 'Заявка не назначена вам'
-            }, status=400)
-
-        # Завершаем заявку
-        cursor.execute("""
-            UPDATE bot_service_requests
-            SET status = 'done',
-                updated_at = NOW()
-            WHERE id = %s
-            RETURNING id, status
-        """, [request_id])
-
-        updated_row = cursor.fetchone()
-
-    return JsonResponse({
-        'success': True,
-        'message': 'Заявка завершена',
-        'request_id': updated_row[0],
-        'status': updated_row[1]
-    })
-
-
-@login_required
-def executor_report(request, request_id):
-    """Совместимый alias: сначала пытаемся открыть новую карточку WorkOrder."""
-    from django.http import HttpResponse
-    from django.template import loader
-    from django.db import connection
-    from work_orders.models import WorkOrder
-
-    work_order = WorkOrder.objects.filter(pk=request_id, is_test=False).first()
-    if work_order:
-        return redirect('work_orders:work_order_detail', work_order_id=work_order.id)
-
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT
-                r.id,
-                r.created_at,
-                r.updated_at,
-                r.arrived_at,
-                r.status,
-                r.assigned_to,
-                r.user_name,
-                r.user_phone,
-                r.street_name,
-                r.house_number,
-                r.apartment_number as apartment,
-                r.entrance as address_details,
-                r.description,
-                r.photo_path,
-                COALESCE(r.service_name, '—') as service_name,  -- ИСПРАВЛЕНО (2026-03-25): берем из заявки
-                '—' as category_name,  -- ИСПРАВЛЕНО (2026-03-25): service_id NULL, категория недоступна
-                u.username as executor_username,
-                u.first_name as executor_first_name,
-                u.last_name as executor_last_name
-            FROM bot_service_requests r
-            LEFT JOIN auth_user u ON r.assigned_to = u.id
-            WHERE r.id = %s
-        """, [request_id])
-
-        row = cursor.fetchone()
-
-        if not row:
-            return HttpResponse('<h1>Заявка не найдена</h1>', status=404)
-
-        # Распаковываем данные
-        (req_id, created_at, updated_at, arrived_at, status, assigned_to,
-         user_name, user_phone, street_name, house_number, apartment,
-         address_details, description, photo_path, service_name, category_name,
-         executor_username, executor_first_name, executor_last_name) = row
-
-        # Вычисляем временные интервалы
-        from datetime import timezone
-
-        # Время до прибытия (создание → прибытие)
-        if arrived_at:
-            time_to_arrive = arrived_at - created_at
-            minutes_to_arrive = int(time_to_arrive.total_seconds() / 60)
-        else:
-            minutes_to_arrive = None
-
-        # Время в работе (прибытие → выполнение)
-        if arrived_at:
-            time_work = updated_at - arrived_at
-            minutes_work = int(time_work.total_seconds() / 60)
-        else:
-            minutes_work = None
-
-        # Общее время (создание → выполнение)
-        time_total = updated_at - created_at
-        minutes_total = int(time_total.total_seconds() / 60)
-
-        # Имя исполнителя
-        if executor_first_name or executor_last_name:
-            executor_name = f"{executor_first_name or ''} {executor_last_name or ''}".strip()
-        else:
-            executor_name = executor_username
-
-        # Формируем данные для шаблона
-        report_data = {
-            'request_id': req_id,
-            'created_at': created_at,
-            'updated_at': updated_at,
-            'arrived_at': arrived_at,
-            'status': status,
-            'user_name': user_name,
-            'user_phone': user_phone,
-            'street_name': street_name,
-            'house_number': house_number,
-            'apartment': apartment,
-            'address_details': address_details,
-            'description': description,
-            'photo_path': photo_path,
-            'category_name': category_name,
-            'service_name': service_name,
-            'executor_name': executor_name,
-            'minutes_to_arrive': minutes_to_arrive,
-            'minutes_work': minutes_work,
-            'minutes_total': minutes_total,
-        }
-
-        # Рендерим шаблон
-        template = loader.get_template('portal/executor_report.html')
-        html = template.render(report_data, request)
-
-        return HttpResponse(html)
-
-
-@login_required
-def executor_upload_photo(request, request_id):
-    """Загрузить фото выполненной работы"""
-    from django.http import JsonResponse
-    from django.db import connection
-    import os
-    from django.conf import settings
-    from django.core.files.storage import default_storage
-
-    if request.method != 'POST':
-        return JsonResponse({
-            'success': False,
-            'error': 'Метод не поддерживается'
-        }, status=405)
-
-    # Проверяем наличие файла
-    if 'photo' not in request.FILES:
-        return JsonResponse({
-            'success': False,
-            'error': 'Файл не загружен'
-        }, status=400)
-
-    photo_file = request.FILES['photo']
-
-    # Проверяем тип файла
-    allowed_types = ['image/jpeg', 'image/jpg', 'image/png']
-    if photo_file.content_type not in allowed_types:
-        return JsonResponse({
-            'success': False,
-            'error': 'Допустимы только JPG и PNG изображения'
-        }, status=400)
-
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT id, assigned_to, status
-            FROM bot_service_requests
-            WHERE id = %s
-        """, [request_id])
-
-        row = cursor.fetchone()
-
-        if not row:
-            return JsonResponse({
-                'success': False,
-                'error': 'Заявка не найдена'
-            }, status=404)
-
-        request_db_id, assigned_to, status = row
-
-        if assigned_to != request.user.id:
-            return JsonResponse({
-                'success': False,
-                'error': 'Заявка не назначена вам'
-            }, status=400)
-
-        # Сохраняем файл
-        filename = f'executor_photo_{request_id}_{photo_file.name}'
-        path = default_storage.save(f'executor_photos/{filename}', photo_file)
-        photo_url = default_storage.url(path)
-
-        # Обновляем заявку
-        cursor.execute("""
-            UPDATE bot_service_requests
-            SET photo_path = %s,
-                updated_at = NOW()
-            WHERE id = %s
-            RETURNING id, photo_path
-        """, [path, request_id])
-
-        updated_row = cursor.fetchone()
-
-    return JsonResponse({
-        'success': True,
-        'message': 'Фото загружено',
-        'request_id': updated_row[0],
-        'photo_path': updated_row[1],
-        'photo_url': photo_url
-    })
 
 
 @login_required

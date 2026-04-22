@@ -4,6 +4,14 @@
 {{ block.super }}
 <script>
 (function () {
+    function localizeErrorNote() {
+        document.querySelectorAll('.errornote').forEach(function (node) {
+            if ((node.textContent || '').trim() === 'Please correct the errors below.') {
+                node.textContent = 'Пожалуйста, исправьте ошибки ниже.';
+            }
+        });
+    }
+
     function rebuildMembershipDepartmentOptions() {
         var companySelect = document.getElementById('id_company');
         var departmentSelect = document.getElementById('id_department');
@@ -81,10 +89,15 @@
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bindMembershipDepartmentOptions);
+        document.addEventListener('DOMContentLoaded', function () {
+            localizeErrorNote();
+            bindMembershipDepartmentOptions();
+        });
     } else {
+        localizeErrorNote();
         bindMembershipDepartmentOptions();
     }
+    window.addEventListener('load', localizeErrorNote);
     window.addEventListener('load', bindMembershipDepartmentOptions);
 })();
 </script>

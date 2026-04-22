@@ -30,8 +30,8 @@ from work_orders.models import (
     RouteRef, CompanyDepartment, ContractorOrganization,
     CompanyRouteMapping, UserCompanyMembership,
     CompanyObjectServicePeriod, WorkOrderStatusRef,
-    SLAPolicy, RequestIntake, WorkOrder, SLAInstance,
-    WorkOrderEventLog, WorkOrderAttachment, NotificationOutbox
+    SLAPolicy, WorkOrder, SLAInstance,
+    WorkOrderEventLog, WorkOrderAttachment
 )
 
 
@@ -61,12 +61,10 @@ class Command(BaseCommand):
         self.stdout.write('Удаление тестовых данных...')
 
         # Удаляем в правильном порядке из-за FK constraints
-        NotificationOutbox.objects.filter(is_test=True).delete()
         WorkOrderAttachment.objects.filter(is_test=True).delete()
         WorkOrderEventLog.objects.filter(is_test=True).delete()
         SLAInstance.objects.filter(is_test=True).delete()
         WorkOrder.objects.filter(is_test=True).delete()
-        RequestIntake.objects.filter(is_test=True).delete()
 
         # Удаляем SLA-политики
         SLAPolicy.objects.filter(is_test=True).delete()
@@ -214,7 +212,6 @@ class Command(BaseCommand):
             defaults={
                 'department_code': code,
                 'is_active': True,
-                'sort_order': 100,
                 'is_test': True
             }
         )
@@ -600,18 +597,6 @@ class Command(BaseCommand):
             # Генерируем номер заявки
             work_order_no = f'WO-{timezone.now().strftime("%Y%m%d")}-{i+1:03d}'
 
-            # Создаем intake для части заявок
-            intake = None
-            if i % 3 == 0:
-                intake = RequestIntake.objects.create(
-                    company=company1,
-                    channel_code=random.choice(['telegram', 'max', 'site_chat', 'phone']),
-                    source_payload_json={'test': 'payload', 'service_id': service.service_id},
-                    normalized_payload_json={'service_id': service.service_id, 'priority': 'normal'},
-                    external_message_id=f'ext_{timezone.now().strftime("%Y%m%d%H%M%S")}_{i}',
-                    received_at=timezone.now() - timedelta(hours=random.randint(1, 48)),
-                    is_test=True
-                )
 
             # Создаем заявку
             work_order = WorkOrder.objects.create(
@@ -621,8 +606,7 @@ class Command(BaseCommand):
                 service=service,
                 route=mapping.route,
                 department=mapping.target_department,
-                request_intake=intake,
-                creation_source='bot_json' if intake else 'manual_employee',
+                creation_source='manual_employee',
                 original_request_text=self.get_random_request_text(),
                 is_emergency=i % 6 == 0,  # Каждая 6-я заявка аварийная
                 priority_code=random.choice(['low', 'normal', 'high']) if not (i % 6 == 0) else 'high',

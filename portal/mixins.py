@@ -52,11 +52,14 @@ class StaffRequiredMixin:
     def dispatch(self, request, *args, **kwargs):
         # Проверка авторизации
         if not request.user.is_authenticated:
-            return redirect('/')
+            return redirect('/login/')
 
         # Проверка staff
         if not request.user.is_staff:
             return redirect('/')
+
+        if request.user.is_superuser:
+            return super().dispatch(request, *args, **kwargs)
 
         # Проверка membership
         if not hasattr(request, 'user_primary_membership') or request.user_primary_membership is None:
@@ -168,7 +171,7 @@ class ResidentMixin(LoginRequiredMixin):
     def dispatch(self, request, *args, **kwargs):
         # Проверка авторизации
         if not request.user.is_authenticated:
-            return redirect('/')
+            return redirect('/login/')
 
         return super().dispatch(request, *args, **kwargs)
 
@@ -196,6 +199,9 @@ class CompanyFilterMixin:
         """
         Фильтрация queryset по компании пользователя
         """
+        if self.request.user.is_superuser:
+            return queryset
+
         company_ids = getattr(self.request, 'user_company_ids', None)
         if company_ids:
             return queryset.filter(company_id__in=company_ids)
@@ -207,6 +213,9 @@ class CompanyFilterMixin:
         """
         Фильтрация queryset по подразделению пользователя
         """
+        if self.request.user.is_superuser:
+            return queryset
+
         department_ids = getattr(self.request, 'user_department_ids', None)
         if department_ids:
             return queryset.filter(department_id__in=department_ids)
@@ -318,6 +327,9 @@ def get_role_dashboard_url(user):
     ВОЗВРАЩАЕТ:
     - (url, title) - кортеж с URL и названием дашборда
     """
+    if getattr(user, 'is_superuser', False):
+        return ('/admin/', 'Django Admin')
+
     membership = get_primary_membership(user)
 
     if not membership:

@@ -5,8 +5,8 @@
 {% block extra_css %}
 <style>
     :root {
-        --bg-primary: #f8f8f8;
-        --bg-secondary: #ffffff;
+        --bg-primary: #f3f7f4;
+        --bg-secondary: #f8fbf7;
         --text-primary: #1a1a1a;
         --text-secondary: #666666;
         --accent-color: #F59E0B;
@@ -19,7 +19,7 @@
 
     body {
         font-family: var(--font-family);
-        background: var(--bg-primary);
+        background: linear-gradient(180deg, #f3f7f4 0%, #eef4f0 100%);
         color: var(--text-primary);
         line-height: 1.6;
         margin: 0;
@@ -28,7 +28,7 @@
 
     .aerial-hero {
         position: relative;
-        min-height: 600px;
+        min-height: 100vh;
         overflow: hidden;
         background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
     }
@@ -69,12 +69,12 @@
     }
 
     .content-container {
-        background: rgba(255, 255, 255, 0.95);
+        background: rgba(248, 251, 247, 0.88);
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.64);
         border-radius: 20px;
         padding: 2rem;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
     }
 
     .stats-grid {
@@ -86,10 +86,22 @@
 
     .stat-box {
         background: rgba(245, 158, 11, 0.1);
+        display: block;
         padding: 1.5rem;
         border-radius: 15px;
+        color: inherit;
+        text-decoration: none;
         text-align: center;
         border: 1px solid rgba(245, 158, 11, 0.2);
+        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stat-box:hover,
+    .stat-box:focus,
+    .stat-box.is-active {
+        transform: translateY(-2px);
+        border-color: rgba(245, 158, 11, 0.45);
+        box-shadow: 0 12px 26px rgba(0,0,0,0.12);
     }
 
     .stat-value {
@@ -106,17 +118,20 @@
     }
 
     .request-card {
-        background: white;
+        background: rgba(250, 252, 249, 0.90);
         border-radius: 15px;
         padding: 1.5rem;
         margin-bottom: 1rem;
-        border: 1px solid #e5e7eb;
+        border: 1px solid rgba(148, 163, 184, 0.22);
         cursor: pointer;
-        transition: all 0.3s ease;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+        transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease, background-color 0.3s ease;
     }
 
     .request-card:hover {
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        background: rgba(255, 255, 255, 0.94);
+        border-color: rgba(16, 185, 129, 0.24);
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.10);
         transform: translateY(-2px);
     }
 
@@ -145,12 +160,44 @@
         line-height: 1.6;
     }
 
+    .resolution-note {
+        background: rgba(205, 232, 215, 0.94);
+        border: 1px solid rgba(16, 120, 84, 0.24);
+        border-radius: 10px;
+        color: #123d2c;
+        margin-bottom: 1rem;
+        padding: 0.8rem 0.9rem;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    }
+
+    .resolution-note small {
+        color: inherit;
+        font-size: 0.95rem;
+        line-height: 1.45;
+    }
+
+    .resolution-note strong {
+        color: #062d20;
+        font-weight: 800;
+    }
+
+    html[data-theme="dark"] .resolution-note {
+        background: rgba(35, 49, 57, 0.90);
+        border-color: rgba(52, 211, 153, 0.24);
+        color: #d9f3e8;
+        box-shadow: none;
+    }
+
+    html[data-theme="dark"] .resolution-note strong {
+        color: #f0fff8;
+    }
+
     .request-footer {
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding-top: 1rem;
-        border-top: 1px solid #e5e7eb;
+        border-top: 1px solid rgba(148, 163, 184, 0.22);
     }
 
     .status-badge {
@@ -182,63 +229,44 @@
         margin-bottom: 1rem;
         color: #ccc;
     }
+
+    @media (max-width: 768px) {
+        .aerial-content {
+            padding: 2.25rem 1rem 2rem;
+        }
+
+        .aerial-content .row {
+            --bs-gutter-x: 0;
+        }
+
+        .aerial-hero h2 {
+            font-size: 1.9rem;
+            line-height: 1.15;
+        }
+
+        .content-container,
+        .request-card {
+            padding: 1.25rem;
+        }
+
+        .stats-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+
+        .request-header,
+        .request-footer {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <section class="aerial-hero">
-    <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-        <defs>
-            <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" style="stop-color:#87CEEB"/>
-                <stop offset="50%" style="stop-color:#B0E0E6"/>
-                <stop offset="100%" style="stop-color:#98D8AA"/>
-            </linearGradient>
-            <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" style="stop-color:#98D8AA"/>
-                <stop offset="100%" style="stop-color:#7CB887"/>
-            </linearGradient>
-            <filter id="buildingShadowFilter">
-                <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
-                <feOffset dx="3" dy="3"/>
-            </filter>
-            <radialGradient id="treeGradient">
-                <stop offset="0%" style="stop-color:#4ADE80"/>
-                <stop offset="100%" style="stop-color:#166534"/>
-            </radialGradient>
-        </defs>
-        <rect width="1200" height="600" fill="url(#skyGradient)"/>
-        <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
-        
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="50,380 120,360 120,280 50,300" fill="#F5F5F5"/>
-            <polygon points="50,300 50,380 20,390 20,310" fill="#E0E0E0"/>
-        </g>
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="140,385 200,365 200,270 140,290" fill="#FAFAFA"/>
-            <polygon points="140,290 140,385 115,395 115,300" fill="#E5E5E5"/>
-        </g>
-        <circle cx="95" cy="480" r="25" fill="url(#treeGradient)" opacity="0.9"/>
-        <circle cx="160" cy="470" r="22" fill="url(#treeGradient)" opacity="0.85"/>
-        
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="550,400 630,375 630,260 550,285" fill="#FFFFFF"/>
-            <polygon points="550,285 550,400 520,410 520,295" fill="#EBEBEB"/>
-        </g>
-        <circle cx="575" cy="230" r="12" fill="#EF4444" opacity="0.9"/>
-        <circle cx="575" cy="230" r="8" fill="#FFFFFF" opacity="0.95"/>
-        <text x="575" y="215" font-size="12" font-weight="700" fill="#1a1a1a" text-anchor="middle">Ваш дом</text>
-        
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="880,390 960,365 960,250 880,275" fill="#FDFDFD"/>
-            <polygon points="880,275 880,390 855,400 855,285" fill="#E8E8E8"/>
-        </g>
-        <rect x="895" y="220" width="30" height="30" fill="#3B82F6" opacity="0.8" rx="4"/>
-        <text x="910" y="240" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">УК</text>
-        
-        <circle cx="605" cy="530" r="32" fill="url(#treeGradient)" opacity="0.9"/>
-        <circle cx="835" cy="520" r="29" fill="url(#treeGradient)" opacity="0.9"/>
-    </svg>
+    {% include 'work_orders/_aerial_city_background.html' %}
 
     <div class="container aerial-content">
         <div class="row">
@@ -255,18 +283,18 @@
 
         <div class="content-container">
             <div class="stats-grid">
-                <div class="stat-box">
+                <a href="{% url 'work_orders:resident_dashboard' %}" class="stat-box {% if status_filter == 'all' %}is-active{% endif %}">
                     <div class="stat-value">{{ total_requests }}</div>
                     <div class="stat-label">Всего заявок</div>
-                </div>
-                <div class="stat-box">
+                </a>
+                <a href="{% url 'work_orders:resident_dashboard' %}?status=active" class="stat-box {% if status_filter == 'active' %}is-active{% endif %}">
                     <div class="stat-value">{{ active_requests }}</div>
                     <div class="stat-label">Активных</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-value">{{ total_requests|default:0|add:active_requests }}</div>
+                </a>
+                <a href="{% url 'work_orders:resident_dashboard' %}?status=completed" class="stat-box {% if status_filter == 'completed' %}is-active{% endif %}">
+                    <div class="stat-value">{{ completed_requests }}</div>
                     <div class="stat-label">Выполнено</div>
-                </div>
+                </a>
             </div>
 
             {% if my_requests %}
@@ -287,7 +315,7 @@
                     </div>
                     <div class="request-description">{{ work_order.original_request_text }}</div>
                     {% if work_order.resolution_text %}
-                    <div style="background: #d4edda; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <div class="resolution-note">
                         <small><strong>Решение:</strong> {{ work_order.resolution_text|truncatewords:20 }}</small>
                     </div>
                     {% endif %}

@@ -1,0 +1,4 @@
+FALLBACK ЗАПУШЕН
+Время: 2026-04-10 12:25:41.440163
+unique_candidates: 0
+established_filters: {'category': {'value': 1, 'confidence': 0.8}}

@@ -12,18 +12,18 @@ class KladrObjectTypeAdmin(admin.ModelAdmin):
 
 @admin.register(KladrAddressObject)
 class KladrAddressObjectAdmin(admin.ModelAdmin):
-    list_display = ('name', 'type', 'code', 'parent', 'is_active')
-    list_filter = ('type__level', 'is_active')
-    search_fields = ('name', 'code', 'zip_code')
+    list_display = ('name', 'type', 'code', 'fias_level_id', 'parent', 'is_active')
+    list_filter = ('type__level', 'is_active', 'fias_level_id')
+    search_fields = ('name', 'code', 'zip_code', 'fias_object_guid')
     ordering = ('type__level', 'name')
     raw_id_fields = ('parent',)
 
 
 @admin.register(Building)
 class BuildingAdmin(admin.ModelAdmin):
-    list_display = ('address_object', 'house_number', 'building_type', 'porch_count', 'floor_count', 'has_elevator')
-    list_filter = ('building_type', 'has_elevator')
-    search_fields = ('address_object__name', 'house_number')
+    list_display = ('address_object', 'house_number', 'fias_level_id', 'fias_object_guid', 'building_type', 'porch_count', 'floor_count', 'has_elevator')
+    list_filter = ('building_type', 'has_elevator', 'fias_level_id')
+    search_fields = ('address_object__name', 'house_number', 'fias_object_guid', 'fias_full_name')
     ordering = ('address_object__name', 'house_number')
 
 

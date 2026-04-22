@@ -33,7 +33,7 @@
 
         .aerial-hero {
             position: relative;
-            min-height: 700px;
+            min-height: 100vh;
             overflow: hidden;
             background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
         }
@@ -121,51 +121,26 @@
         .badge-critical { background: #6f42c1; }
         .badge-normal { background: #28a745; }
         .badge-low { background: #6c757d; }
+
+        @media (max-width: 768px) {
+            .aerial-content {
+                padding: 2rem 1rem;
+            }
+
+            .aerial-content .row {
+                --bs-gutter-x: 0;
+            }
+
+            .table-container {
+                padding: 1.25rem;
+            }
+        }
     </style>
 </head>
 <body>
     <section class="aerial-hero">
         <!-- SVG 3D ГОРОД -->
-        <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-            <defs>
-                <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#87CEEB"/>
-                    <stop offset="50%" style="stop-color:#B0E0E6"/>
-                    <stop offset="100%" style="stop-color:#98D8AA"/>
-                </linearGradient>
-
-                <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#98D8AA"/>
-                    <stop offset="100%" style="stop-color:#7CB887"/>
-                </linearGradient>
-
-                <radialGradient id="treeGradient" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" style="stop-color:#4CAF50"/>
-                    <stop offset="100%" style="stop-color:#2E7D32"/>
-                </radialGradient>
-            </defs>
-
-            <rect width="1200" height="600" fill="url(#skyGradient)"/>
-            <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
-
-            <!-- Дома и деревья -->
-            <polygon points="100,380 160,360 160,280 100,300" fill="#F5F5F5" opacity="0.7"/>
-            <circle cx="130" cy="480" r="25" fill="url(#treeGradient)" opacity="0.8"/>
-            <polygon points="200,390 280,365 280,270 200,295" fill="#FAFAFA" opacity="0.7"/>
-            <circle cx="240" cy="470" r="28" fill="url(#treeGradient)" opacity="0.8"/>
-            <polygon points="350,385 420,360 420,265 350,290" fill="#FDFDFD" opacity="0.7"/>
-            <circle cx="385" cy="460" r="24" fill="url(#treeGradient)" opacity="0.8"/>
-            <polygon points="500,400 580,375 580,280 500,305" fill="#FFFFFF" opacity="0.7"/>
-            <circle cx="540" cy="490" r="30" fill="url(#treeGradient)" opacity="0.8"/>
-            <polygon points="650,390 720,365 720,270 650,295" fill="#FBFBFB" opacity="0.7"/>
-            <circle cx="685" cy="470" r="26" fill="url(#treeGradient)" opacity="0.8"/>
-            <polygon points="800,385 870,360 870,265 800,290" fill="#FEFEFE" opacity="0.7"/>
-            <circle cx="835" cy="460" r="28" fill="url(#treeGradient)" opacity="0.8"/>
-            <polygon points="950,400 1020,375 1020,280 950,305" fill="#FDFDFD" opacity="0.7"/>
-            <circle cx="985" cy="480" r="24" fill="url(#treeGradient)" opacity="0.8"/>
-            <polygon points="1080,390 1150,365 1150,270 1080,295" fill="#FAFAFA" opacity="0.7"/>
-            <circle cx="1115" cy="470" r="26" fill="url(#treeGradient)" opacity="0.8"/>
-        </svg>
+        {% include 'work_orders/_aerial_city_background.html' %}
 
         <!-- КОНТЕНТ -->
         <div class="container aerial-content">

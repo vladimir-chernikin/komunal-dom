@@ -1,0 +1,251 @@
+{
+  "generated_at": "2026-04-13",
+  "project_path": "/var/www/komunal-dom_ru",
+  "objective": "Перевести intake заявок из web-чата и Telegram на адресный контур с проверкой по ФИАС, поиском обслуживаемого объекта по internal<->FIAS mapping и выдачей промежуточного JSON для последующего создания заявки.",
+  "current_state": {
+    "channels": {
+      "web_chat": {
+        "entrypoint": "message_handler/views.py::send_message",
+        "channel_code": "web",
+        "notes": "Веб-чат авторизованного пользователя отправляет сообщение в MessageHandlerService, далее в MainAgent."
+      },
+      "telegram": {
+        "entrypoint": "enhanced_aspect_bot.py::handle_service_request",
+        "channel_code": "telegram",
+        "notes": "Telegram бот использует тот же MessageHandlerService и MainAgent, session_id создается автоматически."
+      }
+    },
+    "conversation_core": {
+      "message_handler": "MessageHandlerService.handle_incoming_message",
+      "orchestrator": "MainAgent.process_service_detection",
+      "context_memory": [
+        "txtPrb",
+        "established_filters",
+        "txtStopQ"
+      ],
+      "llm_provider_default": "gigachat",
+      "prompts_from_db": [
+        "problem-accumulation-service",
+        "filter-incident-type",
+        "filter-location-type",
+        "filter-category",
+        "mainagent-clarify-category"
+      ]
+    },
+    "address_classifier": {
+      "implementation": "address_extractor_service.py",
+      "reference_system": "локальный КЛАДР-модуль (kladr_kladraddressobject + kladr_building)",
+      "validation_logic": "проверка улицы и дома в локальной базе; квартира/помещение ищется в units",
+      "gap": "ФИАС/ГАР в коде и БД отсутствуют"
+    },
+    "service_objects": {
+      "table": "service_objects",
+      "counts": {
+        "total": 2634,
+        "building_level_objects": 58,
+        "unit_level_objects": 2576,
+        "distinct_buildings": 58
+      },
+      "linkage": "service_objects.building_id -> kladr_building.id, service_objects.unit_id -> units.unit_id",
+      "data_quality": "сиротских связей по building/unit не найдено"
+    },
+    "service_catalog": {
+      "table": "services_catalog",
+      "active_services": 44,
+      "rule": "однозначная услуга определяется на пересечении incident_type + localization + category"
+    },
+    "ticket_creation": {
+      "current_chat_status": "чат определяет услугу и просит подтверждение, но реального создания work_order из чата нет",
+      "evidence": "MessageHandlerService._check_confirmation_response возвращает CONFIRMED и содержит TODO на создание заявки",
+      "available_target_models": [
+        "request_mgmt.request_intake",
+        "request_mgmt.work_order"
+      ]
+    },
+    "service_periods": {
+      "table": "request_mgmt.company_object_service_period",
+      "rows_total": 0,
+      "implication": "сейчас признак обслуживаемости фактически определяется существованием service_object, а не активным периодом обслуживания"
+    }
+  },
+  "key_findings": [
+    "Текущий адресный контур целиком опирается на локальный КЛАДР и внутренние building_id/unit_id.",
+    "В БД не найдено колонок и таблиц с fias/guid/gar, значит прямой связи с ФИАС сейчас нет.",
+    "Контур вопросов уже частично без хардкода: ключевые промпты хранятся в llm_tester_prompttemplate и версионируются.",
+    "Контур создания заявок из чата не завершен: есть определение услуги и подтверждение, но нет записи в request_intake/work_order.",
+    "Для дешевой и быстрой модели GigaChat нужно сокращать промпты, жёстко ограничивать формат ответа и вынести логику выбора шага из длинных монолитных инструкций в детерминированный Python."
+  ],
+  "required_schema_changes": [
+    {
+      "name": "service_object_fias_binding",
+      "purpose": "Связать внутренний объект обслуживания с реальным объектом ФИАС/ГАР.",
+      "recommended_shape": {
+        "table": "service_object_fias_map",
+        "columns": [
+          "service_object_id PK/FK -> service_objects",
+          "fias_house_guid nullable",
+          "fias_object_guid nullable",
+          "fias_flat_guid nullable",
+          "fias_address_text",
+          "source_system",
+          "matching_status",
+          "verified_at",
+          "meta_json"
+        ]
+      },
+      "notes": "Для домового объекта достаточно house_guid/object_guid; для квартирного нужен flat_guid либо устойчивый идентификатор помещения из ФИАС/ГАР."
+    }
+  ],
+  "target_flow": [
+    {
+      "step": 1,
+      "name": "Address collection",
+      "logic": "Бот в живом диалоге собирает адрес по частям, но на каждом шаге пытается нормализовать его до проверяемой строки."
+    },
+    {
+      "step": 2,
+      "name": "FIAS validation",
+      "logic": "Каждая новая версия адреса отправляется в ФИАС API. Если адрес не существует, бот просит уточнение человеческим языком. В ответ сохраняются GUID и нормализованный адрес."
+    },
+    {
+      "step": 3,
+      "name": "Internal object match",
+      "logic": "После получения валидного GUID бот ищет объект обслуживания по internal<->FIAS mapping. Если объект не найден или не обслуживается, бот честно сообщает об этом и завершает intake без ложного создания заявки."
+    },
+    {
+      "step": 4,
+      "name": "Problem discovery",
+      "logic": "После подтвержденного адреса бот выясняет суть проблемы, накапливает txtPrb, последовательно определяет incident_type, localization, category и подбирает единственную услугу из services_catalog."
+    },
+    {
+      "step": 5,
+      "name": "Human-style clarification",
+      "logic": "Вопросы не хардкодятся в коде; стратегию задают короткие промпты и шаблоны, а Python решает какой один параметр сейчас действительно неизвестен."
+    },
+    {
+      "step": 6,
+      "name": "Intermediate JSON",
+      "logic": "После подтверждения бот формирует нормализованный JSON-документ для request_intake. Только после этого выполняется доменное создание work_order."
+    }
+  ],
+  "gigachat_optimization_rules": [
+    "Минимизировать длину промптов и число одновременных инструкций.",
+    "На каждом LLM-шаге решать только одну задачу: накопить факты, определить один фильтр или сформулировать один вопрос.",
+    "Ответы LLM всегда ограничивать JSON или одной строкой без пояснений.",
+    "Максимум детерминированной логики перенести в Python: выбор следующего шага, матрица фильтров, валидация обязательных полей, работа со статусами."
+  ],
+  "implementation_plan": [
+    {
+      "phase": 1,
+      "name": "FIAS integration foundation",
+      "tasks": [
+        "Добавить клиент ФИАС API с ретраями, таймаутом и нормализацией ответа.",
+        "Сделать сервис FiasAddressService: suggest, validate, resolve_guids.",
+        "Завести env FIAS_API_TOKEN и конфиг базового URL/таймаутов."
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Internal mapping",
+      "tasks": [
+        "Добавить таблицу/модель маппинга internal object -> FIAS GUID.",
+        "Подготовить скрипт первичного backfill по текущим КЛАДР-адресам и service_objects.",
+        "Сделать проверку обслуживаемости сначала по service_object_fias_map, затем fallback по legacy KLADR только на период миграции."
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Conversation refactor",
+      "tasks": [
+        "Разделить чатовый intake на состояния: collect_address, validate_address, resolve_object, discover_problem, confirm_json, persist_request.",
+        "Убрать создание адреса через локальный KLADR как главный источник истины; использовать его только как legacy fallback.",
+        "Сделать короткие DB-промпты под GigaChat для address clarification и problem clarification."
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "JSON intake and ticket creation",
+      "tasks": [
+        "Создавать request_mgmt.request_intake с source_payload_json и normalized_payload_json.",
+        "На базе normalized_payload_json создавать work_order с creation_source=bot_json.",
+        "Использовать существующую доменную логику определения route/department и статуса new_registered."
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "Migration safety and observability",
+      "tasks": [
+        "Логировать FIAS request/response и результат маппинга в metadata/outbox.",
+        "Сделать тестовый сценарий для web и Telegram на одинаковом сервисном контуре.",
+        "Добавить отчеты по доле адресов без FIAS mapping и по ошибкам адресной валидации."
+      ]
+    }
+  ],
+  "target_intermediate_json": {
+    "schema_version": "1.0",
+    "channel": "telegram | site_chat",
+    "session_id": "string",
+    "message_log_ref": "string|null",
+    "user": {
+      "external_user_id": "string",
+      "django_user_id": "int|null",
+      "display_name": "string|null",
+      "phone": "string|null"
+    },
+    "address": {
+      "raw_text": "string",
+      "normalized_text": "string",
+      "fias_house_guid": "string|null",
+      "fias_object_guid": "string|null",
+      "fias_flat_guid": "string|null",
+      "building_id": "int|null",
+      "unit_id": "int|null",
+      "service_object_id": "int|null",
+      "match_status": "matched | not_serviced | not_found | ambiguous",
+      "validation_source": "fias"
+    },
+    "classification": {
+      "incident_type": "Инцидент | Запрос | null",
+      "localization": "Индивидуальное | Общедомовое | null",
+      "category": "string|null",
+      "service_id": "int|null",
+      "service_name": "string|null",
+      "confidence": "float"
+    },
+    "problem": {
+      "txtPrb": "string",
+      "summary": "string",
+      "additional_details": "string|null",
+      "is_emergency": "boolean",
+      "priority_code": "low | normal | high | critical"
+    },
+    "decision": {
+      "can_create_work_order": "boolean",
+      "reason_if_blocked": "string|null",
+      "requires_operator": "boolean"
+    },
+    "meta": {
+      "llm_provider": "gigachat",
+      "llm_model": "string",
+      "prompt_versions": {
+        "problem_accumulation": "string|null",
+        "incident_type": "string|null",
+        "location_type": "string|null",
+        "category": "string|null",
+        "clarification": "string|null"
+      }
+    }
+  },
+  "acceptance_criteria": [
+    "Бот не переходит к классификации услуги, пока не получен валидный адрес по ФИАС.",
+    "Если адрес валиден в ФИАС, но не сопоставлен с обслуживаемым объектом, бот корректно завершает intake без создания заявки.",
+    "При полном наборе address + filters формируется один нормализованный JSON-документ, достаточный для создания request_intake и work_order.",
+    "Вопросы звучат как обычный человек, а не как форма или регламент.",
+    "Один и тот же pipeline работает для web и Telegram без расхождения логики."
+  ],
+  "env_changes": {
+    "added": {
+      "FIAS_API_TOKEN": "configured"
+    }
+  }
+}

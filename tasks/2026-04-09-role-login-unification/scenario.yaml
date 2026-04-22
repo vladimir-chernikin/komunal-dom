@@ -1,0 +1,120 @@
+id: 2026-04-09-single-login-single-role
+title: Одна точка входа и одна каноническая роль
+base_url: http://komunal-dom.ru
+artifacts_dir: /var/www/komunal-dom_ru/tmp_archive/ui_runs/2026_04_09_single_login_single_role
+
+runner:
+  mode: playwright
+  headless: true
+  save_screenshots: true
+  save_report_json: true
+
+actors:
+  admin:
+    role: superuser
+    credential_source: project_env_or_fixture
+  director:
+    role: director_by_job_title
+    credential_source: project_fixture
+  executor:
+    role: executor_by_job_title
+    credential_source: project_fixture
+  user_without_membership:
+    role: no_membership
+    credential_source: project_fixture
+
+steps:
+  - id: open_root
+    action: open
+    actor: admin
+    url: /
+    expect:
+      - no_server_500: true
+    screenshot: 01_root
+
+  - id: open_login
+    action: open
+    actor: admin
+    url: /login/
+    expect:
+      - page_contains: "Имя пользователя"
+    screenshot: 02_login
+
+  - id: open_admin_login
+    action: open
+    actor: admin
+    url: /admin/login/
+    expect:
+      - no_traceback: true
+      - url_contains: /login/
+    screenshot: 03_admin_login_redirect
+
+  - id: login_director
+    action: login
+    actor: director
+    url: /login/
+    expect:
+      - no_traceback: true
+      - url_contains_one_of:
+          - /director/
+          - /admin-uk/
+    screenshot: 04_director_after_login
+
+  - id: login_executor
+    action: login
+    actor: executor
+    url: /login/
+    expect:
+      - no_traceback: true
+      - url_contains: /executor/
+    screenshot: 05_executor_after_login
+
+  - id: login_no_membership
+    action: login
+    actor: user_without_membership
+    url: /login/
+    expect:
+      - no_traceback: true
+      - url_contains: /no-membership/
+    screenshot: 06_no_membership
+
+  - id: open_admin_user_form
+    action: login
+    actor: admin
+    url: /admin/login/
+    expect:
+      - no_traceback: true
+
+  - id: open_user_change
+    action: open
+    actor: admin
+    url: /admin/auth/user/97/change/
+    expect:
+      - page_contains: "Основная информация"
+      - page_contains: "Должность"
+      - page_contains: "Основная компания"
+      - page_contains: "Основное подразделение"
+      - page_not_contains: "Профиль пользователя"
+      - page_not_contains: "FieldError"
+      - page_not_contains: "Traceback"
+    screenshot: 07_user_change_form
+
+  - id: open_membership_tab
+    action: open
+    actor: admin
+    url: /admin/auth/user/97/change/
+    expect:
+      - page_contains: "Членства в компаниях"
+      - page_contains: "Компания"
+      - page_contains: "Подразделение"
+    screenshot: 08_membership_tab
+
+final_assertions:
+  - no_server_500: true
+  - no_traceback: true
+  - screenshots_saved: true
+  - report_json_saved: true
+
+output:
+  report_json: /var/www/komunal-dom_ru/tmp_archive/ui_runs/2026_04_09_single_login_single_role/report.json
+  screenshots_dir: /var/www/komunal-dom_ru/tmp_archive/ui_runs/2026_04_09_single_login_single_role/

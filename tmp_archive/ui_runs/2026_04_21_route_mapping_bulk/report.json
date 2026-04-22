@@ -1,0 +1,18 @@
+{
+  "listState": {
+    "url": "http://komunal-dom.ru/admin/work_orders/companyroutemapping/?company_scope=1",
+    "selectedCompany": "1",
+    "hasFillButton": true,
+    "hasRightFilterByRoute": false,
+    "hasRightFilterByActive": false
+  },
+  "fillState": {
+    "url": "http://komunal-dom.ru/admin/work_orders/companyroutemapping/fill-by-company/?company_scope=1",
+    "rowCount": 5,
+    "targetSelectCount": 5,
+    "companyInputs": 0,
+    "routeInputs": 0,
+    "hasCompanyName": true,
+    "hasRoute": true
+  }
+}

@@ -48,8 +48,13 @@ Thumbs.db
 # Временные файлы
 *.tmp
 *.bak
+*.bak_*
 *.old
 *~
+tmp/
+test-results/
+olga_data/
+volkov_data/
 
 # Логи
 logs/

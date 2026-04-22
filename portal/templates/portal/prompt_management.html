@@ -4,6 +4,41 @@
 
 {% block extra_css %}
 <style>
+
+.aerial-hero {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+}
+
+.city-3d-background {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.aerial-content {
+    position: relative;
+    z-index: 2;
+    padding: 2.5rem 0 3rem;
+}
+
+.aerial-content .card,
+.aerial-content .breadcrumb,
+.aerial-content .modal-content {
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.aerial-content .breadcrumb {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+}
+
 /* Стили специфичные для страницы промптов */
 
 /* Переопределение padding для карточек промптов */
@@ -100,6 +135,14 @@
 }
 
 @media (max-width: 768px) {
+    .aerial-content {
+        padding: 2rem 1rem;
+    }
+
+    .aerial-content .row {
+        --bs-gutter-x: 0;
+    }
+
     .table {
         font-size: 0.85rem;
     }
@@ -111,6 +154,10 @@
 
     .table td {
         padding: 0.5rem;
+    }
+
+    .card-body {
+        padding: 1rem;
     }
 }
 
@@ -128,7 +175,10 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<section class="aerial-hero">
+    {% include 'work_orders/_aerial_city_background.html' %}
+    <div class="container aerial-content">
+<div class="mt-4">
     <!-- Заголовок -->
     <div class="row mb-3">
         <div class="col-12">
@@ -261,6 +311,8 @@
         </div>
     </div>
 </div>
+    </div>
+</section>
 
 <!-- Модальные окна для просмотра промптов -->
 {% for prompt in prompts %}

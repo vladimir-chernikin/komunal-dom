@@ -1,0 +1,343 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static jazzmin %}
+{% get_jazzmin_ui_tweaks as jazzmin_ui %}
+
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+
+{% block content_title %} {% trans 'Dashboard' %} {% endblock %}
+
+{% block breadcrumbs %}
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">{% trans 'Home' %}</a></li>
+        <li class="breadcrumb-item">{% trans 'Dashboard' %}</li>
+    </ol>
+{% endblock %}
+
+
+{% block content %}
+    <!-- Блок статистики для админов -->
+    {% if user.userprofile.has_admin_access %}
+    <div class="card card-primary card-outline mb-3">
+        <div class="card-header">
+            <h3 class="card-title">Статистика системы</h3>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <!-- Пользователи -->
+                <div class="col-md-3 col-sm-6">
+                    <div class="small-box bg-info">
+                        <div class="inner">
+                            <h3>{{ user_stats.total }}</h3>
+                            <p>Пользователей</p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">Активных: {{ user_stats.active_recently }}</small>
+                </div>
+
+                <!-- Файлы -->
+                <div class="col-md-3 col-sm-6">
+                    <div class="small-box bg-success">
+                        <div class="inner">
+                            <h3>{{ file_stats.total }}</h3>
+                            <p>Файлов</p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-file"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">{{ file_stats.total_size|filesizeformat }}</small>
+                </div>
+
+                <!-- AI промпты -->
+                <div class="col-md-3 col-sm-6">
+                    <div class="small-box bg-warning">
+                        <div class="inner">
+                            <h3>{{ prompt_stats.total }}</h3>
+                            <p>AI промптов</p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">Активных: {{ prompt_stats.active }}</small>
+                </div>
+
+                {% if kladr_stats %}
+                <!-- КЛАДР -->
+                <div class="col-md-3 col-sm-6">
+                    <div class="small-box bg-secondary">
+                        <div class="inner">
+                            <h3>{{ kladr_stats.address_objects }}</h3>
+                            <p>Адресов КЛАДР</p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-map-marker-alt"></i>
+                        </div>
+                    </div>
+                    <small class="text-muted">Зданий: {{ kladr_stats.buildings }}</small>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Детализация по ролям -->
+            {% if user_stats.by_role %}
+            <div class="mt-3">
+                <h6 class="mb-2">Пользователи по ролям:</h6>
+                <div class="d-flex flex-wrap gap-2">
+                    {% for role_name, count in user_stats.by_role.items %}
+                    <span class="badge badge-secondary">{{ role_name }}: {{ count }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- НСИ - Справочники -->
+    <div class="card card-success card-outline mb-3">
+        <div class="card-header">
+            <h3 class="card-title">НСИ - Справочники</h3>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <!-- Компании -->
+                <div class="col-md-6 col-sm-12 mb-3">
+                    <a href="/admin/nsi/company/" class="btn btn-success btn-lg w-100">
+                        <i class="fas fa-building"></i>
+                        Компании
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        Справочник компаний (наименование, домен, телефон)
+                    </small>
+                </div>
+
+                <!-- Виды оборудования -->
+                <div class="col-md-6 col-sm-12 mb-3">
+                    <a href="/admin/nsi/equipmenttype/" class="btn btn-success btn-lg w-100">
+                        <i class="fas fa-cogs"></i>
+                        Виды оборудования
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        Справочник видов общедомового оборудования
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ИСПРАВЛЕНО (2026-03-05): Быстрые ссылки на чаты и трассировку -->
+    <!-- ИСПРАВЛЕНО (2026-03-07): Добавлена ссылка на LLM Tester -->
+    <!-- ИСПРАВЛЕНО (2026-03-07): Добавлена ссылка на Базу промптов -->
+    <div class="card card-secondary card-outline mb-3">
+        <div class="card-header">
+            <h3 class="card-title">Быстрые ссылки</h3>
+        </div>
+        <div class="card-body">
+            <!-- Ряд 1: 4 кнопки -->
+            <div class="row mb-3">
+                <!-- Кнопка 1: Создать заявку (/chat/) -->
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <a href="/chat/" target="_blank" class="btn btn-warning btn-lg w-100">
+                        <i class="fas fa-plus-circle"></i>
+                        Создать заявку
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        WebChat с трассировкой (_tras_diag_*.md)
+                    </small>
+                </div>
+
+                <!-- Кнопка 2: Открыть чат с консультантом (/regulatory-chat/) -->
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <a href="/regulatory-chat/" target="_blank" class="btn btn-info btn-lg w-100">
+                        <i class="fas fa-comments"></i>
+                        Открыть чат с консультантом
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        AI-чат для консультаций
+                    </small>
+                </div>
+
+                <!-- Кнопка 3: Трассировка диалогов -->
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <a href="/admin-uk/dialog-trace/" target="_blank" class="btn btn-success btn-lg w-100">
+                        <i class="fas fa-history"></i>
+                        Трассировка диалогов
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        История диалогов и производительность
+                    </small>
+                </div>
+
+                <!-- Кнопка 4: Тестирование запросов (LLM Tester) -->
+                <div class="col-md-3 col-sm-6 mb-3">
+                    <a href="/llm-tester/" target="_blank" class="btn btn-primary btn-lg w-100">
+                        <i class="fas fa-vial"></i>
+                        Тестирование запросов
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        Тестирование AI промптов и моделей
+                    </small>
+                </div>
+            </div>
+
+            <!-- Ряд 2: 2 кнопки -->
+            <div class="row">
+                <!-- Кнопка 5: Пользователи -->
+                <div class="col-md-6 mb-3">
+                    <a href="/admin/auth/user/" target="_blank" class="btn btn-lg w-100" style="background-color: #FF00FF !important; color: white; border: none;">
+                        <i class="fas fa-users-cog"></i>
+                        Пользователи
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        Редактирование пользователей системы
+                    </small>
+                </div>
+
+                <!-- Кнопка 6: База промптов -->
+                <div class="col-md-6 mb-3">
+                    <a href="/llm-tester/prompts/" target="_blank" class="btn btn-secondary btn-lg w-100">
+                        <i class="fas fa-database"></i>
+                        База промптов
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        Все промпты (включая старые версии)
+                    </small>
+                </div>
+            </div>
+
+            <!-- Ряд 3: 1 кнопка (СУБД SQL) -->
+            <div class="row">
+                <!-- Кнопка 7: СУБД SQL -->
+                <div class="col-md-12 mb-3">
+                    <a href="/db-sql/" class="btn btn-dark btn-lg w-100">
+                        <i class="fas fa-database"></i>
+                        СУБД SQL
+                    </a>
+                    <small class="text-muted d-block mt-2 text-center">
+                        Просмотр структуры БД, данных таблиц и ER-диаграмма связей
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% get_side_menu using="app_list" as dashboard_list %}
+    {% if dashboard_list %}
+        {% widthratio dashboard_list|length 2 1 as middle %}
+    {% endif %}
+
+    <div class="col-lg-9 col-12">
+        <div class="row">
+            <div class="col-md-6 col-sm-12">
+                {% for app in dashboard_list %}
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="m-0">{{ app.name }}</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tbody>
+                                {% for model in app.models %}
+                                    <tr>
+                                        <td>
+                                            {% if model.url %}<a href="{{ model.url }}">{{ model.name }}</a>{% else %}{{ model.name }}{% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group float-right">
+                                                {% if model.add_url %}
+                                                    <a href="{{ model.add_url }}" class="btn btn-xs {{ jazzmin_ui.button_classes.success }} addlink">{% trans 'Add' %}</a>
+                                                {% endif %}
+                                                {% if model.url %}
+                                                    {% if model.view_only %}
+                                                        <a href="{{ model.url }}" class="btn btn-xs {{ jazzmin_ui.button_classes.info }} viewlink">{% trans 'View' %}</a>
+                                                    {% else %}
+                                                        <a href="{{ model.url }}" class="btn btn-xs {{ jazzmin_ui.button_classes.info }} changelink">{% if model.custom %}{% trans 'Go' %}{% else %}{% trans 'Change' %} {% endif %}</a>
+                                                    {% endif %}
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {% if forloop.counter == middle|add:"0" %}
+                    </div>
+                    <div class="col-md-6 col-sm-12">
+                    {% endif %}
+
+                {% endfor %}
+                </div>
+        </div>
+
+    </div>
+    <div class="col-lg-3 col-12">
+        <div id="content-related">
+            <div class="module" id="recent-actions-module">
+                <h4 class="mb-3">{% trans 'Recent actions' %}</h4>
+                {% load log %}
+                {% get_admin_log 6 as admin_log for_user user %}
+                {% if not admin_log %}
+                <p>{% trans 'None available' %}</p>
+                {% else %}
+                <div class="timeline">
+                    {% for entry in admin_log %}
+                        <div>
+                            {% if entry.is_change %}
+                                <i class="fas fa-edit bg-gray text-xs"></i>
+                            {% elif entry.is_deletion %}
+                                <i class="fas fa-trash bg-danger text-xs"></i>
+                            {% elif entry.is_addition %}
+                                <i class="fas fa-plus-circle bg-success text-xs"></i>
+                            {% endif %}
+
+                            <div class="timeline-item">
+                                <span class="time"><i class="fas fa-clock"></i> {% blocktrans with timesince=entry.action_time|timesince %}{{ timesince }} ago{% endblocktrans %}</span>
+                                <h3 class="timeline-header no-border">
+                                    {% if entry.is_deletion or not entry.get_admin_url %}
+                                        {{ entry.object_repr }}
+                                    {% else %}
+                                        <a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>
+                                    {% endif %}
+
+                                    {% if entry.model %}
+                                        <span class="mini quiet">
+                                            {% filter capfirst %}
+                                                {{ entry.model }}
+                                            {% endfilter %}
+                                        </span>
+                                    {% endif %}
+                                </h3>
+                                {% if not entry.is_deletion %}
+                                <div class="timeline-body">
+                                    {% if entry.is_addition %}
+                                        {{ entry }}
+                                    {% else %}
+                                        <ul style="list-style: none; padding: 0;">
+                                            {% action_message_to_list entry as action_message_list %}
+                                            {% for action_message in action_message_list %}
+                                                <li>{{ action_message.msg|style_bold_first_word }}</li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                    <div>
+                        <i class="fa fa-clock bg-gray"></i>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

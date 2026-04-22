@@ -65,7 +65,6 @@ INSTALLED_APPS = [
     'crispy_forms',
     'crispy_bootstrap5',
     'nsi.apps.NsiConfig',  # НСИ - Normativno-Spravochnaya Informatsiya (справочники)
-    'file_manager.apps.FileManagerConfig',
     'portal.apps.PortalConfig',
     'kladr.apps.KladrConfig',
     'message_handler.apps.MessageHandlerConfig',  # Логирование сообщений из всех каналов
@@ -85,6 +84,7 @@ MIDDLEWARE = [
     'komunal_dom.middleware.SubdomainMiddleware',  # Обработка поддоменов
     'portal.middleware.CompanyMembershipMiddleware',  # Добавление компании в request (ДО защиты admin)
     'portal.middleware.DjangoAdminProtectionMiddleware',  # Защита Django Admin (только superuser)
+    'portal.middleware.DarkThemeInjectionMiddleware',  # Единая темная тема для пользовательских HTML-страниц
 ]
 
 ROOT_URLCONF = 'komunal_dom.urls'
@@ -184,8 +184,8 @@ import os
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 
 # Настройки аутентификации
-LOGIN_URL = '/admin/login/'
-LOGOUT_URL = '/admin/logout/'
+LOGIN_URL = '/login/'  # Единая точка входа
+LOGOUT_URL = '/logout/'
 LOGIN_REDIRECT_URL = '/subscribers/'
 
 # Настройки Jazzmin Admin

@@ -1,0 +1,175 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .mapping-fill-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 16px 0;
+    }
+
+    .mapping-fill-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        padding: 8px 16px;
+        border-radius: 3px;
+        border: 1px solid #d6dbe1;
+        background: #f3f4f6;
+        color: #34495e;
+        text-decoration: none;
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .mapping-fill-button-primary {
+        background: #2f8f57;
+        border-color: #2f8f57;
+        color: #fff !important;
+    }
+
+    .mapping-fill-table-wrap {
+        overflow: auto;
+        border: 1px solid #d8dde3;
+        background: #fff;
+    }
+
+    .mapping-fill-table {
+        width: 100%;
+        min-width: 980px;
+        border-collapse: collapse;
+    }
+
+    .mapping-fill-table th,
+    .mapping-fill-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #d8dde3;
+        vertical-align: middle;
+    }
+
+    .mapping-fill-table th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #f3f4f6;
+        color: #27313b;
+        text-align: left;
+        white-space: nowrap;
+    }
+
+    .mapping-fill-table select {
+        width: 100%;
+        min-width: 280px;
+    }
+
+    .mapping-fill-readonly {
+        color: #27313b;
+        font-weight: 600;
+    }
+
+    .mapping-fill-muted {
+        color: #6f7b86;
+        font-size: 12px;
+    }
+
+    .mapping-fill-status {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 7px;
+        border-radius: 3px;
+        background: #e9ecef;
+        color: #343a40;
+        font-size: 11px;
+        font-weight: 700;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Начало</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; Заполнить по компании
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>{{ title }}</h1>
+
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="_company_scope" value="{{ scoped_company.id }}">
+
+        <div class="mapping-fill-actions">
+            <button type="submit" class="mapping-fill-button mapping-fill-button-primary">Сохранить маппинг</button>
+            <a href="{{ changelist_url }}" class="mapping-fill-button">Вернуться к списку</a>
+        </div>
+
+        <div class="mapping-fill-table-wrap">
+            <table class="mapping-fill-table">
+                <thead>
+                    <tr>
+                        <th>Компания</th>
+                        <th>Услуга</th>
+                        <th>Целевое подразделение</th>
+                        <th>Активен</th>
+                        <th>Состояние</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td>
+                            <div class="mapping-fill-readonly">{{ scoped_company.name }}</div>
+                        </td>
+                        <td>
+                            <div class="mapping-fill-readonly">{{ row.service.scenario_name }}</div>
+                            <div class="mapping-fill-muted">{{ row.service.category_name }}</div>
+                        </td>
+                        <td>
+                            <select name="target_department_{{ row.service.service_id }}">
+                                <option value="">---------</option>
+                                {% for department in departments %}
+                                <option value="{{ department.id }}" {% if row.selected_department_id == department.id|stringformat:"s" %}selected{% endif %}>
+                                    {% if department.parent_department %}{{ department.parent_department.department_name }} / {% endif %}{{ department.department_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="checkbox" name="is_active_{{ row.service.service_id }}" {% if row.is_active %}checked{% endif %}>
+                        </td>
+                        <td>
+                            {% if row.mapping %}
+                            <span class="mapping-fill-status">Есть запись</span>
+                            {% else %}
+                            <span class="mapping-fill-status">Будет создана</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5">Активные услуги не найдены.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mapping-fill-actions" style="margin-top: 16px;">
+            <button type="submit" class="mapping-fill-button mapping-fill-button-primary">Сохранить маппинг</button>
+            <a href="{{ changelist_url }}" class="mapping-fill-button">Вернуться к списку</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

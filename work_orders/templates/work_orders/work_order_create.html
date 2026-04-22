@@ -31,10 +31,9 @@
             padding: 0;
         }
         
-        /* === HERO С 3D ГОРОДОМ === */
         .aerial-hero {
             position: relative;
-            min-height: 600px;
+            min-height: 100vh;
             overflow: hidden;
             background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
         }
@@ -82,6 +81,10 @@
             padding: 2rem;
             box-shadow: 0 8px 32px rgba(0,0,0,0.1);
         }
+
+        .create-layout {
+            justify-content: center;
+        }
         
         .form-label {
             font-weight: 600;
@@ -96,60 +99,120 @@
         .btn-primary:hover {
             background: linear-gradient(135deg, #2563EB, #1D4ED8);
         }
+
+        .object-search-wrap {
+            position: relative;
+        }
+
+        .object-search-results {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            z-index: 20;
+            display: none;
+            max-height: 320px;
+            overflow-y: auto;
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 16px 32px rgba(15, 23, 42, 0.12);
+        }
+
+        .object-search-item {
+            width: 100%;
+            border: 0;
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+            background: transparent;
+            text-align: left;
+            padding: 0.85rem 1rem;
+            color: var(--text-primary);
+        }
+
+        .object-search-item:last-child {
+            border-bottom: 0;
+        }
+
+        .object-search-item:hover,
+        .object-search-item:focus {
+            background: #eff6ff;
+            outline: none;
+        }
+
+        .object-search-meta {
+            display: block;
+            margin-top: 0.2rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        @media (max-width: 768px) {
+            .aerial-content {
+                padding: 2.25rem 1rem 2rem;
+            }
+
+            .aerial-content .row {
+                --bs-gutter-x: 0;
+            }
+
+            .aerial-hero h1,
+            .aerial-hero h2 {
+                line-height: 1.12;
+            }
+
+            .form-container {
+                padding: 1.25rem;
+                border-radius: 18px;
+            }
+        }
     </style>
 </head>
 <body>
     <section class="aerial-hero">
-        <!-- SVG 3D ГОРОД -->
-        <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-            <defs>
-                <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#87CEEB"/>
-                    <stop offset="50%" style="stop-color:#B0E0E6"/>
-                    <stop offset="100%" style="stop-color:#98D8AA"/>
-                </linearGradient>
-                
-                <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#98D8AA"/>
-                    <stop offset="100%" style="stop-color:#7CB887"/>
-                </linearGradient>
-                
-                <filter id="buildingShadowFilter">
-                    <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
-                    <feOffset dx="3" dy="3"/>
-                </filter>
-            </defs>
-            
-            <rect width="1200" height="600" fill="url(#skyGradient)"/>
-            <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
-        </svg>
+        {% include 'work_orders/_aerial_city_background.html' %}
         
         <div class="container aerial-content">
             <div class="row">
                 <div class="col-12">
                     <nav aria-label="breadcrumb">
                         <ol class="breadcrumb">
-                            <li class="breadcrumb-item"><a href="/director/">Директор УК</a></li>
+                            <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
                             <li class="breadcrumb-item active" aria-current="page">Создать заявку</li>
                         </ol>
                     </nav>
                 </div>
             </div>
             
-            <div class="row mt-4">
-                <div class="col-lg-8">
+            <div class="row mt-4 create-layout">
+                <div class="col-lg-10 col-xl-9">
                     <div class="form-container">
                         <h2 class="mb-4"><i class="bi bi-plus-circle"></i> Создать новую заявку</h2>
                         
                         <form method="post">
                             {% csrf_token %}
+
+                            {% if form.non_field_errors %}
+                            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                            {% endif %}
                             
                             <div class="mb-3">
-                                <label for="{{ form.object.id_for_label }}" class="form-label">Объект обслуживания *</label>
+                                <label for="id_object_search" class="form-label">Объект обслуживания *</label>
                                 {{ form.object }}
+                                <div class="object-search-wrap">
+                                    <input
+                                        type="text"
+                                        id="id_object_search"
+                                        class="form-control"
+                                        placeholder="Начните вводить улицу, дом, квартиру или ID объекта"
+                                        value="{{ selected_object_label }}"
+                                        autocomplete="off"
+                                    >
+                                    <div id="object-search-results" class="object-search-results"></div>
+                                </div>
                                 {% if form.object.errors %}
                                 <div class="text-danger">{{ form.object.errors }}</div>
                                 {% endif %}
+                                <div class="form-text">Поиск работает по улице, дому, помещению и ID объекта.</div>
                             </div>
                             
                             <div class="mb-3">
@@ -195,26 +258,12 @@
                             </div>
                             
                             <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                                <a href="/director/" class="btn btn-secondary">Отмена</a>
+                                <a href="{{ dashboard_url }}" class="btn btn-secondary">Отмена</a>
                                 <button type="submit" class="btn btn-primary">
                                     <i class="bi bi-check-circle"></i> Создать заявку
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
-                
-                <div class="col-lg-4">
-                    <div class="form-container">
-                        <h5 class="mb-3"><i class="bi bi-info-circle"></i> Подсказка</h5>
-                        <p class="mb-2">При создании заявки:</p>
-                        <ul class="mb-0">
-                            <li>Выберите объект обслуживания</li>
-                            <li>Выберите тип услуги</li>
-                            <li>Опишите проблему подробно</li>
-                            <li>Укажите приоритет при необходимости</li>
-                            <li>Отметьте как аварийную, если требуется срочное вмешательство</li>
-                        </ul>
                     </div>
                 </div>
             </div>
@@ -228,7 +277,7 @@
     
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const fields = ['object', 'service', 'original_request_text', 'priority_code'];
+        const fields = ['service', 'original_request_text', 'priority_code'];
         fields.forEach(field => {
             const element = document.getElementById('id_' + field);
             if (element) {
@@ -237,6 +286,84 @@
                     element.classList.remove('form-select');
                     element.classList.add('form-control');
                 }
+            }
+        });
+
+        const hiddenObjectInput = document.getElementById('id_object');
+        const objectSearchInput = document.getElementById('id_object_search');
+        const resultsBox = document.getElementById('object-search-results');
+        const searchUrl = '{{ object_search_url }}';
+        let activeRequest = null;
+        let debounceTimer = null;
+
+        function hideResults() {
+            resultsBox.style.display = 'none';
+            resultsBox.innerHTML = '';
+        }
+
+        function renderResults(items) {
+            if (!items.length) {
+                resultsBox.innerHTML = '<div class="object-search-item">Ничего не найдено</div>';
+                resultsBox.style.display = 'block';
+                return;
+            }
+
+            resultsBox.innerHTML = items.map(item => `
+                <button type="button" class="object-search-item" data-object-id="${item.id}" data-object-label="${item.label}">
+                    <span>${item.label}</span>
+                    <span class="object-search-meta">${item.address}</span>
+                </button>
+            `).join('');
+            resultsBox.style.display = 'block';
+        }
+
+        objectSearchInput.addEventListener('input', function() {
+            const query = objectSearchInput.value.trim();
+            hiddenObjectInput.value = '';
+
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+
+            if (query.length < 2 && !/^\d+$/.test(query)) {
+                hideResults();
+                return;
+            }
+
+            debounceTimer = setTimeout(function() {
+                if (activeRequest) {
+                    activeRequest.abort();
+                }
+
+                activeRequest = new AbortController();
+                fetch(`${searchUrl}?q=${encodeURIComponent(query)}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    signal: activeRequest.signal,
+                })
+                    .then(response => response.ok ? response.json() : { results: [] })
+                    .then(data => renderResults(data.results || []))
+                    .catch(error => {
+                        if (error.name !== 'AbortError') {
+                            hideResults();
+                        }
+                    });
+            }, 220);
+        });
+
+        resultsBox.addEventListener('click', function(event) {
+            const button = event.target.closest('[data-object-id]');
+            if (!button) {
+                return;
+            }
+
+            hiddenObjectInput.value = button.dataset.objectId;
+            objectSearchInput.value = button.dataset.objectLabel;
+            hideResults();
+        });
+
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.object-search-wrap')) {
+                hideResults();
             }
         });
     });

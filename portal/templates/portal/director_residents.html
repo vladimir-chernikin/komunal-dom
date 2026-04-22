@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Жители - {{ company.name }}</title>
+    <title>{{ page_title|default:"Учетные записи" }} - {{ company.name }}</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -33,7 +33,7 @@
         
         .aerial-hero {
             position: relative;
-            min-height: 600px;
+            min-height: 100vh;
             overflow: hidden;
             background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
         }
@@ -130,33 +130,109 @@
         .table-hover tbody tr:hover td {
             color: #3B82F6;
         }
+
+        @media (max-width: 768px) {
+            .aerial-content {
+                padding: 1.35rem 0.75rem 2rem;
+            }
+
+            .aerial-content .row {
+                --bs-gutter-x: 0;
+            }
+
+            .aerial-hero .breadcrumb {
+                padding: 0.55rem 0.7rem;
+                font-size: 0.82rem;
+                margin-bottom: 0.85rem;
+            }
+
+            .accounts-page-heading {
+                flex-direction: column;
+                align-items: stretch !important;
+                gap: 0.85rem;
+                margin-bottom: 1rem !important;
+            }
+
+            .aerial-hero h2 {
+                font-size: 1.35rem;
+                line-height: 1.16;
+                margin-bottom: 0;
+            }
+
+            .accounts-page-actions {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr;
+                gap: 0.55rem !important;
+            }
+
+            .accounts-page-actions .btn {
+                width: 100%;
+                min-height: 38px;
+                padding: 0.45rem 0.55rem;
+                font-size: 0.78rem;
+                line-height: 1.15;
+                white-space: normal;
+            }
+
+            .stats-container {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.75rem;
+                margin-bottom: 1rem;
+            }
+
+            .stat-card,
+            .table-container {
+                padding: 0.9rem;
+                border-radius: 14px;
+            }
+
+            .stat-card h5 {
+                font-size: 0.72rem;
+                letter-spacing: 0.02em;
+                margin-bottom: 0.25rem;
+            }
+
+            .stat-card h2 {
+                font-size: 1.65rem;
+                margin-bottom: 0;
+            }
+
+            .table-container h5 {
+                font-size: 0.95rem;
+                margin-bottom: 0.75rem;
+            }
+
+            .table {
+                min-width: 680px;
+                font-size: 0.82rem;
+            }
+
+            .table th,
+            .table td {
+                padding: 0.45rem 0.5rem;
+                vertical-align: middle;
+            }
+
+            .table .badge {
+                font-size: 0.7rem;
+                padding: 0.35rem 0.5rem;
+            }
+
+            .table .btn-sm {
+                width: 32px;
+                height: 32px;
+                padding: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
     <section class="aerial-hero">
-        <!-- SVG 3D ГОРОД -->
-        <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-            <defs>
-                <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#87CEEB"/>
-                    <stop offset="50%" style="stop-color:#B0E0E6"/>
-                    <stop offset="100%" style="stop-color:#98D8AA"/>
-                </linearGradient>
-                
-                <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#98D8AA"/>
-                    <stop offset="100%" style="stop-color:#7CB887"/>
-                </linearGradient>
-                
-                <filter id="buildingShadowFilter">
-                    <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
-                    <feOffset dx="3" dy="3"/>
-                </filter>
-            </defs>
-            
-            <rect width="1200" height="600" fill="url(#skyGradient)"/>
-            <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
-        </svg>
+        {% include 'work_orders/_aerial_city_background.html' %}
         
         <div class="container aerial-content">
             <div class="row">
@@ -164,16 +240,22 @@
                     <nav aria-label="breadcrumb">
                         <ol class="breadcrumb">
                             <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
-                            <li class="breadcrumb-item active" aria-current="page">Жители</li>
+                            <li class="breadcrumb-item active" aria-current="page">{{ page_breadcrumb|default:"Учетные записи" }}</li>
                         </ol>
                     </nav>
                     
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h2><i class="fas fa-users"></i> Жители и сотрудники - {{ company.name }}</h2>
-                        <a href="{% url 'portal:director_add_resident' %}" class="btn btn-success">
-                            <i class="fas fa-user-plus"></i>
-                            Добавить пользователя
-                        </a>
+                    <div class="accounts-page-heading d-flex justify-content-between align-items-center mb-4">
+                        <h2><i class="fas fa-users"></i> {{ page_title|default:"Учетные записи" }} - {{ company.name }}</h2>
+                        <div class="accounts-page-actions d-flex gap-2">
+                            <a href="{% url 'portal:director_add_resident' %}?account_type=resident" class="btn btn-success">
+                                <i class="fas fa-house-user"></i>
+                                Добавить жителя
+                            </a>
+                            <a href="{% url 'portal:director_add_resident' %}?account_type=employee" class="btn btn-outline-success">
+                                <i class="fas fa-user-tie"></i>
+                                Добавить сотрудника
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -217,7 +299,7 @@
                                         {% if membership.role_code == 'resident' %}Житель{% endif %}
                                     </span>
                                 </td>
-                                <td>{{ membership.department.name|default:"-" }}</td>
+                                <td>{{ membership.department.department_name|default:"-" }}</td>
                                 <td>
                                     <a href="{% url 'admin:auth_user_change' membership.user.id %}" class="btn btn-sm btn-primary" onclick="event.stopPropagation()">
                                         <i class="fas fa-edit"></i>
@@ -264,7 +346,7 @@
                                         {% endif %}
                                     </span>
                                 </td>
-                                <td>{{ membership.department.name|default:"-" }}</td>
+                                <td>{{ membership.department.department_name|default:"-" }}</td>
                                 <td>
                                     <a href="{% url 'admin:auth_user_change' membership.user.id %}" class="btn btn-sm btn-primary" onclick="event.stopPropagation()">
                                         <i class="fas fa-edit"></i>

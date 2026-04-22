@@ -195,6 +195,19 @@ body {
             min-width: 140px;
         }
 
+        .stat-bubble-link {
+            color: inherit;
+            text-decoration: none;
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-bubble-link:hover,
+        .stat-bubble-link:focus {
+            transform: translateY(-3px);
+            border-color: rgba(16, 185, 129, 0.45);
+            box-shadow: 0 14px 32px rgba(0,0,0,0.16);
+        }
+
         .stat-bubble-number {
             font-size: 2.5rem;
             font-weight: 700;
@@ -421,21 +434,21 @@ body {
                     Просмотр и управление всеми заявками системы
                 </div>
                 <span class="tile-badge">
-                    <i class="fas fa-check-circle"></i> Полный контроль
+                    <i class="fas fa-check-circle"></i> {{ total_work_orders }} заявок
                 </span>
             </a>
 
-            <!-- Жители ТСЖ -->
+            <!-- Учетные записи -->
             <a href="{% url 'portal:director_residents' %}" class="aerial-tile">
                 <div class="tile-icon-wrapper">
                     <i class="fas fa-users tile-icon"></i>
                 </div>
-                <div class="tile-title">Жители ТСЖ</div>
+                <div class="tile-title">Учетные записи</div>
                 <div class="tile-description">
-                    Управление данными жителей и лицевых счетов
+                    Жители и сотрудники вашей компании в одном списке
                 </div>
                 <span class="tile-badge">
-                    <i class="fas fa-user-friends"></i> {{ resident_count }} жителей
+                    <i class="fas fa-user-friends"></i> {{ total_users }} записей
                 </span>
             </a>
 
@@ -467,67 +480,70 @@ body {
                 </span>
             </a>
 
-            <!-- Сотрудники -->
-            <a href="{% url 'portal:director_employees' %}" class="aerial-tile" target="_blank">
+            <!-- Импорт объектов -->
+            <a href="{% url 'portal:director_import_service_objects' %}" class="aerial-tile">
                 <div class="tile-icon-wrapper">
-                    <i class="fas fa-user-tie tile-icon"></i>
+                    <i class="fas fa-file-import tile-icon"></i>
                 </div>
-                <div class="tile-title">Сотрудники</div>
+                <div class="tile-title">Импорт объектов</div>
                 <div class="tile-description">
-                    Управление сотрудниками вашей организации
+                    Загрузка XLSX и привязка объектов обслуживания к компании
                 </div>
                 <span class="tile-badge">
-                    <i class="fas fa-users"></i> Персонал
-                </span>
-            </a>
-
-            <!-- Контакты УК -->
-            <a href="#" class="aerial-tile">
-                <div class="tile-icon-wrapper">
-                    <i class="fas fa-phone-alt tile-icon"></i>
-                </div>
-                <div class="tile-title">Контакты УК</div>
-                <div class="tile-description">
-                    Телефоны, адрес, часы работы, экстренные службы
-                </div>
-                <span class="tile-badge">
-                    <i class="fas fa-clock"></i> 9:00–18:00
-                </span>
-            </a>
-
-            <!-- Документы -->
-            <a href="#" class="aerial-tile">
-                <div class="tile-icon-wrapper">
-                    <i class="fas fa-folder-open tile-icon"></i>
-                </div>
-                <div class="tile-title">Документы</div>
-                <div class="tile-description">
-                    Правила пользования, тарифы, образцы заявлений, справки
-                </div>
-                <span class="tile-badge">
-                    <i class="fas fa-download"></i> Библиотека
+                    <i class="fas fa-upload"></i> XLSX
                 </span>
             </a>
         </div>
 
+        <div class="mt-4">
+            <h2 style="font-size: 1.5rem; font-weight: 700; color: #1a1a1a;">Объекты обслуживания</h2>
+            <div class="tiles-grid" style="margin-top: 1rem;">
+                <a href="{% url 'portal:director_service_objects' %}" class="aerial-tile">
+                    <div class="tile-icon-wrapper">
+                        <i class="fas fa-building tile-icon"></i>
+                    </div>
+                    <div class="tile-title">Справочник объектов</div>
+                    <div class="tile-description">
+                        Только объекты, привязанные к вашей компании
+                    </div>
+                    <span class="tile-badge">
+                        <i class="fas fa-map-marker-alt"></i> {{ service_object_count }} объектов
+                    </span>
+                </a>
+
+                <a href="{% url 'portal:director_object_bindings' %}" class="aerial-tile">
+                    <div class="tile-icon-wrapper">
+                        <i class="fas fa-link tile-icon"></i>
+                    </div>
+                    <div class="tile-title">Справочник привязок</div>
+                    <div class="tile-description">
+                        Активные периоды обслуживания объектов вашей компанией
+                    </div>
+                    <span class="tile-badge">
+                        <i class="fas fa-project-diagram"></i> {{ service_binding_count }} привязок
+                    </span>
+                </a>
+            </div>
+        </div>
+
         <!-- СТАТИСТИКА -->
         <div class="stats-over-map">
-            <div class="stat-bubble">
+            <a href="{% url 'work_orders:management_list' %}" class="stat-bubble stat-bubble-link">
                 <div class="stat-bubble-number">{{ total_work_orders }}</div>
                 <div class="stat-bubble-label">Всего заявок</div>
-            </div>
-            <div class="stat-bubble">
+            </a>
+            <a href="{% url 'work_orders:management_list' %}?status=active" class="stat-bubble stat-bubble-link">
                 <div class="stat-bubble-number">{{ active_work_orders }}</div>
                 <div class="stat-bubble-label">Активных</div>
-            </div>
-            <div class="stat-bubble">
+            </a>
+            <a href="{% url 'work_orders:management_list' %}?status=completed" class="stat-bubble stat-bubble-link">
+                <div class="stat-bubble-number">{{ completed_work_orders }}</div>
+                <div class="stat-bubble-label">Выполнено</div>
+            </a>
+            <a href="{% url 'portal:director_residents' %}" class="stat-bubble stat-bubble-link">
                 <div class="stat-bubble-number">{{ total_users }}</div>
                 <div class="stat-bubble-label">Пользователей</div>
-            </div>
-            <div class="stat-bubble">
-                <div class="stat-bubble-number">₽ 0</div>
-                <div class="stat-bubble-label">Оплачено</div>
-            </div>
+            </a>
         </div>
     </div>
 </section>

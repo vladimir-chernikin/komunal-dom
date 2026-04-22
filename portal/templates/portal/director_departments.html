@@ -33,7 +33,7 @@
         
         .aerial-hero {
             position: relative;
-            min-height: 600px;
+            min-height: 100vh;
             overflow: hidden;
             background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
         }
@@ -116,6 +116,142 @@
         .table-hover tbody tr:hover {
             background: rgba(59, 130, 246, 0.1);
         }
+
+        .department-tree-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .department-tree-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .department-tree-fold {
+            border: 0;
+            background: transparent;
+            color: #2563eb;
+            font-weight: 600;
+        }
+
+        .department-tree-list {
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #ffffff;
+        }
+
+        .department-tree-row {
+            display: grid;
+            grid-template-columns: minmax(320px, 1fr) 120px 130px 190px;
+            gap: 1rem;
+            align-items: center;
+            min-height: 64px;
+            padding: 0.7rem 0.85rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        }
+
+        .department-tree-row:last-child {
+            border-bottom: 0;
+        }
+
+        .department-tree-row.is-hidden {
+            display: none;
+        }
+
+        .department-node {
+            display: flex;
+            align-items: flex-start;
+            min-width: 0;
+        }
+
+        .department-indent {
+            flex: 0 0 auto;
+        }
+
+        .department-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            margin: 0.2rem 0.55rem 0 0;
+            border: 1px solid #94a3b8;
+            border-radius: 3px;
+            background: #ffffff;
+            color: #475569;
+            font-size: 13px;
+            line-height: 1;
+        }
+
+        .department-toggle.is-leaf {
+            border-color: transparent;
+            background: transparent;
+        }
+
+        .department-title {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+        }
+
+        .department-title a,
+        .department-title strong {
+            color: #2563eb;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .department-title a:hover {
+            text-decoration: underline;
+        }
+
+        .department-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 20px;
+            padding: 0 0.45rem;
+            border-radius: 4px;
+            background: #e5e7eb;
+            color: #374151;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .department-meta {
+            margin-top: 0.25rem;
+            color: #64748b;
+            font-size: 0.92rem;
+        }
+
+        .department-code {
+            color: #d63384;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-weight: 700;
+        }
+
+        .department-row-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        @media (max-width: 992px) {
+            .department-tree-row {
+                grid-template-columns: 1fr;
+            }
+
+            .department-row-actions {
+                justify-content: flex-start;
+            }
+        }
         
         .info-container {
             background: rgba(255, 255, 255, 0.95);
@@ -130,33 +266,35 @@
             color: #1a1a1a;
             font-weight: 600;
         }
+
+        .departments-instruction {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .aerial-content {
+                padding: 2rem 1rem;
+            }
+
+            .aerial-content .row {
+                --bs-gutter-x: 0;
+            }
+
+            .table-container,
+            .info-container {
+                padding: 1.25rem;
+            }
+
+            .department-tree-row {
+                gap: 0.75rem;
+            }
+        }
     </style>
 </head>
 <body>
     <section class="aerial-hero">
         <!-- SVG 3D ГОРОД -->
-        <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-            <defs>
-                <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#87CEEB"/>
-                    <stop offset="50%" style="stop-color:#B0E0E6"/>
-                    <stop offset="100%" style="stop-color:#98D8AA"/>
-                </linearGradient>
-                
-                <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#98D8AA"/>
-                    <stop offset="100%" style="stop-color:#7CB887"/>
-                </linearGradient>
-                
-                <filter id="buildingShadowFilter">
-                    <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
-                    <feOffset dx="3" dy="3"/>
-                </filter>
-            </defs>
-            
-            <rect width="1200" height="600" fill="url(#skyGradient)"/>
-            <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
-        </svg>
+        {% include 'work_orders/_aerial_city_background.html' %}
         
         <div class="container aerial-content">
             <div class="row">
@@ -192,48 +330,81 @@
             
             <!-- Подразделения -->
             <div class="table-container">
-                <h5><i class="fas fa-sitemap"></i> Структура подразделений</h5>
+                <div class="department-tree-toolbar">
+                    <h5 class="mb-0"><i class="fas fa-sitemap"></i> Структура подразделений</h5>
+                    <div class="department-tree-actions">
+                        <button type="button" class="department-tree-fold" data-tree-expand-all>
+                            <i class="far fa-plus-square"></i> Развернуть все
+                        </button>
+                        <button type="button" class="department-tree-fold" data-tree-collapse-all>
+                            <i class="far fa-minus-square"></i> Свернуть все
+                        </button>
+                    </div>
+                </div>
                 {% if departments %}
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Название</th>
-                                <th>Родительское подразделение</th>
-                                <th>Сотрудников</th>
-                                <th>Код</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for dept_info in departments %}
-                            {% with dept=dept_info.department %}
-                            <tr>
-                                <td>
-                                    <strong>{{ dept.department_name }}</strong>
-                                </td>
-                                <td>
-                                    {% if dept.parent_department %}
-                                        <span class="badge bg-secondary">{{ dept.parent_department.department_name }}</span>
+                <div class="department-tree-list" data-department-tree>
+                    {% for dept_info in departments %}
+                    {% with dept=dept_info.department %}
+                    <div
+                        class="department-tree-row"
+                        data-node-id="{{ dept.id }}"
+                        data-parent-id="{% if dept.parent_department_id %}{{ dept.parent_department_id }}{% endif %}"
+                        data-depth="{{ dept_info.depth }}"
+                        data-has-children="{% if dept_info.has_children %}1{% else %}0{% endif %}"
+                    >
+                        <div class="department-node">
+                            <span class="department-indent" style="width: {{ dept_info.indent_px }}px;"></span>
+                            {% if dept_info.has_children %}
+                            <button type="button" class="department-toggle" data-tree-toggle aria-label="Раскрыть или свернуть">−</button>
+                            {% else %}
+                            <span class="department-toggle is-leaf"></span>
+                            {% endif %}
+                            <div>
+                                <div class="department-title">
+                                    {% if can_add_department %}
+                                    <a href="{% url 'portal:director_edit_department' dept.id %}" class="text-decoration-none">
+                                        <strong>{{ dept.department_name }}</strong>
+                                    </a>
                                     {% else %}
-                                        <span class="text-muted">-</span>
+                                    <strong>{{ dept.department_name }}</strong>
                                     {% endif %}
-                                </td>
-                                <td>
-                                    <span class="badge bg-info">{{ dept_info.staff_count }}</span>
-                                </td>
-                                <td>
-                                    <code>{{ dept.department_code|default:"-" }}</code>
-                                </td>
-                            </tr>
-                            {% endwith %}
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                    {% if dept.parent_department %}
+                                    <span class="department-badge">{{ dept.parent_department.department_name }}</span>
+                                    {% else %}
+                                    <span class="department-badge">Корень</span>
+                                    {% endif %}
+                                </div>
+                                <div class="department-meta">
+                                    {% if dept.parent_department %}
+                                    Подчинение: {{ dept.parent_department.department_name }}
+                                    {% else %}
+                                    Корневой элемент компании
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div><span class="badge bg-info">{{ dept_info.staff_count }}</span> сотрудников</div>
+                        <div class="department-code">{{ dept.department_code|default:"-" }}</div>
+                        <div class="department-row-actions">
+                            {% if can_add_department %}
+                            <a href="{% url 'portal:director_edit_department' dept.id %}" class="btn btn-sm btn-primary">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="{% url 'portal:director_add_department' %}?parent_department={{ dept.id }}" class="btn btn-sm btn-success" title="Добавить дочернее подразделение">
+                                <i class="fas fa-plus"></i>
+                            </a>
+                            {% else %}
+                            <span class="text-muted">Просмотр</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endwith %}
+                    {% endfor %}
                 </div>
                 {% else %}
                 <div class="text-center py-5">
-                    <i class="fas fa-building fa-3x text-muted mb-3"></i>
-                    <p class="text-muted mb-0">Подразделения не найдены</p>
+                        <i class="fas fa-building fa-3x text-muted mb-3"></i>
+                        <p class="text-muted mb-0">Подразделения не найдены</p>
                     {% if can_add_department %}
                     <a href="{% url 'portal:director_add_department' %}" class="btn btn-success mt-3">
                         <i class="fas fa-plus"></i>
@@ -245,7 +416,7 @@
             </div>
             
             <!-- Инструкция -->
-            <div class="info-container">
+            <div class="info-container departments-instruction">
                 <h6><i class="fas fa-info-circle"></i> Инструкция</h6>
                 <p class="mb-2">Управление пользователями и подразделениями:</p>
                 <ul class="mb-0">
@@ -267,5 +438,79 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const tree = document.querySelector('[data-department-tree]');
+        if (!tree) {
+            return;
+        }
+
+        const rows = Array.from(tree.querySelectorAll('[data-node-id]'));
+        const rowById = new Map(rows.map((row) => [row.dataset.nodeId, row]));
+
+        function childrenOf(nodeId) {
+            return rows.filter((row) => row.dataset.parentId === nodeId);
+        }
+
+        function setToggle(row, collapsed) {
+            const toggle = row.querySelector('[data-tree-toggle]');
+            if (toggle) {
+                toggle.textContent = collapsed ? '+' : '−';
+                row.dataset.collapsed = collapsed ? '1' : '0';
+            }
+        }
+
+        function hideDescendants(row) {
+            childrenOf(row.dataset.nodeId).forEach((child) => {
+                child.classList.add('is-hidden');
+                hideDescendants(child);
+            });
+        }
+
+        function refreshVisibility() {
+            rows.forEach((row) => {
+                const parentId = row.dataset.parentId;
+                if (!parentId) {
+                    row.classList.remove('is-hidden');
+                    return;
+                }
+                const parent = rowById.get(parentId);
+                if (!parent || parent.classList.contains('is-hidden') || parent.dataset.collapsed === '1') {
+                    row.classList.add('is-hidden');
+                    hideDescendants(row);
+                } else {
+                    row.classList.remove('is-hidden');
+                }
+            });
+        }
+
+        rows.forEach((row) => {
+            setToggle(row, false);
+            const toggle = row.querySelector('[data-tree-toggle]');
+            if (toggle) {
+                toggle.addEventListener('click', function () {
+                    setToggle(row, row.dataset.collapsed !== '1');
+                    refreshVisibility();
+                });
+            }
+        });
+
+        document.querySelector('[data-tree-expand-all]')?.addEventListener('click', function () {
+            rows.forEach((row) => setToggle(row, false));
+            refreshVisibility();
+        });
+
+        document.querySelector('[data-tree-collapse-all]')?.addEventListener('click', function () {
+            rows.forEach((row) => {
+                if (row.dataset.depth === '0') {
+                    setToggle(row, true);
+                }
+            });
+            refreshVisibility();
+        });
+
+        refreshVisibility();
+    });
+    </script>
 </body>
 </html>

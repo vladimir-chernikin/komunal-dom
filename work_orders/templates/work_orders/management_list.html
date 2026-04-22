@@ -4,10 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Список заявок - 3D город</title>
-    
-    <!-- Bootstrap CSS -->
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
+
     <style>
         :root {
             --bg-primary: #f8f8f8;
@@ -17,11 +16,11 @@
             --accent-color: #3B82F6;
             --font-family: 'Inter', sans-serif;
         }
-        
+
         * {
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: var(--font-family);
             background: var(--bg-primary);
@@ -30,14 +29,14 @@
             margin: 0;
             padding: 0;
         }
-        
+
         .aerial-hero {
             position: relative;
-            min-height: 600px;
+            min-height: 100vh;
             overflow: hidden;
             background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
         }
-        
+
         .city-3d-background {
             position: absolute;
             top: 0;
@@ -45,234 +44,400 @@
             width: 100%;
             height: 100%;
         }
-        
+
         .aerial-content {
             position: relative;
             z-index: 2;
-            padding: 3rem 0;
+            padding: 2.5rem 0 4rem;
             color: white;
         }
-        
+
+        .management-shell.container {
+            width: min(100% - 2rem, 1660px);
+            max-width: none;
+            margin: 0 auto;
+        }
+
         .aerial-hero h2 {
             font-size: 2.5rem;
             font-weight: 700;
             margin-bottom: 1rem;
-            text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
             color: #1a1a1a;
         }
-        
+
         .aerial-hero .breadcrumb {
             background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(10px);
             border-radius: 10px;
             padding: 0.75rem 1rem;
         }
-        
+
         .aerial-hero .breadcrumb a {
             color: #3B82F6;
             text-decoration: none;
         }
-        
-        .filter-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            border-radius: 20px;
-            padding: 1.5rem;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            margin-bottom: 1.5rem;
-        }
-        
+
         .table-container {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.5);
             border-radius: 20px;
-            padding: 1.5rem;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            padding: 1.25rem 1.25rem 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
-        
+
         .table-hover tbody tr:hover {
             background: rgba(59, 130, 246, 0.1);
             cursor: pointer;
         }
-        
+
+        .table-responsive {
+            overflow-x: visible;
+        }
+
+        .work-orders-table {
+            table-layout: fixed;
+            width: 100%;
+            margin-bottom: 0;
+            font-size: 0.94rem;
+        }
+
+        .work-orders-table th,
+        .work-orders-table td {
+            padding: 0.72rem 0.5rem;
+            overflow-wrap: anywhere;
+        }
+
+        .work-orders-table .col-number { width: 13%; }
+        .work-orders-table .col-date { width: 12%; }
+        .work-orders-table .col-description { width: 24%; }
+        .work-orders-table .col-service { width: 15%; }
+        .work-orders-table .col-department { width: 12%; }
+        .work-orders-table .col-executor { width: 11%; }
+        .work-orders-table .col-status { width: 8%; }
+        .work-orders-table .col-priority { width: 8%; }
+
+        .work-orders-table.is-compact .col-number { width: 15%; }
+        .work-orders-table.is-compact .col-date { width: 14%; }
+        .work-orders-table.is-compact .col-service { width: 24%; }
+        .work-orders-table.is-compact .col-department { width: 18%; }
+        .work-orders-table.is-compact .col-executor { width: 16%; }
+        .work-orders-table.is-compact .col-status { width: 13%; }
+
+        .cell-description {
+            display: -webkit-box;
+            overflow: hidden;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            line-height: 1.35;
+        }
+
+        .emergency-badge {
+            display: inline-flex;
+            margin-top: 0.3rem;
+            max-width: 100%;
+        }
+
+        .table thead th {
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .header-filter {
+            min-width: 0;
+        }
+
+        .header-filter select {
+            min-width: 100%;
+        }
+
+        .header-filter .form-control-sm {
+            min-width: 100%;
+        }
+
+        .header-filter-static {
+            display: flex;
+            align-items: center;
+            min-height: 31px;
+            width: 100%;
+            padding: 0.25rem 0.5rem;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            background: #fff;
+            color: #495057;
+            font-size: 0.875rem;
+            font-weight: 400;
+            line-height: 1.5;
+        }
+
+        html[data-theme="dark"] .header-filter-static {
+            background-color: var(--kd-night-field) !important;
+            border-color: var(--kd-night-field-border) !important;
+            color: var(--kd-night-text-soft) !important;
+        }
+
+        .priority-column-hidden {
+            display: none !important;
+        }
+
         .badge {
             padding: 0.5rem 0.75rem;
+            max-width: 100%;
+            white-space: normal;
+            line-height: 1.15;
+            text-align: left;
+        }
+
+        @media (max-width: 1199px) {
+            .table-responsive {
+                overflow-x: auto;
+            }
+
+            .work-orders-table {
+                min-width: 1120px;
+            }
+
+            .work-orders-table.is-compact {
+                min-width: 900px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .aerial-content {
+                padding: 2.25rem 1rem 2rem;
+            }
+
+            .management-shell.container {
+                width: min(100% - 1rem, 100%);
+            }
+
+            .aerial-content .row {
+                --bs-gutter-x: 0;
+            }
+
+            .table-container {
+                padding: 1rem;
+            }
+
+            .d-flex.justify-content-between.align-items-center {
+                align-items: flex-start !important;
+                gap: 0.5rem !important;
+            }
+
+            .aerial-hero h2 {
+                font-size: 1.9rem;
+                line-height: 1.15;
+            }
         }
     </style>
 </head>
 <body>
     <section class="aerial-hero">
-        <!-- SVG 3D ГОРОД -->
-        <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-            <defs>
-                <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#87CEEB"/>
-                    <stop offset="50%" style="stop-color:#B0E0E6"/>
-                    <stop offset="100%" style="stop-color:#98D8AA"/>
-                </linearGradient>
-                
-                <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#98D8AA"/>
-                    <stop offset="100%" style="stop-color:#7CB887"/>
-                </linearGradient>
-                
-                <filter id="buildingShadowFilter">
-                    <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
-                    <feOffset dx="3" dy="3"/>
-                </filter>
-            </defs>
-            
-            <rect width="1200" height="600" fill="url(#skyGradient)"/>
-            <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
-        </svg>
-        
-        <div class="container aerial-content">
+        {% include 'work_orders/_aerial_city_background.html' %}
+
+        <div class="container aerial-content management-shell">
             <div class="row">
                 <div class="col-12">
                     <nav aria-label="breadcrumb">
                         <ol class="breadcrumb">
-                            <li class="breadcrumb-item"><a href="/director/">Директор УК</a></li>
+                            <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
                             <li class="breadcrumb-item active" aria-current="page">Список заявок</li>
                         </ol>
                     </nav>
-                    
+
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <h2><i class="bi bi-graph-up"></i> Список заявок</h2>
                         <h5 class="text-muted">{{ company.name }}</h5>
                     </div>
                 </div>
             </div>
-            
+
             {% if error %}
             <div class="alert alert-warning" role="alert">
                 <i class="bi bi-exclamation-triangle"></i> {{ error }}
             </div>
             {% else %}
-            
-            <!-- Фильтры -->
-            <div class="filter-container">
-                <form method="get" class="row g-3">
-                    <div class="col-md-3">
-                        <label for="status" class="form-label">Статус</label>
-                        <select name="status" id="status" class="form-select">
-                            <option value="">Все статусы</option>
-                            <option value="new_registered" {% if status_filter == 'new_registered' %}selected{% endif %}>Новая</option>
-                            <option value="accepted_by_executor" {% if status_filter == 'accepted_by_executor' %}selected{% endif %}>Принята исполнителем</option>
-                            <option value="in_progress" {% if status_filter == 'in_progress' %}selected{% endif %}>В работе</option>
-                            <option value="on_hold" {% if status_filter == 'on_hold' %}selected{% endif %}>Приостановлена</option>
-                            <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Выполнена</option>
-                            <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Закрыта</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label for="department" class="form-label">Подразделение</label>
-                        <select name="department" id="department" class="form-select">
-                            <option value="">Все подразделения</option>
-                            {% for dept in departments %}
-                            <option value="{{ dept.id }}" {% if department_filter == dept.id|stringformat:"s" %}selected{% endif %}>
-                                {{ dept.department_name }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label for="priority" class="form-label">Приоритет</label>
-                        <select name="priority" id="priority" class="form-select">
-                            <option value="">Все приоритеты</option>
-                            <option value="high" {% if priority_filter == 'high' %}selected{% endif %}>Высокий</option>
-                            <option value="normal" {% if priority_filter == 'normal' %}selected{% endif %}>Обычный</option>
-                            <option value="low" {% if priority_filter == 'low' %}selected{% endif %}>Низкий</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary me-2">
-                            <i class="bi bi-funnel"></i> Применить
-                        </button>
-                        <a href="{% url 'work_orders:management_list' %}" class="btn btn-secondary">
-                            <i class="bi bi-x-circle"></i> Очистить
-                        </a>
-                    </div>
-                </form>
-            </div>
-            
-            <!-- Таблица заявок -->
-            <div class="table-container">
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>№ заявки</th>
-                                <th>Создана</th>
-                                <th>Описание</th>
-                                <th>Услуга</th>
-                                <th>Подразделение</th>
-                                <th>Исполнитель</th>
-                                <th>Статус</th>
-                                <th>Приоритет</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for work_order in work_orders %}
-                            <tr onclick="window.location='{% url 'work_orders:work_order_detail' work_order.id %}'" style="cursor: pointer;">
-                                <td>
-                                    <strong>{{ work_order.work_order_no }}</strong>
-                                    {% if work_order.is_emergency %}
-                                    <span class="badge bg-danger emergency-badge ms-1">АВАРИЯ</span>
+
+            <form method="get" class="mb-0">
+                <div class="table-container">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle work-orders-table {% if hide_description_priority_columns %}is-compact{% endif %}">
+                            <colgroup>
+                                <col class="col-number">
+                                <col class="col-date">
+                                {% if not hide_description_priority_columns %}
+                                <col class="col-description">
+                                {% endif %}
+                                <col class="col-service">
+                                <col class="col-department">
+                                <col class="col-executor">
+                                <col class="col-status">
+                                {% if not hide_description_priority_columns %}
+                                <col class="col-priority priority-column-hidden">
+                                {% endif %}
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <div class="header-filter">
+                                            <input
+                                                type="text"
+                                                name="work_order_no"
+                                                class="form-control form-control-sm"
+                                                placeholder="№ заявки"
+                                                value="{{ work_order_no_filter }}"
+                                                onchange="this.form.submit()"
+                                            >
+                                        </div>
+                                    </th>
+                                    <th>
+                                        <div class="header-filter">
+                                            <input
+                                                type="date"
+                                                name="created_date"
+                                                class="form-control form-control-sm"
+                                                value="{{ created_date_filter }}"
+                                                onchange="this.form.submit()"
+                                            >
+                                        </div>
+                                    </th>
+                                    {% if not hide_description_priority_columns %}
+                                    <th>
+                                        <div class="header-filter">
+                                            <div class="header-filter-static">Описание</div>
+                                        </div>
+                                    </th>
                                     {% endif %}
-                                </td>
-                                <td>{{ work_order.created_at|date:"d.m.Y H:i" }}</td>
-                                <td>
-                                    <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                        {{ work_order.original_request_text }}
-                                    </div>
-                                </td>
-                                <td>{{ work_order.service.scenario_name }}</td>
-                                <td>{{ work_order.department.department_name }}</td>
-                                <td>
-                                    {% if work_order.responsible_user %}
-                                    {{ work_order.responsible_user.get_full_name|default:work_order.responsible_user.username }}
-                                    {% else %}
-                                    <span class="text-muted">-</span>
+                                    <th>
+                                        <div class="header-filter">
+                                            <select name="service" class="form-select form-select-sm" onchange="this.form.submit()">
+                                                <option value="">Услуга</option>
+                                                {% for service in services %}
+                                                <option value="{{ service.service_id }}" {% if service_filter == service.service_id|stringformat:"s" %}selected{% endif %}>
+                                                    {{ service.service__scenario_name }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </th>
+                                    <th>
+                                        <div class="header-filter">
+                                            <select name="department" class="form-select form-select-sm" onchange="this.form.submit()">
+                                                <option value="">Подразделение</option>
+                                                {% for dept in departments %}
+                                                <option value="{{ dept.id }}" {% if department_filter == dept.id|stringformat:"s" %}selected{% endif %}>
+                                                    {{ dept.department_name }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </th>
+                                    <th>
+                                        <div class="header-filter">
+                                            <select name="executor" class="form-select form-select-sm" onchange="this.form.submit()">
+                                                <option value="">Исполнитель</option>
+                                                <option value="unassigned" {% if executor_filter == 'unassigned' %}selected{% endif %}>Не назначен</option>
+                                                {% for responsible_user in responsible_users %}
+                                                <option value="{{ responsible_user.id }}" {% if executor_filter == responsible_user.id|stringformat:"s" %}selected{% endif %}>
+                                                    {{ responsible_user.label }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </th>
+                                    <th>
+                                        <div class="header-filter">
+                                               <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                                                   <option value="">Статус</option>
+                                                   <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Активные</option>
+                                                   <option value="completed" {% if status_filter == 'completed' %}selected{% endif %}>Выполненные</option>
+                                                   <option value="new_registered" {% if status_filter == 'new_registered' %}selected{% endif %}>Новая</option>
+                                                   <option value="accepted_by_executor" {% if status_filter == 'accepted_by_executor' %}selected{% endif %}>Принята исполнителем</option>
+                                                   <option value="in_progress" {% if status_filter == 'in_progress' %}selected{% endif %}>В работе</option>
+                                                   <option value="on_hold" {% if status_filter == 'on_hold' %}selected{% endif %}>Приостановлена</option>
+                                                   <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Закрыта</option>
+                                            </select>
+                                        </div>
+                                    </th>
+                                    {% if not hide_description_priority_columns %}
+                                    <th class="priority-column-hidden">
+                                        <div class="header-filter">
+                                            <select name="priority" class="form-select form-select-sm" onchange="this.form.submit()">
+                                                <option value="">Приоритет</option>
+                                                <option value="high" {% if priority_filter == 'high' %}selected{% endif %}>Высокий</option>
+                                                <option value="normal" {% if priority_filter == 'normal' %}selected{% endif %}>Обычный</option>
+                                                <option value="low" {% if priority_filter == 'low' %}selected{% endif %}>Низкий</option>
+                                            </select>
+                                        </div>
+                                    </th>
                                     {% endif %}
-                                </td>
-                                <td>
-                                    <span class="badge
-                                        {% if work_order.current_internal_status.short_code_en == 'new_registered' %}bg-secondary
-                                        {% elif work_order.current_internal_status.short_code_en == 'in_progress' %}bg-primary
-                                        {% elif work_order.current_internal_status.short_code_en == 'completed' %}bg-success
-                                        {% elif work_order.current_internal_status.short_code_en == 'closed' %}bg-dark
-                                        {% else %}bg-warning{% endif %}">
-                                        {{ work_order.current_internal_status.short_name_ru }}
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="badge
-                                        {% if work_order.priority_code == 'high' %}bg-danger
-                                        {% elif work_order.priority_code == 'normal' %}bg-warning
-                                        {% else %}bg-secondary{% endif %}">
-                                        {{ work_order.get_priority_code_display }}
-                                    </span>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="8" class="text-center text-muted">Заявки не найдены</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for work_order in work_orders %}
+                                <tr onclick="window.location='{% url 'work_orders:work_order_detail' work_order.id %}'" style="cursor: pointer;">
+                                    <td>
+                                        <strong>{{ work_order.work_order_no }}</strong>
+                                        {% if work_order.is_emergency %}
+                                        <span class="badge bg-danger emergency-badge">АВАРИЯ</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ work_order.created_at|date:"d.m.Y H:i" }}</td>
+                                    {% if not hide_description_priority_columns %}
+                                    <td>
+                                        <div class="cell-description">
+                                            {{ work_order.original_request_text }}
+                                        </div>
+                                    </td>
+                                    {% endif %}
+                                    <td>{{ work_order.service.scenario_name }}</td>
+                                    <td>{{ work_order.department.department_name }}</td>
+                                    <td>
+                                        {% if work_order.responsible_user %}
+                                        {{ work_order.responsible_user.get_full_name|default:work_order.responsible_user.username }}
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge
+                                            {% if work_order.current_internal_status.short_code_en == 'new_registered' %}bg-secondary
+                                            {% elif work_order.current_internal_status.short_code_en == 'in_progress' %}bg-primary
+                                            {% elif work_order.current_internal_status.short_code_en == 'completed' %}bg-success
+                                            {% elif work_order.current_internal_status.short_code_en == 'closed' %}bg-dark
+                                            {% else %}bg-warning{% endif %}">
+                                            {{ work_order.current_internal_status.short_name_ru }}
+                                        </span>
+                                    </td>
+                                    {% if not hide_description_priority_columns %}
+                                    <td class="priority-column-hidden">
+                                        <span class="badge
+                                            {% if work_order.priority_code == 'high' %}bg-danger
+                                            {% elif work_order.priority_code == 'normal' %}bg-warning
+                                            {% else %}bg-secondary{% endif %}">
+                                            {{ work_order.get_priority_code_display }}
+                                        </span>
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="{% if hide_description_priority_columns %}6{% else %}7{% endif %}" class="text-center text-muted">Заявки не найдены</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
-            
+            </form>
+
             {% endif %}
         </div>
     </section>
-    
-    <!-- Bootstrap JS -->
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </body>
 </html>

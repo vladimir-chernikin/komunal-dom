@@ -7,6 +7,33 @@
 <h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></h1>
 {% endblock %}
 
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    :root {
+        --komunal-admin-sidebar-width: 21.6rem;
+    }
+
+    @media (min-width: 1024px) {
+        .w-72,
+        .lg\:w-72,
+        .unfold-sidebar,
+        #jazzy-sidebar,
+        .main-sidebar {
+            width: var(--komunal-admin-sidebar-width) !important;
+        }
+
+        .lg\:ml-72 {
+            margin-left: var(--komunal-admin-sidebar-width) !important;
+        }
+
+        .lg\:left-72 {
+            left: var(--komunal-admin-sidebar-width) !important;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block nav-global %}{% endblock %}
 
 {% block footer %}

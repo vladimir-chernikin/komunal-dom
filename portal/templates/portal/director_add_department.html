@@ -1,16 +1,74 @@
 {% extends 'portal/base.html' %}
 
-{% block title %}Добавить подразделение - {{ company.name }}{% endblock %}
+{% block title %}{% if is_edit %}Редактировать подразделение{% else %}Добавить подразделение{% endif %} - {{ company.name }}{% endblock %}
+
+
+{% block extra_css %}
+<style>
+.aerial-hero {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+}
+
+.city-3d-background {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.aerial-content {
+    position: relative;
+    z-index: 2;
+    padding: 2.5rem 0 3rem;
+}
+
+.aerial-content .card,
+.aerial-content .alert,
+.aerial-content .breadcrumb,
+.aerial-content .modal-content {
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.aerial-content .breadcrumb {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+}
+
+@media (max-width: 768px) {
+    .aerial-content {
+        padding: 2rem 1rem;
+    }
+
+    .aerial-content .row {
+        --bs-gutter-x: 0;
+    }
+
+    .aerial-content .card-body {
+        padding: 1rem;
+    }
+}
+</style>
+{% endblock %}
+
 
 {% block content %}
-<div class="container mt-4">
+<section class="aerial-hero">
+    {% include 'work_orders/_aerial_city_background.html' %}
+    <div class="container aerial-content">
+<div class="mt-4">
     <div class="row">
         <div class="col-12">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
                     <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
                     <li class="breadcrumb-item"><a href="{% url 'portal:director_departments' %}">Подразделения</a></li>
-                    <li class="breadcrumb-item active" aria-current="page">Добавить подразделение</li>
+                    <li class="breadcrumb-item active" aria-current="page">{% if is_edit %}Редактировать подразделение{% else %}Добавить подразделение{% endif %}</li>
                 </ol>
             </nav>
         </div>
@@ -20,7 +78,7 @@
         <div class="col-12">
             <h1 class="h3 mb-4">
                 <i class="fas fa-building"></i>
-                Добавить подразделение - {{ company.name }}
+                {% if is_edit %}Редактировать подразделение{% else %}Добавить подразделение{% endif %} - {{ company.name }}
             </h1>
         </div>
     </div>
@@ -35,9 +93,24 @@
                     <form method="post">
                         {% csrf_token %}
 
+                        {% if companies %}
+                        <div class="mb-3">
+                            <label for="company" class="form-label">
+                                Компания <span class="text-danger">*</span>
+                            </label>
+                            <select name="company" id="company" class="form-select">
+                                <option value="">-- Выберите компанию --</option>
+                                {% for item in companies %}
+                                <option value="{{ item.id }}" {% if selected_company_id == item.id|stringformat:"s" %}selected{% endif %}>{{ item.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Для суперпользователя без привязки компания указывается явно.</div>
+                        </div>
+                        {% endif %}
+
                         <div class="mb-3">
                             <label for="{{ form.department_code.id_for_label }}" class="form-label">
-                                Код подразделения <span class="text-danger">*</span>
+                                Код подразделения
                             </label>
                             {{ form.department_code }}
                             {% if form.department_code.errors %}
@@ -66,16 +139,11 @@
                             <div class="form-text">{{ form.parent_department.help_text }}</div>
                         </div>
 
-                        <div class="mb-3">
-                            <label for="{{ form.description.id_for_label }}" class="form-label">Описание</label>
-                            {{ form.description }}
-                        </div>
-
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                             <a href="{% url 'portal:director_departments' %}" class="btn btn-secondary">Отмена</a>
                             <button type="submit" class="btn btn-success">
                                 <i class="fas fa-save"></i>
-                                Создать подразделение
+                                {% if is_edit %}Сохранить изменения{% else %}Создать подразделение{% endif %}
                             </button>
                         </div>
                     </form>
@@ -94,7 +162,7 @@
                 <div class="card-body">
                     <p class="mb-3">При создании подразделения:</p>
                     <ul class="mb-0">
-                        <li>Код должен быть уникальным (латинские буквы)</li>
+                        <li>Код можно оставить пустым, он будет создан автоматически</li>
                         <li>Название - понятно для пользователей</li>
                         <li>Родительское подразделение - опционально</li>
                         <li>Можно создавать иерархию (например: Сантехника → 1-й участок)</li>
@@ -122,9 +190,24 @@
         </div>
     </div>
 </div>
+    </div>
+</section>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const companySelect = document.getElementById('company');
+    if (companySelect) {
+        companySelect.addEventListener('change', function() {
+            const url = new URL(window.location.href);
+            if (this.value) {
+                url.searchParams.set('company', this.value);
+            } else {
+                url.searchParams.delete('company');
+            }
+            window.location.href = url.toString();
+        });
+    }
+
     // Добавляем классы формы Bootstrap
     const fields = ['department_code', 'department_name', 'parent_department', 'description'];
     fields.forEach(field => {

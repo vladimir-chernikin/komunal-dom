@@ -1,4 +1,0 @@
-FALLBACK ЗАПУШЕН
-Время: 2026-03-10 13:59:49.600190
-unique_candidates: 0
-established_filters: {'incident_type': {'value': 'Инцидент', 'confidence': 1.0}, 'location_type': {'value': 'null', 'confidence': 1.0}, 'category': {'value': 'Водоснабжение', 'confidence': 0.7}}

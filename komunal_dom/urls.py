@@ -11,25 +11,25 @@ Class-based views
 1. Add an import:  from other_app.views import Home
 2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
 Including another URLconf
-1. Import the include() function: from django.urls import include, path
+1. Import the include() function:  from django.urls import include, path
 2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.contrib.auth import views as auth_views
-from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from .views import custom_logout
+from django.urls import path, include
+from .admin import configure_admin_navigation
+from .views import custom_logout, admin_login_redirect
 
-# Admin site configuration (standard Django admin)
-from django.contrib import admin
+# Стандартный admin site
 admin_site = admin.site
+configure_admin_navigation(admin_site)
 
 urlpatterns = [
     path('', include('portal.urls')),  # Главная страница
-    path('admin/', admin_site.urls),  # Unfold admin site (или fallback)
-    path('logout/', auth_views.LogoutView.as_view(next_page='/'), name='logout'),
-    path('files/', include('file_manager.urls')),
+    path('admin/login/', admin_login_redirect),  # Redirect на /login/ (ДО admin.site.urls!)
+    path('admin/', admin_site.urls),  # Стандартный admin site
+    path('logout/', custom_logout, name='logout'),
     path('chat/', include('message_handler.urls')),  # Веб-чат с AI
     path('llm-tester/', include('llm_tester.urls')),  # LLM Tester
     path('db-sql/', include('database_viewer.urls')),  # СУБД SQL интерфейс

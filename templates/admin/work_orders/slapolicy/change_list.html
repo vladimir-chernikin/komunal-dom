@@ -1,0 +1,100 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools-items %}
+    {% if sla_policy_add_url %}
+    <li>
+        <a href="{{ sla_policy_add_url }}" class="addlink">Добавить SLA-политику</a>
+    </li>
+    {% endif %}
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .sla-company-switch {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 14px 0;
+    }
+
+    .sla-company-switch select {
+        min-width: 320px;
+    }
+
+    .sla-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        padding: 7px 14px;
+        border-radius: 3px;
+        border: 1px solid #d6dbe1;
+        background: #f3f4f6;
+        color: #34495e;
+        text-decoration: none;
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .sla-button-primary {
+        background: #2f8f57;
+        border-color: #2f8f57;
+        color: #fff !important;
+    }
+</style>
+{% endblock %}
+
+{% block result_list %}
+{% if company_scope_options %}
+<div
+    class="sla-company-switch"
+    data-company-switch-url="{{ sla_policy_base_url }}"
+    data-fill-url="{{ sla_policy_fill_url }}"
+>
+    <label for="id_company_scope"><strong>Компания:</strong></label>
+    <select name="company_scope" id="id_company_scope">
+        {% for company in company_scope_options %}
+        <option value="{{ company.id }}" {% if scoped_company and company.id == scoped_company.id %}selected{% endif %}>
+            {{ company.name }}
+        </option>
+        {% endfor %}
+    </select>
+    <button type="button" class="sla-button" data-company-scope-apply>Показать</button>
+    <button type="button" class="sla-button sla-button-primary" data-company-fill-open>Заполнить по компании</button>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const companySwitch = document.querySelector('[data-company-switch-url]');
+    if (!companySwitch) {
+        return;
+    }
+
+    const companySelect = companySwitch.querySelector('#id_company_scope');
+
+    function buildCompanyUrl(baseUrl) {
+        const targetUrl = new URL(baseUrl, window.location.origin);
+        if (companySelect && companySelect.value) {
+            targetUrl.searchParams.set('company_scope', companySelect.value);
+        }
+        return targetUrl.toString();
+    }
+
+    companySwitch.querySelector('[data-company-scope-apply]')?.addEventListener('click', function () {
+        window.location.href = buildCompanyUrl(companySwitch.dataset.companySwitchUrl);
+    });
+
+    companySwitch.querySelector('[data-company-fill-open]')?.addEventListener('click', function () {
+        window.location.href = buildCompanyUrl(companySwitch.dataset.fillUrl);
+    });
+});
+</script>
+{% endblock %}

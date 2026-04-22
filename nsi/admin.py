@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.safestring import mark_safe
-from .models import Company, EquipmentType, RefCategory
+from .models import Company, RefCategory
 
 
 @admin.register(Company)
@@ -66,33 +66,6 @@ class CompanyAdmin(admin.ModelAdmin):
     is_active_display.short_description = 'Активна'
     is_active_display.admin_order_field = 'is_active'
     is_active_display.boolean = False
-
-
-@admin.register(EquipmentType)
-class EquipmentTypeAdmin(admin.ModelAdmin):
-    """Админка для справочника видов оборудования"""
-
-    list_display = ['id', 'name', 'is_active', 'created_at']
-    list_filter = ['is_active', 'created_at']
-    search_fields = ['name', 'description_for_llm']
-    list_editable = ['is_active']
-    ordering = ['name']
-
-    fieldsets = (
-        ('Основное', {
-            'fields': ('name', 'is_active')
-        }),
-        ('Описание для AI', {
-            'fields': ('description_for_llm',),
-            'description': 'Подробное описание оборудования для использования в AI-системе (LLM)'
-        }),
-        ('Системная информация', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
-
-    readonly_fields = ['created_at', 'updated_at']
 
 
 @admin.register(RefCategory)

@@ -1,0 +1,33 @@
+{
+  "navState": {
+    "headers": [
+      "Разработчик",
+      "Компания",
+      "Услуги",
+      "Заявки",
+      "КЛАДР",
+      "Логи диалогов",
+      "Пользователи и группы",
+      "УК Аспект",
+      "Файлы",
+      "Технические"
+    ],
+    "text": "УК \"Аспект\"\nAdmin_Aspect\n \n\nАдминпанель\n\nРазработчик\n \n\nЛоги сообщений\n\nКомпания\n \n\nКомпании\n\n \n\nПодразделения компаний\n\n \n\nSLA-политики\n\n \n\nМаппинги маршрутов компаний\n\n \n\nЧленства в компаниях\n\n \n\nПодрядные организации\n\nУслуги\n \n\nСправочник услуг\n\n \n\nКатегории услуг ЖКХ\n\nЗаявки\n \n\nЗаявки\n\n \n\nТиповые маршруты\n\n \n\nСтатусы заявок\n\n \n\nВложения заявок\n\nКЛАДР\n \n\nАдресные объекты КЛАДР\n\n \n\nЗдания\n\n \n\nЗоны обслуживания\n\n \n\nТипы объектов КЛАДР\n\n \n\nПериоды обслуживания объектов\n\nЛоги диалогов\n \n\nКоммуникативные скрипты\n\n \n\nЛоги ошибок API\n\nПользователи и группы\n \n\nПользователи\n\nУК Аспект\n \n\nAI и Промпты: Промпты\n\n \n\nAI и Промпты: Результаты тестов LLM\n\n \n\nAI и Промпты: Тестовые пресеты\n\n \n\nAI и Промпты: Шаблоны промптов\n\n \n\nОбъекты обслуживания\n\nФайлы\n \n\nФайлы пользователей\n\nТехнические\n \n\nSLA экземпляры\n\n \n\nСобытия заявок\n\n \n\nГруппы\n\n \n\nЛоги импорта данных (del?)"
+  },
+  "listState": {
+    "url": "http://komunal-dom.ru/admin/work_orders/slapolicy/?company_scope=1",
+    "selectedCompany": "1",
+    "hasFillButton": true,
+    "hasOldFilters": false
+  },
+  "fillState": {
+    "url": "http://komunal-dom.ru/admin/work_orders/slapolicy/fill-by-company/?company_scope=1",
+    "rowCount": 44,
+    "reactionInputs": 44,
+    "localizationInputs": 44,
+    "completionInputs": 44,
+    "companyInputs": 0,
+    "serviceInputs": 0,
+    "hasDefaultsText": true
+  }
+}

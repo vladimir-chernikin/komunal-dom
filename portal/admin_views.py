@@ -24,7 +24,6 @@ from openpyxl import load_workbook
 
 from portal.models import UserProfile, AIPrompt, ServiceObject
 from portal.mixins import get_primary_membership, get_role_dashboard_url
-from file_manager.models import UserFile
 
 # Импорты для КЛАДР статистики
 try:
@@ -79,6 +78,33 @@ def _build_scoped_company_object_queryset(company_scope):
 
     object_ids = periods.values_list('object_id', flat=True).distinct()
     return ServiceObject.objects.filter(service_object_id__in=object_ids, is_active=True).order_by('service_object_id')
+
+
+def get_work_order_statistics(company_scope=None):
+    from work_orders.models import WorkOrder
+
+    terminal_status_codes = ['completed', 'closed', 'cancelled']
+    completed_status_codes = ['completed', 'closed']
+
+    work_orders = WorkOrder.objects.filter(is_test=False)
+    if company_scope:
+        if isinstance(company_scope, (list, tuple, set)):
+            work_orders = work_orders.filter(company_id__in=company_scope)
+        else:
+            work_orders = work_orders.filter(company_id=company_scope)
+
+    return {
+        'total': work_orders.count(),
+        'active': work_orders.exclude(
+            current_internal_status__short_code_en__in=terminal_status_codes
+        ).count(),
+        'completed': work_orders.filter(
+            current_internal_status__short_code_en__in=completed_status_codes
+        ).count(),
+        'cancelled': work_orders.filter(
+            current_internal_status__short_code_en='cancelled'
+        ).count(),
+    }
 
 
 def _get_or_create_kladr_type(level, short_name, type_name):
@@ -466,7 +492,6 @@ def admin_page(request):
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
         'resident_count': user_stats['by_role'].get('Житель', 0),
         'user_stats': user_stats,
-        'file_stats': get_file_statistics(company_scope),
         'prompt_stats': get_prompt_statistics(),
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
     }
@@ -481,11 +506,6 @@ def director_page(request):
 
     ДОСТУП: direktor_uk (ограничение через DirectorMixin в Class-Based Views)
     """
-    # Проверка staff
-    if not request.user.is_staff:
-        messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:welcome')
-
     # Получаем membership
     membership = get_primary_membership(request.user)
     if not membership:
@@ -507,6 +527,7 @@ def director_page(request):
 
     # Статистика по пользователям компании
     user_stats = get_user_statistics(company_scope)
+    work_order_stats = get_work_order_statistics(company_scope)
     scoped_objects = _build_scoped_company_object_queryset(company_scope)
     from work_orders.models import CompanyObjectServicePeriod
     scoped_bindings = CompanyObjectServicePeriod.objects.filter(is_active=True)
@@ -527,11 +548,12 @@ def director_page(request):
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
         'resident_count': user_stats['by_role'].get('Житель', 0),
         'user_stats': user_stats,
-        'file_stats': get_file_statistics(company_scope),
         'prompt_stats': get_prompt_statistics(),
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
-        'total_work_orders': 0,  # TODO: получить из WorkOrder
-        'active_work_orders': 0,  # TODO: получить из WorkOrder
+        'total_work_orders': work_order_stats['total'],
+        'active_work_orders': work_order_stats['active'],
+        'completed_work_orders': work_order_stats['completed'],
+        'cancelled_work_orders': work_order_stats['cancelled'],
         'service_object_count': scoped_objects.count(),
         'service_binding_count': scoped_bindings.count(),
     }
@@ -573,6 +595,7 @@ def chief_engineer_page(request):
 
     # Статистика по пользователям компании
     user_stats = get_user_statistics(company_scope)
+    work_order_stats = get_work_order_statistics(company_scope)
 
     scoped_objects = _build_scoped_company_object_queryset(company_scope)
     from work_orders.models import CompanyObjectServicePeriod
@@ -591,6 +614,10 @@ def chief_engineer_page(request):
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
         'chief_engineer_count': user_stats['by_role'].get('Главный инженер', 0),
         'user_stats': user_stats,
+        'total_work_orders': work_order_stats['total'],
+        'active_work_orders': work_order_stats['active'],
+        'completed_work_orders': work_order_stats['completed'],
+        'cancelled_work_orders': work_order_stats['cancelled'],
         'service_object_count': scoped_objects.count(),
         'service_binding_count': scoped_bindings.count(),
     }
@@ -629,35 +656,6 @@ def get_user_statistics(company_scope=None):
     for role_code, role_name in UCM.ROLE_CHOICES:
         count = memberships.filter(role_code=role_code).count()
         stats['by_role'][role_name] = count
-
-    return stats
-
-
-def get_file_statistics(company_scope=None):
-    """
-    Получить статистику по файлам
-
-    ПАРАМЕТРЫ:
-    - company_scope: int или список company_id для фильтрации
-    """
-    files = UserFile.objects.all()
-
-    # Фильтрация по пользователям компании
-    if company_scope:
-        from work_orders.models import UserCompanyMembership
-        membership_filter = {'is_active': True}
-        if isinstance(company_scope, (list, tuple, set)):
-            membership_filter['company_id__in'] = company_scope
-        else:
-            membership_filter['company_id'] = company_scope
-        user_ids = UserCompanyMembership.objects.filter(**membership_filter).values_list('user_id', flat=True)
-        files = files.filter(user_id__in=user_ids)
-
-    stats = {
-        'total': files.count(),
-        'total_size': sum(f.file_size for f in files) if files.exists() else 0,
-        'unique_users': files.values('user').distinct().count(),
-    }
 
     return stats
 
@@ -941,7 +939,7 @@ def director_departments(request):
             departments = departments.filter(company_id__in=company_scope)
         else:
             departments = departments.filter(company_id=company_scope)
-    departments = departments.select_related('parent_department').order_by('sort_order', 'department_name')
+    departments = departments.select_related('parent_department').order_by('parent_department_id', 'department_name', 'id')
 
     # Статистика по сотрудникам в подразделениях
     from work_orders.models import UserCompanyMembership
@@ -959,7 +957,7 @@ def director_departments(request):
         children_map.setdefault(department.parent_department_id, []).append(department)
 
     for children in children_map.values():
-        children.sort(key=lambda item: (item.sort_order, item.department_name.lower(), item.id))
+        children.sort(key=lambda item: ((item.department_name or '').lower(), item.id))
 
     department_tree_rows = []
 
@@ -1176,7 +1174,7 @@ def director_add_resident(request):
         'selected_company_id': str(company_id) if company_id else '',
         'superuser_without_membership': superuser_without_membership,
         'account_type': account_type,
-        'page_title': 'Создать жителя' if account_type == 'resident' else 'Создать сотрудника',
+        'page_title': 'Добавить жителя' if account_type == 'resident' else 'Добавить сотрудника',
     }
 
     # Breadcrumbs для возврата на правильный дашборд
@@ -1233,7 +1231,12 @@ def director_add_department(request):
         departments = departments.none()
     elif company_id:
         departments = departments.filter(company_id=company_id)
-    departments = departments.select_related('company', 'parent_department').order_by('company__name', 'sort_order', 'department_name')
+    departments = departments.select_related('company', 'parent_department').order_by(
+        'company__name',
+        'parent_department_id',
+        'department_name',
+        'id',
+    )
 
     # Обработка формы
     if request.method == 'POST':
@@ -1348,7 +1351,11 @@ def director_edit_department(request, department_id):
     departments = CompanyDepartment.objects.filter(
         is_active=True,
         company_id=department.company_id
-    ).exclude(id=department_id).select_related('company', 'parent_department').order_by('sort_order', 'department_name')
+    ).exclude(id=department_id).select_related('company', 'parent_department').order_by(
+        'parent_department_id',
+        'department_name',
+        'id',
+    )
 
     # Обработка формы
     if request.method == 'POST':
@@ -1574,4 +1581,3 @@ def director_employees(request):
     }
 
     return render(request, 'portal/director_employees.html', context)
-

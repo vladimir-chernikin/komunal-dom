@@ -121,7 +121,7 @@ class MainAgent:
 
         # ДОБАВЛЕНО: AddressExtractor для извлечения адреса из сообщения
         try:
-            from service_detection_modules import AddressExtractor
+            from address_extractor_service import AddressExtractor
             self.address_extractor = AddressExtractor()
             logger.info("AddressExtractor инициализирован в MainAgent")
         except ImportError:
@@ -5121,4 +5121,3 @@ JSON:"""
             # УДАЛЕНО (2026-01-10): Временный bypass от 2026-01-05 больше не нужен
 
         return filtered_candidates
-

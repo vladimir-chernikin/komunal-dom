@@ -6,8 +6,8 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
-from .models import UserProfile, AIPrompt, SemanticPattern, ServicesCatalog
-from .forms import UserAdminChangeForm
+from .models import UserProfile, AIPrompt, ServicesCatalog, ServiceObject, search_service_objects
+from .forms import UserAdminAddForm, UserAdminChangeForm
 from nsi.models import RefCategory
 from work_orders.models import UserCompanyMembership
 
@@ -53,6 +53,7 @@ class UserCompanyMembershipInline(admin.TabularInline):
         return True
 
     def get_formset(self, request, obj=None, **kwargs):
+        self.verbose_name_plural = 'Членства в компаниях'
         add_url = reverse('admin:work_orders_usercompanymembership_add')
         if obj and obj.pk:
             add_url = f'{add_url}?user={obj.pk}'
@@ -98,30 +99,68 @@ class UserAdmin(BaseUserAdmin):
     """
 
     list_display = ('username', 'email', 'first_name', 'last_name', 'get_company', 'get_role', 'is_active', 'date_joined')
+    add_form = UserAdminAddForm
     form = UserAdminChangeForm
+    add_form_template = 'admin/portal/user/change_form.html'
     change_form_template = 'admin/portal/user/change_form.html'
+    change_list_template = 'admin/auth/user/change_list.html'
     inlines = [UserCompanyMembershipInline]
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('username', 'email', 'first_name', 'last_name')
     ordering = ('-date_joined',)
+    save_on_top = True
 
     fieldsets = (
         ('Основная информация', {
-            'fields': ('username', 'password', 'first_name', 'last_name', 'email', 'primary_company', 'primary_department', 'profile_job_title', 'get_timezone', 'get_dates_info'),
-            'classes': ('wide',),
-        }),
-        ('Профиль пользователя', {
-            'fields': ('get_phone', 'get_address', 'get_specialization', 'get_responsibilities'),
+            'fields': (
+                'username', 'password', 'first_name', 'last_name', 'email',
+                'is_active', 'is_staff',
+                'primary_company', 'primary_department', 'profile_job_title',
+                'get_phone', 'get_address', 'get_timezone',
+                'get_specialization', 'get_responsibilities',
+            ),
             'classes': ('wide',),
         }),
         ('Права доступа', {
-            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
+            'fields': ('is_superuser', 'groups', 'user_permissions'),
             'classes': ('wide',),
             'description': mark_safe('<strong>ВНИМАНИЕ:</strong> is_staff = true означает доступ к системе. is_superuser = true означает доступ к Django Admin (/admin/).'),
         }),
     )
 
-    readonly_fields = ('get_timezone', 'get_dates_info', 'get_phone', 'get_address', 'get_specialization', 'get_responsibilities')
+    add_fieldsets = (
+        ('Основная информация', {
+            'fields': (
+                'username', 'password1', 'password2',
+                'first_name', 'last_name', 'email',
+                'is_active', 'is_staff',
+                'primary_company', 'primary_department', 'profile_job_title',
+            ),
+            'classes': ('wide',),
+        }),
+        ('Права доступа', {
+            'fields': ('is_superuser', 'groups'),
+            'classes': ('wide',),
+        }),
+    )
+
+    readonly_fields = ('get_timezone', 'get_phone', 'get_address', 'get_specialization', 'get_responsibilities')
+
+    def get_inline_instances(self, request, obj=None):
+        if obj is None:
+            return []
+        return super().get_inline_instances(request, obj=obj)
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if request.user.is_superuser:
+            return fieldsets
+        return tuple(fieldset for fieldset in fieldsets if fieldset[0] != 'Права доступа')
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if hasattr(form, 'save_profile'):
+            form.save_profile(obj)
 
     def get_company(self, obj):
         """???????? ???????? ???????? ????????????"""
@@ -389,44 +428,6 @@ class AIPromptAdmin(admin.ModelAdmin):
             'all': ('/static/css/admin_custom.css',)
         }
 
-@admin.register(SemanticPattern)
-class SemanticPatternAdmin(admin.ModelAdmin):
-    """Админка для семантических паттернов"""
-
-    list_display = [
-        'pattern_type',
-        'keyword',
-        'weight',
-        'is_active',
-        'notes_preview'
-    ]
-
-    list_filter = ['pattern_type', 'is_active']
-    search_fields = ['keyword', 'notes']
-    list_editable = ['is_active', 'weight']
-    ordering = ['pattern_type', '-weight', 'keyword']
-
-    fieldsets = (
-        ('Основное', {
-            'fields': ('pattern_type', 'keyword', 'weight')
-        }),
-        ('Статус и метаданные', {
-            'fields': ('is_active', 'notes')
-        }),
-        ('Системная информация', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
-
-    readonly_fields = ['created_at', 'updated_at']
-
-    def notes_preview(self, obj):
-        """Предпросмотр заметок"""
-        return obj.notes[:50] + '...' if obj.notes and len(obj.notes) > 50 else obj.notes or ''
-    notes_preview.short_description = 'Заметки'
-
-
 @admin.register(ServicesCatalog)
 class ServicesCatalogAdmin(admin.ModelAdmin):
     """Админка для услуг из services_catalog
@@ -469,3 +470,40 @@ class ServicesCatalogAdmin(admin.ModelAdmin):
 
     readonly_fields = ['service_id', 'created_at', 'updated_at']
 
+
+@admin.register(ServiceObject)
+class ServiceObjectAdmin(admin.ModelAdmin):
+    """Просмотр объектов обслуживания с поиском по адресу."""
+
+    list_display = ['service_object_id', 'address_display', 'building_id', 'unit_id', 'is_active']
+    list_filter = ['is_active']
+    search_fields = ['=service_object_id']
+    ordering = ['service_object_id']
+    readonly_fields = ['service_object_id', 'address_display', 'building_id', 'unit_id', 'created_at', 'is_active']
+    fieldsets = (
+        ('Объект обслуживания', {
+            'fields': ('service_object_id', 'address_display', 'building_id', 'unit_id', 'is_active', 'created_at')
+        }),
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def address_display(self, obj):
+        return obj.get_address_display()
+    address_display.short_description = 'Адрес'
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        if not search_term:
+            return queryset, use_distinct
+
+        matched_ids = list(search_service_objects(search_term, limit=50).values_list('service_object_id', flat=True))
+        if not matched_ids:
+            return queryset.none(), use_distinct
+
+        queryset = self.model.objects.filter(service_object_id__in=matched_ids).order_by('service_object_id')
+        return queryset, use_distinct

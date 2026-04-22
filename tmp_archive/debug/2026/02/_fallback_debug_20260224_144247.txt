@@ -1,4 +1,0 @@
-FALLBACK ЗАПУШЕН
-Время: 2026-02-24 14:42:47.431976
-unique_candidates: 0
-established_filters: {'incident_type': {'value': 'Запрос', 'confidence': 0.7}, 'location_type': {'value': 'Индивидуальное', 'confidence': 0.8}, 'category': {'value': 'Конструктив', 'confidence': 0.7}}

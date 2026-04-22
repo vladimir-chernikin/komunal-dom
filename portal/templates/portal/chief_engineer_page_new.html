@@ -32,7 +32,7 @@ body {
 /* === HERO С 3D ГОРОДОМ === */
 .aerial-hero {
     position: relative;
-    min-height: 500px;
+    min-height: 100vh;
     overflow: hidden;
     background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
 }
@@ -163,13 +163,38 @@ body {
         min-height: auto;
     }
 
+    .aerial-content {
+        padding: 2.25rem 1rem 2rem;
+    }
+
+    .aerial-content .row {
+        --bs-gutter-x: 0;
+    }
+
     .aerial-hero h1 {
         font-size: 1.75rem;
+        line-height: 1.12;
+        margin-bottom: 0.85rem;
+    }
+
+    .aerial-hero .subtitle {
+        font-size: 1.05rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .aerial-hero .subtitle ul {
+        padding-left: 1.2rem;
+        margin-bottom: 0;
     }
 
     .tiles-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
         margin-top: 1.5rem;
+        gap: 1rem;
+    }
+
+    .aerial-tile {
+        padding: 1.5rem;
     }
 }
 </style>
@@ -179,167 +204,7 @@ body {
 <!-- HERO С 3D ГОРОДОМ -->
 <section class="aerial-hero">
     <!-- ФОН: SVG 3D город -->
-    <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
-        <defs>
-            <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" style="stop-color:#87CEEB;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#E0F4FF;stop-opacity:1" />
-            </linearGradient>
-
-            <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" style="stop-color:#98D8AA;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#7CB887;stop-opacity:1" />
-            </linearGradient>
-
-            <radialGradient id="treeGradient" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#2E7D32;stop-opacity:1" />
-            </radialGradient>
-
-            <filter id="buildingShadowFilter" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
-                <feOffset dx="3" dy="3" result="offsetblur"/>
-                <feComponentTransfer>
-                    <feFuncA type="linear" slope="0.3"/>
-                </feComponentTransfer>
-                <feMerge>
-                    <feMergeNode/>
-                    <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-            </filter>
-        </defs>
-
-        <!-- Небо -->
-        <rect width="1200" height="600" fill="url(#skyGradient)"/>
-
-        <!-- Земля -->
-        <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
-
-        <!-- === ДОМА ГРУППА 1 (левая) === -->
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="50,380 120,360 120,280 50,300" fill="#F5F5F5"/>
-            <polygon points="50,300 50,380 20,390 20,310" fill="#E0E0E0"/>
-            <polygon points="50,300 120,280 90,270 20,290" fill="#E8E8E8"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="140,385 200,365 200,270 140,290" fill="#FAFAFA"/>
-            <polygon points="140,290 140,385 115,395 115,300" fill="#E5E5E5"/>
-            <polygon points="140,290 200,270 175,260 115,278" fill="#EBEBEB"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="60,450 130,430 130,350 60,370" fill="#F8F8F8"/>
-            <polygon points="60,370 60,450 35,460 35,380" fill="#E3E3E3"/>
-            <polygon points="60,370 130,350 100,340 35,358" fill="#E9E9E9"/>
-        </g>
-
-        <circle cx="95" cy="480" r="25" fill="url(#treeGradient)" opacity="0.9"/>
-        <circle cx="160" cy="470" r="22" fill="url(#treeGradient)" opacity="0.85"/>
-        <circle cx="220" cy="490" r="28" fill="url(#treeGradient)" opacity="0.9"/>
-
-        <!-- === ДОМА ГРУППА 2 (центральная левая) === -->
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="280,390 360,365 360,220 280,245" fill="#FDFDFD"/>
-            <polygon points="280,245 280,390 250,400 250,255" fill="#E8E8E8"/>
-            <polygon points="280,245 360,220 330,210 250,232" fill="#F0F0F0"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="390,400 450,380 450,300 390,320" fill="#FBFBFB"/>
-            <polygon points="390,320 390,400 365,410 365,330" fill="#E6E6E6"/>
-            <polygon points="390,320 450,300 425,290 365,308" fill="#ECECEC"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="300,470 370,450 370,370 300,390" fill="#F9F9F9"/>
-            <polygon points="300,390 300,470 275,480 275,400" fill="#E4E4E4"/>
-            <polygon points="300,390 370,370 340,360 275,378" fill="#EAEAEA"/>
-        </g>
-
-        <circle cx="335" cy="510" r="30" fill="url(#treeGradient)" opacity="0.9"/>
-        <circle cx="420" cy="520" r="26" fill="url(#treeGradient)" opacity="0.85"/>
-        <circle cx="480" cy="500" r="24" fill="url(#treeGradient)" opacity="0.88"/>
-
-        <!-- === ДОМА ГРУППА 3 (центральная - Главный инженер) === -->
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="550,400 630,375 630,260 550,285" fill="#FFFFFF"/>
-            <polygon points="550,285 550,400 520,410 520,295" fill="#EBEBEB"/>
-            <polygon points="550,285 630,260 600,250 520,270" fill="#F5F5F5"/>
-        </g>
-
-        <circle cx="575" cy="230" r="12" fill="#8B5CF6" opacity="0.9"/>
-        <circle cx="575" cy="230" r="8" fill="#FFFFFF" opacity="0.95"/>
-        <text x="575" y="215" font-size="12" font-weight="700" fill="#1a1a1a" text-anchor="middle">Глав. инж.</text>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="660,395 720,375 720,290 660,310" fill="#FCFCFC"/>
-            <polygon points="660,310  660,395 635,405 635,320" fill="#E7E7E7"/>
-            <polygon points="660,310 720,290 695,280 635,298" fill="#EDEDED"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="570,480 640,460 640,380 570,400" fill="#FAFAFA"/>
-            <polygon points="570,400 570,480 545,490 545,410" fill="#E5E5E5"/>
-            <polygon points="570,400 640,380 610,370 545,388" fill="#EBEBEB"/>
-        </g>
-
-        <circle cx="605" cy="530" r="32" fill="url(#treeGradient)" opacity="0.9"/>
-        <circle cx="700" cy="540" r="28" fill="url(#treeGradient)" opacity="0.88"/>
-        <circle cx="530" cy="550" r="26" fill="url(#treeGradient)" opacity="0.86"/>
-
-        <!-- === ДОМА ГРУППА 4 (центральная правая) === -->
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="780,385 850,360 850,265 780,290" fill="#FEFEFE"/>
-            <polygon points="780,290 780,385 755,395 755,300" fill="#E9E9E9"/>
-            <polygon points="780,290 850,265 820,255 755,275" fill="#EFEFEF"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="880,390 960,365 960,250 880,275" fill="#FDFDFD"/>
-            <polygon points="880,275 880,390 855,400 855,285" fill="#E8E8E8"/>
-            <polygon points="880,275 960,250 930,240 855,260" fill="#F0F0F0"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="800,470 870,450 870,370 800,390" fill="#F9F9F9"/>
-            <polygon points="800,390 800,470 775,480 775,400" fill="#E4E4E4"/>
-            <polygon points="800,390 870,370 840,360 775,378" fill="#EAEAEA"/>
-        </g>
-
-        <circle cx="835" cy="520" r="29" fill="url(#treeGradient)" opacity="0.9"/>
-        <circle cx="920" cy="530" r="27" fill="url(#treeGradient)" opacity="0.87"/>
-        <circle cx="990" cy="510" r="25" fill="url(#treeGradient)" opacity="0.89"/>
-
-        <!-- === ДОМА ГРУППА 5 (правая) === -->
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="1020,380 1090,355 1090,270 1020,295" fill="#FBFBFB"/>
-            <polygon points="1020,295 1020,380 995,390 995,305" fill="#E6E6E6"/>
-            <polygon points="1020,295 1090,270 1060,260 995,278" fill="#ECECEC"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="1110,385 1170,365 1170,280 1110,300" fill="#FAFAFA"/>
-            <polygon points="1110,300 1110,385 1085,395 1085,310" fill="#E5E5E5"/>
-            <polygon points="1110,300 1170,280 1145,270 1085,288" fill="#EBEBEB"/>
-        </g>
-
-        <g filter="url(#buildingShadowFilter)">
-            <polygon points="1030,460 1100,440 1100,365 1030,385" fill="#F8F8F8"/>
-            <polygon points="1030,385 1030,460 1005,470 1005,395" fill="#E3E3E3"/>
-            <polygon points="1030,385 1100,365 1070,355 1005,373" fill="#E9E9E9"/>
-        </g>
-
-        <circle cx="1065" cy="510" r="26" fill="url(#treeGradient)" opacity="0.9"/>
-        <circle cx="1135" cy="520" r="24" fill="url(#treeGradient)" opacity="0.88"/>
-        <circle cx="1000" cy="540" r="22" fill="url(#treeGradient)" opacity="0.86"/>
-
-        <!-- === ДОПОЛНИТЕЛЬНЫЕ ДЕРЕВЬЯ (задний план) === -->
-        <circle cx="180" cy="570" r="20" fill="url(#treeGradient)" opacity="0.7"/>
-        <circle cx="450" cy="580" r="24" fill="url(#treeGradient)" opacity="0.7"/>
-        <circle cx="750" cy="575" r="22" fill="url(#treeGradient)" opacity="0.7"/>
-        <circle cx="1150" cy="580" r="21" fill="url(#treeGradient)" opacity="0.7"/>
-    </svg>
+    {% include 'work_orders/_aerial_city_background.html' %}
 
     <!-- КОНТЕНТ -->
     <div class="container aerial-content">

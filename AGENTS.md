@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 ## Komunal-Dom Working Rules
 
@@ -17,3 +17,8 @@
 - Python changes: restart `gunicorn-komunal-dom`.
 - UI changes: verify with Playwright against real pages when credentials exist.
 - Save artifacts under `tmp_archive/ui_runs/`.
+
+### Communication
+- Explain requests, plans, errors, and results in simple Russian without unnecessary jargon.
+- When a technical term is unavoidable, immediately explain it in plain words.
+- Prefer short, concrete wording over abstract architecture language.

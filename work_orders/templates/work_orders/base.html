@@ -17,22 +17,39 @@
         /* ТЕМНАЯ И СВЕТЛАЯ ТЕМА */
         :root {
             --bg-primary: #f8f9fa;
+            --bg-secondary: #eef2f5;
             --bg-card: #ffffff;
+            --surface-primary: #ffffff;
+            --surface-secondary: #f7f9fb;
+            --surface-muted: #eef2f5;
             --text-primary: #212529;
             --text-secondary: #6c757d;
+            --text-soft: #495057;
             --border-color: #dee2e6;
-            --navbar-bg: #0d6efd;
-            --navbar-text: #ffffff;
+            --navbar-bg: rgba(255, 255, 255, 0.96);
+            --navbar-text: #212529;
+            --accent-color: #059669;
+            --accent-soft: rgba(16, 185, 129, 0.10);
+            --accent-border: rgba(16, 185, 129, 0.24);
         }
 
-        [data-theme="dark"] {
-            --bg-primary: #1a1a1a;
-            --bg-card: #242424;
-            --text-primary: #e4e4e4;
-            --text-secondary: #a0a0a0;
-            --border-color: #404040;
-            --navbar-bg: #242424;
-            --navbar-text: #e4e4e4;
+        html[data-theme="dark"] {
+            color-scheme: dark;
+            --bg-primary: #0f1419;
+            --bg-secondary: #141b22;
+            --bg-card: #1a222b;
+            --surface-primary: #1a222b;
+            --surface-secondary: #151c24;
+            --surface-muted: #202a34;
+            --text-primary: #eef4f8;
+            --text-secondary: #aab7c4;
+            --text-soft: #c5d0da;
+            --border-color: rgba(148, 163, 184, 0.24);
+            --navbar-bg: #111820;
+            --navbar-text: #eef4f8;
+            --accent-color: #34d399;
+            --accent-soft: rgba(52, 211, 153, 0.12);
+            --accent-border: rgba(52, 211, 153, 0.32);
         }
 
         body {
@@ -49,6 +66,8 @@
         /* Navbar styles for theme switching */
         .navbar {
             background-color: var(--navbar-bg) !important;
+            border-bottom: 1px solid rgba(213, 220, 227, 0.86);
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
             transition: background-color 0.3s;
         }
 
@@ -57,45 +76,110 @@
         }
 
         .nav-link:hover {
-            color: rgba(255, 255, 255, 0.8) !important;
+            color: var(--accent-color) !important;
+        }
+
+        html:not([data-theme="dark"]) .navbar-toggler {
+            border-color: rgba(33, 37, 41, 0.28);
+        }
+
+        html:not([data-theme="dark"]) .navbar-toggler-icon {
+            filter: invert(1) grayscale(1);
         }
 
         [data-theme="dark"] .nav-link:hover {
-            color: rgba(228, 228, 228, 0.8) !important;
+            color: rgba(238, 244, 248, 0.82) !important;
         }
 
         /* Form controls in dark theme */
         [data-theme="dark"] .form-control,
         [data-theme="dark"] .form-select {
-            background-color: #2d2d2d;
-            border-color: #404040;
-            color: #e4e4e4;
+            background-color: var(--surface-secondary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
         }
 
         [data-theme="dark"] .form-control:focus,
         [data-theme="dark"] .form-select:focus {
-            background-color: #2d2d2d;
-            border-color: #0d6efd;
-            color: #e4e4e4;
+            background-color: var(--surface-secondary);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 211, 153, 0.16);
+            color: var(--text-primary);
         }
 
         [data-theme="dark"] .form-label {
-            color: #e4e4e4;
+            color: var(--text-primary);
+        }
+
+        /* Origami sun lantern: светлая тема для рабочих кабинетов */
+        html:not([data-theme="dark"]) .aerial-hero {
+            position: relative;
+        }
+
+        html:not([data-theme="dark"]) .aerial-hero::before {
+            content: '';
+            position: absolute;
+            top: clamp(54px, 9vw, 108px);
+            right: clamp(28px, 9vw, 128px);
+            z-index: 1;
+            width: clamp(58px, 8vw, 96px);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.92) 0 9%, transparent 10%),
+                linear-gradient(135deg, rgba(255, 255, 255, 0.52) 0 24%, transparent 25%),
+                conic-gradient(from -42deg,
+                    #fff1a4 0deg 44deg,
+                    #ffc84b 44deg 92deg,
+                    #f39a3c 92deg 138deg,
+                    #ffd967 138deg 184deg,
+                    #fff4b8 184deg 226deg,
+                    #ffbd42 226deg 276deg,
+                    #f58b32 276deg 318deg,
+                    #ffe082 318deg 360deg);
+            border: 1px solid rgba(180, 103, 34, 0.24);
+            box-shadow:
+                inset 12px -14px 20px rgba(180, 103, 34, 0.22),
+                inset -10px 9px 16px rgba(255, 255, 255, 0.55),
+                0 0 22px rgba(255, 198, 72, 0.34),
+                0 16px 28px rgba(24, 32, 45, 0.15);
+            opacity: 0.95;
+        }
+
+        html:not([data-theme="dark"]) .aerial-hero::after {
+            content: '';
+            position: absolute;
+            top: clamp(18px, 4vw, 52px);
+            right: clamp(4px, 4vw, 72px);
+            z-index: 0;
+            width: clamp(140px, 16vw, 220px);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            pointer-events: none;
+            background:
+                radial-gradient(circle,
+                    rgba(255, 238, 170, 0.34) 0 24%,
+                    rgba(255, 201, 86, 0.18) 25% 46%,
+                    rgba(16, 185, 129, 0.07) 47% 62%,
+                    rgba(255, 255, 255, 0) 68%);
+            filter: blur(2px);
+            opacity: 0.86;
         }
 
         /* Dropdown menu in dark theme */
         [data-theme="dark"] .dropdown-menu {
-            background-color: #2d2d2d;
-            border-color: #404040;
+            background-color: var(--surface-primary);
+            border-color: var(--border-color);
         }
 
         [data-theme="dark"] .dropdown-item {
-            color: #e4e4e4;
+            color: var(--text-primary);
         }
 
         [data-theme="dark"] .dropdown-item:hover {
-            background-color: #404040;
-            color: #e4e4e4;
+            background-color: var(--surface-muted);
+            color: var(--text-primary);
         }
 
         .card {
@@ -109,10 +193,32 @@
         .card-header {
             background-color: var(--bg-card);
             border-color: var(--border-color);
+            color: var(--text-primary);
             transition: background-color 0.3s, border-color 0.3s;
         }
 
         .table {
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .table {
+            --bs-table-bg: transparent;
+            --bs-table-color: var(--text-primary);
+            --bs-table-border-color: var(--border-color);
+            --bs-table-hover-bg: rgba(52, 211, 153, 0.08);
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] .table thead th {
+            background: var(--surface-secondary);
+            color: var(--text-soft);
+            border-color: var(--border-color);
+        }
+
+        [data-theme="dark"] .list-group-item,
+        [data-theme="dark"] .modal-content {
+            background: var(--surface-primary);
+            border-color: var(--border-color);
             color: var(--text-primary);
         }
 
@@ -153,11 +259,80 @@
         .stats-card .number {
             font-size: 2.5rem;
             font-weight: 700;
-            color: #0d6efd;
+            color: var(--accent-color);
         }
         .stats-card .label {
             color: var(--text-secondary);
             font-size: 0.9rem;
+        }
+
+        /* Единый профиль пользователя в шапке */
+        .navbar-user-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            padding: 0.25rem 0 0.25rem 0.5rem;
+        }
+
+        .navbar-user-name {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            color: var(--navbar-text);
+            font-size: 1rem;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        .navbar-user-name i {
+            font-size: 1.05rem;
+        }
+
+        .navbar-profile-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 31px;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            border-color: rgba(5, 150, 105, 0.32);
+            color: var(--navbar-text);
+            white-space: nowrap;
+        }
+
+        .navbar-profile-action:hover,
+        .navbar-profile-action:focus {
+            background-color: rgba(16, 185, 129, 0.10);
+            border-color: rgba(5, 150, 105, 0.46);
+            color: var(--accent-color);
+        }
+
+        [data-theme="dark"] .navbar-profile-action:hover,
+        [data-theme="dark"] .navbar-profile-action:focus {
+            color: #1a1a1a;
+        }
+
+        @media (max-width: 768px) {
+            .navbar .container-fluid,
+            main.container-fluid {
+                padding-left: max(1rem, env(safe-area-inset-left));
+                padding-right: max(1rem, env(safe-area-inset-right));
+            }
+
+            main.container-fluid {
+                padding-top: 1rem !important;
+                padding-bottom: 1.5rem !important;
+            }
+
+            .card-header,
+            .card-body,
+            .stats-card {
+                padding: 1rem;
+            }
+
+            .tab-content {
+                padding: 1rem 0;
+            }
         }
     </style>
 
@@ -212,17 +387,17 @@
                         </button>
                     </li>
 
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> {{ user.get_full_name|default:user.username }}
+                    <li class="nav-item navbar-user-actions">
+                        {% if user.is_superuser %}
+                        <a class="btn btn-outline-light btn-sm navbar-profile-action" href="/admin/">Админка</a>
+                        {% endif %}
+                        <span class="navbar-user-name">
+                            <i class="bi bi-person-circle" aria-hidden="true"></i>
+                            {{ user.get_full_name|default:user.username }}
+                        </span>
+                        <a href="/logout/" class="btn btn-outline-light btn-sm navbar-profile-action" aria-label="Выйти из системы">
+                            Выйти
                         </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            {% if user.is_superuser %}
-                            <li><a class="dropdown-item" href="/admin/">Админка</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            {% endif %}
-                            <li><a class="dropdown-item" href="/logout/">Выход</a></li>
-                        </ul>
                     </li>
                 </ul>
             </div>
