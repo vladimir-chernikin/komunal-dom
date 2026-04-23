@@ -77,28 +77,24 @@ class Command(BaseCommand):
                     created_departments += int(department_created)
                     updated_departments += int(department_updated)
 
-                route = self._get_legacy_route(seed.legacy_route_code)
                 mapping = CompanyRouteMapping.objects.filter(company=company, service=service).first()
                 if mapping:
                     changed = (
                         mapping.target_department_id != department.id
-                        or mapping.route_id != route.id
                         or not mapping.is_active
                         or mapping.is_test
                     )
                     if changed and not dry_run:
                         mapping.target_department = department
-                        mapping.route = route
                         mapping.is_active = True
                         mapping.is_test = False
-                        mapping.save(update_fields=["target_department", "route", "is_active", "is_test", "updated_at"])
+                        mapping.save(update_fields=["target_department", "is_active", "is_test", "updated_at"])
                     updated_routes += int(changed)
                 else:
                     if not dry_run:
                         CompanyRouteMapping.objects.create(
                             company=company,
                             service=service,
-                            route=route,
                             target_department=department,
                             is_active=True,
                             is_test=False,
@@ -151,11 +147,3 @@ class Command(BaseCommand):
             is_active=True,
             is_test=False,
         ), True, False
-
-    def _get_legacy_route(self, route_code):
-        from work_orders.models import RouteRef
-
-        route = RouteRef.objects.filter(route_code=route_code, is_active=True).first()
-        if not route:
-            raise CommandError(f"Типовой маршрут {route_code} не найден.")
-        return route

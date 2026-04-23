@@ -8,14 +8,12 @@ from django.utils import timezone
 from portal.models import ServiceObject, ServicesCatalog
 from work_orders.chat_intake import ChatIntakePayloadBuilder, ServiceObjectCompanyResolver
 from work_orders.models import (
-    CompanyDepartment,
     CompanyRouteMapping,
     WorkOrder,
     WorkOrderEventLog,
     WorkOrderStatusHistory,
     WorkOrderStatusRef,
 )
-from work_orders.service_route_seed import get_legacy_route_for_service
 from work_orders.workflow import build_sla_rows
 
 logger = logging.getLogger(__name__)
@@ -102,8 +100,8 @@ class ChatIntakeService:
         payload["meta"]["company_resolution"] = resolution_source
         payload["meta"]["company_service_period_id"] = service_period_id
 
-        route, department = self._resolve_route_and_department(payload["classification"]["service_id"], company.id)
-        if route is None or department is None:
+        department = self._resolve_department(payload["classification"]["service_id"], company.id)
+        if department is None:
             payload["decision"]["can_create_work_order"] = False
             payload["decision"]["reason_if_blocked"] = "Для компании не настроен маршрут обработки услуги"
             return {
@@ -118,8 +116,6 @@ class ChatIntakeService:
             "company_service_period_id": service_period_id,
             "department_id": department.id,
             "department_name": department.department_name,
-            "route_id": route.id,
-            "route_code": route.route_code,
         }
 
         existing_work_order_id = intake_context.get("work_order_id")
@@ -156,7 +152,6 @@ class ChatIntakeService:
                 company=company,
                 object=service_object,
                 service=service,
-                route=route,
                 department=department,
                 message_log_ref=str(message_log_id) if message_log_id else None,
                 creation_source="bot_json",
@@ -217,65 +212,11 @@ class ChatIntakeService:
             on_date=timezone.localdate(),
         )
 
-    def _resolve_route_and_department(self, service_id: int, company_id: int):
-        service = ServicesCatalog.objects.get(pk=service_id)
+    def _resolve_department(self, service_id: int, company_id: int):
         service_mapping = (
-            CompanyRouteMapping.objects.select_related("route", "target_department")
+            CompanyRouteMapping.objects.select_related("target_department")
             .filter(company_id=company_id, service_id=service_id, is_active=True)
             .order_by("id")
             .first()
         )
-        if service_mapping:
-            return service_mapping.route or get_legacy_route_for_service(service), service_mapping.target_department
-
-        mappings = list(
-            CompanyRouteMapping.objects.select_related("route", "target_department")
-            .filter(company_id=company_id, service__isnull=True, is_active=True)
-        )
-        if not mappings:
-            return None, None
-
-        preferred_codes = self._get_preferred_route_codes(service)
-        mapping_by_code = {mapping.route.route_code: mapping for mapping in mappings}
-        for route_code in preferred_codes:
-            mapping = mapping_by_code.get(route_code)
-            if mapping:
-                return mapping.route, mapping.target_department
-
-        root_department = (
-            CompanyDepartment.objects.filter(company_id=company_id, is_active=True)
-            .order_by("parent_department_id", "department_name", "id")
-            .first()
-        )
-        return mappings[0].route, mappings[0].target_department or root_department
-
-    def _get_preferred_route_codes(self, service: ServicesCatalog):
-        search_blob = " ".join(
-            filter(
-                None,
-                [
-                    getattr(service, "scenario_name", ""),
-                    getattr(service, "category_name", ""),
-                    getattr(service, "route_name", ""),
-                    getattr(service, "type_name", ""),
-                    getattr(service, "localization_name", ""),
-                ],
-            )
-        ).lower()
-
-        preferred_codes = []
-        keyword_map = [
-            ("emergency", ("авар", "протеч", "затоп", "прорыв")),
-            ("gas", ("газ",)),
-            ("elevator", ("лифт",)),
-            ("electricity", ("элект",)),
-            ("plumbing", ("сант", "вод", "канал", "отоп", "вент", "санитар", "двор", "уборк", "пожар")),
-        ]
-        for route_code, keywords in keyword_map:
-            if any(keyword in search_blob for keyword in keywords):
-                preferred_codes.append(route_code)
-
-        if "plumbing" not in preferred_codes:
-            preferred_codes.append("plumbing")
-
-        return preferred_codes
+        return service_mapping.target_department if service_mapping else None

@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from .models import (
     WorkOrder, WorkOrderStatusRef, UserCompanyMembership,
     CompanyDepartment, WorkOrderEventLog,
-    WorkOrderStatusHistory, CompanyRouteMapping, RouteRef
+    WorkOrderStatusHistory, CompanyRouteMapping
 )
 from portal.models import ServicesCatalog, ServiceObject, search_service_objects
 from portal.mixins import get_role_dashboard_url, get_user_scope
@@ -31,7 +31,6 @@ from .workflow import (
     get_result_photo_attachments,
     get_user_role_codes,
 )
-from .service_route_seed import get_legacy_route_for_service
 
 
 TERMINAL_STATUS_CODES = ['completed', 'closed', 'cancelled']
@@ -323,70 +322,14 @@ class WorkOrderCreateView(LoginRequiredMixin, CreateView):
         }
         return source_by_role.get(membership.role_code, 'manual_employee')
 
-    def _get_preferred_route_codes(self, service):
-        search_blob = ' '.join(
-            filter(
-                None,
-                [
-                    getattr(service, 'scenario_name', ''),
-                    getattr(service, 'category_name', ''),
-                    getattr(service, 'route_name', ''),
-                    getattr(service, 'type_name', ''),
-                    getattr(service, 'localization_name', ''),
-                ],
-            )
-        ).lower()
-
-        preferred_codes = []
-        keyword_map = [
-            ('emergency', ('авар', 'протеч', 'затоп', 'прорыв')),
-            ('gas', ('газ',)),
-            ('elevator', ('лифт',)),
-            ('electricity', ('элект',)),
-            ('plumbing', ('сант', 'вод', 'канал', 'отоп', 'вент', 'санитар', 'двор', 'уборк', 'пожар')),
-        ]
-        for route_code, keywords in keyword_map:
-            if any(keyword in search_blob for keyword in keywords):
-                preferred_codes.append(route_code)
-
-        if 'plumbing' not in preferred_codes:
-            preferred_codes.append('plumbing')
-
-        return preferred_codes
-
-    def _resolve_route_and_department(self, service, membership):
+    def _resolve_department(self, service, membership):
         service_mapping = (
-            CompanyRouteMapping.objects.select_related('route', 'target_department')
+            CompanyRouteMapping.objects.select_related('target_department')
             .filter(company=membership.company, service=service, is_active=True)
             .order_by('id')
             .first()
         )
-        if service_mapping:
-            return service_mapping.route or get_legacy_route_for_service(service), service_mapping.target_department
-
-        mappings = list(
-            CompanyRouteMapping.objects.select_related('route', 'target_department')
-            .filter(company=membership.company, service__isnull=True, is_active=True)
-        )
-        if not mappings:
-            return None, membership.department
-
-        preferred_codes = self._get_preferred_route_codes(service)
-        mapping_by_code = {mapping.route.route_code: mapping for mapping in mappings}
-        for route_code in preferred_codes:
-            mapping = mapping_by_code.get(route_code)
-            if mapping:
-                return mapping.route, mapping.target_department
-
-        primary_department_mapping = next(
-            (mapping for mapping in mappings if mapping.target_department_id == membership.department_id),
-            None,
-        )
-        if primary_department_mapping:
-            return primary_department_mapping.route, primary_department_mapping.target_department
-
-        fallback_mapping = mappings[0]
-        return fallback_mapping.route, fallback_mapping.target_department
+        return service_mapping.target_department if service_mapping else None
 
     def form_valid(self, form):
         # Получаем членство пользователя
@@ -399,8 +342,8 @@ class WorkOrderCreateView(LoginRequiredMixin, CreateView):
 
         # Сохраняем заявку
         work_order = form.save(commit=False)
-        route, target_department = self._resolve_route_and_department(work_order.service, membership)
-        if route is None:
+        target_department = self._resolve_department(work_order.service, membership)
+        if target_department is None:
             form.add_error(
                 'service',
                 'Для выбранной услуги не настроен маршрут обработки по вашей компании. '
@@ -410,7 +353,6 @@ class WorkOrderCreateView(LoginRequiredMixin, CreateView):
 
         work_order.company = membership.company
         work_order.department = target_department
-        work_order.route = route
         work_order.creation_source = self._get_creation_source(membership)
         work_order.current_internal_status = WorkOrderStatusRef.objects.get(short_code_en='new_registered')
         work_order.created_at = timezone.now()

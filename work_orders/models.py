@@ -13,35 +13,6 @@ from django.core.validators import MinValueValidator
 from django.db.models import UniqueConstraint, Q, CheckConstraint, F, Max
 
 
-# ============================================
-# Справочники
-# ============================================
-
-class RouteRef(models.Model):
-    """Справочник типовых маршрутов (request_mgmt.route_ref)"""
-
-    route_code = models.CharField(max_length=50, unique=True, verbose_name="Код маршрута")
-    route_name = models.CharField(max_length=150, verbose_name="Название маршрута")
-    description = models.TextField(blank=True, null=True, verbose_name="Описание")
-    is_active = models.BooleanField(default=True, verbose_name="Активен")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
-    is_test = models.BooleanField(default=False, verbose_name="Тестовый")
-
-    class Meta:
-        db_table = 'route_ref'
-        verbose_name = "Типовой маршрут"
-        verbose_name_plural = "Типовые маршруты"
-        ordering = ['route_code']
-        indexes = [
-            models.Index(fields=['is_active'], name='idx_route_ref_active'),
-            models.Index(fields=['route_name'], name='idx_route_ref_name'),
-        ]
-
-    def __str__(self):
-        return f"{self.route_name} ({self.route_code})"
-
-
 class CompanyDepartment(models.Model):
     """Иерархический справочник подразделений компании (request_mgmt.company_department)"""
 
@@ -179,15 +150,6 @@ class CompanyRouteMapping(models.Model):
         related_name='company_route_mappings',
         verbose_name="Услуга"
     )
-    route = models.ForeignKey(
-        RouteRef,
-        on_delete=models.PROTECT,
-        db_column='route_id',
-        null=True,
-        blank=True,
-        related_name='company_mappings',
-        verbose_name="Типовой маршрут (устарело)"
-    )
     target_department = models.ForeignKey(
         CompanyDepartment,
         on_delete=models.PROTECT,
@@ -215,12 +177,11 @@ class CompanyRouteMapping(models.Model):
         indexes = [
             models.Index(fields=['company'], name='idx_comp_route_map_comp'),
             models.Index(fields=['service'], name='idx_comp_route_map_service'),
-            models.Index(fields=['route'], name='idx_comp_route_map_route'),
             models.Index(fields=['target_department'], name='idx_comp_route_map_dept'),
         ]
 
     def __str__(self):
-        route_title = self.service.scenario_name if self.service_id else self.route.route_code if self.route_id else "без услуги"
+        route_title = self.service.scenario_name if self.service_id else "без услуги"
         return f"{self.company.name} → {route_title} → {self.target_department.department_name}"
 
 
@@ -498,13 +459,6 @@ class WorkOrder(models.Model):
         related_name='work_orders',
         verbose_name="Услуга"
     )
-    route = models.ForeignKey(
-        RouteRef,
-        on_delete=models.PROTECT,
-        db_column='route_id',
-        related_name='work_orders',
-        verbose_name="Маршрут"
-    )
     department = models.ForeignKey(
         CompanyDepartment,
         on_delete=models.PROTECT,
@@ -592,7 +546,6 @@ class WorkOrder(models.Model):
             models.Index(fields=['parent_work_order'], name='idx_work_order_parent'),
             models.Index(fields=['object'], name='idx_work_order_object'),
             models.Index(fields=['service'], name='idx_work_order_service'),
-            models.Index(fields=['route'], name='idx_work_order_route'),
             models.Index(fields=['is_test'], name='idx_work_order_test'),
         ]
 

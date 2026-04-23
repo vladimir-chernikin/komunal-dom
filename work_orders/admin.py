@@ -17,10 +17,9 @@ from django.contrib.admin import SimpleListFilter
 from portal.models import ServicesCatalog
 
 from .company_service_period_service import ServiceObjectCompanyPeriodService
-from .service_route_seed import get_legacy_route_for_service
 from .workflow import build_sla_rows
 from .models import (
-    RouteRef, CompanyDepartment, ContractorOrganization,
+    CompanyDepartment, ContractorOrganization,
     CompanyRouteMapping, UserCompanyMembership,
     CompanyObjectServicePeriod, WorkOrderStatusRef,
     SLAPolicy, WorkOrder, SLAInstance, WorkOrderEventLog,
@@ -313,14 +312,6 @@ class ClosedFilter(SimpleListFilter):
                 current_internal_status__short_code_en__in=['completed', 'closed']
             )
         return queryset
-
-
-@admin.register(RouteRef)
-class RouteRefAdmin(admin.ModelAdmin):
-    list_display = ['route_code', 'route_name', 'is_active']
-    list_filter = ['is_active']
-    search_fields = ['route_code', 'route_name', 'description']
-    ordering = ['route_code']
 
 
 @admin.register(CompanyDepartment)
@@ -711,7 +702,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
         return ' / '.join(path_parts)
 
     def get_queryset(self, request):
-        queryset = super().get_queryset(request).select_related('company', 'service', 'route', 'target_department')
+        queryset = super().get_queryset(request).select_related('company', 'service', 'target_department')
         scoped_company = self._get_scoped_company(request)
         request._company_route_mapping_scoped_company = scoped_company
         if scoped_company:
@@ -772,7 +763,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
             for mapping in CompanyRouteMapping.objects
             .filter(company=scoped_company)
             .exclude(service__isnull=True)
-            .select_related('service', 'route', 'target_department')
+            .select_related('service', 'target_department')
         }
 
         department_filter = Q(is_active=True)
@@ -817,17 +808,14 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
                     continue
 
                 if mapping:
-                    if mapping.target_department_id != department_id or mapping.is_active != is_active or not mapping.route_id:
+                    if mapping.target_department_id != department_id or mapping.is_active != is_active:
                         mapping.target_department_id = department_id
                         mapping.is_active = is_active
-                        if not mapping.route_id:
-                            mapping.route = get_legacy_route_for_service(service)
                         to_update.append(mapping)
                 else:
                     to_create.append(CompanyRouteMapping(
                         company=scoped_company,
                         service=service,
-                        route=get_legacy_route_for_service(service),
                         target_department_id=department_id,
                         is_active=is_active,
                     ))
@@ -840,7 +828,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
                     if to_create:
                         CompanyRouteMapping.objects.bulk_create(to_create)
                     for mapping in to_update:
-                        mapping.save(update_fields=['target_department', 'route', 'is_active', 'updated_at'])
+                        mapping.save(update_fields=['target_department', 'is_active', 'updated_at'])
 
                 self.message_user(
                     request,
@@ -887,12 +875,6 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
             'admin/work_orders/companyroutemapping/fill_by_company.html',
             context,
         )
-
-    def save_model(self, request, obj, form, change):
-        if obj.service_id and not obj.route_id:
-            obj.route = get_legacy_route_for_service(obj.service)
-        super().save_model(request, obj, form, change)
-
 
 @admin.register(UserCompanyMembership)
 class UserCompanyMembershipAdmin(admin.ModelAdmin):
@@ -1272,7 +1254,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Основная информация', {
             'fields': (
-                'work_order_no', 'created_at', 'company', 'object', 'object_link', 'service', 'route', 'department', 'responsible_user',
+                'work_order_no', 'created_at', 'company', 'object', 'object_link', 'service', 'department', 'responsible_user',
                 'original_request_text', 'additional_info_text', 'resolution_text',
                 'current_internal_status', 'priority_code', 'is_emergency'
             )
@@ -1301,7 +1283,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
     readonly_fields = ['work_order_no', 'created_at', 'object_link']
     raw_id_fields = ['object']
     list_per_page = 50  # Компактность: больше строк на странице
-    autocomplete_fields = ['company', 'service', 'route', 'department',
+    autocomplete_fields = ['company', 'service', 'department',
                           'responsible_user', 'resident_user',
                           'parent_work_order']
     inlines = [WorkOrderStatusHistoryInline]  # История изменения статусов на закладке "Служебное"

@@ -59,7 +59,6 @@ ADMIN_NAV_SERVICES_MODELS = {
 
 ADMIN_NAV_REQUESTS_MODELS = {
     ('work_orders', 'WorkOrder'),
-    ('work_orders', 'RouteRef'),
     ('work_orders', 'WorkOrderStatusRef'),
     ('work_orders', 'WorkOrderStatusHistory'),
 }
@@ -122,7 +121,6 @@ ADMIN_NAV_SERVICES_ORDER = [
 
 ADMIN_NAV_REQUESTS_ORDER = [
     ('work_orders', 'WorkOrder'),
-    ('work_orders', 'RouteRef'),
     ('work_orders', 'WorkOrderStatusRef'),
     ('work_orders', 'WorkOrderStatusHistory'),
 ]
