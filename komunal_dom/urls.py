@@ -17,7 +17,8 @@ Including another URLconf
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.urls import path, include
+from django.shortcuts import redirect
+from django.urls import path, include, re_path
 from .admin import configure_admin_navigation
 from .views import custom_logout, admin_login_redirect
 
@@ -25,9 +26,21 @@ from .views import custom_logout, admin_login_redirect
 admin_site = admin.site
 configure_admin_navigation(admin_site)
 
+
+def redirect_legacy_company_route_mapping(request, rest=''):
+    target = f'/admin/work_orders/companyserviceroute/{rest}'
+    query_string = request.META.get('QUERY_STRING')
+    if query_string:
+        target = f'{target}?{query_string}'
+    return redirect(target, permanent=True)
+
 urlpatterns = [
     path('', include('portal.urls')),  # Главная страница
     path('admin/login/', admin_login_redirect),  # Redirect на /login/ (ДО admin.site.urls!)
+    re_path(
+        r'^admin/work_orders/companyroutemapping/(?P<rest>.*)$',
+        redirect_legacy_company_route_mapping,
+    ),
     path('admin/', admin_site.urls),  # Стандартный admin site
     path('logout/', custom_logout, name='logout'),
     path('chat/', include('message_handler.urls')),  # Веб-чат с AI

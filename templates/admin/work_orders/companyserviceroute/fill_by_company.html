@@ -111,7 +111,7 @@
         <input type="hidden" name="_company_scope" value="{{ scoped_company.id }}">
 
         <div class="mapping-fill-actions">
-            <button type="submit" class="mapping-fill-button mapping-fill-button-primary">Сохранить маппинг</button>
+            <button type="submit" class="mapping-fill-button mapping-fill-button-primary">Сохранить маршруты</button>
             <a href="{{ changelist_url }}" class="mapping-fill-button">Вернуться к списку</a>
         </div>
 
@@ -153,7 +153,7 @@
                             {% if row.mapping %}
                             <span class="mapping-fill-status">Есть запись</span>
                             {% else %}
-                            <span class="mapping-fill-status">Будет создана</span>
+                            <span class="mapping-fill-status">Будет создан</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -167,7 +167,7 @@
         </div>
 
         <div class="mapping-fill-actions" style="margin-top: 16px;">
-            <button type="submit" class="mapping-fill-button mapping-fill-button-primary">Сохранить маппинг</button>
+            <button type="submit" class="mapping-fill-button mapping-fill-button-primary">Сохранить маршруты</button>
             <a href="{{ changelist_url }}" class="mapping-fill-button">Вернуться к списку</a>
         </div>
     </form>

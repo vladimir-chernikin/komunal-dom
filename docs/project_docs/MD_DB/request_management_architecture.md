@@ -74,8 +74,7 @@ request_intake → work_order → исполнение → закрытие
 - `company_id bigint NOT NULL` → `nsi_company`
 - `object_id bigint NOT NULL` → `service_objects`
 - `service_id bigint NOT NULL` → `services_catalog`
-- `route_id bigint NOT NULL` → `request_mgmt.route_ref`
-- `department_id bigint NOT NULL` → `request_mgmt.company_department`
+- `department_id bigint NULL` → `company_department` — заполняется автоматически, если настроен маршрут услуги компании
 - `responsible_user_id bigint NULL` → `auth_user`
 - `request_intake_id bigint NULL UNIQUE` → `request_mgmt.request_intake`
 - `creation_source varchar(30) NOT NULL` — bot_json, manual_*
@@ -108,7 +107,6 @@ request_intake → work_order → исполнение → закрытие
 - `parent_work_order_id`
 - `object_id`
 - `service_id`
-- `route_id`
 - `is_test`
 
 **CHECK ограничения:**
@@ -236,14 +234,9 @@ request_intake → work_order → исполнение → закрытие
 
 #### 2.2.1. route_ref
 
-**Назначение:** Справочник типовых маршрутов
+**Статус:** удалено миграцией `work_orders.0024_remove_route_ref`.
 
-**Поля:**
-- `route_id bigint PK`
-- `route_code varchar(50) NOT NULL UNIQUE` — технический код
-- `route_name varchar(150) NOT NULL`
-- `description text NULL`
-- `is_active boolean NOT NULL DEFAULT true`
+Типовые маршруты больше не являются частью рабочей модели. Маршрутизация строится напрямую по паре `company_id + service_id` через `company_service_route`.
 
 ---
 
@@ -269,19 +262,22 @@ request_intake → work_order → исполнение → закрытие
 
 ---
 
-#### 2.2.3. company_route_mapping
+#### 2.2.3. company_service_route
 
-**Назначение:** Настройка маршрута в конкретной компании
+**Назначение:** Маршрут услуги в конкретной компании. Это прямое правило `Компания + Услуга → Подразделение`.
 
 **Поля:**
-- `company_route_mapping_id bigint PK`
+- `id bigint PK`
 - `company_id bigint NOT NULL` → `nsi_company`
-- `route_id bigint NOT NULL` → `request_mgmt.route_ref`
-- `target_department_id bigint NOT NULL` → `request_mgmt.company_department`
+- `service_id bigint NOT NULL` → `services_catalog`
+- `target_department_id bigint NOT NULL` → `company_department`
 - `is_active boolean NOT NULL DEFAULT true`
+- `is_test boolean NOT NULL DEFAULT false`
 
 **Partial UNIQUE:**
-- `(company_id, route_id) WHERE is_active = true`
+- `(company_id, service_id) WHERE is_active = true`
+
+Старые универсальные записи без услуги (`service_id IS NULL`) удалены. Если маршрута для пары `Компания + Услуга` нет, заявка все равно создается, но `work_order.department_id` остается пустым до ручной маршрутизации.
 
 ---
 
@@ -442,13 +438,13 @@ request_intake → work_order → исполнение → закрытие
    - `object_id` должен обслуживаться `company_id` на дату создания
    - Проверка через `request_mgmt.company_object_service_period`
 
-2. **Определение маршрута и подразделения:**
-   - `route_id` определяется по `service_id`
-   - `department_id` определяется через активный `request_mgmt.company_route_mapping`
-   - Сохранение без корректного `department_id` запрещено
+2. **Определение подразделения:**
+   - услуга определяется ботом или выбирается пользователем как `service_id`
+   - подразделение ищется через активный `company_service_route` по паре `company_id + service_id`
+   - сохранение заявки без `department_id` разрешено, чтобы обращение пользователя не терялось из-за ошибки настройки маршрутов
 
 3. **Обязательные поля:**
-   - `company_id`, `object_id`, `service_id`, `route_id`, `department_id`
+   - `company_id`, `object_id`, `service_id`
    - `creation_source`, `original_request_text`
    - `current_status_id`, `priority_code`
 
@@ -496,8 +492,8 @@ request_intake → work_order → исполнение → закрытие
 **Логика:**
 1. Прочитать `request_intake`
 2. Валидировать обязательные данные
-3. Определить маршрут по услуге
-4. Определить подразделение через активный `company_route_mapping`
+3. Определить подразделение через активный `company_service_route`
+4. Если маршрут услуги не настроен, оставить `department_id = NULL`
 5. Проверить обслуживание объекта компанией
 6. Создать `work_order`
 7. Создать `sla_instance`
@@ -546,7 +542,7 @@ request_intake → work_order → исполнение → закрытие
 
 ### 7.2. Карточка заявки сотрудника
 
-- Полная информация: номер, компания, объект, услуга, маршрут, подразделение, ответственный
+- Полная информация: номер, компания, объект, услуга, подразделение, ответственный
 - Тексты: исходный текст, доп. сведения, решение
 - Статус: единый (используется display_name_for_user для отображения)
 - SLA-блок
@@ -557,7 +553,7 @@ request_intake → work_order → исполнение → закрытие
 
 ### 7.3. Форма ручного создания заявки
 
-- Автоматическое определение маршрута и подразделения
+- Автоматическое определение подразделения по `company_service_route`
 - Валидация обязательных реквизитов
 
 ### 7.4. Управленческий список заявок
@@ -593,7 +589,7 @@ request_intake → work_order → исполнение → закрытие
 **Демонстрационные данные:**
 1. 2 компании с оргструктурой и пользователями
 2. 3 внешние подрядные организации
-3. Маршруты и маппинги
+3. Маршруты услуг компании
 4. Объекты обслуживания и периоды
 5. SLA-политики
 6. 20-30 тестовых заявок полного жизненного цикла

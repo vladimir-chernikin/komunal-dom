@@ -48,7 +48,7 @@ ADMIN_NAV_COMPANY_MODELS = {
     ('nsi', 'Company'),
     ('work_orders', 'CompanyDepartment'),
     ('work_orders', 'SLAPolicy'),
-    ('work_orders', 'CompanyRouteMapping'),
+    ('work_orders', 'CompanyServiceRoute'),
     ('work_orders', 'UserCompanyMembership'),
 }
 
@@ -110,7 +110,7 @@ ADMIN_NAV_COMPANY_ORDER = [
     ('nsi', 'Company'),
     ('work_orders', 'CompanyDepartment'),
     ('work_orders', 'SLAPolicy'),
-    ('work_orders', 'CompanyRouteMapping'),
+    ('work_orders', 'CompanyServiceRoute'),
     ('work_orders', 'UserCompanyMembership'),
 ]
 

@@ -3,7 +3,7 @@ from django.db import transaction
 
 from nsi.models import Company
 from portal.models import ServicesCatalog
-from work_orders.models import CompanyDepartment, CompanyRouteMapping
+from work_orders.models import CompanyDepartment, CompanyServiceRoute
 from work_orders.service_route_seed import ASPECT_CATEGORY_DEPARTMENT_SEED
 
 
@@ -77,7 +77,7 @@ class Command(BaseCommand):
                     created_departments += int(department_created)
                     updated_departments += int(department_updated)
 
-                mapping = CompanyRouteMapping.objects.filter(company=company, service=service).first()
+                mapping = CompanyServiceRoute.objects.filter(company=company, service=service).first()
                 if mapping:
                     changed = (
                         mapping.target_department_id != department.id
@@ -92,7 +92,7 @@ class Command(BaseCommand):
                     updated_routes += int(changed)
                 else:
                     if not dry_run:
-                        CompanyRouteMapping.objects.create(
+                        CompanyServiceRoute.objects.create(
                             company=company,
                             service=service,
                             target_department=department,

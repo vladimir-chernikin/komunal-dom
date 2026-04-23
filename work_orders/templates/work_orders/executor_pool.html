@@ -347,7 +347,13 @@
                                     </div>
                                 </td>
                                 <td>{{ work_order.service.scenario_name }}</td>
-                                <td>{{ work_order.department.department_name }}</td>
+                                <td>
+                                    {% if work_order.department %}
+                                    {{ work_order.department.department_name }}
+                                    {% else %}
+                                    <span class="text-muted">Не назначено</span>
+                                    {% endif %}
+                                </td>
                                 <td class="text-end">
                                     <a href="{% url 'work_orders:work_order_detail' work_order.id %}" class="btn btn-sm btn-primary">Открыть</a>
                                 </td>

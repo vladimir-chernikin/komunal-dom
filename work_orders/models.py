@@ -131,30 +131,28 @@ class ContractorOrganization(models.Model):
         return self.contractor_name
 
 
-class CompanyRouteMapping(models.Model):
-    """Маршрут услуги в конкретной компании (request_mgmt.company_route_mapping)"""
+class CompanyServiceRoute(models.Model):
+    """Маршрут услуги в конкретной компании (company_service_route)"""
 
     company = models.ForeignKey(
         'nsi.Company',
         on_delete=models.PROTECT,
         db_column='company_id',
-        related_name='route_mappings',
+        related_name='service_routes',
         verbose_name="Компания"
     )
     service = models.ForeignKey(
         'portal.ServicesCatalog',
         on_delete=models.PROTECT,
         db_column='service_id',
-        null=True,
-        blank=True,
-        related_name='company_route_mappings',
+        related_name='company_service_routes',
         verbose_name="Услуга"
     )
     target_department = models.ForeignKey(
         CompanyDepartment,
         on_delete=models.PROTECT,
         db_column='target_department_id',
-        related_name='incoming_mappings',
+        related_name='incoming_service_routes',
         verbose_name="Целевое подразделение"
     )
     is_active = models.BooleanField(default=True, verbose_name="Активен")
@@ -163,7 +161,7 @@ class CompanyRouteMapping(models.Model):
     is_test = models.BooleanField(default=False, verbose_name="Тестовый")
 
     class Meta:
-        db_table = 'company_route_mapping'
+        db_table = 'company_service_route'
         verbose_name = "Маршрут услуги компании"
         verbose_name_plural = "Маршруты услуг компании"
         ordering = ['company', 'service', 'id']
@@ -463,6 +461,8 @@ class WorkOrder(models.Model):
         CompanyDepartment,
         on_delete=models.PROTECT,
         db_column='department_id',
+        null=True,
+        blank=True,
         related_name='work_orders',
         verbose_name="Подразделение"
     )

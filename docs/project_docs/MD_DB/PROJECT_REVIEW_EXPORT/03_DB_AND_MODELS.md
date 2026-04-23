@@ -132,7 +132,7 @@
 - `category_id` - Категория (FK → ref_categories)
 - `object_id` - Объект (FK → ref_objects)
 - `payment_id` - Оплата
-- `route_id` - Маршрут
+- `route_id` - Legacy-поле исходного каталога услуг; в маршрутизации заявок не используется
 - `urgency_id` - Срочность
 - `description_for_search` - Описание для поиска
 - `is_active` - Активна

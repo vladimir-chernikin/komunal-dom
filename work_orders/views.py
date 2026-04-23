@@ -2,6 +2,7 @@
 Views для подсистемы управления заявками ЖКХ
 """
 from django.views.generic import TemplateView, DetailView, CreateView, ListView
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
 from django.http import HttpResponse, JsonResponse
@@ -13,7 +14,7 @@ from django.views.decorators.http import require_POST
 from .models import (
     WorkOrder, WorkOrderStatusRef, UserCompanyMembership,
     CompanyDepartment, WorkOrderEventLog,
-    WorkOrderStatusHistory, CompanyRouteMapping
+    WorkOrderStatusHistory, CompanyServiceRoute
 )
 from portal.models import ServicesCatalog, ServiceObject, search_service_objects
 from portal.mixins import get_role_dashboard_url, get_user_scope
@@ -324,7 +325,7 @@ class WorkOrderCreateView(LoginRequiredMixin, CreateView):
 
     def _resolve_department(self, service, membership):
         service_mapping = (
-            CompanyRouteMapping.objects.select_related('target_department')
+            CompanyServiceRoute.objects.select_related('target_department')
             .filter(company=membership.company, service=service, is_active=True)
             .order_by('id')
             .first()
@@ -344,12 +345,10 @@ class WorkOrderCreateView(LoginRequiredMixin, CreateView):
         work_order = form.save(commit=False)
         target_department = self._resolve_department(work_order.service, membership)
         if target_department is None:
-            form.add_error(
-                'service',
-                'Для выбранной услуги не настроен маршрут обработки по вашей компании. '
-                'Настройка выполняется в разделе "Маппинги маршрутов компаний".'
+            messages.warning(
+                self.request,
+                'Заявка создана без подразделения: для выбранной услуги не настроен маршрут по вашей компании.'
             )
-            return self.form_invalid(form)
 
         work_order.company = membership.company
         work_order.department = target_department

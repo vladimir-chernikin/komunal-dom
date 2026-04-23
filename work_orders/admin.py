@@ -20,7 +20,7 @@ from .company_service_period_service import ServiceObjectCompanyPeriodService
 from .workflow import build_sla_rows
 from .models import (
     CompanyDepartment, ContractorOrganization,
-    CompanyRouteMapping, UserCompanyMembership,
+    CompanyServiceRoute, UserCompanyMembership,
     CompanyObjectServicePeriod, WorkOrderStatusRef,
     SLAPolicy, WorkOrder, SLAInstance, WorkOrderEventLog,
     WorkOrderAttachment, WorkOrderStatusHistory
@@ -201,9 +201,9 @@ class CompanyDepartmentAdminForm(forms.ModelForm):
         return department_code
 
 
-class CompanyRouteMappingAdminForm(forms.ModelForm):
+class CompanyServiceRouteAdminForm(forms.ModelForm):
     class Meta:
-        model = CompanyRouteMapping
+        model = CompanyServiceRoute
         fields = '__all__'
 
     def __init__(self, *args, **kwargs):
@@ -597,11 +597,11 @@ class ContractorOrganizationAdmin(admin.ModelAdmin):
     ordering = ['contractor_name']
 
 
-@admin.register(CompanyRouteMapping)
-class CompanyRouteMappingAdmin(admin.ModelAdmin):
-    form = CompanyRouteMappingAdminForm
-    change_list_template = 'admin/work_orders/companyroutemapping/change_list.html'
-    change_form_template = 'admin/work_orders/companyroutemapping/change_form.html'
+@admin.register(CompanyServiceRoute)
+class CompanyServiceRouteAdmin(admin.ModelAdmin):
+    form = CompanyServiceRouteAdminForm
+    change_list_template = 'admin/work_orders/companyserviceroute/change_list.html'
+    change_form_template = 'admin/work_orders/companyserviceroute/change_form.html'
     fields = ['company', 'service', 'target_department', 'is_active', 'is_test']
     list_display = ['company', 'service', 'target_department', 'is_active']
     list_filter = []
@@ -615,7 +615,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
             path(
                 'fill-by-company/',
                 self.admin_site.admin_view(self.fill_by_company_view),
-                name='work_orders_companyroutemapping_fill_by_company',
+                name='work_orders_companyserviceroute_fill_by_company',
             ),
         ]
         return custom_urls + urls
@@ -667,8 +667,8 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
     def _get_scoped_company(self, request, obj=None):
         if obj and getattr(obj, 'company_id', None):
             return obj.company
-        if hasattr(request, '_company_route_mapping_scoped_company'):
-            return request._company_route_mapping_scoped_company
+        if hasattr(request, '_company_service_route_scoped_company'):
+            return request._company_service_route_scoped_company
 
         company_id = request.GET.get('company_scope') or request.POST.get('_company_scope')
         try:
@@ -704,7 +704,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         queryset = super().get_queryset(request).select_related('company', 'service', 'target_department')
         scoped_company = self._get_scoped_company(request)
-        request._company_route_mapping_scoped_company = scoped_company
+        request._company_service_route_scoped_company = scoped_company
         if scoped_company:
             return queryset.filter(company=scoped_company)
         return queryset.none()
@@ -712,7 +712,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         scoped_company = self._get_scoped_company(request)
-        request._company_route_mapping_scoped_company = scoped_company
+        request._company_service_route_scoped_company = scoped_company
 
         original_get = request.GET
         if 'company_scope' in request.GET:
@@ -726,15 +726,15 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
         if not hasattr(response, 'context_data'):
             return response
 
-        base_url = reverse('admin:work_orders_companyroutemapping_changelist')
-        fill_url = reverse('admin:work_orders_companyroutemapping_fill_by_company')
+        base_url = reverse('admin:work_orders_companyserviceroute_changelist')
+        fill_url = reverse('admin:work_orders_companyserviceroute_fill_by_company')
         response.context_data['scoped_company'] = scoped_company
         response.context_data['company_scope_options'] = self._get_company_scope_options(request)
-        response.context_data['company_route_mapping_base_url'] = base_url
-        response.context_data['company_route_mapping_fill_url'] = fill_url
-        response.context_data['company_route_mapping_add_url'] = (
-            f"{reverse('admin:work_orders_companyroutemapping_add')}?{self._build_company_scope_query(request, scoped_company.pk)}"
-            if scoped_company else reverse('admin:work_orders_companyroutemapping_add')
+        response.context_data['company_service_route_base_url'] = base_url
+        response.context_data['company_service_route_fill_url'] = fill_url
+        response.context_data['company_service_route_add_url'] = (
+            f"{reverse('admin:work_orders_companyserviceroute_add')}?{self._build_company_scope_query(request, scoped_company.pk)}"
+            if scoped_company else reverse('admin:work_orders_companyserviceroute_add')
         )
         return response
 
@@ -747,10 +747,10 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
 
     def fill_by_company_view(self, request):
         scoped_company = self._get_scoped_company(request)
-        request._company_route_mapping_scoped_company = scoped_company
+        request._company_service_route_scoped_company = scoped_company
         if not scoped_company:
             self.message_user(request, 'Не удалось определить компанию для заполнения маршрутов.', level=messages.ERROR)
-            return HttpResponseRedirect(reverse('admin:work_orders_companyroutemapping_changelist'))
+            return HttpResponseRedirect(reverse('admin:work_orders_companyserviceroute_changelist'))
 
         services = list(
             ServicesCatalog.objects
@@ -760,7 +760,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
         )
         mappings = {
             mapping.service_id: mapping
-            for mapping in CompanyRouteMapping.objects
+            for mapping in CompanyServiceRoute.objects
             .filter(company=scoped_company)
             .exclude(service__isnull=True)
             .select_related('service', 'target_department')
@@ -813,7 +813,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
                         mapping.is_active = is_active
                         to_update.append(mapping)
                 else:
-                    to_create.append(CompanyRouteMapping(
+                    to_create.append(CompanyServiceRoute(
                         company=scoped_company,
                         service=service,
                         target_department_id=department_id,
@@ -826,7 +826,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
             else:
                 with transaction.atomic():
                     if to_create:
-                        CompanyRouteMapping.objects.bulk_create(to_create)
+                        CompanyServiceRoute.objects.bulk_create(to_create)
                     for mapping in to_update:
                         mapping.save(update_fields=['target_department', 'is_active', 'updated_at'])
 
@@ -836,7 +836,7 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
                     level=messages.SUCCESS,
                 )
                 return HttpResponseRedirect(
-                    f"{reverse('admin:work_orders_companyroutemapping_changelist')}?company_scope={scoped_company.pk}"
+                    f"{reverse('admin:work_orders_companyserviceroute_changelist')}?company_scope={scoped_company.pk}"
                 )
 
         rows = []
@@ -867,12 +867,12 @@ class CompanyRouteMappingAdmin(admin.ModelAdmin):
             'services': services,
             'rows': rows,
             'departments': departments,
-            'changelist_url': f"{reverse('admin:work_orders_companyroutemapping_changelist')}?company_scope={scoped_company.pk}",
+            'changelist_url': f"{reverse('admin:work_orders_companyserviceroute_changelist')}?company_scope={scoped_company.pk}",
             'has_change_permission': self.has_change_permission(request),
         }
         return TemplateResponse(
             request,
-            'admin/work_orders/companyroutemapping/fill_by_company.html',
+            'admin/work_orders/companyserviceroute/fill_by_company.html',
             context,
         )
 

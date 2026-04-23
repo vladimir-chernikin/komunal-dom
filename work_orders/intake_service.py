@@ -8,7 +8,7 @@ from django.utils import timezone
 from portal.models import ServiceObject, ServicesCatalog
 from work_orders.chat_intake import ChatIntakePayloadBuilder, ServiceObjectCompanyResolver
 from work_orders.models import (
-    CompanyRouteMapping,
+    CompanyServiceRoute,
     WorkOrder,
     WorkOrderEventLog,
     WorkOrderStatusHistory,
@@ -102,20 +102,17 @@ class ChatIntakeService:
 
         department = self._resolve_department(payload["classification"]["service_id"], company.id)
         if department is None:
-            payload["decision"]["can_create_work_order"] = False
-            payload["decision"]["reason_if_blocked"] = "Для компании не настроен маршрут обработки услуги"
-            return {
-                "created": False,
-                "message": "Для этого объекта еще не настроен маршрут обработки заявки.",
-                "payload": payload,
-            }
+            payload["meta"]["route_resolution_warning"] = (
+                "Для пары Компания + Услуга не настроено целевое подразделение. "
+                "Заявка создана без подразделения для последующей ручной маршрутизации."
+            )
 
         payload["company"] = {
             "company_id": company.id,
             "company_name": company.name,
             "company_service_period_id": service_period_id,
-            "department_id": department.id,
-            "department_name": department.department_name,
+            "department_id": department.id if department else None,
+            "department_name": department.department_name if department else None,
         }
 
         existing_work_order_id = intake_context.get("work_order_id")
@@ -214,7 +211,7 @@ class ChatIntakeService:
 
     def _resolve_department(self, service_id: int, company_id: int):
         service_mapping = (
-            CompanyRouteMapping.objects.select_related("target_department")
+            CompanyServiceRoute.objects.select_related("target_department")
             .filter(company_id=company_id, service_id=service_id, is_active=True)
             .order_by("id")
             .first()

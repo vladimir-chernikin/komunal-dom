@@ -1,9 +1,9 @@
 {% extends "admin/change_list.html" %}
 
 {% block object-tools-items %}
-    {% if company_route_mapping_add_url %}
+    {% if company_service_route_add_url %}
     <li>
-        <a href="{{ company_route_mapping_add_url }}" class="addlink">Добавить маппинг маршрута компании</a>
+        <a href="{{ company_service_route_add_url }}" class="addlink">Добавить маршрут услуги компании</a>
     </li>
     {% endif %}
 {% endblock %}
@@ -60,8 +60,8 @@
 {% if company_scope_options %}
 <div
     class="route-mapping-company-switch"
-    data-company-switch-url="{{ company_route_mapping_base_url }}"
-    data-fill-url="{{ company_route_mapping_fill_url }}"
+    data-company-switch-url="{{ company_service_route_base_url }}"
+    data-fill-url="{{ company_service_route_fill_url }}"
 >
     <label for="id_company_scope"><strong>Компания:</strong></label>
     <select name="company_scope" id="id_company_scope">

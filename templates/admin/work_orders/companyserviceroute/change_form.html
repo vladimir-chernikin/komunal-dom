@@ -114,8 +114,8 @@
             window.setTimeout(rebuildTargetDepartmentOptions, 0);
         }
 
-        if (departmentSelect.dataset.companyRouteMappingBound !== '1') {
-            departmentSelect.dataset.companyRouteMappingBound = '1';
+        if (departmentSelect.dataset.companyServiceRouteBound !== '1') {
+            departmentSelect.dataset.companyServiceRouteBound = '1';
 
             companySelect.addEventListener('change', handleCompanyChange);
 
@@ -125,8 +125,8 @@
         }
 
         var $ = getAdminJQuery();
-        if ($ && departmentSelect.dataset.companyRouteMappingJqueryBound !== '1') {
-            departmentSelect.dataset.companyRouteMappingJqueryBound = '1';
+        if ($ && departmentSelect.dataset.companyServiceRouteJqueryBound !== '1') {
+            departmentSelect.dataset.companyServiceRouteJqueryBound = '1';
             $(companySelect).on('select2:select select2:clear change', handleCompanyChange);
         }
 

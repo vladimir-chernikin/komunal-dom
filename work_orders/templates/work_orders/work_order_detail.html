@@ -324,7 +324,13 @@
                     </div>
                     <div class="col-md-6">
                         <div class="label">Подразделение</div>
-                        <div>{{ work_order.department.department_name }}</div>
+                        <div>
+                            {% if work_order.department %}
+                            {{ work_order.department.department_name }}
+                            {% else %}
+                            <span class="text-muted">Не назначено</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <div class="label">Услуга</div>
