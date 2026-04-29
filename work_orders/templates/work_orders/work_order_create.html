@@ -90,6 +90,62 @@
             font-weight: 600;
             color: var(--text-primary);
         }
+
+        .form-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .form-heading h2 {
+            margin: 0;
+            min-width: 0;
+        }
+
+        .chat-request-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            flex: 0 0 48px;
+            border: 1px solid rgba(5, 150, 105, 0.24);
+            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(232, 246, 237, 0.98), rgba(202, 236, 214, 0.94));
+            color: #047857;
+            text-decoration: none;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+        }
+
+        .chat-request-icon:hover,
+        .chat-request-icon:focus {
+            color: #065f46;
+            border-color: rgba(5, 150, 105, 0.42);
+            box-shadow: 0 14px 28px rgba(15, 23, 42, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            outline: none;
+            transform: translateY(-1px);
+        }
+
+        .chat-request-icon i {
+            font-size: 1.25rem;
+            line-height: 1;
+        }
+
+        html[data-theme="dark"] .chat-request-icon {
+            background: linear-gradient(135deg, rgba(30, 60, 52, 0.98), rgba(22, 47, 57, 0.96));
+            border-color: rgba(52, 211, 153, 0.34);
+            color: #7ee7bd;
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        html[data-theme="dark"] .chat-request-icon:hover,
+        html[data-theme="dark"] .chat-request-icon:focus {
+            color: #a7f3d0;
+            border-color: rgba(52, 211, 153, 0.52);
+            box-shadow: 0 14px 28px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.10);
+        }
         
         .btn-primary {
             background: linear-gradient(135deg, #3B82F6, #2563EB);
@@ -164,6 +220,10 @@
                 padding: 1.25rem;
                 border-radius: 18px;
             }
+
+            .form-heading h2 {
+                font-size: clamp(1.45rem, 8vw, 1.9rem);
+            }
         }
     </style>
 </head>
@@ -186,7 +246,12 @@
             <div class="row mt-4 create-layout">
                 <div class="col-lg-10 col-xl-9">
                     <div class="form-container">
-                        <h2 class="mb-4"><i class="bi bi-plus-circle"></i> Создать новую заявку</h2>
+                        <div class="form-heading mb-4">
+                            <h2><i class="bi bi-plus-circle"></i> Создать новую заявку</h2>
+                            <a href="/chat/" class="chat-request-icon" aria-label="Создать заявку через чат-бота" title="Создать заявку через чат-бота">
+                                <i class="fa-solid fa-comments"></i>
+                            </a>
+                        </div>
                         
                         <form method="post">
                             {% csrf_token %}
@@ -212,7 +277,7 @@
                                 {% if form.object.errors %}
                                 <div class="text-danger">{{ form.object.errors }}</div>
                                 {% endif %}
-                                <div class="form-text">Поиск работает по улице, дому, помещению и ID объекта.</div>
+                                <div class="form-text">Если адрес подставлен автоматически, нажмите на поле, чтобы выбрать другой объект из списка.</div>
                             </div>
                             
                             <div class="mb-3">
@@ -317,9 +382,21 @@
             resultsBox.style.display = 'block';
         }
 
-        objectSearchInput.addEventListener('input', function() {
-            const query = objectSearchInput.value.trim();
-            hiddenObjectInput.value = '';
+        function getLookupQuery(value) {
+            const rawValue = (value || '').trim();
+            const objectMatch = rawValue.match(/\[объект\s*(\d+)\]/i) || rawValue.match(/объект\s*#?\s*(\d+)/i);
+            if (objectMatch) {
+                return objectMatch[1];
+            }
+            return rawValue;
+        }
+
+        function searchObjects(query, clearSelectedObject) {
+            const visibleQuery = (query || '').trim();
+            query = (!clearSelectedObject && hiddenObjectInput.value) ? hiddenObjectInput.value : getLookupQuery(visibleQuery);
+            if (clearSelectedObject) {
+                hiddenObjectInput.value = '';
+            }
 
             if (debounceTimer) {
                 clearTimeout(debounceTimer);
@@ -348,6 +425,19 @@
                         }
                     });
             }, 220);
+        }
+
+        objectSearchInput.addEventListener('input', function() {
+            const query = objectSearchInput.value.trim();
+            searchObjects(query, true);
+        });
+
+        objectSearchInput.addEventListener('focus', function() {
+            searchObjects(objectSearchInput.value, false);
+        });
+
+        objectSearchInput.addEventListener('click', function() {
+            searchObjects(objectSearchInput.value, false);
         });
 
         resultsBox.addEventListener('click', function(event) {

@@ -19,8 +19,9 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect
 from django.urls import path, include, re_path
+from portal.auth_views import CustomLoginView
 from .admin import configure_admin_navigation
-from .views import custom_logout, admin_login_redirect
+from .views import custom_logout
 
 # Стандартный admin site
 admin_site = admin.site
@@ -36,7 +37,7 @@ def redirect_legacy_company_route_mapping(request, rest=''):
 
 urlpatterns = [
     path('', include('portal.urls')),  # Главная страница
-    path('admin/login/', admin_login_redirect),  # Redirect на /login/ (ДО admin.site.urls!)
+    path('admin/login/', CustomLoginView.as_view(), name='admin_login'),
     re_path(
         r'^admin/work_orders/companyroutemapping/(?P<rest>.*)$',
         redirect_legacy_company_route_mapping,

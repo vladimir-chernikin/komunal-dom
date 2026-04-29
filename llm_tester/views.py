@@ -11,6 +11,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 from asgiref.sync import sync_to_async  # ИСПРАВЛЕНО (2026-03-07): Заменен async_to_sync
 from django.core.paginator import Paginator
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 @login_required
+@never_cache
 def llm_tester_dashboard(request):
     """
     Дашборд для тестирования LLM промптов
@@ -41,6 +43,7 @@ def llm_tester_dashboard(request):
 
 
 @login_required
+@never_cache
 def prompt_list(request):
     """
     Список всех промптов (включая неактивные и старые версии)
@@ -56,6 +59,7 @@ def prompt_list(request):
 
 
 @login_required
+@never_cache
 def test_prompt(request, template_slug):
     """
     Страница тестирования конкретного промпта
@@ -339,6 +343,7 @@ def load_preset(request):
 
 
 @login_required
+@never_cache
 def test_results(request):
     """
     Страница со списком всех результатов тестов

@@ -188,16 +188,32 @@ class AddResidentForm(forms.ModelForm):
         model = User
         fields = ['username', 'email', 'first_name', 'last_name']
 
+    def __init__(self, *args, **kwargs):
+        self.allowed_existing_user_id = kwargs.pop('allowed_existing_user_id', None)
+        self.password_required = kwargs.pop('password_required', True)
+        if self.allowed_existing_user_id and 'instance' not in kwargs:
+            kwargs['instance'] = User.objects.filter(id=self.allowed_existing_user_id).first()
+        super().__init__(*args, **kwargs)
+        if not self.password_required:
+            self.fields['password'].required = False
+            self.fields['password'].label = 'Новый пароль'
+            self.fields['password'].help_text = 'Оставьте пустым, если не хотите менять пароль'
+
     def clean_username(self):
         """Проверка уникальности username"""
         username = self.cleaned_data.get('username')
-        if User.objects.filter(username=username).exists():
+        existing_user = User.objects.filter(username=username).first()
+        if existing_user and existing_user.id != self.allowed_existing_user_id:
             raise forms.ValidationError('Пользователь с таким логином уже существует')
         return username
 
     def clean_password(self):
         """Проверка сложности пароля"""
         password = self.cleaned_data.get('password')
+        if not password:
+            if self.password_required:
+                raise forms.ValidationError('Пароль обязателен')
+            return password
         if len(password) < 8:
             raise forms.ValidationError('Пароль должен быть минимум 8 символов')
         return password
@@ -215,6 +231,7 @@ class UserAdminExtraFieldsMixin:
 
         if profile:
             self.initial.setdefault('profile_job_title', profile.job_title or '')
+            self.initial.setdefault('profile_address', profile.address or '')
 
         if self.is_bound:
             company_value = self.data.get('primary_company')
@@ -310,7 +327,8 @@ class UserAdminExtraFieldsMixin:
         profile.primary_company = self.cleaned_data.get('primary_company')
         profile.primary_department = self.cleaned_data.get('primary_department')
         profile.job_title = self.cleaned_data.get('profile_job_title') or None
-        profile.save(update_fields=['primary_company', 'primary_department', 'job_title'])
+        profile.address = self.cleaned_data.get('profile_address') or None
+        profile.save(update_fields=['primary_company', 'primary_department', 'job_title', 'address'])
         return profile
 
 
@@ -336,6 +354,17 @@ class UserAdminAddForm(UserAdminExtraFieldsMixin, UserCreationForm):
         required=False,
         label='Должность',
         help_text='Должность сотрудника из профиля пользователя.',
+    )
+    profile_address = forms.CharField(
+        required=False,
+        label='Адрес',
+        widget=forms.TextInput(attrs={
+            'class': 'vTextField',
+            'placeholder': 'Начните вводить адрес или ID объекта',
+            'autocomplete': 'off',
+            'data-service-object-address': '1',
+        }),
+        help_text='Выберите объект из справочника, чтобы адрес автоматически подставлялся в заявки жителя.',
     )
     is_active = forms.BooleanField(required=False, initial=True, label='Активен')
     is_staff = forms.BooleanField(required=False, initial=True, label='Доступ в систему')
@@ -399,6 +428,17 @@ class UserAdminChangeForm(UserAdminExtraFieldsMixin, UserChangeForm):
         required=False,
         label='Должность',
         help_text='Должность сотрудника из профиля пользователя.',
+    )
+    profile_address = forms.CharField(
+        required=False,
+        label='Адрес',
+        widget=forms.TextInput(attrs={
+            'class': 'vTextField',
+            'placeholder': 'Начните вводить адрес или ID объекта',
+            'autocomplete': 'off',
+            'data-service-object-address': '1',
+        }),
+        help_text='Выберите объект из справочника, чтобы адрес автоматически подставлялся в заявки жителя.',
     )
 
     class Meta(UserChangeForm.Meta):

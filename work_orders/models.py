@@ -9,6 +9,7 @@ import re
 
 from django.db import models, transaction
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db.models import UniqueConstraint, Q, CheckConstraint, F, Max
 
@@ -214,6 +215,8 @@ class UserCompanyMembership(models.Model):
         CompanyDepartment,
         on_delete=models.PROTECT,
         db_column='department_id',
+        null=True,
+        blank=True,
         related_name='user_memberships',
         verbose_name="Подразделение"
     )
@@ -262,6 +265,21 @@ class UserCompanyMembership(models.Model):
             models.Index(fields=['role_code'], name='idx_user_comp_member_role'),
             models.Index(fields=['user', 'is_active'], name='idx_user_comp_member_active'),
         ]
+
+    def clean(self):
+        errors = {}
+
+        if self.department_id and self.company_id and self.department.company_id != self.company_id:
+            errors['department'] = 'Подразделение должно принадлежать выбранной компании.'
+
+        if self.department_id and not self.company_id:
+            errors['company'] = 'Сначала выберите компанию.'
+
+        if self.role_code != 'resident' and not self.department_id:
+            errors['department'] = 'Подразделение обязательно для сотрудников.'
+
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
         return f"{self.user.username} - {self.company.name} ({self.get_role_code_display()})"

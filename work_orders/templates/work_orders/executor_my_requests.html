@@ -8,11 +8,16 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <style>
         :root {
-            --bg-primary: #f8f8f8;
-            --bg-secondary: #ffffff;
+            --bg-primary: #f3f7f4;
+            --bg-secondary: #eef4f0;
+            --surface-primary: rgba(236, 245, 239, 0.92);
+            --surface-secondary: rgba(225, 237, 231, 0.94);
+            --surface-muted: rgba(214, 230, 223, 0.90);
+            --surface-border: rgba(95, 128, 113, 0.24);
+            --surface-shadow: rgba(15, 23, 42, 0.10);
             --text-primary: #1a1a1a;
-            --text-secondary: #4b5563;
-            --accent-color: #2563eb;
+            --text-secondary: #4b6358;
+            --accent-color: #059669;
             --font-family: 'Inter', sans-serif;
         }
 
@@ -24,7 +29,7 @@
             margin: 0;
             font-family: var(--font-family);
             color: var(--text-primary);
-            background: var(--bg-primary);
+            background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
             overflow-x: hidden;
         }
 
@@ -65,9 +70,10 @@
         .crumb-card,
         .user-card,
         .surface-card {
-            background: rgba(255, 255, 255, 0.94);
+            background: var(--surface-primary);
+            border: 1px solid var(--surface-border);
             border-radius: 18px;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
+            box-shadow: 0 14px 30px var(--surface-shadow);
             backdrop-filter: blur(10px);
         }
 
@@ -132,9 +138,11 @@
             padding: 0.55rem 0.9rem;
             border-radius: 999px;
             text-decoration: none;
-            color: #334155;
-            background: rgba(255, 255, 255, 0.75);
-            border: 1px solid rgba(148, 163, 184, 0.28);
+            color: #315047;
+            background: var(--surface-secondary);
+            border: 1px solid var(--surface-border);
+            font-weight: 700;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
         }
 
         .filter-pill.active {
@@ -143,13 +151,48 @@
             color: #fff;
         }
 
+        .filter-pill:not(.active):hover,
+        .filter-pill:not(.active):focus {
+            background: rgba(236, 245, 239, 0.98);
+            border-color: rgba(16, 185, 129, 0.34);
+            color: #123d2c;
+        }
+
+        html[data-theme="dark"] .filter-pill:not(.active) {
+            background: rgba(226, 232, 240, 0.94);
+            border-color: rgba(203, 213, 225, 0.72);
+            color: #0f2f2a !important;
+            font-weight: 700;
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+        }
+
+        html[data-theme="dark"] .filter-pill:not(.active):hover,
+        html[data-theme="dark"] .filter-pill:not(.active):focus {
+            background: #f1f5f9;
+            border-color: rgba(148, 163, 184, 0.86);
+            color: #06251f !important;
+        }
+
+        html[data-theme="dark"] .filter-pill.active {
+            color: #ffffff !important;
+            font-weight: 700;
+        }
+
         .table-hover tbody tr:hover {
-            background: rgba(37, 99, 235, 0.08);
+            background: rgba(16, 185, 129, 0.10);
             cursor: pointer;
         }
 
         .table td, .table th {
             vertical-align: middle;
+            border-color: var(--surface-border);
+            color: var(--text-primary);
+        }
+
+        .table thead th {
+            background: var(--surface-secondary);
+            color: var(--text-secondary);
+            border-color: var(--surface-border);
         }
 
         .table-responsive {

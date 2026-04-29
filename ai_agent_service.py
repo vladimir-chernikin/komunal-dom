@@ -247,6 +247,9 @@ class AIAgentService:
         max_tokens: int = 1000,
         session_id: Optional[str] = None,
         message_id: Optional[int] = None,
+        caller_service: Optional[str] = None,
+        prompt_slug: Optional[str] = None,
+        prompt_source: str = 'runtime_generated',
         service_name: Optional[str] = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
@@ -286,14 +289,21 @@ class AIAgentService:
         # Определяем провайдер и модель
         provider = provider or self.provider
         model = model or self.default_model
+        caller_service = caller_service or service_name
 
         # Вызываем соответствующий провайдер
         # ИСПРАВЛЕНО (2026-01-06): Передаем session_id и message_id в методы
         # ИСПРАВЛЕНО (2026-02-24): Передаем service_name в методы
         if provider == 'yandexgpt':
-            return await self._call_yandexgpt(prompt, model, temperature, max_tokens, session_id, message_id, service_name)
+            return await self._call_yandexgpt(
+                prompt, model, temperature, max_tokens, session_id, message_id,
+                caller_service, prompt_slug, prompt_source
+            )
         elif provider == 'gigachat':
-            return await self._call_gigachat(prompt, model, temperature, max_tokens, session_id, message_id, service_name)
+            return await self._call_gigachat(
+                prompt, model, temperature, max_tokens, session_id, message_id,
+                caller_service, prompt_slug, prompt_source
+            )
         else:
             raise ValueError(f"Неверный провайдер: {provider}. Доступно: yandexgpt, gigachat")
 
@@ -305,7 +315,9 @@ class AIAgentService:
         max_tokens: int = 1000,
         session_id: Optional[str] = None,
         message_id: Optional[int] = None,
-        service_name: Optional[str] = None
+        caller_service: Optional[str] = None,
+        prompt_slug: Optional[str] = None,
+        prompt_source: str = 'runtime_generated'
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Вызов YandexGPT API
@@ -410,7 +422,7 @@ class AIAgentService:
                             prompt_tokens=input_tokens,
                             completion_tokens=output_tokens,
                             cost_rub=total_cost,
-                            service_name=service_name or 'AIAgentService',
+                            service_name=caller_service or 'AIAgentService',
                             duration_ms=duration_ms,
                             prompt_length=len(prompt),
                             response_length=len(response_text),
@@ -452,7 +464,9 @@ class AIAgentService:
                         usage_info=usage_info,
                         session_id=session_id,
                         message_id=message_id,
-                        service_name=service_name
+                        caller_service=caller_service,
+                        prompt_slug=prompt_slug,
+                        prompt_source=prompt_source
                     )
 
                     return response_text, usage_info
@@ -472,7 +486,9 @@ class AIAgentService:
         max_tokens: int = 1000,
         session_id: Optional[str] = None,
         message_id: Optional[int] = None,
-        service_name: Optional[str] = None
+        caller_service: Optional[str] = None,
+        prompt_slug: Optional[str] = None,
+        prompt_source: str = 'runtime_generated'
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Вызов GigaChat API
@@ -555,7 +571,7 @@ class AIAgentService:
                             prompt_tokens=prompt_tokens,
                             completion_tokens=completion_tokens,
                             cost_rub=total_cost,
-                            service_name=service_name or 'AIAgentService',
+                            service_name=caller_service or 'AIAgentService',
                             duration_ms=duration_ms,
                             prompt_length=len(prompt),
                             response_length=len(response_text),
@@ -596,7 +612,9 @@ class AIAgentService:
                         usage_info=usage_info,
                         session_id=session_id,
                         message_id=message_id,
-                        service_name=service_name
+                        caller_service=caller_service,
+                        prompt_slug=prompt_slug,
+                        prompt_source=prompt_source
                     )
 
                     return response_text, usage_info
@@ -685,7 +703,9 @@ class AIAgentService:
         usage_info: Dict[str, Any],
         session_id: Optional[str] = None,
         message_id: Optional[int] = None,
-        service_name: Optional[str] = None
+        caller_service: Optional[str] = None,
+        prompt_slug: Optional[str] = None,
+        prompt_source: str = 'runtime_generated'
     ):
         """
         Сохранить статистику запроса в БД
@@ -724,10 +744,12 @@ class AIAgentService:
                             cost_rub,
                             session_id,
                             message_id,
-                            service_name,
+                            caller_service,
+                            prompt_slug,
+                            prompt_source,
                             created_at
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                         )
                     """, [
                         str(uuid.uuid4()),
@@ -741,7 +763,9 @@ class AIAgentService:
                         usage_info['cost_rub'],
                         session_id,  # ИСПРАВЛЕНО (2026-01-06): session_id
                         message_id,  # ИСПРАВЛЕНО (2026-01-06): message_id
-                        service_name  # ИСПРАВЛЕНО (2026-02-24): Имя микросервиса
+                        caller_service,
+                        prompt_slug,
+                        prompt_source
                     ])
 
             await sync_to_async(save_sync)()

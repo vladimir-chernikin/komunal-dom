@@ -361,7 +361,9 @@ class TraceReportService:
                                 status,
                                 error_message,
                                 message_id,
-                                service_name
+                                caller_service,
+                                prompt_slug,
+                                prompt_source
                             FROM llm_request_log
                             WHERE session_id = %s
                             ORDER BY created_at ASC
@@ -369,7 +371,8 @@ class TraceReportService:
 
                         columns = ['id', 'provider', 'model', 'prompt_text', 'response_text',
                                    'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_rub',
-                                   'created_at', 'status', 'error_message', 'message_id', 'service_name']
+                                   'created_at', 'status', 'error_message', 'message_id', 'caller_service',
+                                   'prompt_slug', 'prompt_source']
 
                         all_llm_logs = []
                         for row in cursor.fetchall():
@@ -695,7 +698,15 @@ Session ID: {session_id}
 
                 # ИСПРАВЛЕНО (2026-02-24): Используем service_name из БД
                 # ИСПРАВЛЕНО (2026-03-07): Убран весь fallback хардкод по тексту промпта
-                service_name = llm_call.get('service_name', 'Unknown')
+                caller_service = llm_call.get('caller_service', 'Unknown')
+                prompt_slug = llm_call.get('prompt_slug')
+                prompt_source = llm_call.get('prompt_source', 'unknown')
+                service_name = caller_service
+                details += (
+                    f" caller_service={caller_service} | "
+                    f"prompt_slug={prompt_slug or '-'} | "
+                    f"prompt_source={prompt_source}\n"
+                )
 
                 if prompt_text:
                     # ИСПРАВЛЕНО (2026-02-05): Заголовок промпта

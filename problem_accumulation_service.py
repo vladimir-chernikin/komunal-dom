@@ -118,7 +118,9 @@ class ProblemAccumulationService:
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
                 message_id=message_id,  # ИСПРАВЛЕНО (2026-01-06)
-                service_name='ProblemAccumulationService'  # ИСПРАВЛЕНО (2026-02-24)
+                caller_service='ProblemAccumulationService',
+                prompt_slug=None if db_error else 'problem-accumulation-service',
+                prompt_source='python_fallback' if db_error else 'llm_tester'
             )
 
             # ИСПРАВЛЕНО (2025-12-28): Логируем ответ
@@ -391,7 +393,8 @@ JSON:"""
                 prompt=prompt,
                 provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
                 model=None,  # Используем модель по умолчанию из .env
-                service_name='ProblemAccumulationService'
+                caller_service='ProblemAccumulationService: RefusalCheck',
+                prompt_source='runtime_generated'
             )
 
             # ИСПРАВЛЕНО (2026-01-15): Передаем current_problem=None (нет в контексте _is_refusal)

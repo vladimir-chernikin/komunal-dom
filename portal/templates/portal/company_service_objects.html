@@ -85,7 +85,7 @@
                         <tr>
                             <th>ID объекта</th>
                             <th>Адрес</th>
-                            <th>FIAS ID дома</th>
+                            <th>FIAS GUID дома</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -94,7 +94,7 @@
                         <tr>
                             <td>{{ object.service_object_id }}</td>
                             <td>{{ object.get_address_display }}</td>
-                            <td>{{ object.fias_house_object_id|default:"-" }}</td>
+                            <td>{{ object.get_building.fias_guid|default:"-" }}</td>
                             <td class="text-end">
                                 <a href="{% url 'admin:portal_serviceobject_change' object.service_object_id %}" class="btn btn-sm btn-outline-primary">Открыть</a>
                             </td>

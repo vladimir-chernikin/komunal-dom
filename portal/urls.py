@@ -22,6 +22,7 @@ urlpatterns = [
     path('director/', admin_views.director_page, name='director_page'),
     path('director/residents/', admin_views.director_residents, name='director_residents'),
     path('director/residents/add/', admin_views.director_add_resident, name='director_add_resident'),
+    path('director/residents/<int:membership_id>/edit/', admin_views.director_edit_resident, name='director_edit_resident'),
     path('director/service-objects/', admin_views.director_service_objects, name='director_service_objects'),
     path('director/service-objects/import/', admin_views.director_import_service_objects, name='director_import_service_objects'),
     path('director/object-bindings/', admin_views.director_object_bindings, name='director_object_bindings'),

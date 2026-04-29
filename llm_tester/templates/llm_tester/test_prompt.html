@@ -47,7 +47,7 @@ function getCSRFToken() {
                 Сбросить изменения
             </button>
         </div>
-        <p style="margin-top: 10px; color: #666; font-size: 13px;">
+        <p class="llm-template-vars-note" style="margin-top: 10px; color: #666; font-size: 13px;">
             <strong>Переменные в шаблоне:</strong>
             {% if variables %}
                 {% for var in variables %}<code>{{ '{' }}{{ var }}{{ '}' }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
@@ -59,9 +59,9 @@ function getCSRFToken() {
 
         <!-- Версии промпта -->
         {% if all_versions.count > 1 %}
-        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
-            <h4 style="margin-top: 0; font-size: 14px; color: #666;">История версий:</h4>
-            <table class="table table-sm table-bordered" style="font-size: 12px;">
+        <div class="llm-version-history" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
+            <h4 class="llm-version-history-title" style="margin-top: 0; font-size: 14px; color: #666;">История версий:</h4>
+            <table class="table table-sm table-bordered llm-version-table" style="font-size: 12px;">
                 <thead>
                     <tr style="background: #f8f9fa;">
                         <th style="width: 60px;">Версия</th>
@@ -72,8 +72,8 @@ function getCSRFToken() {
                 </thead>
                 <tbody>
                     {% for ver in all_versions %}
-                    <tr {% if not ver.is_active %}style="background: #f5f5f5;"{% endif %}>
-                        <td>v{{ ver.version_number }}</td>
+                    <tr class="{% if not ver.is_active %}llm-version-archived{% endif %}" {% if not ver.is_active %}style="background: #f5f5f5;"{% endif %}>
+                        <td class="llm-version-number">v{{ ver.version_number }}</td>
                         <td>
                             {% if ver.is_active %}
                                 <span class="badge badge-success" style="background-color: #28a745;">Активна</span>
@@ -81,14 +81,14 @@ function getCSRFToken() {
                                 <span class="badge badge-secondary" style="background-color: #6c757d;">Архив</span>
                             {% endif %}
                         </td>
-                        <td>{{ ver.created_at|date:"d.m.Y H:i" }}</td>
+                        <td class="llm-version-date">{{ ver.created_at|date:"d.m.Y H:i" }}</td>
                         <td>
                             {% if ver.id != template.id %}
                                 <a href="#" class="load-version-link" data-version-id="{{ ver.id }}" style="font-size: 11px;">
                                     Загрузить в редактор
                                 </a>
                             {% else %}
-                                <span style="color: #999; font-size: 11px;">Текущая</span>
+                                <span class="llm-version-current" style="color: #999; font-size: 11px;">Текущая</span>
                             {% endif %}
                         </td>
                     </tr>

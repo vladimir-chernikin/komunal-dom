@@ -160,6 +160,7 @@ body {
 @media (max-width: 768px) {
     .aerial-hero {
         min-height: auto;
+        overflow: hidden;
     }
 
     .aerial-content {
@@ -194,6 +195,38 @@ body {
 
     .aerial-tile {
         padding: 1.5rem;
+    }
+
+    .stats-over-map {
+        position: relative !important;
+        right: auto !important;
+        bottom: auto !important;
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.65rem !important;
+        width: 100%;
+        margin: 1rem 0 0;
+        padding: 0;
+    }
+
+    .stat-bubble {
+        min-width: 0 !important;
+        width: 100%;
+        padding: 0.85rem 0.45rem !important;
+        border-radius: 14px;
+    }
+
+    .stat-bubble-number {
+        font-size: clamp(1.35rem, 8vw, 1.8rem) !important;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .stat-bubble-label {
+        font-size: 0.72rem !important;
+        line-height: 1.15;
+        margin-top: 0.35rem;
+        overflow-wrap: anywhere;
     }
 }
 

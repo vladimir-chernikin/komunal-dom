@@ -75,6 +75,55 @@
     .inline-group.user-membership-inline .tabular td:nth-child(8) {
         width: 10%;
     }
+
+    .service-object-address-wrap {
+        position: relative;
+        max-width: 760px;
+    }
+
+    .service-object-address-results {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 10000;
+        display: none;
+        max-height: 280px;
+        overflow-y: auto;
+        border: 1px solid #b8c7d2;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+    }
+
+    .service-object-address-item {
+        display: block;
+        width: 100%;
+        border: 0;
+        border-bottom: 1px solid #e5edf0;
+        background: transparent;
+        color: #1f2933;
+        padding: 10px 12px;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .service-object-address-item:last-child {
+        border-bottom: 0;
+    }
+
+    .service-object-address-item:hover,
+    .service-object-address-item:focus {
+        background: #ecfdf5;
+        outline: none;
+    }
+
+    .service-object-address-meta {
+        display: block;
+        margin-top: 3px;
+        color: #5b6f7a;
+        font-size: 12px;
+    }
 </style>
 <script>
 (function () {
@@ -218,23 +267,123 @@
         }
     }
 
+    function bindServiceObjectAddressSearch() {
+        var input = document.querySelector('[data-service-object-address="1"]');
+        if (!input || input.dataset.serviceObjectSearchBound === '1') {
+            return;
+        }
+
+        input.dataset.serviceObjectSearchBound = '1';
+
+        var wrapper = document.createElement('div');
+        wrapper.className = 'service-object-address-wrap';
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+
+        var resultsBox = document.createElement('div');
+        resultsBox.className = 'service-object-address-results';
+        wrapper.appendChild(resultsBox);
+
+        var debounceTimer = null;
+        var activeRequest = null;
+
+        function hideResults() {
+            resultsBox.style.display = 'none';
+            resultsBox.innerHTML = '';
+        }
+
+        function renderResults(items) {
+            if (!items.length) {
+                resultsBox.innerHTML = '<div class="service-object-address-item">Ничего не найдено</div>';
+                resultsBox.style.display = 'block';
+                return;
+            }
+
+            resultsBox.innerHTML = items.map(function (item) {
+                return [
+                    '<button type="button" class="service-object-address-item" data-label="',
+                    String(item.label).replace(/"/g, '&quot;'),
+                    '">',
+                    '<span>', item.label, '</span>',
+                    '<span class="service-object-address-meta">', item.address || '', '</span>',
+                    '</button>'
+                ].join('');
+            }).join('');
+            resultsBox.style.display = 'block';
+        }
+
+        input.addEventListener('input', function () {
+            var query = input.value.trim();
+
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+
+            if (query.length < 2 && !/^\d+$/.test(query)) {
+                hideResults();
+                return;
+            }
+
+            debounceTimer = setTimeout(function () {
+                if (activeRequest) {
+                    activeRequest.abort();
+                }
+
+                activeRequest = new AbortController();
+                fetch('/work_orders/api/objects/search/?q=' + encodeURIComponent(query), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    signal: activeRequest.signal
+                })
+                    .then(function (response) {
+                        return response.ok ? response.json() : { results: [] };
+                    })
+                    .then(function (data) {
+                        renderResults(data.results || []);
+                    })
+                    .catch(function (error) {
+                        if (error.name !== 'AbortError') {
+                            hideResults();
+                        }
+                    });
+            }, 220);
+        });
+
+        resultsBox.addEventListener('click', function (event) {
+            var button = event.target.closest('[data-label]');
+            if (!button) {
+                return;
+            }
+            input.value = button.dataset.label;
+            hideResults();
+        });
+
+        document.addEventListener('click', function (event) {
+            if (!event.target.closest('.service-object-address-wrap')) {
+                hideResults();
+            }
+        });
+    }
+
     window.rebuildPrimaryDepartmentOptions = rebuildPrimaryDepartmentOptions;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             localizeErrorNote();
             bindPrimaryDepartmentOptions();
+            bindServiceObjectAddressSearch();
             moveMembershipAddButton();
             movePermissionsTabToEnd();
         });
     } else {
         localizeErrorNote();
         bindPrimaryDepartmentOptions();
+        bindServiceObjectAddressSearch();
         moveMembershipAddButton();
         movePermissionsTabToEnd();
     }
     window.addEventListener('load', localizeErrorNote);
     window.addEventListener('load', bindPrimaryDepartmentOptions);
+    window.addEventListener('load', bindServiceObjectAddressSearch);
     window.addEventListener('load', moveMembershipAddButton);
     window.addEventListener('load', movePermissionsTabToEnd);
 })();

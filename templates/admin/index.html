@@ -51,20 +51,6 @@
                     <small class="text-muted">{{ file_stats.total_size|filesizeformat }}</small>
                 </div>
 
-                <!-- AI промпты -->
-                <div class="col-md-3 col-sm-6">
-                    <div class="small-box bg-warning">
-                        <div class="inner">
-                            <h3>{{ prompt_stats.total }}</h3>
-                            <p>AI промптов</p>
-                        </div>
-                        <div class="icon">
-                            <i class="fas fa-robot"></i>
-                        </div>
-                    </div>
-                    <small class="text-muted">Активных: {{ prompt_stats.active }}</small>
-                </div>
-
                 {% if kladr_stats %}
                 <!-- КЛАДР -->
                 <div class="col-md-3 col-sm-6">

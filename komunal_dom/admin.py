@@ -44,37 +44,12 @@ class CustomAdminSite(admin.AdminSite):
 custom_admin_site = CustomAdminSite(name='admin')
 
 
-ADMIN_NAV_COMPANY_MODELS = {
-    ('nsi', 'Company'),
-    ('work_orders', 'CompanyDepartment'),
-    ('work_orders', 'SLAPolicy'),
-    ('work_orders', 'CompanyServiceRoute'),
-    ('work_orders', 'UserCompanyMembership'),
-}
-
-ADMIN_NAV_SERVICES_MODELS = {
-    ('portal', 'ServicesCatalog'),
-    ('nsi', 'RefCategory'),
-}
-
-ADMIN_NAV_REQUESTS_MODELS = {
-    ('work_orders', 'WorkOrder'),
-    ('work_orders', 'WorkOrderStatusRef'),
-    ('work_orders', 'WorkOrderStatusHistory'),
-}
-
-ADMIN_NAV_KLADR_MODELS = {
-    ('kladr', 'KladrAddressObject'),
-    ('kladr', 'Building'),
-    ('kladr', 'ServiceArea'),
-    ('kladr', 'KladrObjectType'),
-    ('work_orders', 'CompanyObjectServicePeriod'),
-}
-
 ADMIN_NAV_TECHNICAL_MODELS = {
     ('auth', 'Group'),
     ('kladr', 'DataImportLog'),
-    ('work_orders', 'ContractorOrganization'),
+    ('portal', 'LLMTestResult'),
+    ('portal', 'PromptPreset'),
+    ('portal', 'PromptTemplate'),
     ('work_orders', 'SLAInstance'),
     ('work_orders', 'WorkOrderAttachment'),
     ('work_orders', 'WorkOrderEventLog'),
@@ -83,9 +58,6 @@ ADMIN_NAV_TECHNICAL_MODELS = {
 ADMIN_NAV_DEVELOPER_MODELS = {
     ('message_handler', 'APIErrorLog'),
     ('message_handler', 'MessageLog'),
-    ('portal', 'LLMTestResult'),
-    ('portal', 'PromptPreset'),
-    ('portal', 'PromptTemplate'),
     ('portal', 'ServiceObject'),
 }
 
@@ -95,42 +67,15 @@ ADMIN_NAV_TECHNICAL_ORDER = [
     ('work_orders', 'WorkOrderAttachment'),
     ('auth', 'Group'),
     ('kladr', 'DataImportLog'),
-]
-
-ADMIN_NAV_DEVELOPER_ORDER = [
     ('portal', 'PromptTemplate'),
     ('portal', 'PromptPreset'),
     ('portal', 'LLMTestResult'),
+]
+
+ADMIN_NAV_DEVELOPER_ORDER = [
     ('portal', 'ServiceObject'),
     ('message_handler', 'APIErrorLog'),
     ('message_handler', 'MessageLog'),
-]
-
-ADMIN_NAV_COMPANY_ORDER = [
-    ('nsi', 'Company'),
-    ('work_orders', 'CompanyDepartment'),
-    ('work_orders', 'SLAPolicy'),
-    ('work_orders', 'CompanyServiceRoute'),
-    ('work_orders', 'UserCompanyMembership'),
-]
-
-ADMIN_NAV_SERVICES_ORDER = [
-    ('portal', 'ServicesCatalog'),
-    ('nsi', 'RefCategory'),
-]
-
-ADMIN_NAV_REQUESTS_ORDER = [
-    ('work_orders', 'WorkOrder'),
-    ('work_orders', 'WorkOrderStatusRef'),
-    ('work_orders', 'WorkOrderStatusHistory'),
-]
-
-ADMIN_NAV_KLADR_ORDER = [
-    ('kladr', 'KladrAddressObject'),
-    ('kladr', 'Building'),
-    ('kladr', 'ServiceArea'),
-    ('kladr', 'KladrObjectType'),
-    ('work_orders', 'CompanyObjectServicePeriod'),
 ]
 
 
@@ -166,6 +111,18 @@ def _ordered_models(models_by_key, order):
     return ordered
 
 
+def _llm_tester_dashboard_link():
+    return {
+        'name': 'LLM Tester - Тестирование промптов',
+        'object_name': 'LLMTesterDashboard',
+        'app_label': 'developer_tools',
+        'perms': {'view': True, 'add': False, 'change': False, 'delete': False},
+        'admin_url': '/llm-tester/',
+        'add_url': None,
+        'view_only': True,
+    }
+
+
 def configure_admin_navigation(site):
     if getattr(site, '_komunal_navigation_configured', False):
         return
@@ -178,10 +135,6 @@ def configure_admin_navigation(site):
             return app_list
 
         is_django_admin = _is_django_admin_user(request.user)
-        company = {}
-        services = {}
-        requests = {}
-        kladr = {}
         technical = {}
         developer = {}
         visible_apps = []
@@ -198,18 +151,6 @@ def configure_admin_navigation(site):
                     if is_django_admin:
                         developer[key] = model_dict
                     continue
-                if key in ADMIN_NAV_COMPANY_MODELS:
-                    company[key] = model_dict
-                    continue
-                if key in ADMIN_NAV_SERVICES_MODELS:
-                    services[key] = model_dict
-                    continue
-                if key in ADMIN_NAV_REQUESTS_MODELS:
-                    requests[key] = model_dict
-                    continue
-                if key in ADMIN_NAV_KLADR_MODELS:
-                    kladr[key] = model_dict
-                    continue
                 visible_models.append(model_dict)
 
             if visible_models:
@@ -221,49 +162,15 @@ def configure_admin_navigation(site):
             return visible_apps
 
         result = []
-        if developer:
+        developer_models = [_llm_tester_dashboard_link()]
+        developer_models.extend(_ordered_models(developer, ADMIN_NAV_DEVELOPER_ORDER))
+        if developer_models:
             result.append({
                 'name': 'Разработчик',
                 'app_label': 'developer_tools',
                 'app_url': '',
                 'has_module_perms': True,
-                'models': _ordered_models(developer, ADMIN_NAV_DEVELOPER_ORDER),
-            })
-
-        if company:
-            result.append({
-                'name': 'Компания',
-                'app_label': 'company_tools',
-                'app_url': '',
-                'has_module_perms': True,
-                'models': _ordered_models(company, ADMIN_NAV_COMPANY_ORDER),
-            })
-
-        if services:
-            result.append({
-                'name': 'Услуги',
-                'app_label': 'service_tools',
-                'app_url': '',
-                'has_module_perms': True,
-                'models': _ordered_models(services, ADMIN_NAV_SERVICES_ORDER),
-            })
-
-        if requests:
-            result.append({
-                'name': 'Заявки',
-                'app_label': 'request_tools',
-                'app_url': '',
-                'has_module_perms': True,
-                'models': _ordered_models(requests, ADMIN_NAV_REQUESTS_ORDER),
-            })
-
-        if kladr:
-            result.append({
-                'name': 'КЛАДР',
-                'app_label': 'kladr_tools',
-                'app_url': '',
-                'has_module_perms': True,
-                'models': _ordered_models(kladr, ADMIN_NAV_KLADR_ORDER),
+                'models': developer_models,
             })
 
         result.extend(visible_apps)

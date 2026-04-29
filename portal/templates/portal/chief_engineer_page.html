@@ -239,6 +239,33 @@ body {
     .aerial-tile {
         padding: 1.5rem;
     }
+
+    .stats-over-map {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin-top: 1rem;
+        width: 100%;
+    }
+
+    .stat-bubble {
+        min-width: 0;
+        width: 100%;
+        padding: 0.85rem 0.45rem;
+        border-radius: 14px;
+    }
+
+    .stat-bubble-number {
+        font-size: clamp(1.35rem, 8vw, 1.8rem);
+        white-space: nowrap;
+    }
+
+    .stat-bubble-label {
+        font-size: 0.72rem;
+        line-height: 1.15;
+        letter-spacing: 0;
+        overflow-wrap: anywhere;
+    }
 }
 </style>
 {% endblock %}

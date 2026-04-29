@@ -49,6 +49,120 @@ GLOBAL_DARK_THEME_HEAD = r"""
         --kd-night-hero: linear-gradient(180deg, #0c1624 0%, #142536 52%, #163326 100%);
         --kd-night-hero-overlay: radial-gradient(circle at 28% 20%, rgba(52, 211, 153, 0.16), transparent 32%),
                                   linear-gradient(180deg, rgba(7, 12, 18, 0.12), rgba(7, 12, 18, 0.42));
+        --kd-light-bg: #f3f7f4;
+        --kd-light-bg-2: #eef4f0;
+        --kd-light-surface: rgba(236, 245, 239, 0.92);
+        --kd-light-surface-2: rgba(225, 237, 231, 0.94);
+        --kd-light-surface-muted: rgba(214, 230, 223, 0.90);
+        --kd-light-border: rgba(95, 128, 113, 0.24);
+        --kd-light-border-strong: rgba(76, 101, 89, 0.34);
+        --kd-light-text: #182821;
+        --kd-light-text-muted: #4b6358;
+        --kd-light-accent: #059669;
+        --kd-light-accent-soft: rgba(16, 185, 129, 0.12);
+        --kd-light-shadow: 0 14px 30px rgba(15, 23, 42, 0.10);
+        --kd-light-shadow-strong: 0 18px 42px rgba(15, 23, 42, 0.14);
+        --kd-light-hero: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+    }
+
+    html:not([data-theme="dark"]) {
+        --bg-primary: var(--kd-light-bg);
+        --bg-secondary: var(--kd-light-bg-2);
+        --bg-card: var(--kd-light-surface);
+        --surface-primary: var(--kd-light-surface);
+        --surface-secondary: var(--kd-light-surface-2);
+        --surface-elevated: var(--kd-light-surface);
+        --surface-muted: var(--kd-light-surface-muted);
+        --text-primary: var(--kd-light-text);
+        --text-secondary: var(--kd-light-text-muted);
+        --text-soft: var(--kd-light-text-muted);
+        --border-color: var(--kd-light-border);
+        --border-strong: var(--kd-light-border-strong);
+        --accent-color: var(--kd-light-accent);
+        --accent-soft: var(--kd-light-accent-soft);
+        --accent-border: rgba(16, 185, 129, 0.24);
+        --hero-bg: var(--kd-light-hero);
+    }
+
+    html:not([data-theme="dark"]) body {
+        background: linear-gradient(180deg, var(--kd-light-bg) 0%, var(--kd-light-bg-2) 100%) !important;
+        color: var(--kd-light-text);
+    }
+
+    html:not([data-theme="dark"]) main {
+        background: transparent;
+    }
+
+    html:not([data-theme="dark"]) .aerial-hero {
+        background: var(--kd-light-hero) !important;
+    }
+
+    html:not([data-theme="dark"]) .aerial-tile,
+    html:not([data-theme="dark"]) .form-container,
+    html:not([data-theme="dark"]) .content-container,
+    html:not([data-theme="dark"]) .surface-card,
+    html:not([data-theme="dark"]) .crumb-card,
+    html:not([data-theme="dark"]) .user-card,
+    html:not([data-theme="dark"]) .stat-card,
+    html:not([data-theme="dark"]) .stat-bubble,
+    html:not([data-theme="dark"]) .stat-box,
+    html:not([data-theme="dark"]) .table-container,
+    html:not([data-theme="dark"]) .info-container,
+    html:not([data-theme="dark"]) .main-card,
+    html:not([data-theme="dark"]) .card,
+    html:not([data-theme="dark"]) .modal-content,
+    html:not([data-theme="dark"]) .list-group-item,
+    html:not([data-theme="dark"]) .department-tree-list,
+    html:not([data-theme="dark"]) .department-tree-row,
+    html:not([data-theme="dark"]) .work-order-card,
+    html:not([data-theme="dark"]) .request-card,
+    html:not([data-theme="dark"]) .resident-card,
+    html:not([data-theme="dark"]) .executor-card,
+    html:not([data-theme="dark"]) .filter-card,
+    html:not([data-theme="dark"]) .info-card,
+    html:not([data-theme="dark"]) .dashboard-card {
+        background: var(--kd-light-surface) !important;
+        border-color: var(--kd-light-border) !important;
+        color: var(--kd-light-text) !important;
+        box-shadow: var(--kd-light-shadow) !important;
+    }
+
+    html:not([data-theme="dark"]) .aerial-content .breadcrumb,
+    html:not([data-theme="dark"]) .breadcrumb.crumb-card,
+    html:not([data-theme="dark"]) .breadcrumb {
+        background: var(--kd-light-surface) !important;
+        border: 1px solid var(--kd-light-border);
+        box-shadow: var(--kd-light-shadow);
+    }
+
+    html:not([data-theme="dark"]) .aerial-tile:hover,
+    html:not([data-theme="dark"]) .surface-card:hover,
+    html:not([data-theme="dark"]) .work-order-card:hover,
+    html:not([data-theme="dark"]) .request-card:hover,
+    html:not([data-theme="dark"]) .stat-card:hover,
+    html:not([data-theme="dark"]) .stat-bubble:hover {
+        background: var(--kd-light-surface-2) !important;
+        border-color: rgba(16, 185, 129, 0.36) !important;
+        box-shadow: var(--kd-light-shadow-strong) !important;
+    }
+
+    html:not([data-theme="dark"]) .table thead th,
+    html:not([data-theme="dark"]) .header-filter-static {
+        background: var(--kd-light-surface-2) !important;
+        border-color: var(--kd-light-border) !important;
+        color: var(--kd-light-text-muted) !important;
+    }
+
+    html:not([data-theme="dark"]) .form-control,
+    html:not([data-theme="dark"]) .form-select {
+        background-color: rgba(248, 251, 247, 0.92);
+        border-color: var(--kd-light-border);
+        color: var(--kd-light-text);
+    }
+
+    html:not([data-theme="dark"]) .object-search-results {
+        background: rgba(248, 251, 247, 0.98) !important;
+        border-color: var(--kd-light-border) !important;
     }
 
     html[data-theme="dark"] {
@@ -674,6 +788,77 @@ GLOBAL_DARK_THEME_HEAD = r"""
     .theme-legacy-toggle-hidden {
         display: none !important;
     }
+
+    .mobile-floating-logout {
+        position: fixed;
+        right: 76px;
+        bottom: 18px;
+        z-index: 2147483000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        min-width: 74px;
+        min-height: 46px;
+        padding: 0.55rem 0.9rem;
+        border-radius: 999px;
+        border: 1px solid rgba(15, 23, 42, 0.16);
+        background: rgba(250, 252, 253, 0.94);
+        color: #0f172a;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+        backdrop-filter: blur(12px);
+        text-decoration: none;
+        font-size: 0.88rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .mobile-floating-logout:hover,
+    .mobile-floating-logout:focus-visible {
+        transform: translateY(-2px);
+        border-color: rgba(52, 211, 153, 0.46);
+        color: #047857;
+        outline: none;
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.22);
+    }
+
+    html[data-theme="dark"] .mobile-floating-logout {
+        background: rgba(17, 24, 32, 0.84);
+        border-color: var(--kd-night-border);
+        color: var(--kd-night-text);
+        box-shadow: var(--kd-night-shadow);
+    }
+
+    html[data-theme="dark"] .mobile-floating-logout:hover,
+    html[data-theme="dark"] .mobile-floating-logout:focus-visible {
+        border-color: var(--kd-night-accent-border);
+        color: var(--kd-night-accent);
+        box-shadow: var(--kd-night-shadow-strong);
+    }
+
+    @media (max-width: 768px) {
+        body {
+            padding-bottom: max(76px, env(safe-area-inset-bottom));
+        }
+
+        .theme-floating-toggle {
+            right: max(16px, env(safe-area-inset-right));
+            bottom: max(16px, env(safe-area-inset-bottom));
+            width: 48px;
+            height: 48px;
+        }
+
+        .mobile-floating-logout {
+            display: inline-flex;
+            right: calc(max(16px, env(safe-area-inset-right)) + 60px);
+            bottom: max(16px, env(safe-area-inset-bottom));
+        }
+    }
+
+    @media (min-width: 769px) {
+        .theme-floating-toggle.mobile-only-floating-theme {
+            display: none !important;
+        }
+    }
 </style>
 """
 
@@ -741,21 +926,34 @@ GLOBAL_DARK_THEME_BODY = r"""
         setTheme(getTheme() === 'dark' ? 'light' : 'dark');
     };
 
-    function hideLegacyToggles() {
-        document.querySelectorAll('#themeToggle').forEach(function (button) {
-            button.classList.add('theme-legacy-toggle-hidden');
-            button.setAttribute('aria-hidden', 'true');
-            button.setAttribute('tabindex', '-1');
-            button.onclick = function (event) {
-                event.preventDefault();
-                window.toggleTheme();
-            };
-        });
+	    function hideLegacyToggles() {
+	        document.querySelectorAll('#themeToggle').forEach(function (button) {
+	            button.setAttribute('data-global-theme-toggle', '1');
+	            button.classList.remove('theme-legacy-toggle-hidden');
+	            button.removeAttribute('aria-hidden');
+	            button.removeAttribute('tabindex');
+	            button.onclick = function (event) {
+	                event.preventDefault();
+	                window.toggleTheme();
+	            };
+	        });
     }
 
-    function ensureFloatingToggle() {
-        var button = document.getElementById('globalThemeToggle');
-        if (!button) {
+    function isMobileViewport() {
+        return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+    }
+
+	    function ensureFloatingToggle() {
+	        var legacyToggle = document.getElementById('themeToggle');
+	        var existingFloating = document.getElementById('globalThemeToggle');
+	        if (legacyToggle && !isMobileViewport()) {
+	            if (existingFloating) {
+	                existingFloating.remove();
+	            }
+	            return legacyToggle;
+	        }
+	        var button = existingFloating;
+	        if (!button) {
             button = document.createElement('button');
             button.type = 'button';
             button.id = 'globalThemeToggle';
@@ -768,12 +966,40 @@ GLOBAL_DARK_THEME_BODY = r"""
             });
             document.body.appendChild(button);
         }
+        button.classList.toggle('mobile-only-floating-theme', !!legacyToggle);
         return button;
+    }
+
+    function ensureMobileLogout() {
+        var logoutSource = document.querySelector('a[href="/logout/"], a[href^="/logout/?"]');
+        var button = document.getElementById('globalMobileLogout');
+        if (!logoutSource) {
+            if (button) {
+                button.remove();
+            }
+            return;
+        }
+        if (!button) {
+            button = document.createElement('a');
+            button.id = 'globalMobileLogout';
+            button.className = 'mobile-floating-logout';
+            button.href = '/logout/';
+            button.setAttribute('aria-label', 'Выйти из личного кабинета');
+            button.textContent = 'Выйти';
+            document.body.appendChild(button);
+        }
     }
 
     document.addEventListener('DOMContentLoaded', function () {
         hideLegacyToggles();
         ensureFloatingToggle();
+        ensureMobileLogout();
+        updateThemeControls();
+    });
+
+    window.addEventListener('resize', function () {
+        ensureFloatingToggle();
+        ensureMobileLogout();
         updateThemeControls();
     });
 })();

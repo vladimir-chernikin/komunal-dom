@@ -94,6 +94,7 @@
 
         .table-responsive {
             overflow-x: visible;
+            border-radius: 14px;
         }
 
         .work-orders-table {
@@ -109,21 +110,21 @@
             overflow-wrap: anywhere;
         }
 
-        .work-orders-table .col-number { width: 13%; }
+        .work-orders-table .col-number { width: 12%; }
         .work-orders-table .col-date { width: 12%; }
         .work-orders-table .col-description { width: 24%; }
-        .work-orders-table .col-service { width: 15%; }
-        .work-orders-table .col-department { width: 12%; }
-        .work-orders-table .col-executor { width: 11%; }
-        .work-orders-table .col-status { width: 8%; }
+        .work-orders-table .col-service { width: 17%; }
+        .work-orders-table .col-department { width: 13%; }
+        .work-orders-table .col-executor { width: 13%; }
+        .work-orders-table .col-status { width: 9%; }
         .work-orders-table .col-priority { width: 8%; }
 
-        .work-orders-table.is-compact .col-number { width: 15%; }
+        .work-orders-table.is-compact .col-number { width: 14%; }
         .work-orders-table.is-compact .col-date { width: 14%; }
         .work-orders-table.is-compact .col-service { width: 24%; }
         .work-orders-table.is-compact .col-department { width: 18%; }
-        .work-orders-table.is-compact .col-executor { width: 16%; }
-        .work-orders-table.is-compact .col-status { width: 13%; }
+        .work-orders-table.is-compact .col-executor { width: 18%; }
+        .work-orders-table.is-compact .col-status { width: 12%; }
 
         .cell-description {
             display: -webkit-box;
@@ -147,6 +148,15 @@
 
         .header-filter {
             min-width: 0;
+        }
+
+        .header-filter input,
+        .header-filter select,
+        .header-filter-static {
+            min-height: 34px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .header-filter select {
@@ -193,14 +203,15 @@
         @media (max-width: 1199px) {
             .table-responsive {
                 overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
             }
 
             .work-orders-table {
-                min-width: 1120px;
+                min-width: 1180px;
             }
 
             .work-orders-table.is-compact {
-                min-width: 900px;
+                min-width: 1040px;
             }
         }
 
@@ -218,7 +229,8 @@
             }
 
             .table-container {
-                padding: 1rem;
+                padding: 0.75rem;
+                border-radius: 18px;
             }
 
             .d-flex.justify-content-between.align-items-center {
@@ -229,6 +241,43 @@
             .aerial-hero h2 {
                 font-size: 1.9rem;
                 line-height: 1.15;
+            }
+
+            .table-responsive {
+                margin: 0 -0.25rem;
+                padding-bottom: 0.35rem;
+            }
+
+            .work-orders-table {
+                min-width: 1120px;
+                font-size: 0.88rem;
+            }
+
+            .work-orders-table.is-compact {
+                min-width: 980px;
+            }
+
+            .work-orders-table th,
+            .work-orders-table td {
+                padding: 0.62rem 0.5rem;
+            }
+
+            .header-filter input,
+            .header-filter select,
+            .header-filter-static {
+                min-height: 36px;
+                font-size: 0.82rem;
+                padding-left: 0.45rem;
+                padding-right: 1.55rem;
+            }
+
+            .header-filter-static {
+                padding-right: 0.45rem;
+            }
+
+            .badge {
+                padding: 0.42rem 0.55rem;
+                font-size: 0.76rem;
             }
         }
     </style>

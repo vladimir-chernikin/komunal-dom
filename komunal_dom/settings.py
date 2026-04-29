@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'crispy_bootstrap5',
     'nsi.apps.NsiConfig',  # НСИ - Normativno-Spravochnaya Informatsiya (справочники)
     'portal.apps.PortalConfig',
+    'address.apps.AddressConfig',
     'kladr.apps.KladrConfig',
     'message_handler.apps.MessageHandlerConfig',  # Логирование сообщений из всех каналов
     'llm_tester.apps.LlmTesterConfig',  # LLM Tester - тестирование промптов

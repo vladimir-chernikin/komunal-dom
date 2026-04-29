@@ -355,7 +355,12 @@ class FilterDetectionService:
             logger.info(f"{'=' * 80} (длина: {len(prompt)} символов)")
 
             # ИСПРАВЛЕНО (2026-03-07): Формируем уникальный service_name для каждого фильтра
-            service_name = f"FilterDetectionService ({filter_name})"
+            caller_service = f"FilterDetectionService ({filter_name})"
+            prompt_slug_map = {
+                'incident_type': 'filter-incident-type',
+                'location_type': 'filter-location-type',
+                'category': 'filter-category',
+            }
 
             # Вызываем LLM
             response, usage_info = await self.ai_agent.call_llm(
@@ -364,7 +369,9 @@ class FilterDetectionService:
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=session_id,
                 message_id=message_id,
-                service_name=service_name
+                caller_service=caller_service,
+                prompt_slug=prompt_slug_map.get(filter_name),
+                prompt_source='llm_tester'
             )
 
             logger.info(f"🤖 FilterDetection [{filter_name}] ОТВЕТ LLM:")
@@ -826,7 +833,8 @@ JSON:"""
                 provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=session_id,
-                service_name='FilterDetectionService'
+                caller_service='FilterDetectionService: RankCandidates',
+                prompt_source='runtime_generated'
             )
 
             if not response:

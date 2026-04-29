@@ -20,9 +20,10 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from openpyxl import load_workbook
 
-from portal.models import UserProfile, AIPrompt, ServiceObject
+from portal.models import UserProfile, ServiceObject
 from portal.mixins import get_primary_membership, get_role_dashboard_url
 
 # Импорты для КЛАДР статистики
@@ -78,6 +79,14 @@ def _build_scoped_company_object_queryset(company_scope):
 
     object_ids = periods.values_list('object_id', flat=True).distinct()
     return ServiceObject.objects.filter(service_object_id__in=object_ids, is_active=True).order_by('service_object_id')
+
+
+def _safe_user_display_name(user):
+    full_name = (user.get_full_name() or '').strip()
+    compact = full_name.replace(' ', '')
+    if full_name and compact and set(compact) != {'?'}:
+        return full_name
+    return user.username
 
 
 def get_work_order_statistics(company_scope=None):
@@ -214,233 +223,6 @@ def _ensure_address_object_chain_from_fias(hierarchy, user):
     return street_object
 
 
-def _extract_import_rows(uploaded_file):
-    extension = Path(uploaded_file.name).suffix.lower()
-    binary = uploaded_file.read()
-
-    if extension in {'.xlsx', '.xlsm'}:
-        workbook = load_workbook(filename=BytesIO(binary), data_only=True)
-        sheet = workbook.active
-        rows = list(sheet.iter_rows(values_only=True))
-    else:
-        try:
-            import pandas as pd
-        except Exception as exc:
-            raise ValueError('Формат XLS не поддержан на сервере. Загрузите XLSX.') from exc
-
-        try:
-            dataframe = pd.read_excel(BytesIO(binary))
-        except Exception as exc:
-            raise ValueError('Не удалось прочитать файл. Для загрузки используйте XLSX.') from exc
-
-        rows = [tuple(dataframe.columns.tolist())]
-        rows.extend(tuple(row) for row in dataframe.itertuples(index=False, name=None))
-
-    if not rows:
-        return []
-
-    headers = [str(value).strip().lower() if value is not None else '' for value in rows[0]]
-    data_rows = rows[1:]
-    address_idx = None
-    for candidate in ('адрес', 'address', 'объект', 'объект обслуживания'):
-        if candidate in headers:
-            address_idx = headers.index(candidate)
-            break
-
-    extracted_rows = []
-    if address_idx is not None:
-        for row_number, row in enumerate(data_rows, start=2):
-            address = str(row[address_idx]).strip() if address_idx < len(row) and row[address_idx] is not None else ''
-            if address:
-                extracted_rows.append({'row_number': row_number, 'address': address})
-        return extracted_rows
-
-    column_map = {name: headers.index(name) for name in headers}
-
-    def first_existing_index(*names):
-        for name in names:
-            if name in column_map:
-                return column_map[name]
-        return None
-
-    street_idx = first_existing_index('улица', 'street')
-    house_idx = first_existing_index('дом', 'house', 'номер дома')
-    city_idx = first_existing_index('РіРѕСЂРѕРґ', 'city')
-    region_idx = first_existing_index('регион', 'region')
-
-    for row_number, row in enumerate(data_rows, start=2):
-        parts = []
-        if region_idx is not None and region_idx < len(row) and row[region_idx]:
-            parts.append(str(row[region_idx]).strip())
-        if city_idx is not None and city_idx < len(row) and row[city_idx]:
-            parts.append(str(row[city_idx]).strip())
-        if street_idx is not None and street_idx < len(row) and row[street_idx]:
-            parts.append(str(row[street_idx]).strip())
-        if house_idx is not None and house_idx < len(row) and row[house_idx]:
-            parts.append(f"РґРѕРј {str(row[house_idx]).strip()}")
-        address = ', '.join(part for part in parts if part)
-        if address:
-            extracted_rows.append({'row_number': row_number, 'address': address})
-
-    return extracted_rows
-
-
-@transaction.atomic
-def _import_service_object_for_company(address, company, user):
-    from work_orders.models import CompanyObjectServicePeriod
-    from address_extractor_service import AddressExtractor
-
-    if not KLADR_AVAILABLE:
-        raise ValueError('Подсистема КЛАДР недоступна.')
-
-    service = FiasAddressService()
-    if not service.is_configured:
-        raise ValueError('Не настроен FIAS_API_TOKEN.')
-
-    extractor = AddressExtractor()
-    components = extractor.extract_address_components(address)
-    validation = extractor.validate_and_match_to_db(components)
-
-    service_object = None
-    building = None
-    fias_item = {}
-
-    if validation.get('service_object_id'):
-        service_object = ServiceObject.objects.filter(
-            service_object_id=validation['service_object_id'],
-            is_active=True,
-        ).first()
-
-    if validation.get('building_id'):
-        building = Building.objects.filter(pk=validation['building_id']).first()
-
-    if validation.get('fias_object_id'):
-        try:
-            fias_item = service.get_address_item_by_id(validation['fias_object_id'])
-        except Exception:
-            fias_item = {}
-
-    if not fias_item:
-        fias_item = service.resolve_building_match(address)
-    if not fias_item:
-        candidates = [item for item in service.search_address_items(address) if item.get('object_level_id') == 10]
-        if candidates:
-            fias_item = candidates[0]
-    if not fias_item:
-        raise ValueError('Адрес не найден в ФИАС.')
-
-    if fias_item.get('object_level_id') != 10:
-        object_id = fias_item.get('object_id')
-        if object_id:
-            resolved = service.get_address_item_by_id(object_id)
-            if resolved and resolved.get('object_level_id') == 10:
-                fias_item = resolved
-    if fias_item.get('object_level_id') != 10:
-        raise ValueError('ФИАС не вернул уровень дома по указанному адресу.')
-
-    fias_house_id = fias_item.get('object_id')
-    if not fias_house_id:
-        raise ValueError('У адреса отсутствует FIAS ID дома.')
-
-    if service_object is None:
-        service_object = (
-            ServiceObject.objects
-            .filter(fias_house_object_id=fias_house_id, unit_id__isnull=True, is_active=True)
-            .order_by('service_object_id')
-            .first()
-        )
-
-    if service_object is None:
-        hierarchy = fias_item.get('hierarchy') or []
-        street_object = _ensure_address_object_chain_from_fias(hierarchy, user)
-        if street_object is None:
-            raise ValueError('Не удалось сформировать адресную иерархию для дома.')
-
-        house_entry = next((item for item in hierarchy if (item.get('object_type') or '').lower() == 'house'), None)
-        house_number = (
-            (house_entry or {}).get('number')
-            or ((house_entry or {}).get('full_name') or '').replace('РґРѕРј', '').replace('Рґ.', '').strip()
-        )
-        if not house_number:
-            raise ValueError('Не удалось определить номер дома из ответа ФИАС.')
-
-        if building is None:
-            building = Building.objects.filter(fias_object_id=fias_house_id).first()
-        if building is None:
-            building = Building.objects.filter(address_object=street_object, house_number=house_number).first()
-        if building is None:
-            building = Building.objects.create(
-                address_object=street_object,
-                house_number=house_number[:20],
-                building_type='',
-                has_elevator=False,
-                fias_object_id=fias_item.get('object_id'),
-                fias_object_guid=fias_item.get('object_guid'),
-                fias_level_id=fias_item.get('object_level_id'),
-                fias_address_type=fias_item.get('address_type'),
-                fias_full_name=fias_item.get('full_name'),
-                created_by=user,
-            )
-        else:
-            changed = False
-            for field_name, value in (
-                ('fias_object_id', fias_item.get('object_id')),
-                ('fias_object_guid', fias_item.get('object_guid')),
-                ('fias_level_id', fias_item.get('object_level_id')),
-                ('fias_address_type', fias_item.get('address_type')),
-                ('fias_full_name', fias_item.get('full_name')),
-            ):
-                if getattr(building, field_name) != value:
-                    setattr(building, field_name, value)
-                    changed = True
-            if changed:
-                building.save()
-
-        service_object = ServiceObject.objects.create(
-            building_id=building.id,
-            unit_id=None,
-            created_at=timezone.now(),
-            is_active=True,
-            fias_house_object_id=fias_house_id,
-        )
-
-    today = timezone.localdate()
-    existing_binding = CompanyObjectServicePeriod.objects.select_related('company').filter(
-        object_id=service_object.service_object_id,
-        is_active=True,
-        date_from__lte=today,
-    ).filter(Q(date_to__isnull=True) | Q(date_to__gte=today)).order_by('-date_from').first()
-    if existing_binding:
-        same_company = existing_binding.company_id == company.id
-        message = (
-            'Объект уже привязан к вашей компании.'
-            if same_company
-            else f'Объект уже привязан к компании "{existing_binding.company.name}".'
-        )
-        return {
-            'status': 'skipped',
-            'service_object': service_object,
-            'binding': existing_binding,
-            'fias_house_object_id': fias_house_id,
-            'message': message,
-        }
-
-    binding = CompanyObjectServicePeriod.objects.create(
-        company=company,
-        object_id=service_object.service_object_id,
-        date_from=today,
-        comment='Загружено из кабинета руководителя',
-        is_active=True,
-    )
-    return {
-        'status': 'created',
-        'service_object': service_object,
-        'binding': binding,
-        'fias_house_object_id': fias_house_id,
-        'message': 'Объект загружен и привязан к компании.',
-    }
-
-
 @login_required
 def admin_page(request):
     """
@@ -492,7 +274,6 @@ def admin_page(request):
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
         'resident_count': user_stats['by_role'].get('Житель', 0),
         'user_stats': user_stats,
-        'prompt_stats': get_prompt_statistics(),
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
     }
 
@@ -548,7 +329,6 @@ def director_page(request):
         'executor_count': user_stats['by_role'].get('Исполнитель', 0),
         'resident_count': user_stats['by_role'].get('Житель', 0),
         'user_stats': user_stats,
-        'prompt_stats': get_prompt_statistics(),
         'kladr_stats': get_kladr_statistics() if KLADR_AVAILABLE else {},
         'total_work_orders': work_order_stats['total'],
         'active_work_orders': work_order_stats['active'],
@@ -660,24 +440,6 @@ def get_user_statistics(company_scope=None):
     return stats
 
 
-def get_prompt_statistics():
-    """Получить статистику по AI промптам"""
-    prompts = AIPrompt.objects.all()
-
-    stats = {
-        'total': prompts.count(),
-        'active': prompts.filter(is_active=True).count(),
-        'by_type': {},
-    }
-
-    # Считаем по типам
-    for prompt_type, type_name in AIPrompt.PROMPT_TYPES:
-        count = prompts.filter(prompt_type=prompt_type).count()
-        stats['by_type'][type_name] = count
-
-    return stats
-
-
 def get_kladr_statistics():
     """Получить статистику по КЛАДР"""
     stats = {
@@ -694,30 +456,11 @@ def get_kladr_statistics():
 
 @login_required
 def prompt_management(request):
-    """
-    Управление AI промптами (быстрый доступ)
-    """
-    if not request.user.userprofile.has_admin_access():
-        messages.error(request, 'Доступ запрещен!')
-        return redirect('portal:admin_page')
-
-    prompts = AIPrompt.objects.all().order_by('prompt_type', 'prompt_id')
-
-    # Подсчет статистики по типам промптов
-    prompt_types_with_stats = [
-        (name, code, prompts.filter(prompt_type=code).count())
-        for name, code in AIPrompt.PROMPT_TYPES
-    ]
-
-    context = {
-        'prompts': prompts,
-        'prompt_types': AIPrompt.PROMPT_TYPES,
-        'prompt_types_with_stats': prompt_types_with_stats,
-    }
-
-    return render(request, 'portal/prompt_management.html', context)
+    """Совместимость со старой ссылкой управления промптами."""
+    return redirect('/llm-tester/')
 
 
+@never_cache
 @login_required
 def director_residents(request):
     """
@@ -757,6 +500,9 @@ def director_residents(request):
     # Разделяем по ролям
     residents = [m for m in company_memberships if m.role_code == 'resident']
     staff = [m for m in company_memberships if m.role_code != 'resident']
+
+    for item in residents + staff:
+        item.display_name = _safe_user_display_name(item.user)
 
     context = {
         'company': workspace['company'],
@@ -905,6 +651,1978 @@ def director_import_service_objects(request):
     return render(request, 'portal/company_object_import.html', context)
 
 
+# ============================================================================
+# Service object import runtime overrides (authoritative final block)
+# ============================================================================
+
+def _extract_import_rows(uploaded_file):
+    extension = Path(uploaded_file.name).suffix.lower()
+    binary = uploaded_file.read()
+
+    if extension in {'.xlsx', '.xlsm'}:
+        workbook = load_workbook(filename=BytesIO(binary), data_only=True)
+        sheet = workbook.active
+        rows = list(sheet.iter_rows(values_only=True))
+    else:
+        try:
+            import pandas as pd
+        except Exception as exc:
+            raise ValueError('Формат XLS не поддержан на сервере. Загрузите XLSX.') from exc
+
+        dataframe = pd.read_excel(BytesIO(binary))
+        rows = [tuple(dataframe.columns.tolist())]
+        rows.extend(tuple(row) for row in dataframe.itertuples(index=False, name=None))
+
+    if not rows:
+        return []
+
+    headers = [str(value).strip().lower() if value is not None else '' for value in rows[0]]
+    data_rows = rows[1:]
+
+    def _find_index(*candidates):
+        for candidate in candidates:
+            if candidate in headers:
+                return headers.index(candidate)
+        return None
+
+    address_idx = _find_index('адрес', 'address', 'объект', 'объект обслуживания')
+    city_idx = _find_index('город', 'город основной', 'city', 'city_main', 'gorod')
+    street_idx = _find_index('улица', 'street', 'ulitsa')
+    house_idx = _find_index('дом', 'house', 'nomerdoma')
+    unit_idx = _find_index('квартира', 'помещение', 'unit', 'unit_number', 'nomerkvartiry')
+
+    extracted_rows = []
+    for row_number, row in enumerate(data_rows, start=2):
+        address = ''
+        if address_idx is not None and address_idx < len(row) and row[address_idx] is not None:
+            address = str(row[address_idx]).strip()
+
+        unit_number = ''
+        if unit_idx is not None and unit_idx < len(row) and row[unit_idx] is not None:
+            unit_number = str(row[unit_idx]).strip()
+
+        if not address:
+            city = str(row[city_idx]).strip() if city_idx is not None and city_idx < len(row) and row[city_idx] is not None else ''
+            street = str(row[street_idx]).strip() if street_idx is not None and street_idx < len(row) and row[street_idx] is not None else ''
+            house = str(row[house_idx]).strip() if house_idx is not None and house_idx < len(row) and row[house_idx] is not None else ''
+            parts = []
+            if city:
+                parts.append(f'г {city}')
+            if street:
+                parts.append(f'ул {street}')
+            if house:
+                parts.append(f'д {house}')
+            address = ', '.join(parts).strip(', ')
+
+        if not address:
+            continue
+
+        extracted_rows.append({'row_number': row_number, 'address': address, 'unit_number': unit_number})
+
+    return extracted_rows
+
+
+def _parse_planned_date(raw_value):
+    from datetime import date
+
+    if raw_value:
+        try:
+            return date.fromisoformat(str(raw_value))
+        except ValueError:
+            pass
+    return timezone.localdate()
+
+
+def _get_object_binding_on_date(service_object_id, on_date):
+    from work_orders.models import CompanyObjectServicePeriod
+
+    return (
+        CompanyObjectServicePeriod.objects.select_related('company')
+        .filter(object_id=service_object_id, is_active=True)
+        .filter(date_from__lte=on_date)
+        .filter(Q(date_to__isnull=True) | Q(date_to__gte=on_date))
+        .order_by('-date_from')
+        .first()
+    )
+
+
+def _find_existing_address_entities(components, street_guid, house_guid, house_number, unit_number):
+    from address.models import Building, Unit
+
+    building = None
+    if house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None and street_guid and house_number:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    unit = None
+    if building is not None and unit_number:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number).first()
+    return building, unit
+
+
+def _validate_import_row_for_batch(address, unit_number, company, planned_date):
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    extractor = AddressExtractor()
+    service = FiasAddressService()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    city = components.get('city')
+    street = components.get('street')
+    house_number = normalize_house_number(components.get('house_number'))
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+
+    result = {
+        'address': address,
+        'city': city or '',
+        'street': street or '',
+        'house': house_number or '',
+        'unit_number': unit_number_norm or '',
+        'full_address': build_full_address(components),
+        'building_fias_guid': '',
+        'house_parse_status': '',
+        'house_fias_status': '',
+        'binding_status': '',
+        'unit_status': '',
+        'final_status': '',
+        'comment': '',
+    }
+
+    missing = []
+    if not city:
+        missing.append('населенный пункт')
+    if not street:
+        missing.append('улица')
+    if not house_number:
+        missing.append('дом')
+    if missing:
+        result.update(
+            {
+                'house_parse_status': 'incomplete',
+                'final_status': 'clarify',
+                'comment': f"Неполный адрес: отсутствует {', '.join(missing)}.",
+            }
+        )
+        return result
+
+    fias_result = service.resolve_building_with_fallback(components)
+    street_guid = fias_result.get('street_guid')
+    house_guid = fias_result.get('house_guid')
+    result['building_fias_guid'] = house_guid or ''
+    result['full_address'] = fias_result.get('full_address') or result['full_address']
+    result['house_parse_status'] = 'parsed'
+
+    if not street_guid:
+        result.update(
+            {
+                'house_fias_status': 'street_not_found',
+                'final_status': 'clarify',
+                'comment': 'Улица не найдена в ФИАС. Строку нельзя импортировать.',
+            }
+        )
+        return result
+
+    result['house_fias_status'] = 'house_matched' if house_guid else 'street_matched'
+    building, unit = _find_existing_address_entities(components, street_guid, house_guid, house_number, unit_number_norm)
+
+    if building is not None:
+        house_service_object = (
+            ServiceObject.objects.filter(building_id=building.id, unit_id__isnull=True, is_active=True)
+            .order_by('service_object_id')
+            .first()
+        )
+        if house_service_object:
+            binding = _get_object_binding_on_date(house_service_object.service_object_id, planned_date)
+            if binding and binding.company_id != company.id:
+                result.update(
+                    {
+                        'binding_status': 'conflict',
+                        'final_status': 'blocked',
+                        'comment': f'Дом уже закреплен за компанией "{binding.company.name}" на указанную дату.',
+                    }
+                )
+                return result
+            if binding and binding.company_id == company.id:
+                result['binding_status'] = 'same_company'
+            else:
+                result['binding_status'] = 'new_binding'
+        else:
+            result['binding_status'] = 'new_binding'
+    else:
+        result['binding_status'] = 'new_building'
+
+    if unit_number_norm:
+        if unit is not None and building is not None:
+            unit_service_object = (
+                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.id, is_active=True)
+                .order_by('service_object_id')
+                .first()
+            )
+            if unit_service_object:
+                unit_binding = _get_object_binding_on_date(unit_service_object.service_object_id, planned_date)
+                if unit_binding and unit_binding.company_id != company.id:
+                    result.update(
+                        {
+                            'unit_status': 'conflict',
+                            'final_status': 'blocked',
+                            'comment': f'Квартира/помещение уже закреплена за компанией "{unit_binding.company.name}" на указанную дату.',
+                        }
+                    )
+                    return result
+                if unit_binding and unit_binding.company_id == company.id:
+                    result['unit_status'] = 'same_company'
+                else:
+                    result['unit_status'] = 'existing_unit'
+            else:
+                result['unit_status'] = 'existing_unit'
+        else:
+            result['unit_status'] = 'new_unit'
+    else:
+        result['unit_status'] = 'house_only'
+
+    if result['binding_status'] == 'same_company' and result['unit_status'] in {'', 'house_only', 'same_company'}:
+        result.update(
+            {
+                'final_status': 'blocked',
+                'comment': 'Объект уже привязан к вашей компании на указанную дату.',
+            }
+        )
+        return result
+
+    result.update(
+        {
+            'final_status': 'ready',
+            'comment': 'Строка готова к импорту.',
+        }
+    )
+    return result
+
+
+def _stage_import_batch(uploaded_file, company, user, planned_date):
+    from address.models import ImportBatch, ImportRow
+
+    extracted_rows = _extract_import_rows(uploaded_file)
+    if not extracted_rows:
+        raise ValueError('В файле не найдено строк с адресами.')
+
+    batch = ImportBatch.objects.create(
+        company_id=company.id,
+        uploaded_by=user,
+        planned_date_from=planned_date,
+        status='uploaded',
+    )
+
+    seen_rows = set()
+    for row in extracted_rows:
+        address = row['address']
+        unit_number = (row.get('unit_number') or '').strip()
+        dedupe_key = (' '.join(address.lower().split()), unit_number.lower())
+        if dedupe_key in seen_rows:
+            validation = {
+                'address': address,
+                'city': '',
+                'street': '',
+                'house': '',
+                'unit_number': unit_number,
+                'full_address': address,
+                'building_fias_guid': '',
+                'house_parse_status': 'duplicate',
+                'house_fias_status': '',
+                'binding_status': '',
+                'unit_status': '',
+                'final_status': 'blocked',
+                'comment': 'Дубликат строки в загруженном файле.',
+            }
+        else:
+            seen_rows.add(dedupe_key)
+            validation = _validate_import_row_for_batch(address, unit_number, company, planned_date)
+
+        ImportRow.objects.create(
+            batch=batch,
+            row_no=row['row_number'],
+            raw_address=address,
+            city_main=validation['city'],
+            street=validation['street'],
+            house=validation['house'],
+            unit_number=validation['unit_number'],
+            house_parse_status=validation['house_parse_status'],
+            house_fias_status=validation['house_fias_status'],
+            binding_status=validation['binding_status'],
+            unit_status=validation['unit_status'],
+            final_status=validation['final_status'],
+            comment=validation['comment'],
+            city_fact=validation['full_address'],
+            source_kladr_check=validation['building_fias_guid'],
+        )
+
+    batch.status = 'validated'
+    batch.save(update_fields=['status'])
+    return batch
+
+
+def _build_import_summary(batch_rows):
+    rows = list(batch_rows)
+    return {
+        'processed': len(rows),
+        'ready': sum(1 for row in rows if row.final_status == 'ready'),
+        'blocked': sum(1 for row in rows if row.final_status == 'blocked'),
+        'clarify': sum(1 for row in rows if row.final_status == 'clarify'),
+        'imported': sum(1 for row in rows if row.final_status == 'imported'),
+        'errors': sum(1 for row in rows if row.final_status == 'error'),
+    }
+
+
+def _ensure_company_binding(company, service_object, comment, on_date):
+    from work_orders.models import CompanyObjectServicePeriod
+
+    existing = (
+        CompanyObjectServicePeriod.objects.select_related('company')
+        .filter(object_id=service_object.service_object_id, is_active=True)
+        .filter(date_from__lte=on_date)
+        .filter(Q(date_to__isnull=True) | Q(date_to__gte=on_date))
+        .order_by('-date_from')
+        .first()
+    )
+    if existing:
+        if existing.company_id != company.id:
+            raise ValueError(
+                f'В настоящий момент данный объект закреплен за другой организацией: "{existing.company.name}".'
+            )
+        return existing, False
+
+    binding = CompanyObjectServicePeriod.objects.create(
+        company=company,
+        object_id=service_object.service_object_id,
+        date_from=on_date,
+        comment=comment,
+        is_active=True,
+    )
+    return binding, True
+
+
+@transaction.atomic
+def _import_service_object_for_company(address, company, user, unit_number=None, on_date=None):
+    from address.models import Building, Unit
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    service = FiasAddressService()
+    if not service.is_configured:
+        raise ValueError('Не настроен FIAS_API_TOKEN.')
+
+    extractor = AddressExtractor()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    validation = extractor.validate_and_match_to_db(components)
+    house_number = normalize_house_number(validation.get('house_number') or components.get('house_number'))
+    street_guid = validation.get('street_fias_guid')
+    house_guid = validation.get('fias_object_guid')
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+    import_date = on_date or timezone.localdate()
+
+    if not street_guid:
+        raise ValueError('Улица не найдена в ФИАС. Дом не сохранен.')
+    if not house_number:
+        raise ValueError('Не удалось определить номер дома.')
+
+    building = Building.objects.filter(pk=validation.get('building_id')).first() if validation.get('building_id') else None
+    fias_result = service.resolve_building_with_fallback(components)
+    if building is None and house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    full_address = validation.get('address_full') or fias_result.get('full_address') or build_full_address(components)
+    if building is None:
+        building = Building.objects.create(
+            fias_guid=house_guid or None,
+            street_fias_guid=street_guid,
+            house_number=house_number,
+            full_address=full_address,
+            created_by=user,
+        )
+        building_created = True
+    else:
+        building_created = False
+        updated = False
+        for field_name, value in (
+            ('fias_guid', house_guid or building.fias_guid),
+            ('street_fias_guid', street_guid),
+            ('house_number', house_number),
+            ('full_address', full_address),
+        ):
+            if value and getattr(building, field_name) != value:
+                setattr(building, field_name, value)
+                updated = True
+        if updated:
+            building.save(update_fields=['fias_guid', 'street_fias_guid', 'house_number', 'full_address', 'updated_at'])
+
+    house_service_object, house_created = _get_or_create_service_object(building.id, unit_id=None)
+    house_binding, house_binding_created = _ensure_company_binding(
+        company,
+        house_service_object,
+        'Загружено из кабинета руководителя',
+        import_date,
+    )
+
+    result_service_object = house_service_object
+    unit_created = False
+    unit_binding_created = False
+
+    if unit_number_norm:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number_norm).first()
+        if unit is None:
+            unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
+            unit_created = True
+
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        _, unit_binding_created = _ensure_company_binding(
+            company,
+            result_service_object,
+            'Загружено из кабинета руководителя (квартира/помещение)',
+            import_date,
+        )
+
+    created_anything = any([building_created, house_created, house_binding_created, unit_created, unit_binding_created])
+
+    return {
+        'status': 'created' if created_anything else 'skipped',
+        'service_object': result_service_object,
+        'binding': house_binding,
+        'building_fias_guid': str(building.fias_guid) if building.fias_guid else '-',
+        'message': (
+            'Созданы объект дома и объект помещения, привязки обновлены.'
+            if unit_number_norm and created_anything
+            else 'Объект уже был привязан к вашей компании.'
+            if not created_anything
+            else 'Объект дома загружен и привязан к компании.'
+        ),
+    }
+
+
+@login_required
+def director_import_service_objects(request):
+    from address.models import ImportBatch
+
+    membership, workspace, response = _get_manager_workspace(request)
+    if response:
+        return response
+
+    batch = None
+    batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
+    if batch_id:
+        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+
+    if request.method == 'POST':
+        action = request.POST.get('action') or 'upload'
+        planned_date = _parse_planned_date(request.POST.get('planned_date_from'))
+
+        if action == 'upload':
+            uploaded_file = request.FILES.get('import_file')
+            if not uploaded_file:
+                messages.error(request, 'Выберите XLSX или XLS файл для загрузки.')
+            else:
+                try:
+                    batch = _stage_import_batch(uploaded_file, workspace['company'], request.user, planned_date)
+                except ValueError as error:
+                    messages.error(request, str(error))
+                else:
+                    messages.success(request, 'Файл проверен. Подтвердите импорт готовых строк.')
+        elif action == 'confirm':
+            if not batch:
+                messages.error(request, 'Пакет импорта не найден.')
+            else:
+                ready_rows = list(batch.rows.filter(final_status='ready').order_by('row_no', 'id'))
+                imported_count = 0
+                error_count = 0
+                for row in ready_rows:
+                    try:
+                        result = _import_service_object_for_company(
+                            row.raw_address,
+                            workspace['company'],
+                            request.user,
+                            unit_number=row.unit_number,
+                            on_date=batch.planned_date_from,
+                        )
+                    except Exception as error:
+                        row.final_status = 'error'
+                        row.comment = str(error)
+                        row.save(update_fields=['final_status', 'comment'])
+                        error_count += 1
+                    else:
+                        row.final_status = 'imported'
+                        row.comment = result['message']
+                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
+                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        imported_count += 1
+
+                batch.status = 'failed' if error_count else 'imported'
+                batch.save(update_fields=['status'])
+                messages.success(request, f'Импортировано строк: {imported_count}.')
+                if error_count:
+                    messages.warning(request, f'Строк с ошибками: {error_count}.')
+
+    batch_rows = []
+    summary = None
+    ready_rows_count = 0
+    planned_date_value = timezone.localdate()
+    if batch:
+        batch_rows = list(batch.rows.order_by('row_no', 'id'))
+        summary = _build_import_summary(batch_rows)
+        ready_rows_count = summary['ready']
+        planned_date_value = batch.planned_date_from
+
+    context = {
+        'company': workspace['company'],
+        'batch': batch,
+        'results': batch_rows,
+        'summary': summary,
+        'ready_rows_count': ready_rows_count,
+        'planned_date_from': planned_date_value,
+    }
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+    return render(request, 'portal/company_object_import.html', context)
+
+
+# ============================================================================
+# FINAL EOF OVERRIDE: two-stage service object import
+# ============================================================================
+
+def _parse_planned_date(raw_value):
+    from datetime import date
+
+    if raw_value:
+        try:
+            return date.fromisoformat(str(raw_value))
+        except ValueError:
+            pass
+    return timezone.localdate()
+
+
+def _get_object_binding_on_date(service_object_id, on_date):
+    from work_orders.models import CompanyObjectServicePeriod
+
+    return (
+        CompanyObjectServicePeriod.objects.select_related('company')
+        .filter(object_id=service_object_id, is_active=True)
+        .filter(date_from__lte=on_date)
+        .filter(Q(date_to__isnull=True) | Q(date_to__gte=on_date))
+        .order_by('-date_from')
+        .first()
+    )
+
+
+def _find_existing_address_entities(components, street_guid, house_guid, house_number, unit_number):
+    from address.models import Building, Unit
+
+    building = None
+    if house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None and street_guid and house_number:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    unit = None
+    if building is not None and unit_number:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number).first()
+    return building, unit
+
+
+def _validate_import_row_for_batch(address, unit_number, company, planned_date):
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    extractor = AddressExtractor()
+    service = FiasAddressService()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    city = components.get('city')
+    street = components.get('street')
+    house_number = normalize_house_number(components.get('house_number'))
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+
+    result = {
+        'address': address,
+        'city': city or '',
+        'street': street or '',
+        'house': house_number or '',
+        'unit_number': unit_number_norm or '',
+        'full_address': build_full_address(components),
+        'building_fias_guid': '',
+        'house_parse_status': '',
+        'house_fias_status': '',
+        'binding_status': '',
+        'unit_status': '',
+        'final_status': '',
+        'comment': '',
+    }
+
+    missing = []
+    if not city:
+        missing.append('населенный пункт')
+    if not street:
+        missing.append('улица')
+    if not house_number:
+        missing.append('дом')
+    if missing:
+        result.update(
+            {
+                'house_parse_status': 'incomplete',
+                'final_status': 'clarify',
+                'comment': f"Неполный адрес: отсутствует {', '.join(missing)}.",
+            }
+        )
+        return result
+
+    fias_result = service.resolve_building_with_fallback(components)
+    street_guid = fias_result.get('street_guid')
+    house_guid = fias_result.get('house_guid')
+    result['building_fias_guid'] = house_guid or ''
+    result['full_address'] = fias_result.get('full_address') or result['full_address']
+    result['house_parse_status'] = 'parsed'
+
+    if not street_guid:
+        result.update(
+            {
+                'house_fias_status': 'street_not_found',
+                'final_status': 'clarify',
+                'comment': 'Улица не найдена в ФИАС. Строку нельзя импортировать.',
+            }
+        )
+        return result
+
+    result['house_fias_status'] = 'house_matched' if house_guid else 'street_matched'
+    building, unit = _find_existing_address_entities(components, street_guid, house_guid, house_number, unit_number_norm)
+
+    if building is not None:
+        house_service_object = (
+            ServiceObject.objects.filter(building_id=building.id, unit_id__isnull=True, is_active=True)
+            .order_by('service_object_id')
+            .first()
+        )
+        if house_service_object:
+            binding = _get_object_binding_on_date(house_service_object.service_object_id, planned_date)
+            if binding and binding.company_id != company.id:
+                result.update(
+                    {
+                        'binding_status': 'conflict',
+                        'final_status': 'blocked',
+                        'comment': f'Дом уже закреплен за компанией "{binding.company.name}" на указанную дату.',
+                    }
+                )
+                return result
+            if binding and binding.company_id == company.id:
+                result['binding_status'] = 'same_company'
+            else:
+                result['binding_status'] = 'new_binding'
+        else:
+            result['binding_status'] = 'new_binding'
+    else:
+        result['binding_status'] = 'new_building'
+
+    if unit_number_norm:
+        if unit is not None and building is not None:
+            unit_service_object = (
+                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.id, is_active=True)
+                .order_by('service_object_id')
+                .first()
+            )
+            if unit_service_object:
+                unit_binding = _get_object_binding_on_date(unit_service_object.service_object_id, planned_date)
+                if unit_binding and unit_binding.company_id != company.id:
+                    result.update(
+                        {
+                            'unit_status': 'conflict',
+                            'final_status': 'blocked',
+                            'comment': f'Квартира/помещение уже закреплена за компанией "{unit_binding.company.name}" на указанную дату.',
+                        }
+                    )
+                    return result
+                if unit_binding and unit_binding.company_id == company.id:
+                    result['unit_status'] = 'same_company'
+                else:
+                    result['unit_status'] = 'existing_unit'
+            else:
+                result['unit_status'] = 'existing_unit'
+        else:
+            result['unit_status'] = 'new_unit'
+    else:
+        result['unit_status'] = 'house_only'
+
+    if result['binding_status'] == 'same_company' and result['unit_status'] in {'', 'house_only', 'same_company'}:
+        result.update(
+            {
+                'final_status': 'blocked',
+                'comment': 'Объект уже привязан к вашей компании на указанную дату.',
+            }
+        )
+        return result
+
+    result.update(
+        {
+            'final_status': 'ready',
+            'comment': 'Строка готова к импорту.',
+        }
+    )
+    return result
+
+
+def _stage_import_batch(uploaded_file, company, user, planned_date):
+    from address.models import ImportBatch, ImportRow
+
+    extracted_rows = _extract_import_rows(uploaded_file)
+    if not extracted_rows:
+        raise ValueError('В файле не найдено строк с адресами.')
+
+    batch = ImportBatch.objects.create(
+        company_id=company.id,
+        uploaded_by=user,
+        planned_date_from=planned_date,
+        status='uploaded',
+    )
+
+    seen_rows = set()
+    for row in extracted_rows:
+        address = row['address']
+        unit_number = (row.get('unit_number') or '').strip()
+        dedupe_key = (' '.join(address.lower().split()), unit_number.lower())
+        if dedupe_key in seen_rows:
+            validation = {
+                'address': address,
+                'city': '',
+                'street': '',
+                'house': '',
+                'unit_number': unit_number,
+                'full_address': address,
+                'building_fias_guid': '',
+                'house_parse_status': 'duplicate',
+                'house_fias_status': '',
+                'binding_status': '',
+                'unit_status': '',
+                'final_status': 'blocked',
+                'comment': 'Дубликат строки в загруженном файле.',
+            }
+        else:
+            seen_rows.add(dedupe_key)
+            validation = _validate_import_row_for_batch(address, unit_number, company, planned_date)
+
+        ImportRow.objects.create(
+            batch=batch,
+            row_no=row['row_number'],
+            raw_address=address,
+            city_main=validation['city'],
+            street=validation['street'],
+            house=validation['house'],
+            unit_number=validation['unit_number'],
+            house_parse_status=validation['house_parse_status'],
+            house_fias_status=validation['house_fias_status'],
+            binding_status=validation['binding_status'],
+            unit_status=validation['unit_status'],
+            final_status=validation['final_status'],
+            comment=validation['comment'],
+            city_fact=validation['full_address'],
+            source_kladr_check=validation['building_fias_guid'],
+        )
+
+    batch.status = 'validated'
+    batch.save(update_fields=['status'])
+    return batch
+
+
+def _build_import_summary(batch_rows):
+    rows = list(batch_rows)
+    return {
+        'processed': len(rows),
+        'ready': sum(1 for row in rows if row.final_status == 'ready'),
+        'blocked': sum(1 for row in rows if row.final_status == 'blocked'),
+        'clarify': sum(1 for row in rows if row.final_status == 'clarify'),
+        'imported': sum(1 for row in rows if row.final_status == 'imported'),
+        'errors': sum(1 for row in rows if row.final_status == 'error'),
+    }
+
+
+def _ensure_company_binding(company, service_object, comment, on_date):
+    from work_orders.models import CompanyObjectServicePeriod
+
+    existing = (
+        CompanyObjectServicePeriod.objects.select_related('company')
+        .filter(object_id=service_object.service_object_id, is_active=True)
+        .filter(date_from__lte=on_date)
+        .filter(Q(date_to__isnull=True) | Q(date_to__gte=on_date))
+        .order_by('-date_from')
+        .first()
+    )
+    if existing:
+        if existing.company_id != company.id:
+            raise ValueError(f'В настоящий момент данный объект закреплен за другой организацией: "{existing.company.name}".')
+        return existing, False
+
+    binding = CompanyObjectServicePeriod.objects.create(
+        company=company,
+        object_id=service_object.service_object_id,
+        date_from=on_date,
+        comment=comment,
+        is_active=True,
+    )
+    return binding, True
+
+
+@transaction.atomic
+def _import_service_object_for_company(address, company, user, unit_number=None, on_date=None):
+    from address.models import Building, Unit
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    service = FiasAddressService()
+    if not service.is_configured:
+        raise ValueError('Не настроен FIAS_API_TOKEN.')
+
+    extractor = AddressExtractor()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    validation = extractor.validate_and_match_to_db(components)
+    house_number = normalize_house_number(validation.get('house_number') or components.get('house_number'))
+    street_guid = validation.get('street_fias_guid')
+    house_guid = validation.get('fias_object_guid')
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+    import_date = on_date or timezone.localdate()
+
+    if not street_guid:
+        raise ValueError('Улица не найдена в ФИАС. Дом не сохранен.')
+    if not house_number:
+        raise ValueError('Не удалось определить номер дома.')
+
+    building = Building.objects.filter(pk=validation.get('building_id')).first() if validation.get('building_id') else None
+    fias_result = service.resolve_building_with_fallback(components)
+    if building is None and house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    full_address = validation.get('address_full') or fias_result.get('full_address') or build_full_address(components)
+    if building is None:
+        building = Building.objects.create(
+            fias_guid=house_guid or None,
+            street_fias_guid=street_guid,
+            house_number=house_number,
+            full_address=full_address,
+            created_by=user,
+        )
+        building_created = True
+    else:
+        building_created = False
+        updated = False
+        for field_name, value in (
+            ('fias_guid', house_guid or building.fias_guid),
+            ('street_fias_guid', street_guid),
+            ('house_number', house_number),
+            ('full_address', full_address),
+        ):
+            if value and getattr(building, field_name) != value:
+                setattr(building, field_name, value)
+                updated = True
+        if updated:
+            building.save(update_fields=['fias_guid', 'street_fias_guid', 'house_number', 'full_address', 'updated_at'])
+
+    house_service_object, house_created = _get_or_create_service_object(building.id, unit_id=None)
+    house_binding, house_binding_created = _ensure_company_binding(
+        company,
+        house_service_object,
+        'Загружено из кабинета руководителя',
+        import_date,
+    )
+
+    result_service_object = house_service_object
+    unit_created = False
+    unit_binding_created = False
+
+    if unit_number_norm:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number_norm).first()
+        if unit is None:
+            unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
+            unit_created = True
+
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        _, unit_binding_created = _ensure_company_binding(
+            company,
+            result_service_object,
+            'Загружено из кабинета руководителя (квартира/помещение)',
+            import_date,
+        )
+
+    created_anything = any([building_created, house_created, house_binding_created, unit_created, unit_binding_created])
+
+    return {
+        'status': 'created' if created_anything else 'skipped',
+        'service_object': result_service_object,
+        'binding': house_binding,
+        'building_fias_guid': str(building.fias_guid) if building.fias_guid else '-',
+        'message': (
+            'Созданы объект дома и объект помещения, привязки обновлены.'
+            if unit_number_norm and created_anything
+            else 'Объект уже был привязан к вашей компании.'
+            if not created_anything
+            else 'Объект дома загружен и привязан к компании.'
+        ),
+    }
+
+
+@login_required
+def director_import_service_objects(request):
+    from address.models import ImportBatch
+
+    membership, workspace, response = _get_manager_workspace(request)
+    if response:
+        return response
+
+    batch = None
+    batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
+    if batch_id:
+        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+
+    if request.method == 'POST':
+        action = request.POST.get('action') or 'upload'
+        planned_date = _parse_planned_date(request.POST.get('planned_date_from'))
+
+        if action == 'upload':
+            uploaded_file = request.FILES.get('import_file')
+            if not uploaded_file:
+                messages.error(request, 'Выберите XLSX или XLS файл для загрузки.')
+            else:
+                try:
+                    batch = _stage_import_batch(uploaded_file, workspace['company'], request.user, planned_date)
+                except ValueError as error:
+                    messages.error(request, str(error))
+                else:
+                    messages.success(request, 'Файл проверен. Подтвердите импорт готовых строк.')
+        elif action == 'confirm':
+            if not batch:
+                messages.error(request, 'Пакет импорта не найден.')
+            else:
+                ready_rows = list(batch.rows.filter(final_status='ready').order_by('row_no', 'id'))
+                imported_count = 0
+                error_count = 0
+                for row in ready_rows:
+                    try:
+                        result = _import_service_object_for_company(
+                            row.raw_address,
+                            workspace['company'],
+                            request.user,
+                            unit_number=row.unit_number,
+                            on_date=batch.planned_date_from,
+                        )
+                    except Exception as error:
+                        row.final_status = 'error'
+                        row.comment = str(error)
+                        row.save(update_fields=['final_status', 'comment'])
+                        error_count += 1
+                    else:
+                        row.final_status = 'imported'
+                        row.comment = result['message']
+                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
+                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        imported_count += 1
+
+                batch.status = 'failed' if error_count else 'imported'
+                batch.save(update_fields=['status'])
+                messages.success(request, f'Импортировано строк: {imported_count}.')
+                if error_count:
+                    messages.warning(request, f'Строк с ошибками: {error_count}.')
+
+    batch_rows = []
+    summary = None
+    ready_rows_count = 0
+    planned_date_value = timezone.localdate()
+    if batch:
+        batch_rows = list(batch.rows.order_by('row_no', 'id'))
+        summary = _build_import_summary(batch_rows)
+        ready_rows_count = summary['ready']
+        planned_date_value = batch.planned_date_from
+
+    context = {
+        'company': workspace['company'],
+        'batch': batch,
+        'results': batch_rows,
+        'summary': summary,
+        'ready_rows_count': ready_rows_count,
+        'planned_date_from': planned_date_value,
+    }
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+    return render(request, 'portal/company_object_import.html', context)
+
+
+# ============================================================================
+# Final runtime import overrides (last definition wins)
+# ============================================================================
+
+def _extract_import_rows(uploaded_file):
+    extension = Path(uploaded_file.name).suffix.lower()
+    binary = uploaded_file.read()
+
+    if extension in {'.xlsx', '.xlsm'}:
+        workbook = load_workbook(filename=BytesIO(binary), data_only=True)
+        sheet = workbook.active
+        rows = list(sheet.iter_rows(values_only=True))
+    else:
+        try:
+            import pandas as pd
+        except Exception as exc:
+            raise ValueError('Формат XLS не поддержан на сервере. Загрузите XLSX.') from exc
+
+        dataframe = pd.read_excel(BytesIO(binary))
+        rows = [tuple(dataframe.columns.tolist())]
+        rows.extend(tuple(row) for row in dataframe.itertuples(index=False, name=None))
+
+    if not rows:
+        return []
+
+    headers = [str(value).strip().lower() if value is not None else '' for value in rows[0]]
+    data_rows = rows[1:]
+
+    def _find_index(*candidates):
+        for candidate in candidates:
+            if candidate in headers:
+                return headers.index(candidate)
+        return None
+
+    address_idx = _find_index('адрес', 'address', 'объект', 'объект обслуживания')
+    city_idx = _find_index('город', 'город основной', 'city', 'city_main', 'gorod')
+    street_idx = _find_index('улица', 'street', 'ulitsa')
+    house_idx = _find_index('дом', 'house', 'nomerdoma')
+    unit_idx = _find_index('квартира', 'помещение', 'unit', 'unit_number', 'nomerkvartiry')
+
+    extracted_rows = []
+    for row_number, row in enumerate(data_rows, start=2):
+        address = ''
+        if address_idx is not None and address_idx < len(row) and row[address_idx] is not None:
+            address = str(row[address_idx]).strip()
+
+        unit_number = ''
+        if unit_idx is not None and unit_idx < len(row) and row[unit_idx] is not None:
+            unit_number = str(row[unit_idx]).strip()
+
+        if not address:
+            city = str(row[city_idx]).strip() if city_idx is not None and city_idx < len(row) and row[city_idx] is not None else ''
+            street = str(row[street_idx]).strip() if street_idx is not None and street_idx < len(row) and row[street_idx] is not None else ''
+            house = str(row[house_idx]).strip() if house_idx is not None and house_idx < len(row) and row[house_idx] is not None else ''
+            parts = []
+            if city:
+                parts.append(f'г {city}')
+            if street:
+                parts.append(f'ул {street}')
+            if house:
+                parts.append(f'д {house}')
+            address = ', '.join(parts).strip(', ')
+
+        if not address:
+            continue
+
+        extracted_rows.append({'row_number': row_number, 'address': address, 'unit_number': unit_number})
+
+    return extracted_rows
+
+
+@transaction.atomic
+def _import_service_object_for_company(address, company, user, unit_number=None, on_date=None):
+    from address.models import Building, Unit
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    service = FiasAddressService()
+    if not service.is_configured:
+        raise ValueError('Не настроен FIAS_API_TOKEN.')
+
+    extractor = AddressExtractor()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    validation = extractor.validate_and_match_to_db(components)
+    house_number = normalize_house_number(validation.get('house_number') or components.get('house_number'))
+    street_guid = validation.get('street_fias_guid')
+    house_guid = validation.get('fias_object_guid')
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+    import_date = on_date or timezone.localdate()
+
+    if not street_guid:
+        raise ValueError('Улица не найдена в ФИАС. Дом не сохранен.')
+    if not house_number:
+        raise ValueError('Не удалось определить номер дома.')
+
+    building = Building.objects.filter(pk=validation.get('building_id')).first() if validation.get('building_id') else None
+    fias_result = service.resolve_building_with_fallback(components)
+    if building is None and house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    full_address = validation.get('address_full') or fias_result.get('full_address') or build_full_address(components)
+    if building is None:
+        building = Building.objects.create(
+            fias_guid=house_guid or None,
+            street_fias_guid=street_guid,
+            house_number=house_number,
+            full_address=full_address,
+            created_by=user,
+        )
+        building_created = True
+    else:
+        building_created = False
+        updated = False
+        for field_name, value in (
+            ('fias_guid', house_guid or building.fias_guid),
+            ('street_fias_guid', street_guid),
+            ('house_number', house_number),
+            ('full_address', full_address),
+        ):
+            if value and getattr(building, field_name) != value:
+                setattr(building, field_name, value)
+                updated = True
+        if updated:
+            building.save(update_fields=['fias_guid', 'street_fias_guid', 'house_number', 'full_address', 'updated_at'])
+
+    house_service_object, house_created = _get_or_create_service_object(building.id, unit_id=None)
+    house_binding, house_binding_created = _ensure_company_binding(
+        company,
+        house_service_object,
+        'Загружено из кабинета руководителя',
+        import_date,
+    )
+
+    result_service_object = house_service_object
+    unit_created = False
+    unit_binding_created = False
+
+    if unit_number_norm:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number_norm).first()
+        if unit is None:
+            unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
+            unit_created = True
+
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        _, unit_binding_created = _ensure_company_binding(
+            company,
+            result_service_object,
+            'Загружено из кабинета руководителя (квартира/помещение)',
+            import_date,
+        )
+
+    created_anything = any([building_created, house_created, house_binding_created, unit_created, unit_binding_created])
+    return {
+        'status': 'created' if created_anything else 'skipped',
+        'service_object': result_service_object,
+        'binding': house_binding,
+        'building_fias_guid': str(building.fias_guid) if building.fias_guid else '-',
+        'message': (
+            'Созданы объект дома и объект помещения, привязки обновлены.'
+            if unit_number_norm and created_anything
+            else 'Объект уже был привязан к вашей компании.'
+            if not created_anything
+            else 'Объект дома загружен и привязан к компании.'
+        ),
+    }
+
+
+@login_required
+def director_import_service_objects(request):
+    from address.models import ImportBatch
+
+    membership, workspace, response = _get_manager_workspace(request)
+    if response:
+        return response
+
+    batch = None
+    batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
+    if batch_id:
+        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+
+    if request.method == 'POST':
+        action = request.POST.get('action') or 'upload'
+        planned_date = _parse_planned_date(request.POST.get('planned_date_from'))
+
+        if action == 'upload':
+            uploaded_file = request.FILES.get('import_file')
+            if not uploaded_file:
+                messages.error(request, 'Выберите XLSX или XLS файл для загрузки.')
+            else:
+                try:
+                    batch = _stage_import_batch(uploaded_file, workspace['company'], request.user, planned_date)
+                except ValueError as error:
+                    messages.error(request, str(error))
+                else:
+                    messages.success(request, 'Файл проверен. Подтвердите импорт готовых строк.')
+        elif action == 'confirm':
+            if not batch:
+                messages.error(request, 'Пакет импорта не найден.')
+            else:
+                ready_rows = list(batch.rows.filter(final_status='ready').order_by('row_no', 'id'))
+                imported_count = 0
+                error_count = 0
+                for row in ready_rows:
+                    try:
+                        result = _import_service_object_for_company(
+                            row.raw_address,
+                            workspace['company'],
+                            request.user,
+                            unit_number=row.unit_number,
+                            on_date=batch.planned_date_from,
+                        )
+                    except Exception as error:
+                        row.final_status = 'error'
+                        row.comment = str(error)
+                        row.save(update_fields=['final_status', 'comment'])
+                        error_count += 1
+                    else:
+                        row.final_status = 'imported'
+                        row.comment = result['message']
+                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
+                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        imported_count += 1
+
+                batch.status = 'failed' if error_count else 'imported'
+                batch.save(update_fields=['status'])
+                messages.success(request, f'Импортировано строк: {imported_count}.')
+                if error_count:
+                    messages.warning(request, f'Строк с ошибками: {error_count}.')
+
+    batch_rows = []
+    summary = None
+    ready_rows_count = 0
+    planned_date_value = timezone.localdate()
+    if batch:
+        batch_rows = list(batch.rows.order_by('row_no', 'id'))
+        summary = _build_import_summary(batch_rows)
+        ready_rows_count = summary['ready']
+        planned_date_value = batch.planned_date_from
+
+    context = {
+        'company': workspace['company'],
+        'batch': batch,
+        'results': batch_rows,
+        'summary': summary,
+        'ready_rows_count': ready_rows_count,
+        'planned_date_from': planned_date_value,
+    }
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+    return render(request, 'portal/company_object_import.html', context)
+
+
+# ============================================================================
+# Final address import overrides
+# ============================================================================
+
+def _extract_import_rows(uploaded_file):
+    extension = Path(uploaded_file.name).suffix.lower()
+    binary = uploaded_file.read()
+
+    if extension in {'.xlsx', '.xlsm'}:
+        workbook = load_workbook(filename=BytesIO(binary), data_only=True)
+        sheet = workbook.active
+        rows = list(sheet.iter_rows(values_only=True))
+    else:
+        try:
+            import pandas as pd
+        except Exception as exc:
+            raise ValueError('Формат XLS не поддержан на сервере. Загрузите XLSX.') from exc
+
+        dataframe = pd.read_excel(BytesIO(binary))
+        rows = [tuple(dataframe.columns.tolist())]
+        rows.extend(tuple(row) for row in dataframe.itertuples(index=False, name=None))
+
+    if not rows:
+        return []
+
+    headers = [str(value).strip().lower() if value is not None else '' for value in rows[0]]
+    data_rows = rows[1:]
+
+    def _find_index(*candidates):
+        for candidate in candidates:
+            if candidate in headers:
+                return headers.index(candidate)
+        return None
+
+    address_idx = _find_index('адрес', 'address', 'объект', 'объект обслуживания')
+    city_idx = _find_index('город', 'город основной', 'city', 'city_main', 'gorod')
+    street_idx = _find_index('улица', 'street', 'ulitsa')
+    house_idx = _find_index('дом', 'house', 'nomerdoma')
+    unit_idx = _find_index('квартира', 'помещение', 'unit', 'unit_number', 'nomerkvartiry')
+
+    extracted_rows = []
+    for row_number, row in enumerate(data_rows, start=2):
+        address = ''
+        if address_idx is not None and address_idx < len(row) and row[address_idx] is not None:
+            address = str(row[address_idx]).strip()
+
+        unit_number = ''
+        if unit_idx is not None and unit_idx < len(row) and row[unit_idx] is not None:
+            unit_number = str(row[unit_idx]).strip()
+
+        if not address:
+            city = str(row[city_idx]).strip() if city_idx is not None and city_idx < len(row) and row[city_idx] is not None else ''
+            street = str(row[street_idx]).strip() if street_idx is not None and street_idx < len(row) and row[street_idx] is not None else ''
+            house = str(row[house_idx]).strip() if house_idx is not None and house_idx < len(row) and row[house_idx] is not None else ''
+            parts = []
+            if city:
+                parts.append(f'г {city}')
+            if street:
+                parts.append(f'ул {street}')
+            if house:
+                parts.append(f'д {house}')
+            address = ', '.join(parts).strip(', ')
+
+        if not address:
+            continue
+
+        extracted_rows.append({'row_number': row_number, 'address': address, 'unit_number': unit_number})
+
+    return extracted_rows
+
+
+@transaction.atomic
+def _import_service_object_for_company(address, company, user, unit_number=None, on_date=None):
+    from address.models import Building, Unit
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    service = FiasAddressService()
+    if not service.is_configured:
+        raise ValueError('Не настроен FIAS_API_TOKEN.')
+
+    extractor = AddressExtractor()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    validation = extractor.validate_and_match_to_db(components)
+    house_number = normalize_house_number(validation.get('house_number') or components.get('house_number'))
+    street_guid = validation.get('street_fias_guid')
+    house_guid = validation.get('fias_object_guid')
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+    import_date = on_date or timezone.localdate()
+
+    if not street_guid:
+        raise ValueError('Улица не найдена в ФИАС. Дом не сохранен.')
+    if not house_number:
+        raise ValueError('Не удалось определить номер дома.')
+
+    building = Building.objects.filter(pk=validation.get('building_id')).first() if validation.get('building_id') else None
+    fias_result = service.resolve_building_with_fallback(components)
+    if building is None and house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    full_address = validation.get('address_full') or fias_result.get('full_address') or build_full_address(components)
+    if building is None:
+        building = Building.objects.create(
+            fias_guid=house_guid or None,
+            street_fias_guid=street_guid,
+            house_number=house_number,
+            full_address=full_address,
+            created_by=user,
+        )
+        building_created = True
+    else:
+        building_created = False
+        updated = False
+        for field_name, value in (
+            ('fias_guid', house_guid or building.fias_guid),
+            ('street_fias_guid', street_guid),
+            ('house_number', house_number),
+            ('full_address', full_address),
+        ):
+            if value and getattr(building, field_name) != value:
+                setattr(building, field_name, value)
+                updated = True
+        if updated:
+            building.save(update_fields=['fias_guid', 'street_fias_guid', 'house_number', 'full_address', 'updated_at'])
+
+    house_service_object, house_created = _get_or_create_service_object(building.id, unit_id=None)
+    house_binding, house_binding_created = _ensure_company_binding(
+        company,
+        house_service_object,
+        'Загружено из кабинета руководителя',
+        import_date,
+    )
+
+    result_service_object = house_service_object
+    unit_created = False
+    unit_binding_created = False
+
+    if unit_number_norm:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number_norm).first()
+        if unit is None:
+            unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
+            unit_created = True
+
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        _, unit_binding_created = _ensure_company_binding(
+            company,
+            result_service_object,
+            'Загружено из кабинета руководителя (квартира/помещение)',
+            import_date,
+        )
+
+    created_anything = any([building_created, house_created, house_binding_created, unit_created, unit_binding_created])
+    return {
+        'status': 'created' if created_anything else 'skipped',
+        'service_object': result_service_object,
+        'binding': house_binding,
+        'building_fias_guid': str(building.fias_guid) if building.fias_guid else '-',
+        'message': (
+            'Созданы объект дома и объект помещения, привязки обновлены.'
+            if unit_number_norm and created_anything
+            else 'Объект уже был привязан к вашей компании.'
+            if not created_anything
+            else 'Объект дома загружен и привязан к компании.'
+        ),
+    }
+
+
+@login_required
+def director_import_service_objects(request):
+    from address.models import ImportBatch
+
+    membership, workspace, response = _get_manager_workspace(request)
+    if response:
+        return response
+
+    batch = None
+    batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
+    if batch_id:
+        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+
+    if request.method == 'POST':
+        action = request.POST.get('action') or 'upload'
+        planned_date = _parse_planned_date(request.POST.get('planned_date_from'))
+
+        if action == 'upload':
+            uploaded_file = request.FILES.get('import_file')
+            if not uploaded_file:
+                messages.error(request, 'Выберите XLSX или XLS файл для загрузки.')
+            else:
+                try:
+                    batch = _stage_import_batch(uploaded_file, workspace['company'], request.user, planned_date)
+                except ValueError as error:
+                    messages.error(request, str(error))
+                else:
+                    messages.success(request, 'Файл проверен. Подтвердите импорт готовых строк.')
+        elif action == 'confirm':
+            if not batch:
+                messages.error(request, 'Пакет импорта не найден.')
+            else:
+                ready_rows = list(batch.rows.filter(final_status='ready').order_by('row_no', 'id'))
+                imported_count = 0
+                error_count = 0
+                for row in ready_rows:
+                    try:
+                        result = _import_service_object_for_company(
+                            row.raw_address,
+                            workspace['company'],
+                            request.user,
+                            unit_number=row.unit_number,
+                            on_date=batch.planned_date_from,
+                        )
+                    except Exception as error:
+                        row.final_status = 'error'
+                        row.comment = str(error)
+                        row.save(update_fields=['final_status', 'comment'])
+                        error_count += 1
+                    else:
+                        row.final_status = 'imported'
+                        row.comment = result['message']
+                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
+                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        imported_count += 1
+
+                batch.status = 'failed' if error_count else 'imported'
+                batch.save(update_fields=['status'])
+                messages.success(request, f'Импортировано строк: {imported_count}.')
+                if error_count:
+                    messages.warning(request, f'Строк с ошибками: {error_count}.')
+
+    batch_rows = []
+    summary = None
+    ready_rows_count = 0
+    planned_date_value = timezone.localdate()
+    if batch:
+        batch_rows = list(batch.rows.order_by('row_no', 'id'))
+        summary = _build_import_summary(batch_rows)
+        ready_rows_count = summary['ready']
+        planned_date_value = batch.planned_date_from
+
+    context = {
+        'company': workspace['company'],
+        'batch': batch,
+        'results': batch_rows,
+        'summary': summary,
+        'ready_rows_count': ready_rows_count,
+        'planned_date_from': planned_date_value,
+    }
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+    return render(request, 'portal/company_object_import.html', context)
+
+
+def _parse_planned_date(raw_value):
+    from datetime import date
+
+    if raw_value:
+        try:
+            return date.fromisoformat(str(raw_value))
+        except ValueError:
+            pass
+    return timezone.localdate()
+
+
+def _get_object_binding_on_date(service_object_id, on_date):
+    from work_orders.models import CompanyObjectServicePeriod
+
+    return (
+        CompanyObjectServicePeriod.objects.select_related('company')
+        .filter(object_id=service_object_id, is_active=True)
+        .filter(date_from__lte=on_date)
+        .filter(Q(date_to__isnull=True) | Q(date_to__gte=on_date))
+        .order_by('-date_from')
+        .first()
+    )
+
+
+def _find_existing_address_entities(components, street_guid, house_guid, house_number, unit_number):
+    from address.models import Building, Unit
+
+    building = None
+    if house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None and street_guid and house_number:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    unit = None
+    if building is not None and unit_number:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number).first()
+    return building, unit
+
+
+def _validate_import_row_for_batch(address, unit_number, company, planned_date):
+    from address.models import Building
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    extractor = AddressExtractor()
+    service = FiasAddressService()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    city = components.get('city')
+    street = components.get('street')
+    house_number = normalize_house_number(components.get('house_number'))
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+
+    result = {
+        'address': address,
+        'city': city or '',
+        'street': street or '',
+        'house': house_number or '',
+        'unit_number': unit_number_norm or '',
+        'full_address': build_full_address(components),
+        'building_fias_guid': '',
+        'house_parse_status': '',
+        'house_fias_status': '',
+        'binding_status': '',
+        'unit_status': '',
+        'final_status': '',
+        'comment': '',
+    }
+
+    missing = []
+    if not city:
+        missing.append('населенный пункт')
+    if not street:
+        missing.append('улица')
+    if not house_number:
+        missing.append('дом')
+    if missing:
+        result.update(
+            {
+                'house_parse_status': 'incomplete',
+                'final_status': 'clarify',
+                'comment': f"Неполный адрес: отсутствует {', '.join(missing)}.",
+            }
+        )
+        return result
+
+    fias_result = service.resolve_building_with_fallback(components)
+    street_guid = fias_result.get('street_guid')
+    house_guid = fias_result.get('house_guid')
+    result['building_fias_guid'] = house_guid or ''
+    result['full_address'] = fias_result.get('full_address') or result['full_address']
+    result['house_parse_status'] = 'parsed'
+
+    if not street_guid:
+        result.update(
+            {
+                'house_fias_status': 'street_not_found',
+                'final_status': 'clarify',
+                'comment': 'Улица не найдена в ФИАС. Строку нельзя импортировать.',
+            }
+        )
+        return result
+
+    result['house_fias_status'] = 'house_matched' if house_guid else 'street_matched'
+    building, unit = _find_existing_address_entities(components, street_guid, house_guid, house_number, unit_number_norm)
+
+    if building is not None:
+        house_service_object = (
+            ServiceObject.objects.filter(building_id=building.id, unit_id__isnull=True, is_active=True)
+            .order_by('service_object_id')
+            .first()
+        )
+        if house_service_object:
+            binding = _get_object_binding_on_date(house_service_object.service_object_id, planned_date)
+            if binding and binding.company_id != company.id:
+                result.update(
+                    {
+                        'binding_status': 'conflict',
+                        'final_status': 'blocked',
+                        'comment': f'Дом уже закреплен за компанией "{binding.company.name}" на указанную дату.',
+                    }
+                )
+                return result
+            if binding and binding.company_id == company.id:
+                result['binding_status'] = 'same_company'
+            else:
+                result['binding_status'] = 'new_binding'
+        else:
+            result['binding_status'] = 'new_binding'
+    else:
+        result['binding_status'] = 'new_building'
+
+    if unit_number_norm:
+        if unit is not None:
+            unit_service_object = (
+                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.id, is_active=True)
+                .order_by('service_object_id')
+                .first()
+            )
+            if unit_service_object:
+                unit_binding = _get_object_binding_on_date(unit_service_object.service_object_id, planned_date)
+                if unit_binding and unit_binding.company_id != company.id:
+                    result.update(
+                        {
+                            'unit_status': 'conflict',
+                            'final_status': 'blocked',
+                            'comment': f'Квартира/помещение уже закреплена за компанией "{unit_binding.company.name}" на указанную дату.',
+                        }
+                    )
+                    return result
+                if unit_binding and unit_binding.company_id == company.id:
+                    result['unit_status'] = 'same_company'
+                else:
+                    result['unit_status'] = 'existing_unit'
+            else:
+                result['unit_status'] = 'existing_unit'
+        else:
+            result['unit_status'] = 'new_unit'
+    else:
+        result['unit_status'] = 'house_only'
+
+    if result['binding_status'] == 'same_company' and result['unit_status'] in {'', 'house_only', 'same_company'}:
+        result.update(
+            {
+                'final_status': 'blocked',
+                'comment': 'Объект уже привязан к вашей компании на указанную дату.',
+            }
+        )
+        return result
+
+    result.update(
+        {
+            'final_status': 'ready',
+            'comment': 'Строка готова к импорту.',
+        }
+    )
+    return result
+
+
+def _stage_import_batch(uploaded_file, company, user, planned_date):
+    from address.models import ImportBatch, ImportRow
+
+    extracted_rows = _extract_import_rows(uploaded_file)
+    if not extracted_rows:
+        raise ValueError('В файле не найдено строк с адресами.')
+
+    batch = ImportBatch.objects.create(
+        company_id=company.id,
+        uploaded_by=user,
+        planned_date_from=planned_date,
+        status='uploaded',
+    )
+
+    seen_rows = set()
+    for row in extracted_rows:
+        address = row['address']
+        unit_number = (row.get('unit_number') or '').strip()
+        dedupe_key = (' '.join(address.lower().split()), unit_number.lower())
+        if dedupe_key in seen_rows:
+            validation = {
+                'address': address,
+                'city': '',
+                'street': '',
+                'house': '',
+                'unit_number': unit_number,
+                'full_address': address,
+                'building_fias_guid': '',
+                'house_parse_status': 'duplicate',
+                'house_fias_status': '',
+                'binding_status': '',
+                'unit_status': '',
+                'final_status': 'blocked',
+                'comment': 'Дубликат строки в загруженном файле.',
+            }
+        else:
+            seen_rows.add(dedupe_key)
+            validation = _validate_import_row_for_batch(address, unit_number, company, planned_date)
+
+        ImportRow.objects.create(
+            batch=batch,
+            row_no=row['row_number'],
+            raw_address=address,
+            city_main=validation['city'],
+            street=validation['street'],
+            house=validation['house'],
+            unit_number=validation['unit_number'],
+            house_parse_status=validation['house_parse_status'],
+            house_fias_status=validation['house_fias_status'],
+            binding_status=validation['binding_status'],
+            unit_status=validation['unit_status'],
+            final_status=validation['final_status'],
+            comment=validation['comment'],
+            city_fact=validation['full_address'],
+            source_kladr_check=validation['building_fias_guid'],
+        )
+
+    batch.status = 'validated'
+    batch.save(update_fields=['status'])
+    return batch
+
+
+@transaction.atomic
+def _import_service_object_for_company(address, company, user, unit_number=None, on_date=None):
+    from address.models import Building, Unit
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    service = FiasAddressService()
+    if not service.is_configured:
+        raise ValueError('Не настроен FIAS_API_TOKEN.')
+
+    extractor = AddressExtractor()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    validation = extractor.validate_and_match_to_db(components)
+    house_number = normalize_house_number(validation.get('house_number') or components.get('house_number'))
+    street_guid = validation.get('street_fias_guid')
+    house_guid = validation.get('fias_object_guid')
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+    import_date = on_date or timezone.localdate()
+
+    if not street_guid:
+        raise ValueError('Улица не найдена в ФИАС. Дом не сохранен.')
+    if not house_number:
+        raise ValueError('Не удалось определить номер дома.')
+
+    building = Building.objects.filter(pk=validation.get('building_id')).first() if validation.get('building_id') else None
+    fias_result = service.resolve_building_with_fallback(components)
+    if building is None and house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    full_address = validation.get('address_full') or fias_result.get('full_address') or build_full_address(components)
+    if building is None:
+        building = Building.objects.create(
+            fias_guid=house_guid or None,
+            street_fias_guid=street_guid,
+            house_number=house_number,
+            full_address=full_address,
+            created_by=user,
+        )
+        building_created = True
+    else:
+        building_created = False
+        updated = False
+        for field_name, value in (
+            ('fias_guid', house_guid or building.fias_guid),
+            ('street_fias_guid', street_guid),
+            ('house_number', house_number),
+            ('full_address', full_address),
+        ):
+            if value and getattr(building, field_name) != value:
+                setattr(building, field_name, value)
+                updated = True
+        if updated:
+            building.save(update_fields=['fias_guid', 'street_fias_guid', 'house_number', 'full_address', 'updated_at'])
+
+    house_service_object, house_created = _get_or_create_service_object(building.id, unit_id=None)
+    house_binding, house_binding_created = _ensure_company_binding(
+        company,
+        house_service_object,
+        'Загружено из кабинета руководителя',
+        import_date,
+    )
+
+    result_service_object = house_service_object
+    unit_created = False
+    unit_binding_created = False
+
+    if unit_number_norm:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number_norm).first()
+        if unit is None:
+            unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
+            unit_created = True
+
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        _, unit_binding_created = _ensure_company_binding(
+            company,
+            result_service_object,
+            'Загружено из кабинета руководителя (квартира/помещение)',
+            import_date,
+        )
+
+    created_anything = any([building_created, house_created, house_binding_created, unit_created, unit_binding_created])
+
+    return {
+        'status': 'created' if created_anything else 'skipped',
+        'service_object': result_service_object,
+        'binding': house_binding,
+        'building_fias_guid': str(building.fias_guid) if building.fias_guid else '-',
+        'message': (
+            'Созданы объект дома и объект помещения, привязки обновлены.'
+            if unit_number_norm and created_anything
+            else 'Объект уже был привязан к вашей компании.'
+            if not created_anything
+            else 'Объект дома загружен и привязан к компании.'
+        ),
+    }
+
+
+def _build_import_summary(batch_rows):
+    rows = list(batch_rows)
+    return {
+        'processed': len(rows),
+        'ready': sum(1 for row in rows if row.final_status == 'ready'),
+        'blocked': sum(1 for row in rows if row.final_status == 'blocked'),
+        'clarify': sum(1 for row in rows if row.final_status == 'clarify'),
+        'imported': sum(1 for row in rows if row.final_status == 'imported'),
+        'errors': sum(1 for row in rows if row.final_status == 'error'),
+    }
+
+
+@login_required
+def director_import_service_objects(request):
+    from address.models import ImportBatch
+
+    membership, workspace, response = _get_manager_workspace(request)
+    if response:
+        return response
+
+    batch = None
+    batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
+    if batch_id:
+        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+
+    if request.method == 'POST':
+        action = request.POST.get('action') or 'upload'
+        planned_date = _parse_planned_date(request.POST.get('planned_date_from'))
+
+        if action == 'upload':
+            uploaded_file = request.FILES.get('import_file')
+            if not uploaded_file:
+                messages.error(request, 'Выберите XLSX или XLS файл для загрузки.')
+            else:
+                try:
+                    batch = _stage_import_batch(uploaded_file, workspace['company'], request.user, planned_date)
+                except ValueError as error:
+                    messages.error(request, str(error))
+                else:
+                    messages.success(request, 'Файл проверен. Подтвердите импорт готовых строк.')
+        elif action == 'confirm':
+            if not batch:
+                messages.error(request, 'Пакет импорта не найден.')
+            else:
+                ready_rows = list(batch.rows.filter(final_status='ready').order_by('row_no', 'id'))
+                imported_count = 0
+                error_count = 0
+                for row in ready_rows:
+                    try:
+                        result = _import_service_object_for_company(
+                            row.raw_address,
+                            workspace['company'],
+                            request.user,
+                            unit_number=row.unit_number,
+                            on_date=batch.planned_date_from,
+                        )
+                    except Exception as error:
+                        row.final_status = 'error'
+                        row.comment = str(error)
+                        row.save(update_fields=['final_status', 'comment'])
+                        error_count += 1
+                    else:
+                        row.final_status = 'imported'
+                        row.comment = result['message']
+                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
+                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        imported_count += 1
+
+                batch.status = 'failed' if error_count else 'imported'
+                batch.save(update_fields=['status'])
+                messages.success(request, f'Импортировано строк: {imported_count}.')
+                if error_count:
+                    messages.warning(request, f'Строк с ошибками: {error_count}.')
+
+    batch_rows = []
+    summary = None
+    ready_rows_count = 0
+    planned_date_value = timezone.localdate()
+    if batch:
+        batch_rows = list(batch.rows.order_by('row_no', 'id'))
+        summary = _build_import_summary(batch_rows)
+        ready_rows_count = summary['ready']
+        planned_date_value = batch.planned_date_from
+
+    context = {
+        'company': workspace['company'],
+        'batch': batch,
+        'results': batch_rows,
+        'summary': summary,
+        'ready_rows_count': ready_rows_count,
+        'planned_date_from': planned_date_value,
+    }
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+    return render(request, 'portal/company_object_import.html', context)
+
+
 @login_required
 def director_departments(request):
     """
@@ -989,6 +2707,7 @@ def director_departments(request):
     return render(request, 'portal/director_departments.html', context)
 
 
+@never_cache
 @login_required
 def director_add_resident(request):
     """
@@ -1013,13 +2732,64 @@ def director_add_resident(request):
         messages.error(request, 'Доступ разрешен только Директорам УК и Главным инженерам')
         return redirect('portal:welcome')
 
+    def _get_resident_draft_user(user_id=None, username=None):
+        from work_orders.models import UserCompanyMembership
+
+        queryset = User.objects.filter(is_superuser=False)
+        if user_id:
+            queryset = queryset.filter(id=user_id)
+        elif username:
+            queryset = queryset.filter(username=username)
+        else:
+            return None
+
+        draft_user = queryset.select_related('userprofile').first()
+        if not draft_user or draft_user.is_staff:
+            return None
+
+        has_active_membership = UserCompanyMembership.objects.filter(
+            user=draft_user,
+            is_active=True,
+            date_to__isnull=True,
+        ).exists()
+        if has_active_membership:
+            return None
+        return draft_user
+
+    def _get_active_membership_user(user_id=None, username=None):
+        from work_orders.models import UserCompanyMembership
+
+        queryset = User.objects.all()
+        if user_id:
+            queryset = queryset.filter(id=user_id)
+        elif username:
+            queryset = queryset.filter(username=username)
+        else:
+            return None, None
+
+        existing_user = queryset.first()
+        if not existing_user:
+            return None, None
+
+        active_membership = (
+            UserCompanyMembership.objects
+            .filter(user=existing_user, is_active=True, date_to__isnull=True)
+            .select_related('company')
+            .first()
+        )
+        return existing_user, active_membership
+
     superuser_without_membership = request.user.is_superuser and not membership
     companies = None
     company_id = membership.company_id if membership else None
     selected_company_id = request.POST.get('company') or request.GET.get('company')
+    selected_department_id = request.POST.get('department') or request.GET.get('department') or ''
+    draft_user_id = request.POST.get('draft_user_id') or request.GET.get('draft_user_id')
     account_type = (request.POST.get('account_type') or request.GET.get('account_type') or 'resident').strip().lower()
     if account_type not in {'resident', 'employee'}:
         account_type = 'resident'
+    draft_user = None
+    draft_candidate = None
 
     if superuser_without_membership:
         from nsi.models import Company
@@ -1038,10 +2808,33 @@ def director_add_resident(request):
         departments = departments.filter(company_id=company_id)
     departments = departments.select_related('company').order_by('company__name', 'department_name')
 
+    if draft_user_id:
+        try:
+            draft_user = _get_resident_draft_user(user_id=int(draft_user_id))
+        except (TypeError, ValueError):
+            draft_user = None
+
     # Обработка формы
     if request.method == 'POST':
+        existing_user, existing_membership = _get_active_membership_user(
+            user_id=draft_user_id,
+            username=(request.POST.get('username') or '').strip() or None,
+        )
+        if existing_membership:
+            if company_id and existing_membership.company_id == company_id:
+                messages.info(
+                    request,
+                    f'Пользователь {existing_user.username} уже оформлен в компании {existing_membership.company.name}.'
+                )
+                return redirect('portal:director_residents')
+            messages.warning(
+                request,
+                f'Пользователь {existing_user.username} уже привязан к компании {existing_membership.company.name}.'
+            )
+            return redirect('portal:director_residents')
+
         from portal.forms import AddResidentForm
-        form = AddResidentForm(request.POST)
+        form = AddResidentForm(request.POST, allowed_existing_user_id=draft_user.id if draft_user else None)
         if account_type == 'resident':
             form.fields['role'].choices = [('resident', 'Житель')]
             form.fields['role'].initial = 'resident'
@@ -1066,96 +2859,164 @@ def director_add_resident(request):
                     form.add_error(None, 'Выбранная компания недоступна')
                     form_valid = False
 
+        username = (request.POST.get('username') or '').strip()
+        if not draft_user and username:
+            draft_candidate = _get_resident_draft_user(username=username)
+            if draft_candidate and not form_valid:
+                form.fields['username'].help_text = (
+                    'Этот логин уже занят черновиком без привязки. '
+                    'Можно подтянуть его в карточку и завершить оформление.'
+                )
+
         if form_valid:
-            # Создаем пользователя
-            user = User.objects.create_user(
-                username=form.cleaned_data['username'],
-                email=form.cleaned_data.get('email', ''),
-                first_name=form.cleaned_data.get('first_name', ''),
-                last_name=form.cleaned_data.get('last_name', ''),
-                password=form.cleaned_data['password'],
-                is_staff=False  # Жители - не staff
-            )
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            try:
+                with transaction.atomic():
+                    if draft_user:
+                        user = draft_user
+                        user.username = form.cleaned_data['username']
+                        user.email = form.cleaned_data.get('email', '')
+                        user.first_name = form.cleaned_data.get('first_name', '')
+                        user.last_name = form.cleaned_data.get('last_name', '')
+                        user.is_staff = False
+                        user.set_password(form.cleaned_data['password'])
+                        user.save()
+                    else:
+                        # Создаем пользователя
+                        user = User.objects.create_user(
+                            username=form.cleaned_data['username'],
+                            email=form.cleaned_data.get('email', ''),
+                            first_name=form.cleaned_data.get('first_name', ''),
+                            last_name=form.cleaned_data.get('last_name', ''),
+                            password=form.cleaned_data['password'],
+                            is_staff=False  # Жители - не staff
+                        )
 
-            # Получаем или создаем UserProfile
-            from portal.models import UserProfile
-            profile, created = UserProfile.objects.get_or_create(
-                user=user,
-                defaults={
-                    'timezone': 'Europe/Moscow',
-                    'role': 'uk_user'
-                }
-            )
-
-            # Получаем подразделение (обязательно для сотрудников)
-            from work_orders.models import CompanyDepartment
-            department_id = request.POST.get('department')
-            department = None
-            role_code = form.cleaned_data['role']
-
-            # Для исполнителей и главного инженера department обязателен
-            if role_code in ['executor', 'chief_engineer']:
-                if not department_id or department_id == '':
-                    messages.error(request, 'Для сотрудников обязательно укажите подразделение!')
-                    return render(request, 'portal/director_add_resident.html', {
-                        'company': workspace['company'],
-                        'form': form,
-                        'departments': departments,
-                        'companies': companies,
-                        'selected_company_id': str(company_id) if company_id else '',
-                        'superuser_without_membership': superuser_without_membership,
-                    })
-                try:
-                    department = CompanyDepartment.objects.get(
-                        id=int(department_id),
-                        company_id=company_id
+                    # Получаем или создаем UserProfile
+                    from portal.models import UserProfile
+                    profile, created = UserProfile.objects.get_or_create(
+                        user=user,
+                        defaults={
+                            'timezone': 'Europe/Moscow',
+                            'role': 'uk_user'
+                        }
                     )
-                except CompanyDepartment.DoesNotExist:
-                    messages.error(request, 'Указанное подразделение не найдено!')
-                    return render(request, 'portal/director_add_resident.html', {
-                        'company': workspace['company'],
-                        'form': form,
-                        'departments': departments,
-                        'companies': companies,
-                        'selected_company_id': str(company_id) if company_id else '',
-                        'superuser_without_membership': superuser_without_membership,
-                    })
-            elif department_id and department_id != '':
-                # Для жителей department опционален, но если указан - проверяем
-                try:
-                    department = CompanyDepartment.objects.get(
-                        id=int(department_id),
-                        company_id=company_id
+
+                    # Получаем подразделение (обязательно для сотрудников)
+                    from work_orders.models import CompanyDepartment
+                    department_id = request.POST.get('department')
+                    department = None
+                    role_code = form.cleaned_data['role']
+
+                    # Для исполнителей и главного инженера department обязателен
+                    if role_code in ['executor', 'chief_engineer']:
+                        if not department_id or department_id == '':
+                            messages.error(request, 'Для сотрудников обязательно укажите подразделение!')
+                            raise ValueError('department_required')
+                        try:
+                            department = CompanyDepartment.objects.get(
+                                id=int(department_id),
+                                company_id=company_id
+                            )
+                        except CompanyDepartment.DoesNotExist:
+                            messages.error(request, 'Указанное подразделение не найдено!')
+                            raise ValueError('department_missing')
+                    elif department_id and department_id != '':
+                        # Для жителей department опционален, но если указан - проверяем
+                        try:
+                            department = CompanyDepartment.objects.get(
+                                id=int(department_id),
+                                company_id=company_id
+                            )
+                        except CompanyDepartment.DoesNotExist:
+                            pass
+
+                    # Создаем UserCompanyMembership
+                    from work_orders.models import UserCompanyMembership
+                    membership = UserCompanyMembership(
+                        user=user,
+                        company_id=company_id,
+                        department=department,
+                        role_code=role_code,
+                        is_primary=True,
+                        is_active=True,
+                        date_from=timezone.now()
                     )
-                except CompanyDepartment.DoesNotExist:
-                    pass
+                    membership.full_clean()
+                    membership.save()
 
-            # Создаем UserCompanyMembership
-            from work_orders.models import UserCompanyMembership
-            UserCompanyMembership.objects.create(
-                user=user,
-                company_id=company_id,
-                department=department,
-                role_code=role_code,
-                is_primary=True,
-                is_active=True,
-                date_from=timezone.now()
-            )
+                    profile.role = 'resident' if role_code == 'resident' else 'uk_user'
+                    profile.primary_company_id = company_id
+                    profile.primary_department = department
+                    profile.phone = form.cleaned_data.get('phone', '')
+                    profile.address = form.cleaned_data.get('address', '')
+                    if role_code == 'chief_engineer':
+                        profile.job_title = 'chief_engineer'
+                    profile.save()
+            except DjangoValidationError as exc:
+                if hasattr(exc, 'message_dict'):
+                    for field_name, field_errors in exc.message_dict.items():
+                        target_field = 'role' if field_name == 'role_code' else field_name
+                        for field_error in field_errors:
+                            if target_field in form.fields:
+                                form.add_error(target_field, field_error)
+                            else:
+                                form.add_error(None, field_error)
+                else:
+                    form.add_error(None, '; '.join(exc.messages))
+                return render(request, 'portal/director_add_resident.html', {
+                    'company': workspace['company'],
+                    'form': form,
+                    'departments': departments,
+                    'companies': companies,
+                    'selected_company_id': str(company_id) if company_id else '',
+                    'selected_department_id': str(selected_department_id) if selected_department_id else '',
+                    'superuser_without_membership': superuser_without_membership,
+                    'account_type': account_type,
+                    'page_title': 'Добавить жителя' if account_type == 'resident' else 'Добавить сотрудника',
+                    'draft_user': draft_user,
+                    'draft_candidate': draft_candidate,
+                })
+            except ValueError:
+                return render(request, 'portal/director_add_resident.html', {
+                    'company': workspace['company'],
+                    'form': form,
+                    'departments': departments,
+                    'companies': companies,
+                    'selected_company_id': str(company_id) if company_id else '',
+                    'selected_department_id': str(selected_department_id) if selected_department_id else '',
+                    'superuser_without_membership': superuser_without_membership,
+                    'account_type': account_type,
+                    'page_title': 'Добавить жителя' if account_type == 'resident' else 'Добавить сотрудника',
+                    'draft_user': draft_user,
+                    'draft_candidate': draft_candidate,
+                })
 
-            profile.role = 'resident' if role_code == 'resident' else 'uk_user'
-            profile.primary_company_id = company_id
-            profile.primary_department = department
-            profile.phone = form.cleaned_data.get('phone', '')
-            profile.address = form.cleaned_data.get('address', '')
-            if role_code == 'chief_engineer':
-                profile.job_title = 'chief_engineer'
-            profile.save()
-
-            messages.success(request, f'Пользователь {user.username} успешно создан!')
+            if draft_user:
+                messages.success(request, f'Черновик {user.username} успешно завершен и привязан к компании!')
+            else:
+                messages.success(request, f'Пользователь {user.username} успешно создан!')
             return redirect('portal:director_residents')
     else:
         from portal.forms import AddResidentForm
-        form = AddResidentForm()
+        initial = {}
+        if draft_user:
+            initial = {
+                'username': draft_user.username,
+                'email': draft_user.email,
+                'first_name': draft_user.first_name,
+                'last_name': draft_user.last_name,
+            }
+            try:
+                profile = draft_user.userprofile
+            except UserProfile.DoesNotExist:
+                profile = None
+            if profile:
+                initial['phone'] = profile.phone or ''
+                initial['address'] = profile.address or ''
+                if profile.primary_department_id:
+                    selected_department_id = str(profile.primary_department_id)
+        form = AddResidentForm(initial=initial, allowed_existing_user_id=draft_user.id if draft_user else None)
         if account_type == 'resident':
             form.fields['role'].choices = [('resident', 'Житель')]
             form.fields['role'].initial = 'resident'
@@ -1172,9 +3033,12 @@ def director_add_resident(request):
         'departments': departments,
         'companies': companies,
         'selected_company_id': str(company_id) if company_id else '',
+        'selected_department_id': str(selected_department_id) if selected_department_id else '',
         'superuser_without_membership': superuser_without_membership,
         'account_type': account_type,
         'page_title': 'Добавить жителя' if account_type == 'resident' else 'Добавить сотрудника',
+        'draft_user': draft_user,
+        'draft_candidate': draft_candidate,
     }
 
     # Breadcrumbs для возврата на правильный дашборд
@@ -1183,6 +3047,204 @@ def director_add_resident(request):
     context['dashboard_title'] = dashboard_title
 
     return render(request, 'portal/director_add_resident.html', context)
+
+
+@never_cache
+@login_required
+def director_edit_resident(request, membership_id):
+    """
+    Редактирование учетной записи в ЛК директора/главного инженера.
+    """
+    current_membership = get_primary_membership(request.user)
+    if not current_membership:
+        if request.user.is_superuser:
+            workspace = _workspace_context(request, current_membership)
+        else:
+            messages.warning(request, 'Вы не привязаны к компании')
+            return redirect('portal:no_membership')
+    else:
+        workspace = _workspace_context(request, current_membership)
+
+    if not request.user.is_superuser and current_membership.role_code not in ['direktor_uk', 'chief_engineer']:
+        messages.error(request, 'Доступ разрешен только Директорам УК и Главным инженерам')
+        return redirect('portal:welcome')
+
+    company_scope = workspace['company_scope']
+
+    from work_orders.models import UserCompanyMembership, CompanyDepartment
+
+    membership_qs = (
+        UserCompanyMembership.objects
+        .filter(id=membership_id, is_active=True, date_to__isnull=True)
+        .select_related('user', 'company', 'department')
+    )
+    if company_scope:
+        if isinstance(company_scope, (list, tuple, set)):
+            membership_qs = membership_qs.filter(company_id__in=company_scope)
+        else:
+            membership_qs = membership_qs.filter(company_id=company_scope)
+
+    target_membership = membership_qs.first()
+    if not target_membership:
+        messages.error(request, 'Учетная запись не найдена или недоступна для редактирования')
+        return redirect('portal:director_residents')
+
+    target_user = target_membership.user
+    account_type = 'resident' if target_membership.role_code == 'resident' else 'employee'
+    departments = (
+        CompanyDepartment.objects
+        .filter(company_id=target_membership.company_id, is_active=True)
+        .select_related('company')
+        .order_by('company__name', 'department_name')
+    )
+
+    def build_context(form, selected_department_id=None):
+        dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+        return {
+            'company': target_membership.company,
+            'form': form,
+            'departments': departments,
+            'companies': None,
+            'selected_company_id': str(target_membership.company_id),
+            'selected_department_id': str(selected_department_id if selected_department_id is not None else (target_membership.department_id or '')),
+            'superuser_without_membership': False,
+            'account_type': account_type,
+            'page_title': 'Редактировать жителя' if account_type == 'resident' else 'Редактировать сотрудника',
+            'submit_label': 'Сохранить изменения',
+            'edit_mode': True,
+            'draft_user': None,
+            'draft_candidate': None,
+            'dashboard_url': dashboard_url,
+            'dashboard_title': dashboard_title,
+        }
+
+    from portal.forms import AddResidentForm
+
+    if request.method == 'POST':
+        selected_department_id = request.POST.get('department') or ''
+        form = AddResidentForm(
+            request.POST,
+            instance=target_user,
+            allowed_existing_user_id=target_user.id,
+            password_required=False,
+        )
+        if account_type == 'resident':
+            form.fields['role'].choices = [('resident', 'Житель')]
+            form.fields['role'].initial = 'resident'
+        else:
+            form.fields['role'].choices = [
+                ('executor', 'Исполнитель'),
+                ('chief_engineer', 'Главный инженер'),
+            ]
+            form.fields['role'].initial = request.POST.get('role') or target_membership.role_code
+
+        if form.is_valid():
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            try:
+                with transaction.atomic():
+                    target_user.username = form.cleaned_data['username']
+                    target_user.email = form.cleaned_data.get('email', '')
+                    target_user.first_name = form.cleaned_data.get('first_name', '')
+                    target_user.last_name = form.cleaned_data.get('last_name', '')
+                    target_user.is_staff = False
+                    if form.cleaned_data.get('password'):
+                        target_user.set_password(form.cleaned_data['password'])
+                    target_user.save()
+
+                    from portal.models import UserProfile
+                    profile, created = UserProfile.objects.get_or_create(
+                        user=target_user,
+                        defaults={
+                            'timezone': 'Europe/Moscow',
+                            'role': 'uk_user',
+                        }
+                    )
+
+                    department = None
+                    role_code = form.cleaned_data['role']
+
+                    if role_code in ['executor', 'chief_engineer']:
+                        if not selected_department_id:
+                            messages.error(request, 'Для сотрудников обязательно укажите подразделение!')
+                            raise ValueError('department_required')
+                        try:
+                            department = CompanyDepartment.objects.get(
+                                id=int(selected_department_id),
+                                company_id=target_membership.company_id,
+                            )
+                        except CompanyDepartment.DoesNotExist:
+                            messages.error(request, 'Указанное подразделение не найдено!')
+                            raise ValueError('department_missing')
+                    elif selected_department_id:
+                        try:
+                            department = CompanyDepartment.objects.get(
+                                id=int(selected_department_id),
+                                company_id=target_membership.company_id,
+                            )
+                        except CompanyDepartment.DoesNotExist:
+                            department = None
+
+                    target_membership.role_code = role_code
+                    target_membership.department = department
+                    target_membership.full_clean()
+                    target_membership.save()
+
+                    profile.role = 'resident' if role_code == 'resident' else 'uk_user'
+                    profile.primary_company_id = target_membership.company_id
+                    profile.primary_department = department
+                    profile.phone = form.cleaned_data.get('phone', '')
+                    profile.address = form.cleaned_data.get('address', '')
+                    profile.job_title = 'chief_engineer' if role_code == 'chief_engineer' else None
+                    profile.save()
+            except DjangoValidationError as exc:
+                if hasattr(exc, 'message_dict'):
+                    for field_name, field_errors in exc.message_dict.items():
+                        target_field = 'role' if field_name == 'role_code' else field_name
+                        for field_error in field_errors:
+                            if target_field in form.fields:
+                                form.add_error(target_field, field_error)
+                            else:
+                                form.add_error(None, field_error)
+                else:
+                    form.add_error(None, '; '.join(exc.messages))
+                return render(request, 'portal/director_add_resident.html', build_context(form, selected_department_id))
+            except ValueError:
+                return render(request, 'portal/director_add_resident.html', build_context(form, selected_department_id))
+
+            messages.success(request, f'Данные пользователя {target_user.username} обновлены')
+            return redirect('portal:director_residents')
+    else:
+        from portal.models import UserProfile
+        try:
+            profile = target_user.userprofile
+        except UserProfile.DoesNotExist:
+            profile = None
+
+        form = AddResidentForm(
+            initial={
+                'username': target_user.username,
+                'email': target_user.email,
+                'first_name': target_user.first_name,
+                'last_name': target_user.last_name,
+                'phone': profile.phone if profile else '',
+                'address': profile.address if profile else '',
+                'role': target_membership.role_code,
+            },
+            instance=target_user,
+            allowed_existing_user_id=target_user.id,
+            password_required=False,
+        )
+        if account_type == 'resident':
+            form.fields['role'].choices = [('resident', 'Житель')]
+            form.fields['role'].initial = 'resident'
+        else:
+            form.fields['role'].choices = [
+                ('executor', 'Исполнитель'),
+                ('chief_engineer', 'Главный инженер'),
+            ]
+            form.fields['role'].initial = target_membership.role_code
+
+    return render(request, 'portal/director_add_resident.html', build_context(form))
 
 
 @login_required
@@ -1581,3 +3643,314 @@ def director_employees(request):
     }
 
     return render(request, 'portal/director_employees.html', context)
+
+
+# ============================================================================
+# Address v2 overrides
+# ============================================================================
+
+def _extract_import_rows(uploaded_file):
+    extension = Path(uploaded_file.name).suffix.lower()
+    binary = uploaded_file.read()
+
+    if extension in {'.xlsx', '.xlsm'}:
+        workbook = load_workbook(filename=BytesIO(binary), data_only=True)
+        sheet = workbook.active
+        rows = list(sheet.iter_rows(values_only=True))
+    else:
+        try:
+            import pandas as pd
+        except Exception as exc:
+            raise ValueError('Формат XLS не поддержан на сервере. Загрузите XLSX.') from exc
+
+        dataframe = pd.read_excel(BytesIO(binary))
+        rows = [tuple(dataframe.columns.tolist())]
+        rows.extend(tuple(row) for row in dataframe.itertuples(index=False, name=None))
+
+    if not rows:
+        return []
+
+    headers = [str(value).strip().lower() if value is not None else '' for value in rows[0]]
+    data_rows = rows[1:]
+
+    def _find_index(*candidates):
+        for candidate in candidates:
+            if candidate in headers:
+                return headers.index(candidate)
+        return None
+
+    address_idx = _find_index('адрес', 'address', 'объект', 'объект обслуживания')
+    city_idx = _find_index('город', 'город основной', 'city', 'city_main', 'gorod')
+    street_idx = _find_index('улица', 'street', 'ulitsa')
+    house_idx = _find_index('дом', 'house', 'nomerdoma')
+    unit_idx = _find_index('квартира', 'помещение', 'unit', 'unit_number', 'nomerkvartiry')
+
+    extracted_rows = []
+    for row_number, row in enumerate(data_rows, start=2):
+        address = ''
+        if address_idx is not None and address_idx < len(row) and row[address_idx] is not None:
+            address = str(row[address_idx]).strip()
+
+        unit_number = ''
+        if unit_idx is not None and unit_idx < len(row) and row[unit_idx] is not None:
+            unit_number = str(row[unit_idx]).strip()
+
+        if not address:
+            city = str(row[city_idx]).strip() if city_idx is not None and city_idx < len(row) and row[city_idx] is not None else ''
+            street = str(row[street_idx]).strip() if street_idx is not None and street_idx < len(row) and row[street_idx] is not None else ''
+            house = str(row[house_idx]).strip() if house_idx is not None and house_idx < len(row) and row[house_idx] is not None else ''
+            parts = []
+            if city:
+                parts.append(f'г {city}')
+            if street:
+                parts.append(f'ул {street}')
+            if house:
+                parts.append(f'д {house}')
+            address = ', '.join(parts).strip(', ')
+
+        if not address:
+            continue
+
+        extracted_rows.append(
+            {
+                'row_number': row_number,
+                'address': address,
+                'unit_number': unit_number,
+            }
+        )
+
+    return extracted_rows
+
+
+def _get_or_create_service_object(building_id, unit_id=None):
+    service_object = (
+        ServiceObject.objects.filter(building_id=building_id, unit_id=unit_id, is_active=True)
+        .order_by('service_object_id')
+        .first()
+    )
+    if service_object:
+        return service_object, False
+
+    service_object = ServiceObject.objects.create(
+        building_id=building_id,
+        unit_id=unit_id,
+        created_at=timezone.now(),
+        is_active=True,
+    )
+    return service_object, True
+
+
+def _ensure_company_binding(company, service_object, comment, on_date):
+    from work_orders.models import CompanyObjectServicePeriod
+
+    existing = (
+        CompanyObjectServicePeriod.objects.select_related('company')
+        .filter(object_id=service_object.service_object_id, is_active=True)
+        .filter(date_from__lte=on_date)
+        .filter(Q(date_to__isnull=True) | Q(date_to__gte=on_date))
+        .order_by('-date_from')
+        .first()
+    )
+    if existing:
+        if existing.company_id != company.id:
+            raise ValueError(
+                f'В настоящий момент данный объект закреплен за другой организацией: "{existing.company.name}".'
+            )
+        return existing, False
+
+    binding = CompanyObjectServicePeriod.objects.create(
+        company=company,
+        object_id=service_object.service_object_id,
+        date_from=on_date,
+        comment=comment,
+        is_active=True,
+    )
+    return binding, True
+
+
+@transaction.atomic
+def _import_service_object_for_company(address, company, user, unit_number=None, on_date=None):
+    from address.models import Building, Unit
+    from address.services import build_full_address, normalize_house_number, normalize_unit_number
+    from address_extractor_service import AddressExtractor
+
+    service = FiasAddressService()
+    if not service.is_configured:
+        raise ValueError('?? ???????? FIAS_API_TOKEN.')
+
+    extractor = AddressExtractor()
+    components = extractor.extract_address_components(address)
+    if unit_number and not components.get('apartment_number'):
+        components['apartment_number'] = unit_number
+
+    validation = extractor.validate_and_match_to_db(components)
+    house_number = normalize_house_number(validation.get('house_number') or components.get('house_number'))
+    street_guid = validation.get('street_fias_guid')
+    house_guid = validation.get('fias_object_guid')
+    unit_number_norm = normalize_unit_number(components.get('apartment_number') or unit_number)
+    import_date = on_date or timezone.localdate()
+
+    if not street_guid:
+        raise ValueError('????? ?? ??????? ? ????. ??? ?? ????????.')
+    if not house_number:
+        raise ValueError('?? ??????? ?????????? ????? ????.')
+
+    building = Building.objects.filter(pk=validation.get('building_id')).first() if validation.get('building_id') else None
+    fias_result = service.resolve_building_with_fallback(components)
+    if building is None and house_guid:
+        building = Building.objects.filter(fias_guid=house_guid).first()
+    if building is None:
+        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+
+    full_address = validation.get('address_full') or fias_result.get('full_address') or build_full_address(components)
+    if building is None:
+        building = Building.objects.create(
+            fias_guid=house_guid or None,
+            street_fias_guid=street_guid,
+            house_number=house_number,
+            full_address=full_address,
+            created_by=user,
+        )
+        building_created = True
+    else:
+        building_created = False
+        updated = False
+        for field_name, value in (
+            ('fias_guid', house_guid or building.fias_guid),
+            ('street_fias_guid', street_guid),
+            ('house_number', house_number),
+            ('full_address', full_address),
+        ):
+            if value and getattr(building, field_name) != value:
+                setattr(building, field_name, value)
+                updated = True
+        if updated:
+            building.save(update_fields=['fias_guid', 'street_fias_guid', 'house_number', 'full_address', 'updated_at'])
+
+    house_service_object, house_created = _get_or_create_service_object(building.id, unit_id=None)
+    house_binding, house_binding_created = _ensure_company_binding(
+        company,
+        house_service_object,
+        '????????? ?? ???????? ????????????',
+        import_date,
+    )
+
+    result_service_object = house_service_object
+    unit_created = False
+    unit_binding_created = False
+
+    if unit_number_norm:
+        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number_norm).first()
+        if unit is None:
+            unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
+            unit_created = True
+
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        _, unit_binding_created = _ensure_company_binding(
+            company,
+            result_service_object,
+            '????????? ?? ???????? ???????????? (????????/?????????)',
+            import_date,
+        )
+
+    created_anything = any([building_created, house_created, house_binding_created, unit_created, unit_binding_created])
+
+    return {
+        'status': 'created' if created_anything else 'skipped',
+        'service_object': result_service_object,
+        'binding': house_binding,
+        'building_fias_guid': str(building.fias_guid) if building.fias_guid else '-',
+        'message': (
+            '??????? ?????? ???? ? ?????? ?????????, ???????? ?????????.'
+            if unit_number_norm and created_anything
+            else '?????? ??? ??? ???????? ? ????? ????????.'
+            if not created_anything
+            else '?????? ???? ???????? ? ???????? ? ????????.'
+        ),
+    }
+
+
+@login_required
+def director_import_service_objects(request):
+    from address.models import ImportBatch
+
+    membership, workspace, response = _get_manager_workspace(request)
+    if response:
+        return response
+
+    batch = None
+    batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
+    if batch_id:
+        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+
+    if request.method == 'POST':
+        action = request.POST.get('action') or 'upload'
+        planned_date = _parse_planned_date(request.POST.get('planned_date_from'))
+
+        if action == 'upload':
+            uploaded_file = request.FILES.get('import_file')
+            if not uploaded_file:
+                messages.error(request, '???????? XLSX ??? XLS ???? ??? ????????.')
+            else:
+                try:
+                    batch = _stage_import_batch(uploaded_file, workspace['company'], request.user, planned_date)
+                except ValueError as error:
+                    messages.error(request, str(error))
+                else:
+                    messages.success(request, '???? ????????. ??????????? ?????? ??????? ?????.')
+        elif action == 'confirm':
+            if not batch:
+                messages.error(request, '????? ??????? ?? ??????.')
+            else:
+                ready_rows = list(batch.rows.filter(final_status='ready').order_by('row_no', 'id'))
+                imported_count = 0
+                error_count = 0
+                for row in ready_rows:
+                    try:
+                        result = _import_service_object_for_company(
+                            row.raw_address,
+                            workspace['company'],
+                            request.user,
+                            unit_number=row.unit_number,
+                            on_date=batch.planned_date_from,
+                        )
+                    except Exception as error:
+                        row.final_status = 'error'
+                        row.comment = str(error)
+                        row.save(update_fields=['final_status', 'comment'])
+                        error_count += 1
+                    else:
+                        row.final_status = 'imported'
+                        row.comment = result['message']
+                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
+                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        imported_count += 1
+
+                batch.status = 'failed' if error_count else 'imported'
+                batch.save(update_fields=['status'])
+                messages.success(request, f'????????????? ?????: {imported_count}.')
+                if error_count:
+                    messages.warning(request, f'????? ? ????????: {error_count}.')
+
+    batch_rows = []
+    summary = None
+    ready_rows_count = 0
+    planned_date_value = timezone.localdate()
+    if batch:
+        batch_rows = list(batch.rows.order_by('row_no', 'id'))
+        summary = _build_import_summary(batch_rows)
+        ready_rows_count = summary['ready']
+        planned_date_value = batch.planned_date_from
+
+    context = {
+        'company': workspace['company'],
+        'batch': batch,
+        'results': batch_rows,
+        'summary': summary,
+        'ready_rows_count': ready_rows_count,
+        'planned_date_from': planned_date_value,
+    }
+    dashboard_url, dashboard_title = get_role_dashboard_url(request.user)
+    context['dashboard_url'] = dashboard_url
+    context['dashboard_title'] = dashboard_title
+    return render(request, 'portal/company_object_import.html', context)

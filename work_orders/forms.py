@@ -1,4 +1,5 @@
 from django import forms
+import re
 
 from portal.models import ServiceObject, ServicesCatalog
 
@@ -30,6 +31,7 @@ class WorkOrderCreateForm(forms.ModelForm):
 
         self.fields['service'].queryset = ServicesCatalog.objects.filter(is_active=True).order_by('category_name', 'scenario_name')
         self.selected_object_label = ''
+        profile_address = self._get_profile_address()
 
         selected_object_id = (
             self.data.get('object')
@@ -37,11 +39,55 @@ class WorkOrderCreateForm(forms.ModelForm):
             or getattr(self.instance, 'object_id', None)
         )
 
+        if not self.is_bound and not selected_object_id:
+            profile_object = self._resolve_profile_address_object(profile_address)
+            if profile_object:
+                selected_object_id = profile_object.pk
+                self.initial['object'] = profile_object.pk
+
         if selected_object_id:
             self.fields['object'].queryset = ServiceObject.objects.filter(pk=selected_object_id, is_active=True)
             selected_object = self.fields['object'].queryset.first()
             if selected_object:
                 self.selected_object_label = selected_object.get_search_label()
+        elif profile_address:
+            self.selected_object_label = profile_address
+
+    def _get_profile_address(self):
+        if not self.user or not getattr(self.user, 'is_authenticated', False):
+            return ''
+        profile = getattr(self.user, 'userprofile', None)
+        return (getattr(profile, 'address', '') or '').strip()
+
+    def _resolve_profile_address_object(self, profile_address):
+        if not profile_address:
+            return None
+
+        object_id = self._extract_service_object_id(profile_address)
+        if object_id:
+            return ServiceObject.objects.filter(pk=object_id, is_active=True).first()
+
+        from portal.models import search_service_objects
+        matches = list(search_service_objects(profile_address, limit=2))
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    @staticmethod
+    def _extract_service_object_id(profile_address):
+        patterns = (
+            r'\[объект\s*(\d+)\]',
+            r'объект\s*#?\s*(\d+)',
+            r'id\s*объекта\s*#?\s*(\d+)',
+        )
+        lowered = profile_address.lower()
+        for pattern in patterns:
+            match = re.search(pattern, lowered, flags=re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+        if profile_address.strip().isdigit():
+            return int(profile_address.strip())
+        return None
 
     def clean_object(self):
         service_object = self.cleaned_data['object']

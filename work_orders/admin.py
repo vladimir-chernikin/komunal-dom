@@ -84,10 +84,13 @@ class UserCompanyMembershipAdminForm(forms.ModelForm):
         cleaned_data = super().clean()
         company = cleaned_data.get('company')
         department = cleaned_data.get('department')
+        role_code = cleaned_data.get('role_code')
         if company and department and department.company_id != company.id:
             self.add_error('department', 'Подразделение должно принадлежать выбранной компании.')
         if department and not company:
             self.add_error('company', 'Сначала выберите компанию.')
+        if role_code != 'resident' and not department:
+            self.add_error('department', 'Подразделение обязательно для сотрудников.')
         return cleaned_data
 
 

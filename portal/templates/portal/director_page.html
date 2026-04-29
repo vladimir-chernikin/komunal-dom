@@ -157,6 +157,26 @@ body {
     border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
+.mobile-quick-links {
+    display: none;
+}
+
+.mobile-quick-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 44px;
+    padding: 0.8rem 1rem;
+    border-radius: 14px;
+    text-decoration: none;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.58);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    color: #1a1a1a;
+    font-weight: 700;
+}
+
 /* === АДАПТИВНОСТЬ === */
 @media (max-width: 768px) {
     .aerial-hero {
@@ -170,6 +190,15 @@ body {
     .tiles-grid {
         grid-template-columns: 1fr;
         margin-top: 1.5rem;
+    }
+
+    .mobile-quick-links {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-top: 1.25rem;
+        position: relative;
+        z-index: 4;
     }
 }
 
@@ -222,6 +251,35 @@ body {
             font-weight: 500;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+        }
+
+        @media (max-width: 768px) {
+            .stats-over-map {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 0.65rem;
+                margin-top: 1rem;
+                width: 100%;
+            }
+
+            .stat-bubble {
+                min-width: 0;
+                width: 100%;
+                padding: 0.85rem 0.45rem;
+                border-radius: 14px;
+            }
+
+            .stat-bubble-number {
+                font-size: clamp(1.35rem, 8vw, 1.8rem);
+                white-space: nowrap;
+            }
+
+            .stat-bubble-label {
+                font-size: 0.72rem;
+                line-height: 1.15;
+                letter-spacing: 0;
+                overflow-wrap: anywhere;
+            }
         }
 
         </style>
@@ -405,6 +463,25 @@ body {
                         <li><i class="fas fa-users"></i> {{ total_users }} пользователей в системе</li>
                     </ul>
                 </p>
+
+                <div class="mobile-quick-links">
+                    <a href="{% url 'portal:director_residents' %}" class="mobile-quick-link">
+                        <i class="fas fa-users"></i>
+                        <span>Учетные записи</span>
+                    </a>
+                    <a href="{% url 'portal:director_departments' %}" class="mobile-quick-link">
+                        <i class="fas fa-sitemap"></i>
+                        <span>Подразделения</span>
+                    </a>
+                    <a href="{% url 'portal:director_sla' %}" class="mobile-quick-link">
+                        <i class="fas fa-clock"></i>
+                        <span>SLA</span>
+                    </a>
+                    <a href="{% url 'portal:director_service_objects' %}" class="mobile-quick-link">
+                        <i class="fas fa-building"></i>
+                        <span>Объекты</span>
+                    </a>
+                </div>
             </div>
         </div>
 

@@ -51,7 +51,8 @@ class ChatIntakePayloadBuilder:
                 or intake_context.get("address_string")
                 or self._format_address(address_components),
                 "fias_house_guid": address_validation.get("fias_object_guid"),
-                "fias_house_object_id": address_validation.get("fias_object_id"),
+                "street_fias_guid": address_validation.get("street_fias_guid"),
+                "house_number": address_validation.get("house_number"),
                 "fias_level_id": address_validation.get("fias_level_id"),
                 "building_id": address_validation.get("building_id"),
                 "unit_id": address_validation.get("unit_id"),
@@ -106,7 +107,8 @@ class ChatIntakePayloadBuilder:
             f"Сессия: {payload.get('session_id')}",
             f"Адрес: {address.get('normalized_text')}",
             f"FIAS GUID дома: {address.get('fias_house_guid')}",
-            f"FIAS ID дома: {address.get('fias_house_object_id')}",
+            f"FIAS GUID улицы: {address.get('street_fias_guid')}",
+            f"Номер дома: {address.get('house_number')}",
             f"Локальный объект: {address.get('service_object_id')}",
             f"Локальный building_id: {address.get('building_id')}",
         ]

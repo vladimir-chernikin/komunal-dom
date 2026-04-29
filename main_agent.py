@@ -136,16 +136,10 @@ class MainAgent:
         except ImportError:
             logger.warning("ProblemAccumulationService не найден, накопление проблемы недоступно")
 
-        # ИСПРАВЛЕНО (2025-12-26): CommunicativeScriptsService для управления фразами бота
-        # ИСПРАВЛЕНО (2025-12-28): ОТКЛЮЧЕН - все вопросы теперь через AI (_generate_ai_question)
-        # try:
-        #     from communicative_scripts_service import CommunicativeScriptsService
-        #     self.communicative_scripts = CommunicativeScriptsService()
-        #     logger.info("CommunicativeScriptsService инициализирован")
-        # except ImportError:
-        #     logger.warning("CommunicativeScriptsService не найден, fallback скрипты недоступны")
+        # Legacy справочник коммуникативных скриптов удален.
+        # Все уточняющие вопросы и fallback-сценарии идут через AI и минимальный hardcode.
         self.communicative_scripts = None
-        logger.info("CommunicativeScriptsService ОТКЛЮЧЕН (используем AI-генерацию вопросов)")
+        logger.info("Legacy communicative scripts removed; using AI-generated questions")
 
     def _load_filters_from_db(self):
         """
@@ -1900,10 +1894,7 @@ class MainAgent:
 
         logger.info(f"Анализ кандидатов: locations={location_types}, categories={categories}, incidents={incident_types}")
 
-        # ИСПРАВЛЕНО (2025-12-26): Используем CommunicativeScriptsService вместо хардкода
-        # Если CommunicativeScriptsService доступен - пробуем получить скрипт
-        # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопросов
-        # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
+        # Уточняющий вопрос формируется через AI, без отдельного справочника скриптов.
         context = f"Пользователь написал: {original_message}"
         # ИСПРАВЛЕНО (2025-12-28): ПЕРЕДАЕМ txtPrb и established_filters
         # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
@@ -2307,7 +2298,9 @@ class MainAgent:
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=getattr(self, 'current_session_id', None),
                 message_id=getattr(self, 'current_message_id', None),
-                service_name='MainAgent: ClarifyAttribute'  # ИСПРАВЛЕНО (2026-03-16): Детализация
+                caller_service='MainAgent: ClarifyAttribute',
+                prompt_slug='mainagent-clarify-category',
+                prompt_source='llm_tester'
             )
 
             question = response.strip().strip('\'"').strip()
@@ -2741,8 +2734,7 @@ class MainAgent:
                 # Нет явного лидера - используем AI для уточнения
                 logger.warning(f"[DEBUG] НЕТ явного лидера: conf={leader_conf:.3f}, нужен >0.9, разница={leader_conf - second_conf:.3f}, нужна >0.2")
                 logger.info(f"НЕТ явного лидера: лучший={leader['service_id']} conf={leader_conf:.3f}, второй={sorted_candidates[1]['service_id'] if len(sorted_candidates) > 1 else 'N/A'} conf={second_conf:.3f}")
-                # СТАРЫЙ ВАРИАНТ (2025-12-27): Используем AI для анализа кандидатов
-                # вместо CommunicativeScriptsService
+                # Используем AI для анализа кандидатов и формулировки уточняющего вопроса.
                 # ИСПРАВЛЕНО (2025-12-27): Передаем established_filters для сужения кандидатов
                 # ИСПРАВЛЕНО (2026-02-24): Добавлен try-except для предотвращения возврата None
                 try:
@@ -2791,7 +2783,7 @@ class MainAgent:
                                     session_id: str = None) -> str:
         """Спрашивает у AI что случилось и где
 
-        ИСПРАВЛЕНО (2025-12-26): Использует CommunicativeScriptsService вместо AI генерации
+        Уточняющий вопрос формируется через AI, без отдельного справочника скриптов.
         ИСПРАВЛЕНО (2025-12-25): Учитывает историю диалога чтобы не повторять вопросы
         ИСПРАВЛЕНО (2026-01-21): Добавлен параметр accumulated_fields
 
@@ -2831,8 +2823,7 @@ class MainAgent:
         if recent_bot_questions:
             logger.info(f"recent_bot_questions: {recent_bot_questions}")
 
-        # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопроса
-        # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
+        # Используем AI для генерации вопроса.
         # ИСПРАВЛЕНО (2025-12-29): Получаем Dict с вопросом И метаданными
         # ИСПРАВЛЕНО (2026-01-06): Передаем session_id для логирования
         context = f"Пользователь написал: {message_text}"
@@ -3139,7 +3130,9 @@ JSON:"""
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=getattr(self, 'current_session_id', None),
                 message_id=getattr(self, 'current_message_id', None),
-                service_name='MainAgent: ValidateQuestion'  # ИСПРАВЛЕНО (2026-03-16): Детализация
+                caller_service='MainAgent: ValidateQuestion',
+                prompt_slug='mainagent-validate-question',
+                prompt_source='llm_tester'
             )
 
             import json
@@ -3944,7 +3937,7 @@ JSON:"""
         ИСПРАВЛЕНО (2026-01-21): Добавлена защита от зацикливания - после 6 ходов
         ИСПРАВЛЕНО (2026-02-04): Добавлен параметр txtStopQ для запрета повторения глупых вопросов
         ИСПРАВЛЕНО (2026-02-23): Удалён параметр accumulated_fields - используем только txtPrb
-        ЗАМЕНА: Все хардкод вопросы и CommunicativeScriptsService
+        ЗАМЕНА: старые хардкод-вопросы и legacy-справочник скриптов
 
         Args:
             context: Контекст ситуации (описание проблемы)
@@ -3996,7 +3989,8 @@ JSON:"""
                 model=None,  # Используем модель по умолчанию из .env
                 session_id=getattr(self, 'current_session_id', None),
                 message_id=getattr(self, 'current_message_id', None),
-                service_name='MainAgent: AntiLoopFallback'  # ИСПРАВЛЕНО (2026-03-16): Детализация
+                caller_service='MainAgent: AntiLoopFallback',
+                prompt_source='runtime_generated'
             )
             final_message = ai_result[0].strip() if ai_result else "Пожалуйста, опишите проблему другими словами или свяжитесь с оператором."
             return {
@@ -4094,7 +4088,9 @@ JSON:"""
                     model=model,  # model=None, берется из env (YANDEXGPT_MODEL или GIGACHAT_MODEL)
                     session_id=session_id,  # ИСПРАВЛЕНО (2026-01-06)
                     message_id=self.current_message_id,  # ИСПРАВЛЕНО (2026-01-10)
-                    service_name=f'MainAgent: GenerateQuestion ({question_type})'  # ИСПРАВЛЕНО (2026-03-16): Детализация
+                    caller_service=f'MainAgent: GenerateQuestion ({question_type})',
+                    prompt_slug='mainagent-orchestrator',
+                    prompt_source='llm_tester'
                 )
                 question = response.strip()
 
@@ -4825,9 +4821,8 @@ JSON:"""
         established_filters: Dict = None,
         session_id: str = None# ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields
     ) -> Dict:
-        """Спрашивает как уточнить - использует CommunicativeScriptsService
+        """Спрашивает как уточнить через AI
 
-        ИСПРАВЛЕНО (2025-12-26): Вместо AI использует CommunicativeScriptsService
         ИСПРАВЛЕНО (2026-01-05): Добавлен параметр established_filters
         ИСПРАВЛЕНО (2026-02-16): Добавлен параметр accumulated_fields для корректной валидации вопросов
         """
@@ -4835,8 +4830,7 @@ JSON:"""
         dialog_turn = len(dialog_history) if dialog_history else 1
         is_followup = dialog_turn > 1
 
-        # ИСПРАВЛЕНО (2025-12-28): Используем AI для генерации вопроса
-        # ЗАМЕНА: CommunicativeScriptsService → _generate_ai_question
+        # Используем AI для генерации вопроса.
         context = f"Пользователь написал: {message_text}"
 
         # ИСПРАВЛЕНО (2025-12-28): Извлекаем txtPrb из dialog_history
