@@ -20,16 +20,18 @@ class ProblemAgent:
         session_id: str,
         message_id: Optional[int],
     ) -> Dict:
-        prompt = await self._build_prompt(
+        system_prompt = self._function_system_prompt()
+        user_prompt = self._build_function_user_prompt(
             current_txt_prb=current_txt_prb,
             user_message=user_message,
             address_text=address_text,
         )
-        if not prompt:
-            return {"is_problem_detail": False, "clean_fragment": "", "reason": "prompt_missing"}
-
-        result = await self.llm.json_call(
-            prompt=prompt,
+        result = await self.llm.function_call(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            function_name="emit_problem_fragment",
+            function_description="Вернуть очищенный фрагмент описания проблемы из текущей реплики.",
+            parameters=self._function_schema(),
             session_id=session_id,
             message_id=message_id,
             caller_service="ProblemAgent.fragment",
@@ -45,13 +47,12 @@ class ProblemAgent:
             clean_fragment=clean_fragment,
         )
         if is_problem_detail and clean_fragment and contract_issue:
-            retry = await self.llm.json_call(
-                prompt=(
-                    prompt
-                    + "\n\nПредыдущий ответ нарушил контракт: "
-                    + contract_issue
-                    + ". Верни JSON заново: сохрани объект, действие и все значимые номера из реплики; не добавляй слова, которых нет в реплике."
-                ),
+            retry = await self.llm.function_call(
+                system_prompt=system_prompt + " Исправь нарушение контракта и снова вызови emit_problem_fragment.",
+                user_prompt=user_prompt + "\n\nНарушение предыдущего ответа: " + contract_issue,
+                function_name="emit_problem_fragment",
+                function_description="Вернуть очищенный фрагмент описания проблемы из текущей реплики.",
+                parameters=self._function_schema(),
                 session_id=session_id,
                 message_id=message_id,
                 caller_service="ProblemAgent.fragment.retry_contract",
@@ -83,6 +84,43 @@ class ProblemAgent:
             "clean_fragment": clean_fragment,
             "reason": result.get("reason") or "",
             "raw": result.get("_raw_response"),
+        }
+
+    def _function_system_prompt(self) -> str:
+        return (
+            "Ты очиститель и нормализатор описания проблемы для заявки ЖКХ. "
+            "Определи, добавляет ли текущая реплика факт к описанию заявки, и аккуратно очисти этот факт. "
+            "Исправляй только очевидные синтаксические, орфографические и STT-ошибки, если без исправления фраза нелогична. "
+            "Сохраняй действие, объект/причину проблемы, последствие, место и значимые номера. "
+            "Не заменяй объект проблемы на другой объект. "
+            "Номер подъезда, подвала, двора, входа, лестницы или квартиры сохраняй как локализацию проблемы. "
+            "Адрес дома из отдельного поля address_text не включай в clean_fragment. "
+            "Не считай проблемой только адрес, квартиру, имя, телефон, приветствие, ругань или вопрос о системе. "
+            "Заполни аргументы функции emit_problem_fragment."
+        )
+
+    def _build_function_user_prompt(self, *, current_txt_prb: str, user_message: str, address_text: str) -> str:
+        return (
+            f"Текущее txtPrb: {current_txt_prb or ''}\n"
+            f"Адресная часть реплики: {address_text or ''}\n"
+            f"Реплика жильца: {user_message or ''}"
+        )
+
+    def _function_schema(self) -> Dict:
+        return {
+            "type": "object",
+            "properties": {
+                "is_problem_detail": {
+                    "type": "boolean",
+                    "description": "Реплика добавляет факт к описанию проблемы.",
+                },
+                "clean_fragment": {
+                    "type": "string",
+                    "description": "Очищенный фрагмент проблемы или пустая строка.",
+                },
+                "reason": {"type": "string", "description": "Краткое пояснение решения."},
+            },
+            "required": ["is_problem_detail", "clean_fragment", "reason"],
         }
 
     def _fragment_is_grounded(self, user_message: str, clean_fragment: str) -> bool:

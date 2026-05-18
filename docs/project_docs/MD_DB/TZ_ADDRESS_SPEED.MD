@@ -346,3 +346,48 @@ Prompt `address-syntax-correction-runtime`:
 - полный Markdown-отчет: `/var/www/komunal-dom_ru/runtime/unstable_prompts_20260518_105903.md`;
 - JSON-отчет: `/var/www/komunal-dom_ru/runtime/unstable_prompts_20260518_105903.json`;
 - выгружено `14` LLM-вызовов: первичные проблемные вызовы и retry.
+
+## Внедрение Function Calling Для Нестабильных JSON-Агентов 2026-05-18
+
+Изменены продуктивные файлы:
+
+- `bot_order/llm_client.py`: добавлен общий `LiteLLMClient.function_call()` для GigaChat `functions + function_call`;
+- `bot_order/dialog_guard_agent.py`: `DialogGuardAgent.check` переведен на фиктивную функцию `emit_dialog_guard`;
+- `bot_order/turn_splitter_agent.py`: `TurnSplitterAgent.analyze` переведен на фиктивную функцию `emit_turn_parts`;
+- `bot_order/address_agent.py`: `AddressAgent.slots` переведен на фиктивную функцию `emit_address_slots`;
+- `bot_order/problem_agent.py`: `ProblemAgent.fragment` переведен на фиктивную функцию `emit_problem_fragment`.
+
+Текущая реализация временно держит system/user prompts и схемы функций в коде. Это осознанный тестовый шаг перед переносом промптов в БД двумя частями: system prompt + user prompt, а структуры ответа - в function schema.
+
+Контракт:
+
+- не используется `null`/`anyOf`;
+- отсутствующие строковые значения приходят как пустая строка;
+- backend дополнительно трактует служебные ответы модели вроде `нет значения`, `уже известно`, `Точная реплика...` как пустые значения;
+- `prompt_source=function_call` сохраняется в `llm_request_log`, чтобы отличать новый режим от старого prompt-only.
+
+Проверки:
+
+- `venv/bin/python manage.py check` -> `System check identified no issues`;
+- полный pipeline `Привет` -> `Абрикосовая 2 нет света` -> `Сочи`, результат `/var/www/komunal-dom_ru/runtime/function_call_pipeline_result_20260518_112529.json`:
+  - `retry_json_count=0`;
+  - `retry_contract_count=0`;
+  - `markdown_count=0`;
+  - `function_call_count=7`;
+- повторный полный pipeline, результат `/var/www/komunal-dom_ru/runtime/function_call_pipeline_result_20260518_112537.json`:
+  - `retry_json_count=0`;
+  - `retry_contract_count=0`;
+  - `markdown_count=0`;
+  - `function_call_count=7`;
+- изолированный прогон четырех агентов, результат `/var/www/komunal-dom_ru/runtime/function_call_agents_result_20260518_112546.json`:
+  - `retry_json_count=0`;
+  - `retry_contract_count=0`;
+  - `markdown_count=0`;
+  - `function_call_count=8`.
+
+Вывод:
+
+- проблема невалидного JSON у `DialogGuardAgent.check`, `TurnSplitterAgent.analyze`, `AddressAgent.slots`, `ProblemAgent.fragment` ушла на проверенных кейсах;
+- старые `*.retry_json_contract` для этих агентов больше не появляются;
+- старый `AddressAgent.slots.retry_contract` убран: вместо повторного LLM-вызова используется backend-нормализация аргументов функции;
+- остающийся риск - смысловая нестабильность самой модели в сложных слотах. Примеры: GigaChat может положить описание схемы в пустой слот или попытаться угадать город в TurnSplitter. Сейчас это отбрасывается backend-валидацией по текущей реплике, но для следующего этапа нужно перенести схемы и prompts в БД и улучшить контроль slot-level evidence.

@@ -288,11 +288,14 @@ class AddressAgent:
         session_id: str,
         message_log_id: Optional[int],
     ) -> Dict[str, Any]:
-        prompt = await self._build_slot_prompt(text=text, memory=memory, state=state)
-        if not prompt:
-            return {"is_address_message": False, "reason": "prompt_missing"}
-        result = await self.llm.json_call(
-            prompt=prompt,
+        system_prompt = self._slot_function_system_prompt()
+        user_prompt = self._build_slot_function_user_prompt(text=text, memory=memory, state=state)
+        result = await self.llm.function_call(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            function_name="emit_address_slots",
+            function_description="Вернуть новые или исправленные адресные слоты из текущей реплики жильца.",
+            parameters=self._slot_function_schema(),
             session_id=session_id,
             message_id=message_log_id,
             caller_service="AddressAgent.slots",
@@ -300,30 +303,21 @@ class AddressAgent:
             max_tokens=260,
             temperature=0.0,
         )
-        contract_issue = self._address_slot_contract_issue(text=text, result=result)
-        if contract_issue:
-            result = await self.llm.json_call(
-                prompt=(
-                    prompt
-                    + "\n\nПредыдущий ответ нарушил контракт: "
-                    + contract_issue
-                    + ". Разбери реплику заново и верни строгий JSON по схеме."
-                ),
-                session_id=session_id,
-                message_id=message_log_id,
-                caller_service="AddressAgent.slots.retry_contract",
-                prompt_slug="address-slots-lite",
-                max_tokens=260,
-                temperature=0.0,
-            )
         city, city_evidence = self._slot_value_from_result(result.get("city"))
         street, street_evidence = self._slot_value_from_result(result.get("street"))
         house_number, house_evidence = self._slot_value_from_result(result.get("house_number"))
         apartment_number, apartment_evidence = self._slot_value_from_result(result.get("apartment_number"))
         if house_number:
             house_number = self._normalize_spoken_number_slot(house_number)
+            house_evidence = self._normalize_house_evidence_from_function_call(
+                value=house_number,
+                evidence=house_evidence,
+            )
         if apartment_number:
             apartment_number = self._normalize_spoken_number_slot(apartment_number)
+            if not self._has_apartment_marker(text):
+                apartment_number = None
+                apartment_evidence = None
         rejected_slots = []
         slot_values = {
             "city": [city, city_evidence],
@@ -331,6 +325,9 @@ class AddressAgent:
             "house_number": [house_number, house_evidence],
             "apartment_number": [apartment_number, apartment_evidence],
         }
+        if city and street and self._normalized_for_evidence(city) == self._normalized_for_evidence(street):
+            rejected_slots.append({"slot": "city", "value": city, "evidence": city_evidence, "reason": "duplicates_street"})
+            slot_values["city"][0] = None
         for key, item in slot_values.items():
             value, evidence = item
             if not value:
@@ -361,6 +358,67 @@ class AddressAgent:
             "rejected_slots": rejected_slots,
             "reason": result.get("reason") or "",
             "raw": result.get("_raw_response"),
+        }
+
+    def _slot_function_system_prompt(self) -> str:
+        return (
+            "Ты извлекаешь адресные слоты из одной текущей реплики жильца для заявки ЖКХ. "
+            "Верни только новые или исправленные части адреса, которые есть в этой реплике. "
+            "Известные поля — только контекст наличия данных; не копируй их без evidence из текущей реплики. "
+            "В реплике могут быть синтаксические, орфографические и STT-ошибки; исправляй только очевидные. "
+            "Населенный пункт может состоять из нескольких слов; не обрезай его до первого слова. "
+            "Не угадывай город из названия улицы. Если нет явного маркера города/населенного пункта и бот не спрашивал именно город, city оставь пустым. "
+            "Если в реплике есть название рядом с номером дома без маркера города, это обычно street, а не city. "
+            "value — значение слота без служебного слова город/г/улица/ул/дом/д. "
+            "evidence — точный исходный фрагмент из реплики для этого слота; для номера дома только сам номер дома. "
+            "Если slot.value пустой, slot.evidence тоже обязательно пустая строка. "
+            "Если найден хотя бы один адресный слот, is_address_message=true. "
+            "apartment_number заполняй только если пользователь явно говорит квартиру/кв/помещение. Номер подъезда, входа, подвала или двора не является квартирой. "
+            "Заполни аргументы функции emit_address_slots."
+        )
+
+    def _build_slot_function_user_prompt(
+        self,
+        *,
+        text: str,
+        memory: Dict[str, Any],
+        state: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        missing_fields = self._slot_missing_fields(memory)
+        return (
+            f"Последний вопрос бота: {self._expected_address_question(missing_fields)}\n"
+            f"Недостающие поля адреса: {', '.join(missing_fields) or 'нет'}\n"
+            "Известные поля адреса: "
+            f"city={self._known_slot_marker(memory.get('city'))}; "
+            f"street={self._known_slot_marker(memory.get('street'))}; "
+            f"house={self._known_slot_marker(memory.get('house_number'))}; "
+            f"flat={self._known_slot_marker(memory.get('apartment_number'))}\n"
+            f"Реплика жильца: {text or ''}"
+        )
+
+    def _slot_function_schema(self) -> Dict[str, Any]:
+        slot_schema = {
+            "type": "object",
+            "properties": {
+                "value": {"type": "string", "description": "Значение слота или пустая строка."},
+                "evidence": {"type": "string", "description": "Точный фрагмент реплики для слота или пустая строка."},
+            },
+            "required": ["value", "evidence"],
+        }
+        return {
+            "type": "object",
+            "properties": {
+                "is_address_message": {
+                    "type": "boolean",
+                    "description": "В реплике есть новая или исправленная часть адреса.",
+                },
+                "city": slot_schema,
+                "street": slot_schema,
+                "house_number": slot_schema,
+                "apartment_number": slot_schema,
+                "reason": {"type": "string", "description": "Краткое пояснение разбора."},
+            },
+            "required": ["is_address_message", "city", "street", "house_number", "apartment_number", "reason"],
         }
 
     def _address_slot_contract_issue(self, *, text: str, result: Dict[str, Any]) -> str:
@@ -397,7 +455,42 @@ class AddressAgent:
             evidence = None
         value = str(value).strip() if value not in (None, "") else None
         evidence = str(evidence).strip() if evidence not in (None, "") else None
+        if self._is_empty_function_slot(value):
+            value = None
+        if self._is_empty_function_slot(evidence):
+            evidence = None
         return value, evidence
+
+    def _is_empty_function_slot(self, value: Optional[str]) -> bool:
+        normalized = str(value or "").strip().lower().replace("ё", "е").strip(" .,:;!?")
+        return (
+            normalized in {
+                "",
+                "null",
+                "none",
+                "нет",
+                "нет значения",
+                "нет evidence",
+                "отсутствует",
+                "не указано",
+                "уже известно",
+            }
+            or normalized.startswith("точный фрагмент")
+            or normalized.startswith("точная реплика")
+            or normalized.endswith("пустая строка")
+        )
+
+    def _normalize_house_evidence_from_function_call(self, *, value: Optional[str], evidence: Optional[str]) -> Optional[str]:
+        if not value or not evidence:
+            return evidence
+        house_norm = self._normalized_for_evidence(str(value))
+        evidence_norm = self._normalized_for_evidence(str(evidence))
+        if house_norm and evidence_norm and house_norm in evidence_norm.split():
+            return str(value)
+        return evidence
+
+    def _has_apartment_marker(self, text: str) -> bool:
+        return bool(re.search(r"\b(?:кв\.?|квартир\w*|пом\.?|помещени\w*)\b", text or "", flags=re.IGNORECASE))
 
     def _slot_is_grounded_in_text(self, *, text: str, value: str, evidence: Optional[str]) -> bool:
         source = self._normalized_for_evidence(text)

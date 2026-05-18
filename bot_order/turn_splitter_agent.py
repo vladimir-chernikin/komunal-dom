@@ -22,11 +22,12 @@ class TurnSplitterAgent:
         session_id: str,
         message_log_id: Optional[int],
     ) -> Dict[str, Any]:
-        prompt = await self._build_prompt(text=text, state=state)
-        if not prompt:
-            return self._default_result(text)
-        result = await self.llm.json_call(
-            prompt=prompt,
+        result = await self.llm.function_call(
+            system_prompt=self._function_system_prompt(),
+            user_prompt=self._build_function_user_prompt(text=text, state=state),
+            function_name="emit_turn_parts",
+            function_description="Разложить текущую реплику жильца на адрес, проблему и контакт.",
+            parameters=self._function_schema(),
             session_id=session_id,
             message_id=message_log_id,
             caller_service="TurnSplitterAgent.analyze",
@@ -52,9 +53,9 @@ class TurnSplitterAgent:
 
         address_change_attempt = self._bool(flags.get("address_change_attempt"), result.get("address_change_attempt"))
         separate_order_possible = self._bool(flags.get("separate_order_possible"), result.get("separate_order_possible"))
-        has_address = self._bool(address.get("present"), result.get("has_address")) and bool(address_text)
-        has_problem = self._bool(problem.get("present"), result.get("has_problem")) and bool(problem_text)
-        has_contact = self._bool(contact.get("present"), result.get("has_contact")) and bool(contact_text)
+        has_address = (self._bool(address.get("present"), result.get("has_address")) or self._payload_has_value(address)) and bool(address_text)
+        has_problem = (self._bool(problem.get("present"), result.get("has_problem")) or bool(problem_text)) and bool(problem_text)
+        has_contact = (self._bool(contact.get("present"), result.get("has_contact")) or self._payload_has_value(contact)) and bool(contact_text)
         if self._should_drop_address_noise(
             state=state or {},
             has_address=has_address,
@@ -74,7 +75,7 @@ class TurnSplitterAgent:
             "address_text": address_text,
             "problem_text": problem_text,
             "contact_text": contact_text,
-            "address": self._normalize_address_payload(address, address_text, has_address),
+            "address": self._normalize_address_payload(address, address_text, has_address, text),
             "problem": {"present": has_problem, "text": problem_text},
             "contact": self._normalize_contact_payload(contact, contact_text, has_contact),
             "answers_current_question": self._bool(result.get("answers_current_question")),
@@ -132,16 +133,27 @@ class TurnSplitterAgent:
             return "mixed"
         return "unknown"
 
-    def _normalize_address_payload(self, address: Dict[str, Any], address_text: str, has_address: bool) -> Dict[str, Any]:
+    def _payload_has_value(self, payload: Dict[str, Any]) -> bool:
+        return any(self._clean(value) for key, value in payload.items() if key != "present")
+
+    def _normalize_address_payload(self, address: Dict[str, Any], address_text: str, has_address: bool, source_text: str = "") -> Dict[str, Any]:
         if not has_address:
             return {"present": False, "text": "", "city": None, "street": None, "house": None, "flat": None}
+        city = self._clean(address.get("city"))
+        street = self._clean(address.get("street"))
+        house = self._clean(address.get("house"))
+        flat = self._clean(address.get("flat"))
+        city = city if self._looks_grounded(source_text, city) else ""
+        street = street if self._looks_grounded(source_text, street) else ""
+        house = house if self._looks_grounded(source_text, house) else ""
+        flat = flat if self._looks_grounded(source_text, flat) and self._has_flat_marker(source_text) else ""
         return {
             "present": has_address,
             "text": address_text,
-            "city": self._clean(address.get("city")) or None,
-            "street": self._clean(address.get("street")) or None,
-            "house": self._clean(address.get("house")) or None,
-            "flat": self._clean(address.get("flat")) or None,
+            "city": city or None,
+            "street": street or None,
+            "house": house or None,
+            "flat": flat or None,
         }
 
     def _normalize_contact_payload(self, contact: Dict[str, Any], contact_text: str, has_contact: bool) -> Dict[str, Any]:
@@ -154,6 +166,9 @@ class TurnSplitterAgent:
             "phone": self._clean(contact.get("phone")) or None,
             "method": self._clean(contact.get("method")) or None,
         }
+
+    def _has_flat_marker(self, text: str) -> bool:
+        return bool(re.search(r"\b(?:кв\.?|квартир\w*|пом\.?|помещени\w*)\b", text or "", flags=re.IGNORECASE))
 
     def _grounded_or_empty(self, source_text: str, value: str) -> str:
         if not value:
@@ -206,6 +221,102 @@ class TurnSplitterAgent:
             "reason": "prompt_missing",
             "raw": None,
             "source_text": text or "",
+        }
+
+    def _function_system_prompt(self) -> str:
+        return (
+            "Ты размечаешь один ответ жильца для заявки ЖКХ. "
+            "Выдели только то, что пользователь сказал сейчас: адрес объекта заявки, описание проблемы, контакт. "
+            "Контекст нужен только для понимания ответа; не копируй из вопроса или известных фактов адрес, имя, телефон или проблему. "
+            "Значения бери только из ответа жильца либо из очевидного исправления его синтаксической/STT-ошибки. "
+            "По умолчанию ответ связан с вопросом бота, но в нем могут быть дополнительные сведения. "
+            "Адрес — только город, улица, дом, корпус, строение, квартира/помещение объекта заявки. "
+            "Проблема — любая авария, поломка, отсутствие услуги, повреждение, дерево/мусор/вода/свет/газ/лифт, место проявления и последствия. "
+            "Если в реплике есть описание проблемы, обязательно заполни problem.text и problem.present=true, даже если бот спрашивал адрес или контакт. "
+            "Не превращай слова из описания происшествия в улицу или дом. "
+            "Номер подъезда, подвала, двора, входа, лестницы — локализация проблемы, а не номер дома. "
+            "Если в address есть text/city/street/house/flat, address.present должен быть true даже при неполном адресе. "
+            "Если в problem есть text, problem.present должен быть true. Если в contact есть text/name/phone/method, contact.present должен быть true. "
+            "Заполни аргументы функции emit_turn_parts; отсутствующие строки оставляй пустыми."
+        )
+
+    def _build_function_user_prompt(self, *, text: str, state: Dict[str, Any]) -> str:
+        address = state.get("address_input") or {}
+        contact = state.get("contact") or {}
+        problem = state.get("problem") or {}
+        dialog_context = state.get("dialog_context") or {}
+        known_facts = {
+            "address": {
+                "has_city": bool(address.get("city")),
+                "has_street": bool(address.get("street")),
+                "has_house": bool(address.get("house")),
+                "has_flat": bool(address.get("flat")),
+            },
+            "problem": {"present": bool(problem.get("txtPrb"))},
+            "contact": {
+                "has_name": bool(contact.get("name") or contact.get("candidate_name")),
+                "has_phone": bool(contact.get("phone") or contact.get("source_phone") or contact.get("candidate_phone")),
+            },
+        }
+        return (
+            f"Вопрос бота: {dialog_context.get('last_bot_question') or ''}\n"
+            f"Известные факты: {json.dumps(known_facts, ensure_ascii=False, separators=(',', ':'))}\n"
+            f"Ответ жильца: {text or ''}"
+        )
+
+    def _function_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "answers_current_question": {
+                    "type": "boolean",
+                    "description": "Ответ связан с последним вопросом бота.",
+                },
+                "address": {
+                    "type": "object",
+                    "description": "Адресная часть, сказанная в текущей реплике.",
+                    "properties": {
+                        "present": {"type": "boolean"},
+                        "text": {"type": "string", "description": "Адресный фрагмент из реплики или пустая строка."},
+                        "city": {"type": "string", "description": "Населенный пункт или пустая строка."},
+                        "street": {"type": "string", "description": "Улица без служебного слова или пустая строка."},
+                        "house": {"type": "string", "description": "Номер дома или пустая строка."},
+                        "flat": {"type": "string", "description": "Квартира/помещение или пустая строка."},
+                    },
+                    "required": ["present", "text", "city", "street", "house", "flat"],
+                },
+                "problem": {
+                    "type": "object",
+                    "description": "Описание проблемы из текущей реплики.",
+                    "properties": {
+                        "present": {"type": "boolean"},
+                        "text": {"type": "string", "description": "Фрагмент проблемы или пустая строка."},
+                    },
+                    "required": ["present", "text"],
+                },
+                "contact": {
+                    "type": "object",
+                    "description": "Контактная информация из текущей реплики.",
+                    "properties": {
+                        "present": {"type": "boolean"},
+                        "text": {"type": "string", "description": "Контактный фрагмент или пустая строка."},
+                        "name": {"type": "string", "description": "Имя контакта или пустая строка."},
+                        "phone": {"type": "string", "description": "Телефон или пустая строка."},
+                        "method": {"type": "string", "description": "Способ связи или пустая строка."},
+                    },
+                    "required": ["present", "text", "name", "phone", "method"],
+                },
+                "flags": {
+                    "type": "object",
+                    "properties": {
+                        "address_change_attempt": {"type": "boolean"},
+                        "separate_order_possible": {"type": "boolean"},
+                    },
+                    "required": ["address_change_attempt", "separate_order_possible"],
+                },
+                "reason": {"type": "string", "description": "Краткое объяснение разметки."},
+            },
+            "required": ["answers_current_question", "address", "problem", "contact", "flags", "reason"],
         }
 
     async def _build_prompt(self, *, text: str, state: Dict[str, Any]) -> str:
