@@ -391,3 +391,31 @@ Prompt `address-syntax-correction-runtime`:
 - старые `*.retry_json_contract` для этих агентов больше не появляются;
 - старый `AddressAgent.slots.retry_contract` убран: вместо повторного LLM-вызова используется backend-нормализация аргументов функции;
 - остающийся риск - смысловая нестабильность самой модели в сложных слотах. Примеры: GigaChat может положить описание схемы в пустой слот или попытаться угадать город в TurnSplitter. Сейчас это отбрасывается backend-валидацией по текущей реплике, но для следующего этапа нужно перенести схемы и prompts в БД и улучшить контроль slot-level evidence.
+
+## API Регрессия После Function Calling 2026-05-18
+
+Сессия: `d9903276-997b-454f-b560-178be7e9db5d_stt`.
+
+Факты:
+
+- `Привет`: API `status=success`, полный запрос `61.2 ms`, handler `22.6 ms`, bot_order `9 ms`.
+- `Абрикосовая 2`: API `status=success`, полный запрос `3481.9 ms`, handler `3450.5 ms`; основные стадии: `bot_order.ingress_normalize=1919 ms`, `dialog_guard.check=1064 ms`, `turn_splitter.analyze=1837 ms`, `address_agent.resolve=1513 ms`.
+- первый `Сочи`: API HTTP 200, но body `status=error`, полный запрос `51.1 ms`, handler `23.8 ms`; стадия `turn_splitter.analyze=0 ms`.
+- повторный `Сочи`: API HTTP 200, body `status=error`, полный запрос `41.7 ms`, handler `17.3 ms`.
+- `Город сочи`: API HTTP 200, body `status=error`, полный запрос `34.8 ms`, handler `8.5 ms`.
+- последний вызов этой сессии `09:26:55 UTC` был `call_ended`: nginx `200 115`, `VoiceCallSession.status=ended`, `end_reason=caller_hangup`.
+- контрольный API-прогон `codex_api_diag_6470196c_stt` подтвердил воспроизводимость: `Привет` `50.4 ms` success, `Абрикосовая 2` `3185.8 ms` success, `Сочи` `47.9 ms` body `status=error`.
+
+Причина:
+
+- `message_handler/views.py` создает новый `asyncio` event loop на каждый HTTP-запрос: `asyncio.new_event_loop()`, `loop.run_until_complete(...)`, затем `loop.close()`.
+- `ai_agent_service.py` хранит общий class-level `asyncio.Lock` в `AIAgentService._gigachat_token_lock`.
+- После параллельных LLM-вызовов lock остается объектом, привязанным к одному event loop. Следующий API-запрос работает уже в другом event loop и падает на `_get_gigachat_token()` с `RuntimeError: <asyncio.locks.Lock ...> is bound to a different event loop`.
+- Ошибка проявилась сразу после `Сочи`, потому что это был следующий ход, где orchestrator снова запускает `DialogGuardAgent.check` и `TurnSplitterAgent.analyze` через `asyncio.gather`, а оба агента идут за GigaChat token.
+
+Корневое исправление:
+
+- убрать хранение `asyncio.Lock`/`asyncio.Semaphore` как process-wide class variables, если синхронный Django-view продолжает создавать новый loop на каждый запрос;
+- либо сделать один стабильный async runtime для обработки API-запросов;
+- либо заменить token-lock на loop-safe/thread-safe механизм, например обычный `threading.Lock` вокруг синхронного участка обновления кеша токена, а асинхронный HTTP-вызов выполнять вне чужого loop-bound lock;
+- отдельно проверить `LiteLLMClient._parallel_semaphore`: это тоже class-level `asyncio.Semaphore` и может дать такой же класс ошибки при межзапросном переиспользовании.
