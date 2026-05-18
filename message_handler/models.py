@@ -343,3 +343,72 @@ class APIErrorLog(models.Model):
 
     def __str__(self):
         return f"{self.get_error_type_display()} | {self.client_ip} | {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+
+class VoiceCallSession(models.Model):
+    """Voice API session lifecycle for Asterisk integrations."""
+
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('ended', 'Ended'),
+    ]
+
+    session_id = models.CharField(max_length=255, unique=True, db_index=True)
+    schema_version = models.CharField(max_length=32, default='asterisk_voice_v2.1')
+    source = models.CharField(max_length=50, default='asterisk')
+    channel = models.CharField(max_length=50, default='voice')
+    user_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    direction = models.CharField(max_length=20, null=True, blank=True)
+    client_phone = models.CharField(max_length=40, blank=True)
+    company_phone = models.CharField(max_length=40, blank=True)
+    asterisk_channel_id = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', db_index=True)
+    end_reason = models.CharField(max_length=40, blank=True)
+    call_payload = models.JSONField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'message_handler_voice_call_sessions'
+        verbose_name = 'Voice call session'
+        verbose_name_plural = 'Voice call sessions'
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['session_id', 'status']),
+            models.Index(fields=['client_phone', 'updated_at']),
+            models.Index(fields=['asterisk_channel_id']),
+        ]
+
+    def __str__(self):
+        return f"{self.session_id} | {self.status}"
+
+
+class VoiceTurnRevision(models.Model):
+    """Latest accepted revision for one voice turn within one session."""
+
+    session_id = models.CharField(max_length=255, db_index=True)
+    turn_id = models.CharField(max_length=255, db_index=True)
+    latest_revision = models.PositiveIntegerField(default=0)
+    obsolete_revisions = models.JSONField(default=list, blank=True)
+    supersedes_revision = models.PositiveIntegerField(null=True, blank=True)
+    schema_version = models.CharField(max_length=32, default='asterisk_voice_v2.1')
+    user_id = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    message_preview = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'message_handler_voice_turn_revisions'
+        verbose_name = 'Voice turn revision'
+        verbose_name_plural = 'Voice turn revisions'
+        ordering = ['-updated_at']
+        unique_together = [('session_id', 'turn_id')]
+        indexes = [
+            models.Index(fields=['session_id', 'turn_id']),
+            models.Index(fields=['session_id', 'updated_at']),
+            models.Index(fields=['user_id', 'updated_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.session_id} | {self.turn_id} | rev {self.latest_revision}"

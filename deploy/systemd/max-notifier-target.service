@@ -1,0 +1,18 @@
+[Unit]
+Description=MAX new work order notifier target polling
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/komunal-dom_ru
+EnvironmentFile=/var/www/komunal-dom_ru/.env
+Environment=DJANGO_SETTINGS_MODULE=komunal_dom.settings
+ExecStart=/var/www/komunal-dom_ru/venv/bin/python /var/www/komunal-dom_ru/max_notification_service.py --poll-target
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

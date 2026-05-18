@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>MAX Mic Test</title>
+    <style>
+      :root {
+        color: #17211f;
+        background: #edf5f2;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        max-width: 820px;
+        margin: 0 auto;
+        padding: 18px 14px 32px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        color: #0f312d;
+        font-size: 26px;
+      }
+      p {
+        margin: 0 0 14px;
+        color: #425b56;
+        line-height: 1.45;
+      }
+      .actions {
+        display: grid;
+        gap: 8px;
+        margin: 14px 0;
+      }
+      button,
+      a.button {
+        display: inline-flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 8px;
+        color: #fff;
+        background: #0f766e;
+        font: inherit;
+        font-weight: 800;
+        text-decoration: none;
+      }
+      button.secondary,
+      a.button.secondary {
+        color: #0f5f58;
+        background: #dff5ef;
+      }
+      pre {
+        min-height: 220px;
+        max-height: 58vh;
+        overflow: auto;
+        padding: 10px;
+        border: 1px solid #c8d8d3;
+        border-radius: 8px;
+        background: #fff;
+        color: #253f3a;
+        font-size: 12px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Mic Test</h1>
+    <p>Чистая страница без React, без MAX Bridge и без авторизации. Проверяет только WebView/браузер и домен.</p>
+    <div class="actions">
+      <button id="run">Проверить микрофон</button>
+      <button class="secondary" id="copy">Скопировать лог</button>
+      <a class="button secondary" href="/mic-test.html" target="_blank" rel="noreferrer">Открыть эту страницу отдельно</a>
+    </div>
+    <pre id="log"></pre>
+    <script>
+      const BUILD = "2026-05-12-mic-test-v1";
+      const logEl = document.getElementById("log");
+      const entries = [];
+
+      function policyState() {
+        const state = {
+          permissionsPolicyApi: Boolean(document.permissionsPolicy?.allowsFeature),
+          featurePolicyApi: Boolean(document.featurePolicy?.allowsFeature),
+          permissionsPolicyMicrophone: null,
+          featurePolicyMicrophone: null,
+        };
+        try {
+          state.permissionsPolicyMicrophone = document.permissionsPolicy?.allowsFeature?.("microphone") ?? null;
+        } catch (error) {
+          state.permissionsPolicyError = `${error.name}: ${error.message}`;
+        }
+        try {
+          state.featurePolicyMicrophone = document.featurePolicy?.allowsFeature?.("microphone") ?? null;
+        } catch (error) {
+          state.featurePolicyError = `${error.name}: ${error.message}`;
+        }
+        return state;
+      }
+
+      function push(message, details) {
+        const row = {
+          at: new Date().toISOString(),
+          message,
+          ...(details ? { details } : {}),
+        };
+        entries.push(row);
+        logEl.textContent = JSON.stringify(entries, null, 2);
+        console.log("[mic-test]", message, details || "");
+      }
+
+      async function diagnostics() {
+        const data = {
+          build: BUILD,
+          href: location.href,
+          origin: location.origin,
+          secureContext: window.isSecureContext,
+          userAgent: navigator.userAgent,
+          mediaDevices: Boolean(navigator.mediaDevices),
+          getUserMedia: Boolean(navigator.mediaDevices?.getUserMedia),
+          permissionsApi: Boolean(navigator.permissions?.query),
+          policy: policyState(),
+          userActivation: {
+            isActive: navigator.userActivation?.isActive ?? null,
+            hasBeenActive: navigator.userActivation?.hasBeenActive ?? null,
+          },
+        };
+        if (navigator.permissions?.query) {
+          try {
+            const permission = await navigator.permissions.query({ name: "microphone" });
+            data.permissionState = permission.state;
+          } catch (error) {
+            data.permissionStateError = `${error.name}: ${error.message}`;
+          }
+        }
+        if (navigator.mediaDevices?.enumerateDevices) {
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            data.audioInputs = devices
+              .filter((device) => device.kind === "audioinput")
+              .map((device) => ({
+                label: device.label || "",
+                deviceId: device.deviceId ? "present" : "",
+                groupId: device.groupId ? "present" : "",
+              }));
+          } catch (error) {
+            data.enumerateDevicesError = `${error.name}: ${error.message}`;
+          }
+        }
+        push("diagnostics", data);
+        return data;
+      }
+
+      async function probe(name, constraints) {
+        const startedAt = performance.now();
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          const elapsedMs = Math.round(performance.now() - startedAt);
+          const tracks = stream.getAudioTracks().map((track) => ({
+            label: track.label || "",
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState,
+            settings: track.getSettings ? track.getSettings() : {},
+          }));
+          stream.getTracks().forEach((track) => track.stop());
+          push("probe success", { name, elapsedMs, tracks });
+        } catch (error) {
+          const elapsedMs = Math.round(performance.now() - startedAt);
+          push("probe failed", {
+            name,
+            elapsedMs,
+            errorName: error.name,
+            errorMessage: error.message,
+          });
+        }
+      }
+
+      async function run() {
+        entries.length = 0;
+        await diagnostics();
+        if (!navigator.mediaDevices?.getUserMedia) {
+          push("getUserMedia unavailable");
+          return;
+        }
+        await probe("audio:true", { audio: true });
+        await probe("echoCancellation:false", { audio: { echoCancellation: false } });
+        await probe("channelCount:1", { audio: { channelCount: 1 } });
+      }
+
+      document.getElementById("run").addEventListener("click", run);
+      document.getElementById("copy").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(logEl.textContent || "");
+      });
+      push("page loaded", { build: BUILD });
+    </script>
+  </body>
+</html>

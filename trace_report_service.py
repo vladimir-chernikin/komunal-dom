@@ -1,4 +1,4 @@
-"""
+﻿"""
 TraceReportService - Улучшенный сервис для генерации отчетов трассировки диалогов
 
 ИСПРАВЛЕНО (2025-12-28):
@@ -94,7 +94,7 @@ class TraceReportService:
             except Exception as e:
                 logger.warning(f"Не удалось получить timezone пользователя: {e}")
 
-            # Fallback на Moscow Time
+            # Fallback РЅР° Moscow Time
             return 'Europe/Moscow'
 
         # Запускаем async функцию и получаем результат
@@ -148,7 +148,7 @@ class TraceReportService:
         except Exception as e:
             logger.warning(f"Не удалось получить timezone пользователя: {e}")
 
-        # Fallback на Moscow Time
+        # Fallback РЅР° Moscow Time
         return 'Europe/Moscow'
 
     # ИСПРАВЛЕНО (2026-01-19): Метод для конвертации UTC в часовой пояс пользователя
@@ -222,6 +222,7 @@ class TraceReportService:
 
         # ИСПРАВЛЕНО (2026-01-06): Загружаем LLM запросы из таблицы llm_request_log
         llm_logs_map = await self._load_llm_logs_for_session(session_id, messages)
+        fias_logs_map = await self._load_fias_logs_for_session(session_id)
 
         # ИСПРАВЛЕНО (2026-01-19): Определяем timezone пользователя
         if user_timezone is None:
@@ -229,7 +230,7 @@ class TraceReportService:
             user_timezone = self._get_user_timezone_sync(session_id, messages)
 
         # Генерируем отчет
-        report_content = self._generate_full_report(session_id, messages, llm_logs_map, user_timezone)
+        report_content = self._generate_full_report(session_id, messages, llm_logs_map, user_timezone, fias_logs_map)
 
         # Определяем путь к файлу
         if output_path is None:
@@ -279,9 +280,9 @@ class TraceReportService:
                                 metadata,
                                 django_user_id
                             FROM dialog_logs
-                            WHERE session_id LIKE %s
+                            WHERE session_id = %s
                             ORDER BY timestamp ASC
-                        """, (f"{session_id}%",))
+                        """, (session_id,))
 
                         columns = ['id', 'message_id', 'text', 'direction', 'channel', 'session_id', 'created_at', 'metadata', 'django_user_id']
                         messages = []
@@ -408,7 +409,90 @@ class TraceReportService:
             logger.error(f"Ошибка загрузки LLM логов: {e}")
             return {}
 
-    def _generate_full_report(self, session_id: str, messages: List[Dict], llm_logs_map: Dict[int, List[Dict]] = None, user_timezone: str = None) -> str:
+    async def _load_fias_logs_for_session(self, session_id: str) -> Dict[int, List[Dict]]:
+        """Загружает ФИАС-вызовы по session_id и связывает их с входящими сообщениями."""
+        try:
+            from django.conf import settings
+            import psycopg2
+            from decimal import Decimal
+            from collections import defaultdict
+
+            db_settings = settings.DATABASES['default']
+
+            def json_safe(value):
+                if isinstance(value, Decimal):
+                    return float(value)
+                if isinstance(value, dict):
+                    return {key: json_safe(item) for key, item in value.items()}
+                if isinstance(value, (list, tuple)):
+                    return [json_safe(item) for item in value]
+                if hasattr(value, 'isoformat'):
+                    return value.isoformat()
+                return value
+
+            def load_fias_sync():
+                conn = psycopg2.connect(
+                    host=db_settings['HOST'],
+                    database=db_settings['NAME'],
+                    user=db_settings['USER'],
+                    password=db_settings['PASSWORD'],
+                    port=db_settings.get('PORT', 5432)
+                )
+                try:
+                    with conn.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT
+                                id,
+                                endpoint,
+                                method,
+                                http_status,
+                                duration_ms,
+                                error_message,
+                                fias_house_guid::text,
+                                fias_street_guid::text,
+                                building_id,
+                                request_payload,
+                                response_payload,
+                                created_at,
+                                message_log_id,
+                                state_stage
+                            FROM fias_request_log
+                            WHERE session_id = %s
+                            ORDER BY created_at ASC, id ASC
+                        """, (session_id,))
+                        rows = cursor.fetchall()
+                finally:
+                    conn.close()
+
+                calls_by_message = defaultdict(list)
+                for row in rows:
+                    message_log_id = row[12]
+                    if not message_log_id:
+                        continue
+                    calls_by_message[message_log_id].append({
+                        'id': row[0],
+                        'endpoint': row[1],
+                        'method': row[2],
+                        'http_status': row[3],
+                        'duration_ms': json_safe(row[4]),
+                        'error_message': row[5],
+                        'fias_house_guid': row[6],
+                        'fias_street_guid': row[7],
+                        'building_id': row[8],
+                        'request_payload': json_safe(row[9]),
+                        'response_payload': json_safe(row[10]),
+                        'created_at': row[11].isoformat() if row[11] else None,
+                        'message_log_id': message_log_id,
+                        'state_stage': row[13],
+                    })
+                return dict(calls_by_message)
+
+            return await asyncio.to_thread(load_fias_sync)
+        except Exception as e:
+            logger.error(f"Ошибка загрузки ФИАС логов: {e}")
+            return {}
+
+    def _generate_full_report(self, session_id: str, messages: List[Dict], llm_logs_map: Dict[int, List[Dict]] = None, user_timezone: str = None, fias_logs_map: Dict[int, List[Dict]] = None) -> str:
         """
         Генерирует полный отчет по шаблону ТЗ (2026-01-06).
 
@@ -423,8 +507,11 @@ class TraceReportService:
         # Канал на русском
         channel_map = {
             'telegram': 'Телеграм',
+            'maxchat': 'MAX',
             'web': 'Веб-чат',
-            'test': 'ПрограммныйТест'
+            'api': 'Внешнее API',
+            'test_bot': 'Тестовый канал',
+            'test': 'Тестовый канал'
         }
         channel_ru = channel_map.get(channel, channel)
 
@@ -437,7 +524,7 @@ class TraceReportService:
 
         # Заголовок отчета
         report = f"""================================================================================
-ОТЧЕТ ТРАССИРОВКИ ДИАЛОГА (по шаблону ТЗ v3.0 - 2026-01-06)
+ОТЧЕТ ТРАССИРОВКИ ДИАЛОГА (шаблон BotOrder trace v4.1 - 2026-05-05)
 ================================================================================
 Session ID: {session_id}
 Канал: {channel_ru}
@@ -455,7 +542,7 @@ Session ID: {session_id}
         for i, msg in enumerate(messages, 1):
             next_msg = messages[i] if i < len(messages) else None
             # ИСПРАВЛЕНО (2026-01-06): Передаем llm_logs_map
-            report += self._format_message_details(i, msg, messages[:i], next_msg, llm_logs_map)
+            report += self._format_message_details(i, msg, messages[:i], next_msg, llm_logs_map, fias_logs_map)
             report += "\n"
 
         # Статистика
@@ -469,7 +556,140 @@ Session ID: {session_id}
 
         return report
 
-    def _format_message_details(self, num: int, msg: Dict, previous_messages: List[Dict], next_msg: Dict = None, llm_logs_map: Dict[int, List[Dict]] = None) -> str:
+    def _format_between_message_operations(
+        self,
+        *,
+        msg_id: int,
+        llm_logs_map: Dict[int, List[Dict]] = None,
+        fias_logs_map: Dict[int, List[Dict]] = None,
+    ) -> str:
+        """Formats operations executed after an inbound user message and before bot reply."""
+        operations = []
+        fias_calls = (fias_logs_map or {}).get(msg_id, []) or []
+        for call in fias_calls:
+            operations.append({
+                "kind": "fias",
+                "created_at": call.get("created_at"),
+                "data": call,
+            })
+        for call in (llm_logs_map or {}).get(msg_id, []) or []:
+            operations.append({
+                "kind": "llm",
+                "created_at": call.get("created_at"),
+                "data": call,
+            })
+
+        details = "\n4. Технические операции после этой реплики до ответа бота:\n"
+        if not operations:
+            details += " {(операций не было)}\n"
+            return details
+
+        operations.sort(key=lambda item: str(item.get("created_at") or ""))
+        total_cost = 0.0
+
+        def payload_preview(value):
+            try:
+                return json.dumps(value, ensure_ascii=False, default=str, indent=2)
+            except Exception:
+                return str(value)
+
+        for index, operation in enumerate(operations, 1):
+            data = operation["data"]
+            if operation["kind"] == "fias":
+                details += (
+                    f"\n4.{index}. ФИАС id={data.get('id')} | endpoint={data.get('endpoint')} | "
+                    f"method={data.get('method')} | status={data.get('http_status')} | "
+                    f"duration_ms={data.get('duration_ms')} | stage={data.get('state_stage') or '-'} | "
+                    f"error={data.get('error_message') or '-'}\n"
+                )
+                details += (
+                    f" Результат: house_guid={data.get('fias_house_guid') or '-'} | "
+                    f"street_guid={data.get('fias_street_guid') or '-'} | "
+                    f"local_building_id={data.get('building_id') or '-'}\n"
+                )
+                details += " Request payload:\n"
+                details += payload_preview(data.get("request_payload")) + "\n"
+                details += " Response payload:\n"
+                details += payload_preview(data.get("response_payload")) + "\n"
+                continue
+
+            cost_rub = float(data.get("cost_rub") or 0.0)
+            total_cost += cost_rub
+            caller_service = data.get("caller_service") or "Unknown"
+            prompt_slug = data.get("prompt_slug") or "-"
+            provider = data.get("provider") or "unknown"
+            model = data.get("model") or "unknown"
+            is_syntax_correction = (
+                caller_service == "AddressAgent.syntax_correction"
+                or prompt_slug == "address-syntax-correction-runtime"
+            )
+            if is_syntax_correction:
+                details += "\n======== Исправлена ошибка синтаксиса ===========\n"
+            details += (
+                f"\n4.{index}. LLM caller_service={caller_service} | prompt_slug={prompt_slug} | "
+                f"provider={provider} | model={model} | "
+                f"tokens={data.get('total_tokens') or 0} | cost_rub={cost_rub:.4f}\n"
+            )
+            prompt_text = data.get("prompt_text") or ""
+            response_text = data.get("response_text") or ""
+            if prompt_text:
+                details += " Полный промпт:\n"
+                details += f"{prompt_text}\n"
+            if response_text:
+                details += " Сырой ответ LLM:\n"
+                details += f"{response_text}\n"
+            if is_syntax_correction:
+                details += "======== Исправлена ошибка синтаксиса ===========\n"
+
+        next_index = len(operations) + 1
+        if not fias_calls:
+            details += f"\n4.{next_index}. ФИАС: внешних вызовов ФИАС после этой реплики не было.\n"
+            next_index += 1
+        details += f"\n4.{next_index}. Стоимость LLM после этой реплики: {total_cost:.4f} рублей\n"
+        return details
+
+    def _format_bot_order_state_summary(self, state_snapshot: Dict[str, Any]) -> str:
+        if not isinstance(state_snapshot, dict) or not state_snapshot:
+            return ""
+        lines = []
+        address = state_snapshot.get('address_input') or {}
+        local_address = state_snapshot.get('local_address') or {}
+        service_context = state_snapshot.get('service_context') or {}
+        fias_result = state_snapshot.get('fias_result') or {}
+        problem = state_snapshot.get('problem') or {}
+        contact = state_snapshot.get('contact') or {}
+
+        address_parts = [
+            address.get('city') or address.get('settlement'),
+            address.get('street'),
+            address.get('house'),
+        ]
+        address_text = ', '.join(str(part) for part in address_parts if part)
+        if address_text or local_address or service_context or fias_result:
+            lines.append(
+                " address="
+                + (address_text or address.get('normalized_text') or address.get('raw_text') or '-')
+                + f" | status={service_context.get('service_status') or fias_result.get('status') or '-'}"
+                + f" | building_id={local_address.get('building_id') or '-'}"
+                + f" | service_object_id={service_context.get('service_object_id') or '-'}"
+                + f" | company_id={service_context.get('company_id') or '-'}"
+            )
+
+        contact_bits = []
+        if contact.get('name'):
+            contact_bits.append(f"name={contact.get('name')}")
+        if contact.get('phone'):
+            contact_bits.append(f"phone={contact.get('phone')}")
+        if contact_bits or contact.get('status'):
+            lines.append(f" contact={'; '.join(contact_bits) if contact_bits else '-'} | status={contact.get('status') or '-'}")
+
+        txt_prb = (problem.get('txtPrb') or '').strip()
+        if txt_prb:
+            lines.append(f" txtPrb={txt_prb}")
+
+        return ''.join(f" {line}\n" for line in lines)
+
+    def _format_message_details(self, num: int, msg: Dict, previous_messages: List[Dict], next_msg: Dict = None, llm_logs_map: Dict[int, List[Dict]] = None, fias_logs_map: Dict[int, List[Dict]] = None) -> str:
         """Форматирует детали сообщения по шаблону ТЗ (2026-01-06).
 
         ИСПРАВЛЕНО (2026-01-06): Добавлен параметр llm_logs_map для LLM запросов из таблицы
@@ -506,8 +726,11 @@ Session ID: {session_id}
         # Канал на русском
         channel_map = {
             'telegram': 'Телеграм',
+            'maxchat': 'MAX',
             'web': 'Веб-чат',
-            'test': 'ПрограммныйТест'
+            'api': 'Внешнее API',
+            'test_bot': 'Тестовый канал',
+            'test': 'Тестовый канал'
         }
         channel_ru = channel_map.get(channel, channel)
 
@@ -531,19 +754,35 @@ Session ID: {session_id}
 
         # Для User -> Bot - только пункты 1-3
         if direction == 'inbound':
+            details += self._format_between_message_operations(
+                msg_id=msg_id,
+                llm_logs_map=llm_logs_map,
+                fias_logs_map=fias_logs_map,
+            )
             return details
 
         # Для Bot -> User - все пункты
         service_result = metadata.get('service_result', {})
         service_metadata = service_result.get('_metadata', {}) if isinstance(service_result, dict) else {}
 
-        # 4. Таблица установленных фильтров (перенесено из пункта 8)
-        details += "\n4. Таблица установленных фильтров:\n"
+        target_message_id = msg_id
+        if direction == 'outbound' and previous_messages:
+            for prev_msg in reversed(previous_messages):
+                if prev_msg.get('direction') == 'inbound':
+                    target_message_id = prev_msg.get('id')
+                    break
+
+        # 4. Состояние выбора услуги
+        details += "\n4. Состояние выбора услуги:\n"
         established_filters = service_metadata.get('established_filters', {})
         if isinstance(established_filters, dict) and established_filters:
-            # Сортировка фильтров: location_type, category, incident_type, object_description
-            filter_order = ['location_type', 'category', 'incident_type', 'object_description', 'semantic_check']
-            for filter_name in filter_order:
+            filter_order = [
+                ('incident_type', 'Тип обращения'),
+                ('location_type', 'Локализация'),
+                ('category', 'Категория'),
+            ]
+            printed = False
+            for filter_name, label in filter_order:
                 if filter_name in established_filters:
                     filter_data = established_filters[filter_name]
                     if isinstance(filter_data, dict):
@@ -551,116 +790,89 @@ Session ID: {session_id}
                         conf_raw = filter_data.get('confidence', 0.0) or 0.0
                         confidence = float(conf_raw) * 100
                         if value == 'null' or value is None:
-                            details += f" {filter_name} = null (не определено)\n"
+                            continue
                         else:
-                            details += f" {filter_name} = {value} ({confidence:.0f}%)\n"
-                    else:
-                        details += f" {filter_name} = {filter_data}\n"
-
-            # Показываем остальные фильтры (если есть)
-            for filter_name, filter_data in established_filters.items():
-                if filter_name not in filter_order:
-                    details += f" {filter_name} = {filter_data}\n"
+                            details += f" {label}: {value} ({confidence:.0f}%)\n"
+                            printed = True
+            if not printed:
+                details += " Пока услуга не определялась или данных недостаточно.\n"
         else:
-            details += " {(нет фильтров)}\n"
+            details += " Пока услуга не определялась.\n"
 
-        # 5. TagSearchService
-        details += "\n5. TagSearchService\n"
-        microservices_results = service_metadata.get('microservices_results', {})
-        tag_search = microservices_results.get('tag_search', {}) if isinstance(microservices_results, dict) else {}
-        if isinstance(tag_search, dict) and tag_search.get('candidates'):
-            for cand in tag_search['candidates']:
-                service_name = cand.get('service_name', 'Unknown')
-                conf_raw = cand.get('confidence', 0.0) or 0.0
-                confidence = float(conf_raw) * 100
-                details += f" {{{service_name}, {confidence:.1f}%}}\n"
+        details += "\n5. Состояние оркестратора:\n"
+        orchestrator_meta = service_metadata.get('bot_order_orchestrator', {}) if isinstance(service_metadata, dict) else {}
+        if orchestrator_meta:
+            stage = orchestrator_meta.get('stage')
+            details += f" stage={stage} ({self._describe_bot_order_stage(stage)})\n"
         else:
-            details += " {(нет кандидатов)}\n"
-
-        # 6. SemanticSearchService
-        details += "\n6. SemanticSearchService\n"
-        semantic_search = microservices_results.get('semantic_search', {}) if isinstance(microservices_results, dict) else {}
-        if isinstance(semantic_search, dict) and semantic_search.get('candidates'):
-            for cand in semantic_search['candidates']:
-                service_name = cand.get('service_name', 'Unknown')
-                conf_raw = cand.get('confidence', 0.0) or 0.0
-                confidence = float(conf_raw) * 100
-                details += f" {{{service_name}, {confidence:.1f}%}}\n"
+            details += " {(нет данных)}\n"
+        state_snapshot = service_metadata.get('state_snapshot', {}) if isinstance(service_metadata, dict) else {}
+        state_summary = self._format_bot_order_state_summary(state_snapshot)
+        if state_summary:
+            details += "\n6. Краткое состояние заявки:\n"
+            details += state_summary
+            details += "\n7. Технические операции:\n"
         else:
-            details += " {(нет кандидатов)}\n"
+            details += "\n6. Технические операции:\n"
+        details += " LLM, ФИАС и другие операции показаны после предыдущего входящего сообщения, до этой реплики бота.\n"
+        return details
+        fias_calls = []
+        fias_log_ids = []
+        if isinstance(metadata, dict):
+            fias_calls = metadata.get('fias_calls') or []
+            fias_log_ids = metadata.get('fias_log_ids') or []
+        if not fias_log_ids and isinstance(service_metadata, dict):
+            fias_log_ids = service_metadata.get('fias_log_ids') or []
+        if fias_logs_map and target_message_id in fias_logs_map:
+            fias_calls = fias_logs_map[target_message_id]
+        if not fias_log_ids and fias_calls:
+            fias_log_ids = [call.get('id') for call in fias_calls if call.get('id')]
 
-        # 7. VectorSearchService
-        details += "\n7. VectorSearchService\n"
-        vector_search = microservices_results.get('vector_search', {}) if isinstance(microservices_results, dict) else {}
-        if isinstance(vector_search, dict) and vector_search.get('candidates'):
-            for cand in vector_search['candidates']:
-                service_name = cand.get('service_name', 'Unknown')
-                conf_raw = cand.get('confidence', 0.0) or 0.0
-                confidence = float(conf_raw) * 100
-                details += f" {{{service_name}, {confidence:.1f}%}}\n"
-        else:
-            details += " {(нет кандидатов)}\n"
+        if fias_calls or fias_log_ids:
+            def payload_preview(value):
+                try:
+                    return json.dumps(value, ensure_ascii=False, default=str, indent=2)
+                except Exception:
+                    return str(value)
 
-        # 8. Итоговое объединение сервисов (MainAgent)
-        details += "\n8. Итоговое объединение сервисов (MainAgent):\n"
-
-        # Берем кандидатов из service_result (уже объединенные MainAgent)
-        candidates = service_result.get('candidates', []) if isinstance(service_result, dict) else []
-        if candidates:
-            for cand in candidates:
-                service_name = cand.get('service_name', 'Unknown')
-                conf_raw = cand.get('confidence', 0.0) or 0.0
-                confidence = float(conf_raw) * 100
-                sources = cand.get('sources', ['unknown'])
-                sources_str = ', '.join(sources)
-                details += f" {{{service_name}, {confidence:.1f}%}} (источники: {sources_str})\n"
-        else:
-            details += " {(нет кандидатов)}\n"
-
-        # 9. Прочая отладочная информация
-        # ИСПРАВЛЕНО (2026-01-10): Добавлен заголовок блока (задача 9)
-        details += "\n9. Прочая отладочная информация:\n"
-
-        ai_orchestrator = service_metadata.get('ai_orchestrator', {})
-        if isinstance(ai_orchestrator, dict) and ai_orchestrator:
-            status = ai_orchestrator.get('status', 'unknown')
-            service_id = ai_orchestrator.get('service_id')
-            service_name = ai_orchestrator.get('service_name', '')
-            confidence_raw = ai_orchestrator.get('confidence', 0.0) or 0.0
-            confidence = float(confidence_raw) * 100
-
-            # ИСПРАВЛЕНО (2026-01-10): Расшифровка статусов AI Orchestrator (задача 9)
-            status_map = {
-                'SUCCESS': 'Услуга определена однозначно',
-                'AMBIGUOUS': 'Требуется уточнение',
-                'ERROR': 'Ошибка при определении',
-                'unknown': 'Статус не определен'
-            }
-            status_description = status_map.get(status, status)
-
-            details += f" AI Orchestrator: {status_description}\n"
-            if service_id:
-                details += f"  ├─ ServiceID: {service_id} (ID определенной услуги)\n"
+            details += "\n6. Вызовы ФИАС:\n"
+            details += " Показаны операции, выполненные между предыдущим сообщением пользователя и этим ответом бота.\n"
+            if fias_log_ids:
+                details += f" IDs: {fias_log_ids}\n"
+            if fias_calls:
+                for call in fias_calls:
+                    details += (
+                        f" ФИАС id={call.get('id')} | endpoint={call.get('endpoint')} | "
+                        f"method={call.get('method')} | status={call.get('http_status')} | "
+                        f"duration_ms={call.get('duration_ms')} | stage={call.get('state_stage') or '-'} | "
+                        f"error={call.get('error_message') or '-'}\n"
+                    )
+                    details += f" Результат: house_guid={call.get('fias_house_guid') or '-'} | street_guid={call.get('fias_street_guid') or '-'} | local_building_id={call.get('building_id') or '-'}\n"
+                    details += " Request payload:\n"
+                    details += payload_preview(call.get('request_payload')) + "\n"
+                    details += " Response payload:\n"
+                    details += payload_preview(call.get('response_payload')) + "\n"
             else:
-                details += f"  ├─ ServiceID: None (услуга не определена)\n"
-            if service_name:
-                details += f"  ├─ ServiceName: {service_name} (название услуги)\n"
+                details += " Подробные записи не приложены к metadata; см. таблицу fias_request_log по IDs выше.\n"
+        else:
+            state_snapshot = service_metadata.get('state_snapshot', {}) if isinstance(service_metadata, dict) else {}
+            local_address = state_snapshot.get('local_address', {}) if isinstance(state_snapshot, dict) else {}
+            fias_result = state_snapshot.get('fias_result', {}) if isinstance(state_snapshot, dict) else {}
+            details += "\n6. Вызовы ФИАС:\n"
+            if local_address or fias_result:
+                source = local_address.get('match_source') or '-'
+                if source == 'local+fias':
+                    details += " Внешнего вызова ФИАС не было: адрес найден в локальной адресной базе, в записи уже сохранены GUID ФИАС.\n"
+                else:
+                    details += " Внешних вызовов ФИАС между предыдущим сообщением пользователя и этим ответом не было.\n"
+                details += (
+                    f" Текущее состояние адреса: source={source} | "
+                    f"building_id={local_address.get('building_id') or '-'} | "
+                    f"street_guid={fias_result.get('fias_street_guid') or '-'} | "
+                    f"house_guid={fias_result.get('fias_house_guid') or '-'}\n"
+                )
             else:
-                details += f"  ├─ ServiceName: None (название не определено)\n"
-            details += f"  ├─ Confidence: {confidence:.1f}% (уверенность определения)\n"
-            details += f"  └─ Всего кандидатов: {len(service_result.get('candidates', []))} (найдено услуг)\n"
-
-        # Filter Detection
-        filter_detection = service_metadata.get('filter_detection', {})
-        if isinstance(filter_detection, dict) and filter_detection:
-            detected_filters = filter_detection.get('filters', {})
-            if detected_filters:
-                details += f" FilterDetection: {json.dumps(detected_filters, ensure_ascii=False)}\n"
-
-        # Candidates
-        candidates_mainagent = service_result.get('candidates', []) if isinstance(service_result, dict) else []
-        if candidates_mainagent:
-            details += f" Всего кандидатов: {len(candidates_mainagent)}\n"
+                details += " Внешних вызовов ФИАС между предыдущим сообщением пользователя и этим ответом не было.\n"
 
         # 9.1. LLM вызовы (промпты и ответы из таблицы llm_request_log)
         # ИСПРАВЛЕНО (2026-01-06): Берем данные из таблицы llm_request_log вместо metadata
@@ -693,7 +905,8 @@ Session ID: {session_id}
                 llm_total_cost += cost_rub  # Суммируем стоимость
 
                 if not llm_calls_found:
-                    details += "\n9.1. LLM ВЫЗОВЫ (промпты и ответы):\n"
+                    details += "\n7. LLM вызовы (полные промпты и сырые ответы):\n"
+                    details += " Показаны операции, выполненные между предыдущим сообщением пользователя и этим ответом бота.\n"
                     llm_calls_found = True
 
                 # ИСПРАВЛЕНО (2026-02-24): Используем service_name из БД
@@ -709,38 +922,26 @@ Session ID: {session_id}
                 )
 
                 if prompt_text:
-                    # ИСПРАВЛЕНО (2026-02-05): Заголовок промпта
-                    # ИСПРАВЛЕНО (2026-02-19): Для MainAgent всегда показываем lite (исторически использовался pro)
-                    display_model = 'lite' if service_name == "MainAgent (AI Question Generator)" else model
+                    display_model = model
                     service_label = f" Промпт LLM для {service_name} ({provider} - {display_model}) "
                     border_length = len(service_label)
                     details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
 
-                    # ИСПРАВЛЕНО (2026-01-16): Показываем полный промпт для FilterDetectionService
-                    # Для остальных сервисов ограничиваем до 5000 символов
-                    if "FilterDetectionService" in service_name:
-                        prompt_preview = prompt_text  # Полный промпт
-                    else:
-                        prompt_preview = prompt_text[:5000] + "...\n(ПРОМПТ ОБРЕЗАН - полный текст в БД)" if len(prompt_text) > 5000 else prompt_text
-                    details += f"{prompt_preview}\n"
+                    details += f"{prompt_text}\n"
 
                 if response_text:
-                    # ИСПРАВЛЕНО (2026-02-05): Заголовок ответа
-                    # ИСПРАВЛЕНО (2026-02-19): Для MainAgent всегда показываем lite (исторически использовался pro)
-                    display_model = 'lite' if service_name == "MainAgent (AI Question Generator)" else model
+                    display_model = model
                     service_label = f" Ответ LLM для {service_name} ({provider} - {display_model}) "
                     border_length = len(service_label)
                     details += f"{'=' * border_length}\n{service_label}\n{'=' * border_length}\n"
 
-                    # ИСПРАВЛЕНО (2026-02-24): Показываем полный ответ, но ограничиваем до 5000 символов для читаемости
-                    response_preview = response_text[:5000] + "\n...(ОТВЕТ ОБРЕЗАН - полный текст содержит " + str(len(response_text)) + " символов)" if len(response_text) > 5000 else response_text
-                    details += f"{response_preview}\n"
+                    details += f"{response_text}\n"
 
         if not llm_calls_found:
-            details += "\n9.1. LLM ВЫЗОВЫ:\n {(нет данных из llm_request_log)}\n"
+            details += "\n7. LLM вызовы:\n {(нет данных из llm_request_log)}\n"
 
         # 10. Стоимость шага
-        details += "\n10. Стоимость шага:\n"
+        details += "\n8. Стоимость шага:\n"
 
         # ИСПРАВЛЕНО (2026-01-06): Берем стоимость из llm_logs_map
         if llm_calls_found and llm_total_cost > 0:
@@ -767,12 +968,31 @@ Session ID: {session_id}
                 model = service_metadata.get('model') or service_metadata.get('llm_model', 'unknown')
                 if tokens or cost:
                     details += f" {model} = {tokens} токенов, {cost:.4f} рублей\n"
-                cost_found = True
+                    cost_found = True
 
         if not cost_found:
             details += " {(данные о стоимости отсутствуют)}\n"
 
         return details
+
+    def _describe_bot_order_stage(self, stage: str) -> str:
+        descriptions = {
+            "ingress_normalize": "получено новое сообщение, идет нормализация входа",
+            "greeting": "бот ответил на приветствие и ждет адрес/проблему",
+            "address_pipeline": "идет извлечение и проверка адреса",
+            "address_incomplete": "адрес неполный, бот ждет недостающую часть",
+            "address_not_found": "адрес не найден, бот ждет уточнение адреса",
+            "address_not_serviced": "дом найден, но не обслуживается активной компанией",
+            "problem_required": "адрес найден, бот ждет описание проблемы",
+            "service_selection": "идет определение услуги",
+            "need_service_type_clarification": "не выбран тип обращения, задан уточняющий вопрос",
+            "need_localization_clarification": "нужно уточнить, где именно проявилась проблема, чтобы выбрать индивидуальное или общедомовое имущество",
+            "need_category_clarification": "не выбрана категория, задан уточняющий вопрос",
+            "service_confirmation": "услуга выбрана, бот ждет подтверждение пользователя",
+            "order_create": "создается заявка",
+            "security_guard_blocked": "защитник остановил небезопасный запрос",
+        }
+        return descriptions.get(stage or "", "служебный этап нового оркестратора")
 
     def _format_metadata_v2(self, metadata: Any, previous_messages: List[Dict], indent: str = "  ") -> str:
         """Улучшенное форматирование METADATA с подробной расшифровкой."""
@@ -969,7 +1189,7 @@ Session ID: {session_id}
                     status_translated = self._translate_status(status)
                     lines.append(f"│ Status: {status_translated} ({status})")
 
-                    # Service ID и Name
+                    # Service ID Рё Name
                     service_id = ai_orchestrator.get('service_id')
                     service_name = ai_orchestrator.get('service_name')
                     if service_id:
@@ -1233,7 +1453,7 @@ Session ID: {session_id}
   - Исходящих (бот): {outbound_count}
 
 Финальное описание проблемы (txtPrb):
-{final_txtPrb if final_txtPrb else '(не накоплено)'}
+{final_txtPrb if final_txtPrb else '(РЅРµ РЅР°РєРѕРїР»РµРЅРѕ)'}
 
 Канал связи: {messages[0].get('channel', 'unknown') if messages else 'unknown'}
 """

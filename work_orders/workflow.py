@@ -17,6 +17,7 @@ from .models import (
 
 MANAGER_ROLE_CODES = {'chief_engineer', 'direktor_uk', 'django_admin'}
 EXECUTOR_ROLE_CODES = {'executor', 'contractor'}
+DIRECTOR_SELF_ASSIGN_ROLE_CODES = {'direktor_uk'}
 CLOSE_ROLE_CODES = MANAGER_ROLE_CODES
 
 ACTION_DEFINITIONS = {
@@ -24,20 +25,20 @@ ACTION_DEFINITIONS = {
         'label': 'Установить ответственного',
         'from_statuses': {'new_registered'},
         'target_status': 'accepted_by_executor',
-        'allowed_roles': EXECUTOR_ROLE_CODES | MANAGER_ROLE_CODES,
+        'allowed_roles': EXECUTOR_ROLE_CODES | DIRECTOR_SELF_ASSIGN_ROLE_CODES,
         'requires_responsible_user': True,
     },
     'start': {
         'label': 'Взять в работу',
         'from_statuses': {'accepted_by_executor'},
         'target_status': 'in_progress',
-        'allowed_roles': EXECUTOR_ROLE_CODES,
+        'allowed_roles': EXECUTOR_ROLE_CODES | DIRECTOR_SELF_ASSIGN_ROLE_CODES,
     },
     'localize': {
         'label': 'Локализовать',
         'from_statuses': {'in_progress'},
         'target_status': 'localized',
-        'allowed_roles': EXECUTOR_ROLE_CODES,
+        'allowed_roles': EXECUTOR_ROLE_CODES | MANAGER_ROLE_CODES,
         'requires_resolution_text': True,
         'confirm_without_photo': True,
     },
@@ -138,14 +139,16 @@ def get_active_action(user, work_order):
     is_responsible = work_order.responsible_user_id == user.id
 
     if status_code == 'new_registered':
-        if user.is_superuser or role_codes & (EXECUTOR_ROLE_CODES | MANAGER_ROLE_CODES):
+        if user.is_superuser or role_codes & ACTION_DEFINITIONS['assign']['allowed_roles']:
             return ACTION_DEFINITIONS['assign']
         return None
 
-    if status_code == 'accepted_by_executor' and is_responsible:
+    if status_code == 'accepted_by_executor' and is_responsible and (
+        user.is_superuser or role_codes & ACTION_DEFINITIONS['start']['allowed_roles']
+    ):
         return ACTION_DEFINITIONS['start']
 
-    if status_code == 'in_progress' and is_responsible:
+    if status_code == 'in_progress' and (is_responsible or user.is_superuser or role_codes & MANAGER_ROLE_CODES):
         return ACTION_DEFINITIONS['localize']
 
     if status_code == 'localized' and (is_responsible or user.is_superuser or role_codes & MANAGER_ROLE_CODES):
@@ -358,12 +361,14 @@ def _validate_assignee(user, work_order, responsible_user_id):
     role_codes = get_user_role_codes(user, work_order.company_id)
     target_user = None
 
-    if user.is_superuser or role_codes & MANAGER_ROLE_CODES:
+    if user.is_superuser or role_codes & DIRECTOR_SELF_ASSIGN_ROLE_CODES:
         if not responsible_user_id:
             raise WorkflowError('Выберите ответственного исполнителя.', code='responsible_user_required')
         target_user = User.objects.filter(pk=responsible_user_id, is_active=True).first()
         if target_user is None:
             raise WorkflowError('Исполнитель не найден.', code='responsible_user_missing')
+        if target_user.pk == user.pk:
+            return target_user
         has_membership = UserCompanyMembership.objects.filter(
             user=target_user,
             company=work_order.company,

@@ -1,0 +1,1087 @@
+# ТЗ: модернизация бота приема заявок
+
+
+## 3.2. Служебный MAX-бот уведомлений о новых заявках (2026-05-08)
+
+Назначение: отдельный MAX-бот `СлужебныйБотУК` отправляет сотрудникам служебное уведомление при создании новой заявки.
+
+Формат сообщения:
+
+```text
+[ДД.ММ.ГГГГ ЧЧ:ММ:СС]:  Ваиртуальная АДС: Создана новая заявка с Номером ХХХ
+Текст заявки:
+{Фактический текст заявки}
+```
+
+Архитектура:
+
+```text
+WorkOrder post_save(created=True)
+-> transaction.on_commit()
+-> max_notification_service.MaxNotificationService.notify_new_work_order_by_id()
+-> POST https://platform-api.max.ru/messages
+```
+
+Файлы:
+
+- `max_notification_service.py` - отдельный отправитель служебных уведомлений через MAX API.
+- `work_orders/signals.py` - сигнал `post_save` для новых `WorkOrder`.
+- `work_orders/apps.py` - подключение сигналов в `ready()`.
+- `deploy/systemd/max-notifier-target.service` - long polling для автопривязки адресата уведомлений.
+
+Конфигурация:
+
+- `MAX_NOTIFIER_BOT_TOKEN` - токен служебного MAX-бота.
+- `MAX_NOTIFIER_CHAT_ID` или `MAX_NOTIFIER_USER_ID` - явный адрес доставки, если известен заранее.
+- `MAX_NOTIFIER_EXTRA_CHAT_IDS` и `MAX_NOTIFIER_EXTRA_USER_IDS` - дополнительные адресаты рассылки через запятую; используются для отправки в канал MAX параллельно с личным чатом.
+- `MAX_NOTIFIER_BIND_CODE` - код безопасной привязки адресата.
+- Если адрес доставки не задан, `max-notifier-target.service` слушает входящие события служебного бота и сохраняет `chat_id/user_id` в `runtime/max_notifier_target.json` только после сообщения, содержащего `MAX_NOTIFIER_BIND_CODE`.
+- Пока адрес доставки не задан, уведомления складываются в очередь `runtime/max_notifier_pending.jsonl`; после автопривязки адресата очередь отправляется.
+
+Текущие MAX-адреса уведомлений:
+
+- Личный чат владельца: `chat_id=492957905`, `user_id=209166551`.
+- Служебный бот уведомлений: `user_id=286674950`, `username=id3662313265_1_bot`.
+- Канал сотрудников: `chat_id=-74534714604247`, ссылка `https://max.ru/id3662313265_biz`, владелец `user_id=209166551`.
+Дата: 2026-04-30
+
+Статус: черновик для согласования. В документ внесены уже согласованные решения и открытые вопросы, которые нужно подтвердить перед реализацией.
+
+Проект: `komunal-dom_ru`
+
+## 1. Цель
+
+Перестроить текущего бота в быстрый оркестратор приема заявок:
+
+- принять входящее сообщение из Web/API/Telegram;
+- извлечь и уточнить адрес;
+- проверить дом через ФИАС/ГАР и локальную базу;
+- определить, обслуживается ли дом;
+- определить услугу по справочнику;
+- создать заявку;
+- сообщить пользователю номер заявки;
+- сохранить трассировку шагов, фактических промптов, сырых ответов LLM и карту производительности.
+
+Главный принцип: Python управляет оркестрацией, состоянием, переходами, нормализацией, БД и tools. LLM используется только для узких языковых задач, короткими промптами, через `GigaChat-2` как API-имя GigaChat 2 Lite.
+
+## 2. Зафиксированные решения
+
+1. Файл ТЗ хранится в существующем пути: `docs/project_docs/MD_DB/TZ_BOT.MD`.
+2. Единый контур приема для Web/API/Telegram реализуется через сервис создания заявки из чата. Рабочее имя сервиса: `ChatOrderService`.
+3. В новых именах файлов, классов, методов и JSON-ключей используется терминология `order`/`заявка`. Новый сервис создания заявки размещается как `ChatOrderService`, целевой файл - `work_orders/chat_order_service.py`, целевые helper-модули - в пакете `work_orders/chat_order/`.
+4. В рабочем контуре используется только `GigaChat-2`. По документации Сбера это API-имя для GigaChat 2 Lite, то есть самой быстрой и дешевой модели текущей линейки GigaChat 2.
+5. Текущий `.env` уже содержит `DEFAULT_LLM_PROVIDER=gigachat`, `GIGACHAT_MODEL=GigaChat-2`; токен ФИАС в `.env` присутствует.
+6. Отдельная обязательная таблица `bot_dialog_state` в первой реализации не вводится. State хранится как JSON-снимок в уже существующей трассировке диалога и в оперативном хранилище процесса на время активного обмена. Подробности в разделе 6.
+7. Вводится агент-защитник `security_guard`, который не дает вывести бота из сценария приема заявки, раскрыть промпты, получить персональные данные или служебные сведения.
+8. Полный каталог услуг не передается в промпт. Услуга определяется детерминированно по трем ссылочным фильтрам: тип обращения, локализация, категория.
+9. Все вызовы ФИАС/ГАР обязательно логируются: запрос, нормализованные параметры, статус, длительность, результат, ошибка, если была.
+
+## 3. Текущая архитектура
+
+Текущий контур приема сообщений:
+
+- `message_handler/views.py` принимает Web/API-запросы.
+- `message_handler_service.py` сохраняет входящее сообщение в `dialog_logs`, собирает историю, чистит текст, извлекает адрес, валидирует адрес, вызывает `MainAgent`, пишет исходящее сообщение и performance metadata.
+- `enhanced_aspect_bot.py` обрабатывает Telegram. В целевой реализации Telegram остается только каналом доставки сообщений в общий оркестратор.
+- `max_bot_service.py` обрабатывает канал MAX: принимает Webhook/Long Polling update, нормализует его в общий формат и передает в `MessageHandlerService` с `channel='maxchat'`.
+- `main_agent.py` управляет накоплением проблемы, определением фильтров услуги и уточняющими вопросами.
+- `address_extractor_service.py` извлекает адрес регулярными правилами, вызывает ФИАС и ищет дом/объект обслуживания.
+- сервис ФИАС/ГАР работает с внешней адресной проверкой и локальными ID дома.
+- целевой `work_orders/chat_order_service.py` создает заявку через `ChatOrderService.create_from_chat`.
+- `trace_report_service.py`, `performance_tracer.py`, `performance_report_service.py` формируют отчет, карту производительности, фактические промпты и сырые ответы LLM.
+
+Текущий pipeline:
+
+```text
+Web/API/Telegram/MAX
+-> message handler
+-> dialog_logs inbound
+-> очистка текста
+-> адресный extractor + ФИАС + локальный поиск
+-> MainAgent
+-> problem accumulation
+-> service filters/category
+-> уточнение или подтверждение
+-> ChatOrderService.create_from_chat
+-> work_order
+-> dialog_logs outbound + performance metadata
+```
+
+## 3.1. План подключения MAX (2026-05-06)
+
+Цель: добавить MAX как новый транспортный канал без изменения логики бота и без правки сценария приема заявки.
+
+План работ:
+
+1. Оставить единый pipeline неизменным: `MessageHandlerService.handle_incoming_message()` и `BotOrderOrchestrator` получают тот же текст, что и из Telegram.
+2. Добавить отдельный транспортный адаптер `max_bot_service.py`: разбор `message_created`/`bot_started`, отправка ответа через `POST /messages`, получение событий через Webhook или Long Polling.
+3. Подключить минимальный Django endpoint `message_handler/max_bot_views.py` по URL `/chat/api/max/webhook/` для будущего Webhook.
+4. Использовать существующий канал БД `maxchat`; в UI трассировки и отчетах показывать его как `MAX`.
+5. В metadata входящего сообщения сохранять только транспортные данные MAX: `max_info`, `username`, `first_name`, `message_id`, `chat_id`.
+6. Для создания заявок использовать существующую карту `work_orders/chat_order/payload_builder.py`: `maxchat -> max`.
+7. Самостоятельно проверить 2-3 диалога через синтетические MAX updates: наличие сессий в `/admin-uk/dialog-trace/`, наличие inbound/outbound в `dialog_logs`, совпадение pipeline с Telegram.
+
+Ограничение инфраструктуры: документация MAX требует Webhook на `https://...:443`. На 2026-05-06 сервер `komunal-dom.ru` слушает только HTTP:80, поэтому фактический прием MAX-событий до включения HTTPS запускается через отдельный long-polling systemd-сервис `max-aspect-bot.service`. После включения HTTPS нужно зарегистрировать Webhook `https://komunal-dom.ru/chat/api/max/webhook/` и остановить long polling, потому что MAX не использует оба режима одновременно.
+
+Фактическая архитектура после внедрения:
+
+```text
+MAX message_created / bot_started
+-> max_bot_service.MaxBotService.normalize_update()
+-> MessageHandlerService.handle_incoming_message(channel='maxchat')
+-> BotOrderOrchestrator
+-> dialog_logs inbound/outbound
+-> MaxBotService.send_message() -> POST https://platform-api.max.ru/messages
+```
+
+Точки входа:
+
+- Production-ready Webhook endpoint: `/chat/api/max/webhook/`, файл `message_handler/max_bot_views.py`.
+- Временный активный режим до включения HTTPS: systemd `max-aspect-bot.service`, команда `max_bot_service.py --poll`.
+- Секреты: `MAX_BOT_TOKEN`, `MAX_BOT_WEBHOOK_SECRET` в `.env`, в код не записываются.
+- Канал в БД: `maxchat`; в `/admin-uk/dialog-trace/` и trace report отображается как `MAX`.
+- Создание заявок: существующий `ChatOrderPayloadBuilder.CHANNEL_MAP` уже мапит `maxchat -> max`, отдельная логика заявки не добавлялась.
+
+Smoke-проверка 2026-05-06:
+
+| Кейс из трассировок | MAX session_id | Проверка |
+|---|---|---|
+| `Абрикосовая 20` | `maxchat_889950001_20260506_003253` | inbound/outbound попали в `dialog_logs`, ответ: уточнение населенного пункта |
+| `у меня течет` | `maxchat_889950002_20260506_003254` | inbound/outbound попали в `dialog_logs`, ответ: запрос адреса |
+| `я не ходил в подвал просто из подвала идет вонь` | `maxchat_889950003_20260506_003255` | inbound/outbound попали в `dialog_logs`, ответ: запрос адреса |
+
+Проверки:
+
+- `manage.py check` без ошибок.
+- `/api/dialog-sessions/` возвращает эти `maxchat_*` с `channel_label: "MAX"`.
+- `TraceReportService.generate_trace_report()` для `maxchat_889950002_20260506_003254` сформировал `/tmp/_tras_diag_20260506_003327.md`, в заголовке `Канал: MAX`.
+- `max-aspect-bot.service` активен, `journalctl` без ошибок после запуска.
+
+Основные узкие места:
+
+- большой и дорогой LLM-шаг выбора категории;
+- неоптимальная LLM-коррекция текста: сейчас она может срабатывать слишком рано, но полностью убирать ее нельзя из-за ошибок ручного ввода и STT;
+- чтение истории диалога вместо работы с компактным state snapshot;
+- старые tag/vector ветки остаются в кодовой базе и не должны попасть в новый основной путь;
+- в каталоге услуг нужен композитный индекс по трем ID-фильтрам.
+
+## 3.3. Команда /start и аудио в Telegram/MAX (2026-05-14)
+
+Назначение: `Telegram` и `MAX` принимают разные транспортные типы сообщений, но бизнес-логика приема заявок остается единой. Канальные адаптеры отвечают только за нормализацию входа до текста и передачу в `MessageHandlerService`.
+
+Архитектура:
+
+```text
+Telegram text
+-> enhanced_aspect_bot._route_text_message()
+-> MessageHandlerService.handle_incoming_message(channel='telegram')
+
+Telegram voice/audio
+-> download file by Telegram file_id
+-> speech_to_text_service.YandexSpeechToTextService
+-> enhanced_aspect_bot._route_text_message(recognized_text)
+-> MessageHandlerService.handle_incoming_message(channel='telegram')
+
+MAX text
+-> max_bot_service.MaxBotService.normalize_update()
+-> MessageHandlerService.handle_incoming_message(channel='maxchat')
+
+MAX audio attachment
+-> max_bot_service._download_audio_attachment()
+-> speech_to_text_service.YandexSpeechToTextService
+-> MessageHandlerService.handle_incoming_message(channel='maxchat', text=recognized_text)
+```
+
+Решения:
+
+1. `/start` больше не отправляет отдельное приветственное сообщение из Telegram/MAX-адаптера. Команда логируется как входящее сообщение и в backend нормализуется в приветствие `hello`, чтобы существующий `BotOrderOrchestrator` создал новый диалог и вернул штатный первый вопрос про адрес.
+2. Для `/start` `MessageHandlerService` принудительно создает новый `session_id` формата `{channel}_{user_id}_{YYYYMMDD_HHMMSS}`. В metadata входящего сообщения пишутся `command=start`, `force_new_dialog=true`, `pipeline_text=hello`.
+3. Текстовые сообщения в Telegram и MAX идут по прежнему маршруту без изменения логики бота.
+4. Голосовые/аудио сообщения сначала распознаются через Яндекс SpeechKit, затем распознанный текст передается в тот же маршрут, что и обычный текст.
+5. Отдельный сервис `speech_to_text_service.py` скрывает детали STT: Ogg/Opus отправляется в SpeechKit напрямую как `oggopus`, остальные форматы конвертируются через `ffmpeg` в mono LPCM 16 kHz и отправляются как `lpcm`. Telegram принимает `voice`, `audio` и аудио-файлы `document` с MIME `audio/*`.
+6. В metadata аудио-сообщений сохраняются `content_type=audio`, транспортные сведения (`telegram_audio` или `max_audio`) и результат STT (`provider`, `format`, `source_size`, `recognition_size`, `text`).
+
+Конфигурация:
+
+- `YANDEX_API_KEY` или `YANDEX_IAM_TOKEN` - авторизация SpeechKit.
+- `YANDEX_FOLDER_ID` обязателен при использовании `YANDEX_IAM_TOKEN`.
+- `YANDEX_STT_ENDPOINT` опционально переопределяет endpoint, по умолчанию `https://stt.api.cloud.yandex.net/speech/v1/stt:recognize`.
+- На сервере должен быть установлен `ffmpeg` для аудио не в Ogg/Opus.
+
+Файлы:
+
+- `speech_to_text_service.py` - общий слой распознавания речи.
+- `enhanced_aspect_bot.py` - Telegram: backend `/start`, `filters.VOICE | filters.AUDIO`, скачивание файла и передача распознанного текста в общий маршрут.
+- `max_bot_service.py` - MAX: `/start` передается в backend, audio attachment скачивается/распознается до вызова `MessageHandlerService`.
+- `message_handler_service.py` - единая backend-обработка `/start` как нового диалога.
+
+## 3.4. Служебная MAX-команда исходящего звонка (2026-05-17)
+
+Назначение: служебный MAX-бот уведомлений УК принимает команду в привязанном служебном чате/канале и инициирует исходящий звонок через Asterisk API.
+
+Команда:
+
+```text
+--вызов +79202119023
+```
+
+Архитектура:
+
+```text
+MAX message_created
+-> max_notification_service.MaxNotificationService.poll_target_forever()
+-> extract_call_command()
+-> проверка источника через command_allowed()
+-> start_outbound_call_async()
+-> POST http://84.54.30.197:9000/call
+-> отправка результата в тот же MAX chat/user
+```
+
+Решения:
+
+1. Команда обрабатывается только в `max_notification_service.py`, то есть в служебном боте уведомлений, а не в клиентском боте приема заявок.
+2. Команда доступна только из уже настроенных адресатов уведомлений: `MAX_NOTIFIER_CHAT_ID`, `MAX_NOTIFIER_USER_ID`, `MAX_NOTIFIER_EXTRA_CHAT_IDS`, `MAX_NOTIFIER_EXTRA_USER_IDS` или сохраненный `MAX_NOTIFIER_TARGET_FILE`.
+3. Номер выделяется из текста команды и нормализуется: пробелы, скобки, точки и дефисы удаляются; ведущий `+` сохраняется.
+4. HTTP POST к Asterisk выполняется в отдельном daemon thread, чтобы long polling MAX не ждал до 35-45 секунд.
+5. После ответа Asterisk бот отправляет в тот же чат сообщение формата `Вызов на номер ХХХ - <status>`.
+6. Токен звонка берется из env `ASTERISK_OUTBOUND_CALL_TOKEN`, `ASTERISK_CONTROL_TOKEN`, `ASTERISK_API_TOKEN`, `EXTERNAL_API_TOKEN`; если env не задан, используется токен `asterisk_integration` из `settings.EXTERNAL_API_TOKENS`/`message_handler.views.API_TOKENS`.
+
+Конфигурация:
+
+- `ASTERISK_OUTBOUND_CALL_URL` или `ASTERISK_CALL_URL`, по умолчанию `http://84.54.30.197:9000/call`.
+- `ASTERISK_OUTBOUND_CALL_TIMEOUT`, по умолчанию `45` секунд.
+
+## 4. LangGraph: решение
+
+LangGraph нужен не как "ускоритель модели", а как прозрачный и предсказуемый слой оркестрации. При тонком использовании он не должен заметно утяжелить обработку: его накладные расходы малы по сравнению с ФИАС, БД и LLM-вызовами.
+
+LangGraph сам по себе не ускоряет ФИАС, БД или LLM. Основная скорость появится за счет:
+
+- меньшего числа LLM-вызовов;
+- коротких промптов;
+- отказа от передачи полного каталога услуг;
+- контролируемого доступа к справочникам без лишних запросов;
+- переиспользования HTTP-клиента и OAuth-токена GigaChat;
+- индексов под фактические SQL-запросы.
+
+LangGraph дает:
+
+- явные узлы;
+- явные переходы;
+- контролируемые retries;
+- понятную карту выполнения;
+- возможность параллельно запускать независимые шаги, например `service_type_detect` и `localization_detect`;
+- более простую отладку в "Карте производительности".
+
+Он не уменьшает промпты автоматически. Короткие промпты появляются потому, что каждый node получает только нужный ему входной JSON.
+
+Решение: использовать LangGraph как тонкий orchestration layer, если зависимость устанавливается без конфликта с текущим Django-проектом. Не использовать тяжелые agent-to-agent диалоги, memory/checkpoint persistence LangGraph и длинные chain-of-thought сценарии. Если при внедрении появится несовместимость или замер покажет деградацию, оставить тот же набор node handlers под собственным Python `NodeRunner`.
+
+Целевые узлы:
+
+```text
+ingress_normalize
+-> security_guard
+-> state_load
+-> problem_update
+-> address_collect
+-> address_validate_fias
+-> address_lookup_local
+-> service_object_resolve
+-> company_resolve
+-> service_type_detect
+-> localization_detect
+-> category_detect
+-> service_resolve
+-> user_confirm_service
+-> order_create
+-> final_reply
+-> state_close
+```
+
+Независимые узлы `service_type_detect` и `localization_detect` можно запускать параллельно после появления `txtPrb` и адресного контекста.
+
+## 5. JSON state
+
+State является внутренним JSON-документом оркестратора и источником правды между HTTP/API-вызовами. Нельзя рассчитывать только на память процесса: внешний API телефонии на каждый фрагмент речи вызывает отдельный HTTP-запрос, текущий код заново создает сервисы и восстанавливает контекст из `dialog_logs`.
+
+Целевое правило:
+
+- в начале каждого сообщения оркестратор загружает последний `state_snapshot` по `session_id`;
+- если snapshot отсутствует, state создается из текущего сообщения и доступной истории;
+- текущий текст добавляется в state;
+- каждый node получает state как входной JSON;
+- LLM получает либо компактный `STATE_JSON`, либо node-specific JSON-срез, если полный state не нужен;
+- LLM возвращает JSON результата своего шага, а Python валидирует его и обновляет общий state;
+- после значимого шага state сохраняется в `dialog_logs.metadata.state_snapshot`.
+
+То есть JSON действительно "кочует" между шагами, но хранится и переносится через БД, а не через оперативную память. Полный state можно включать в prompt только там, где это оправдано; для скорости предпочтительны компактные срезы, сформированные из state.
+
+Правило именования:
+
+- локальные PK/FK из БД всегда имеют суффикс `_id`: `building_id`, `service_object_id`, `company_id`, `category_id`, `service_id`;
+- внешние GUID ФИАС/ГАР всегда имеют суффикс `_guid`: `fias_house_guid`, `fias_street_guid`;
+- человекочитаемые названия имеют суффикс `_name`: `category_name`, `service_type_name`;
+- булевы признаки начинаются с `is_` или имеют явный статус;
+- объект `category` без `_id` не используется, потому что категория является ссылочным справочником.
+
+В JSON используется имя `service_type_id`, хотя в текущей таблице `services_catalog` поле называется `type_id`. Это осознанное различие: в state имя должно быть понятным и не конфликтовать с другими типами. При SQL-запросе `service_type_id` мапится на `services_catalog.type_id`.
+
+### Объекты state
+
+| Объект | Что означает | Основные поля |
+|---|---|---|
+| `dialog` | Идентификаторы и канал диалога | `dialog_id`, `session_id`, `channel`, `user_id`, `chat_id`, `message_id` |
+| `message` | Текущее и первое сообщение пользователя | `current_text`, `first_user_text`, `received_at` |
+| `problem` | Накопленное описание проблемы | `txtPrb`, `new_info`, `is_meaningful`, `source_messages` |
+| `guard` | Результат проверки безопасности | `allowed`, `risk_code`, `safe_reply`, `continue_order_flow` |
+| `address_input` | Адрес, как его сказал пользователь, и разобранные слоты | `raw_text`, `normalized_text`, `region`, `city`, `street`, `house`, `building`, `corpus`, `structure`, `letter`, `flat` |
+| `fias_result` | Ответ внешней проверки адреса ФИАС/ГАР | `status`, `normalized_address`, `fias_street_guid`, `fias_house_guid`, `raw_ref`, `fias_log_id` |
+| `local_address` | Связь адреса с локальной базой | `building_id`, `unit_id`, `match_source`, `match_confidence`, `house_number_normalized` |
+| `service_context` | Обслуживаемость дома и компания | `service_object_id`, `company_id`, `service_period_id`, `service_status`, `service_status_reason` |
+| `classification` | Три фильтра каталога услуг | `service_type_id`, `service_type_name`, `localization_id`, `localization_name`, `category_id`, `category_name`, `confidence` |
+| `service` | Итоговая услуга из `services_catalog` | `service_id`, `service_name`, `scenario_name`, `is_confirmed_by_user` |
+| `order` | Созданная заявка | `work_order_id`, `order_number`, `status`, `created_at` |
+| `questions` | Уточняющие вопросы и ответы | `items`, `attempts_by_stage` |
+| `trace` | Техническая трассировка | `step_timings`, `prompt_slugs`, `llm_request_ids`, `raw_tool_refs` |
+| `control` | Текущее состояние автомата | `stage`, `next_action`, `is_finished`, `finish_reason` |
+
+### Минимальный скелет state
+
+```json
+{
+  "schema_version": "bot_order_state.v1",
+  "dialog": {
+    "dialog_id": null,
+    "session_id": null,
+    "channel": "web",
+    "user_id": null,
+    "chat_id": null,
+    "message_id": null
+  },
+  "message": {
+    "current_text": "",
+    "first_user_text": "",
+    "received_at": null
+  },
+  "problem": {
+    "txtPrb": "",
+    "new_info": "",
+    "is_meaningful": false,
+    "source_messages": []
+  },
+  "guard": {
+    "allowed": true,
+    "risk_code": null,
+    "safe_reply": null,
+    "continue_order_flow": true
+  },
+  "address_input": {
+    "raw_text": "",
+    "normalized_text": "",
+    "region": null,
+    "city": null,
+    "street": null,
+    "house": null,
+    "building": null,
+    "corpus": null,
+    "structure": null,
+    "letter": null,
+    "flat": null
+  },
+  "fias_result": {
+    "status": "unknown",
+    "normalized_address": null,
+    "fias_street_guid": null,
+    "fias_house_guid": null,
+    "raw_ref": null,
+    "fias_log_id": null
+  },
+  "local_address": {
+    "building_id": null,
+    "unit_id": null,
+    "match_source": null,
+    "match_confidence": 0,
+    "house_number_normalized": null
+  },
+  "service_context": {
+    "service_object_id": null,
+    "company_id": null,
+    "service_period_id": null,
+    "service_status": "unknown",
+    "service_status_reason": null
+  },
+  "classification": {
+    "service_type_id": null,
+    "service_type_name": null,
+    "localization_id": null,
+    "localization_name": null,
+    "category_id": null,
+    "category_name": null,
+    "confidence": {}
+  },
+  "service": {
+    "service_id": null,
+    "service_name": null,
+    "scenario_name": null,
+    "is_confirmed_by_user": false
+  },
+  "order": {
+    "work_order_id": null,
+    "order_number": null,
+    "status": "not_created",
+    "created_at": null
+  },
+  "questions": {
+    "items": [],
+    "attempts_by_stage": {}
+  },
+  "trace": {
+    "step_timings": [],
+    "prompt_slugs": [],
+    "llm_request_ids": [],
+    "raw_tool_refs": []
+  },
+  "control": {
+    "stage": "new",
+    "next_action": "ingress_normalize",
+    "is_finished": false,
+    "finish_reason": null
+  }
+}
+```
+
+## 6. Хранение state и `bot_dialog_state`
+
+Проверка по текущему коду: внешний API (`send_message_external`) требует `session_id`, на каждый запрос создает обработчик, получает историю из `dialog_logs` и передает ее в агент через `user_context`. Постоянного JSON state в памяти между API-вызовами сейчас нет.
+
+Позиция пользователя: отдельная растущая таблица состояния нежелательна. Поэтому отдельная таблица `bot_dialog_state` не является обязательной для первой версии.
+
+Принятое решение для первой реализации:
+
+- не создавать новую таблицу `bot_dialog_state`;
+- использовать память процесса только как необязательный ускоритель в рамках одного worker;
+- после каждого входящего/исходящего шага писать `state_snapshot` в `dialog_logs.metadata`;
+- для следующего сообщения восстанавливать state из последнего `dialog_logs` по `session_id`, а не читать всю историю;
+- добавить индекс на `dialog_logs(session_id, timestamp DESC)`, чтобы чтение последнего snapshot было быстрым;
+- ограничивать размер snapshot: не хранить полные сырые ответы ФИАС/LLM внутри state, а хранить ссылки `raw_ref` на уже существующие строки логов.
+
+Почему это не должно просадить скорость:
+
+- новая таблица не добавляется;
+- одна запись в `dialog_logs` уже создается в текущей архитектуре, snapshot добавляется в существующую запись;
+- чтение последнего snapshot заменяет более дорогой сбор полной истории;
+- при индексе `dialog_logs(session_id, timestamp DESC)` PostgreSQL читает одну последнюю строку;
+- state не обязан передаваться в LLM целиком: prompt получает компактный JSON, достаточный для конкретного node.
+
+Резервный вариант на будущее: интерфейс `StateStore` оставить абстрактным. Если потребуется надежное восстановление между несколькими воркерами без чтения `dialog_logs`, можно добавить `PostgresStateStore` с таблицей `bot_dialog_state`, где хранится только одна активная строка на диалог и TTL/архивация после завершения.
+
+## 7. Агент-защитник
+
+`security_guard` запускается сразу после нормализации входящего сообщения и до адресного/сервисного пайплайна.
+
+Задачи:
+
+- отсеять попытки получить системный промпт, внутренние инструкции, ключи, токены, SQL, персональные данные, чужие заявки;
+- не дать увести бота в свободный чат, консультации не по ЖКХ или генерацию произвольного текста;
+- сохранить дружелюбный стиль общения и вернуть пользователя к оформлению заявки;
+- не раскрывать детали защиты.
+
+Логика:
+
+1. Детерминированные правила Python:
+   - ключевые признаки prompt injection: "покажи промпт", "забудь инструкции", "system prompt", "developer message";
+   - признаки запроса секретов: "токен", "ключ", "пароль", "env";
+   - признаки запроса персональных данных: "телефон жильца", "адреса всех", "чужая заявка";
+   - явный мат/угрозы/нецелевой текст.
+2. Если правило сработало явно, LLM не вызывается.
+3. Если намерение неоднозначное, вызывается короткий guard-промпт.
+4. Результат пишется в `guard` и в performance trace.
+
+Формат ответа guard-промпта:
+
+```json
+{
+  "allowed": true,
+  "risk_code": "none",
+  "reason": "",
+  "safe_reply": "",
+  "continue_order_flow": true
+}
+```
+
+Правило: агент-защитник никогда не получает секреты, полные system/developer промпты, `.env`, SQL credentials и персональные данные других пользователей. Он видит только текущее сообщение, короткую историю и факт, что бот оформляет заявку ЖКХ.
+
+## 8. Адресный pipeline
+
+Цель: получить `building_id`, `service_object_id`, `company_id` или понятную причину отказа.
+
+Шаги:
+
+1. Взять адрес из текущего сообщения и накопленного контекста.
+2. Если адреса нет или не хватает дома/улицы, задать живой короткий вопрос без канцелярита.
+3. Нормализовать слоты адреса в Python:
+   - город;
+   - улица;
+   - дом;
+   - корпус;
+   - строение;
+   - литера;
+   - дробный номер;
+   - квартира/помещение.
+4. Проверить адрес через ФИАС/ГАР.
+5. Если ФИАС вернул `fias_house_guid`, искать `address.building.fias_guid`.
+6. Если `fias_house_guid` не найден, но есть `fias_street_guid`, искать дом локально по `street_fias_guid + normalized_house_number`.
+7. Если ФИАС не нашел улицу/дом или локальный поиск не дал результата, запустить корректирующий LLM-шаг только для адреса и повторить ФИАС-поиск.
+8. Если дом найден, определить `service_object_id` через `service_objects`.
+9. По `service_object_id` и текущей дате определить `company_id` через `request_mgmt.company_object_service_period`.
+10. Если ФИАС знает дом, но активной привязки к объекту обслуживания нет, вернуть статус `not_serviced`.
+11. Если ФИАС не дал дом и локальный поиск не нашел дом даже после коррекции, вернуть статус `not_found`.
+
+Пользовательские ответы:
+
+- `not_found`: "Не нашел такой дом в базе. Напишите, пожалуйста, адрес еще раз: город, улица и номер дома."
+- `not_serviced`: "Этот дом найден, но сейчас он не числится в обслуживании вашей УК."
+
+Технически важно:
+
+- локальная нормализация номера дома должна работать с форматами `12`, `12А`, `12/1`, `12 к1`, `12 корпус 1`, `12 стр 2`, `12 лит А`;
+- каждый вызов ФИАС логировать отдельно и ссылаться из state через `fias_result.fias_log_id`;
+- ФИАС-ответ целиком не хранить в state, а логировать отдельно и ссылаться через `fias_result.raw_ref`;
+- адресный шаг должен быть максимально детерминированным, но LLM-коррекция допускается после неуспешного ФИАС/локального поиска или при признаках STT-ошибок.
+
+### Коррекция текста и STT-ошибок
+
+LLM-коррекция не запускается для каждого обычного сообщения. Она включается точечно:
+
+- ФИАС не нашел улицу или дом;
+- локальный поиск не нашел дом при наличии похожих признаков адреса;
+- классификатор услуги вернул низкую уверенность и текст похож на результат распознавания речи;
+- сообщение содержит явные синтаксические сбои, склейки слов, фонетические ошибки или неверные окончания, мешающие поиску.
+
+Коррекция работает в двух режимах:
+
+1. `address_correction_lite` - исправляет только адресную часть, не меняет описание проблемы.
+2. `problem_correction_lite` - исправляет только явные ошибки в описании проблемы, не добавляет факты.
+
+Формат результата:
+
+```json
+{
+  "corrected_text": "Краснодар, Абрикосовая, дом 20",
+  "changed": true,
+  "confidence": 0.78,
+  "changed_fragments": [
+    {"from": "абриксова", "to": "Абрикосовая"}
+  ],
+  "reason": "исправлена вероятная STT-ошибка в названии улицы"
+}
+```
+
+Правило безопасности: если `confidence < 0.65`, коррекция не применяется автоматически. Бот задает уточняющий вопрос по адресу или проблеме.
+
+### Логирование ФИАС
+
+Все обращения к ФИАС/ГАР логируются независимо от успеха:
+
+- `session_id`;
+- `message_log_id`;
+- `state_stage`;
+- endpoint/method;
+- нормализованные параметры запроса без токена;
+- текст адреса до коррекции;
+- текст адреса после коррекции, если была;
+- timestamp start/end;
+- duration_ms;
+- HTTP status;
+- retry_count;
+- raw response или ссылка на raw response;
+- извлеченные `fias_street_guid`, `fias_house_guid`;
+- итоговый `building_id`, если найден;
+- error_code/error_message.
+
+Технический вариант: отдельная таблица `fias_request_log` по аналогии с `llm_request_log`, плюс ссылки из `dialog_logs.metadata.state_snapshot.fias_result.fias_log_id`. Если отдельная таблица не вводится в первом коммите, минимум - массив `fias_calls` в `dialog_logs.metadata.performance.tools`, но итоговая реализация должна позволять увидеть каждый вызов ФИАС в "Полном отчете".
+
+## 9. Ядро выбора услуги
+
+Каталог услуг устроен как точка пересечения трех ссылочных фильтров:
+
+- тип обращения: `service_type_id` (`Инцидент` или `Запрос`);
+- локализация: `localization_id` (`Общедомовое` или `Индивидуальное`);
+- категория: `category_id`.
+
+Итоговый `service_id` определяется SQL-запросом к `services_catalog`, а не LLM.
+
+```sql
+SELECT service_id, service_name, scenario_name
+FROM services_catalog
+WHERE is_active = TRUE
+  AND type_id = :service_type_id
+  AND localization_id = :localization_id
+  AND category_id = :category_id
+LIMIT 1;
+```
+
+### Почему нельзя отправлять полный каталог в prompt
+
+Полный каталог дублирует комбинации трех фильтров. Для LLM это лишние токены, больше задержка и выше риск выбрать похожую, но неправильную строку. LLM должна определить только спорные языковые признаки. Все справочные связи и `service_id` должен выбирать Python/SQL.
+
+### Общий алгоритм
+
+1. Получить справочники через контролируемый `CatalogProvider`:
+   - `ref_service_types`;
+   - `ref_localization`;
+   - `ref_categories(category_id, category_name, llm_description, is_default)`;
+   - активные сервисы `services_catalog` как карту `(type_id, localization_id, category_id) -> service_id`.
+2. Если у компании есть ограничения маршрутов/доступности услуг, предварительно сузить карту услуг по `company_id` и `service_object_id`.
+3. Обновить `txtPrb` по текущему сообщению через короткий LLM-шаг накопления смысла. Python только готовит вход и валидирует JSON.
+4. Определить тип обращения отдельным LLM-шагом по prompt из базы, переписанному под Lite.
+5. Определить локализацию отдельным LLM-шагом по prompt из базы, переписанному под Lite.
+6. Определить категорию.
+7. Найти `service_id` по трем ID.
+8. Сформировать естественное подтверждение пользователю.
+9. После подтверждения создать заявку.
+
+### Определение типа обращения
+
+Никакого keyword-hardcode в Python. Тип обращения определяет LLM по короткому prompt из базы. Python не "угадывает" тип по списку слов, а только:
+
+- передает `txtPrb`;
+- передает справочник допустимых типов;
+- валидирует, что модель вернула один из разрешенных `service_type_id`;
+- при невалидном JSON или низкой уверенности запускает короткий repair-prompt или уточнение.
+
+Минимальный результат:
+
+```json
+{
+  "service_type_id": 13,
+  "service_type_name": "Инцидент",
+  "confidence": 0.86,
+  "need_question": false,
+  "question": ""
+}
+```
+
+### Определение локализации
+
+Никакого keyword-hardcode в Python. Локализацию определяет LLM по короткому prompt из базы. Python только:
+
+- передает `txtPrb`;
+- передает компактный адресный контекст, если он уже известен;
+- передает справочник допустимых локализаций;
+- валидирует, что модель вернула один из разрешенных `localization_id`;
+- при невалидном JSON или низкой уверенности запускает repair-prompt или уточнение.
+
+Минимальный результат:
+
+```json
+{
+  "localization_id": 7,
+  "localization_name": "Общедомовое",
+  "confidence": 0.82,
+  "need_question": false,
+  "question": ""
+}
+```
+
+### Определение категории
+
+Категория выбирается отдельным маленьким LLM-шагом. В prompt передаются только:
+
+- `txtPrb`;
+- список категорий: `category_id`, `category_name`, `llm_description`, `is_default`.
+
+В prompt не передаются все строки `services_catalog`.
+
+Правила категории:
+
+- выбирать категорию только по совпадению смысла `txtPrb` с `llm_description`;
+- не выбирать категорию только по названию;
+- если проблема относится к ЖКХ, но категория не ясна, задать один открытый уточняющий вопрос;
+- если проблема явно не относится к каталогу, выбрать default-категорию `category_id=10`;
+- максимум 1-2 уточнения по категории, дальше default-категория с пометкой низкой уверенности. Перевод на оператора не предусмотрен.
+
+Формат результата:
+
+```json
+{
+  "category_id": 2,
+  "category_name": "Коммуникации",
+  "confidence": 0.84,
+  "matched_reason": "в тексте описана течь/неисправность инженерной сети",
+  "need_question": false,
+  "question": "",
+  "missing_fact": ""
+}
+```
+
+Порог:
+
+- `confidence >= 0.80`: принять категорию;
+- `0.55 <= confidence < 0.80`: задать один уточняющий вопрос;
+- `< 0.55`: выбрать default-категорию или задать уточнение, если в тексте явно есть ЖКХ-проблема, но не хватает одного факта.
+
+### Prompt `category-lite`
+
+```text
+Ты классификатор категории заявки ЖКХ.
+Выбери одну категорию по описанию проблемы.
+
+TXT_PRB:
+{txtPrb}
+
+Категории:
+{categories_json}
+
+Правила:
+1. Используй llm_description как главный критерий.
+2. Не выбирай категорию только по названию.
+3. Если подходит несколько, выбери самую конкретную.
+4. Если не хватает одного факта, задай один короткий открытый вопрос.
+5. Если это не ЖКХ или нельзя отнести к категориям, выбери default category_id.
+6. Не выдумывай факты.
+
+Верни только JSON:
+{
+  "category_id": number|null,
+  "category_name": string|null,
+  "confidence": number,
+  "matched_reason": string,
+  "need_question": boolean,
+  "question": string,
+  "missing_fact": string
+}
+```
+
+### Уточняющий вопрос по категории
+
+Вопрос не хардкодится. Его генерирует LLM, но по строгим правилам:
+
+- один вопрос;
+- без перечисления вариантов;
+- человеческий разговорный тон;
+- без слов "категория", "фильтр", "классификация", "услуга в справочнике";
+- вопрос должен выяснять только один недостающий факт.
+
+Пример допустимого стиля: "Подскажите, что именно случилось: течет, не работает, повреждено или нужен расчет/справка?"
+
+Перед отправкой вопрос проходит validator. Если вопрос плохой, fallback не используется как основной путь. Validator возвращает не только причину ошибки, но и инструкцию для повторной генерации вопроса.
+
+Формат validator:
+
+```json
+{
+  "valid": false,
+  "reason": "вопрос содержит перечисление вариантов и подталкивает к ответу да/нет",
+  "correction_for_llm": "Сгенерируй один открытый вопрос без вариантов ответа. Не используй перечисления через запятую и союз 'или'. Вопрос должен выяснять только один недостающий факт."
+}
+```
+
+Алгоритм:
+
+1. `question_generator_lite` генерирует вопрос.
+2. `question_validator_lite` проверяет вопрос.
+3. Если `valid=false`, поле `correction_for_llm` добавляется в следующий prompt генератора.
+4. Генератор повторяет вопрос с учетом корректировки.
+5. Максимум две итерации генерации/валидации. Если после двух попыток вопрос невалиден, это логируется как defect сценария, и оркестратор не создает заявку до получения понятного ответа пользователя.
+
+### Итог выбора услуги
+
+Когда три ID найдены:
+
+```json
+{
+  "classification": {
+    "service_type_id": 13,
+    "service_type_name": "Инцидент",
+    "localization_id": 7,
+    "localization_name": "Общедомовое",
+    "category_id": 2,
+    "category_name": "Коммуникации",
+    "confidence": {
+      "service_type": 0.9,
+      "localization": 0.83,
+      "category": 0.84
+    }
+  },
+  "service": {
+    "service_id": 123,
+    "service_name": "Инцидент / Общедомовое / Коммуникации",
+    "scenario_name": "...",
+    "is_confirmed_by_user": false
+  }
+}
+```
+
+Пользователь видит не технические фильтры, а короткое подтверждение:
+
+```text
+Понял: проблема с общедомовыми коммуникациями. Оформляю заявку на этот адрес?
+```
+
+### CatalogProvider и кеш справочников
+
+Кеш справочников опасен, если он может отдать устаревшую категорию/услугу. Поэтому правило такое:
+
+- финальный `service_id` перед созданием заявки всегда перепроверяется SQL-запросом к БД;
+- кеш можно использовать только для коротких справочников, которые идут в prompt: типы, локализации, категории;
+- кеш сервисной карты `(type_id, localization_id, category_id) -> service_id` допускается только при наличии инвалидации;
+- если надежной инвалидации нет, кеш сервисной карты отключается.
+
+Алгоритм инвалидации:
+
+1. `CatalogProvider` хранит snapshot справочника и `catalog_version`.
+2. `catalog_version` считается по `MAX(updated_at)` таблиц справочника. Если `updated_at` нет, при реализации добавить поле или отдельную таблицу `catalog_version`.
+3. При каждом начале диалога или не реже одного раза в 60 секунд `CatalogProvider` проверяет version.
+4. Если version изменилась, кеш сбрасывается и справочник перечитывается.
+5. Админское изменение справочника должно обновлять `updated_at`/`catalog_version`.
+6. В trace пишется `catalog_version`, с которым работал бот.
+
+Профит кеша: не снижение стоимости LLM, а уменьшение мелких DB round-trip и стабильность prompt-входа в рамках одного диалога. Если замеры покажут, что DB-запросы справочников несущественны, кеш отключается.
+
+## 10. Агент создания заявки
+
+После подтверждения услуги запускается `order_create`.
+
+Вход: полный валидированный state.
+
+Действия:
+
+1. Проверить обязательные поля:
+   - `session_id`;
+   - `channel`;
+   - `txtPrb`;
+   - `building_id`;
+   - `service_object_id`;
+   - `company_id`;
+   - `service_id`;
+   - `service_type_id`;
+   - `localization_id`;
+   - `category_id`.
+2. Собрать payload через обновленный builder.
+3. Вызвать `ChatOrderService.create_from_chat`.
+4. Получить `work_order_id` и номер заявки.
+5. Записать результат в `order`.
+6. Вернуть управление оркестратору.
+
+Оркестратор отвечает пользователю:
+
+```text
+Заявка создана. Номер: {order_number}.
+```
+
+После этого `control.is_finished=true`, `order.status=created`.
+
+## 11. Производительность
+
+Целевые правила:
+
+- `GigaChat-2` для всех LLM-вызовов;
+- в простом сценарии не вызывать LLM для коррекции и уточняющих вопросов;
+- в обычном сценарии после адреса использовать маленькие LLM-шаги: `service_type_detect`, `localization_detect`, `category_detect`; первые два можно запускать параллельно;
+- `problem_update` вызывать только когда есть предыдущий `txtPrb` или пользователь отвечает на уточняющий вопрос;
+- не вызывать LLM для орфографической коррекции по умолчанию;
+- не отправлять полный catalog services в prompt;
+- использовать `CatalogProvider` с version-based инвалидацией; при отсутствии надежной инвалидации не кешировать сервисную карту;
+- переиспользовать HTTP client и OAuth token GigaChat;
+- логировать длительность каждого node.
+
+Ориентировочные бюджеты:
+
+| Шаг | Цель |
+|---|---:|
+| ingress + guard rules | до 50 мс |
+| address parse local | до 100 мс |
+| FIAS request | до 1500 мс |
+| local DB lookup | до 50 мс |
+| service type/location rules | до 50 мс |
+| one Lite LLM classifier | до 1500 мс |
+| create work order | до 300 мс |
+
+### Что можно улучшить после базовой реализации
+
+Пункт про переиспользование AI-сервисов, HTTP-клиентов и OAuth-токена относится не к обязательной бизнес-логике, а к технической оптимизации после первых замеров.
+
+Зачем это может понадобиться:
+
+- скорость: меньше TLS/HTTP handshakes и повторных OAuth-запросов, ниже p95 latency каждого LLM-вызова;
+- устойчивость: меньше сетевых ошибок на создании соединений, проще контролировать timeout/retry;
+- нагрузка: меньше лишней работы CPU и сети на сервере;
+- деньги: стоимость токенов напрямую не снизится, но может снизиться число повторных вызовов из-за timeout/retry.
+
+Порядок действий:
+
+1. Сначала реализовать новый pipeline и собрать реальные замеры по ООО АСПЕКТ.
+2. В "Карте производительности" посмотреть вклад LLM, ФИАС, DB и создание заявки.
+3. Если LLM-вызовы занимают заметную долю времени, включить shared async HTTP client и token reuse.
+4. Если ФИАС занимает заметную долю времени, оптимизировать retries/timeouts и локальный fallback.
+5. Если DB-запросы стали заметны, добавить/уточнить индексы и проверить `EXPLAIN ANALYZE`.
+6. После замеров подготовить отдельный список оптимизаций с ожидаемым эффектом и риском.
+
+## 12. Индексы
+
+Проверить и добавить при необходимости:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dialog_logs_session_ts_desc
+ON dialog_logs (session_id, timestamp DESC);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_address_building_street_house
+ON address.building (street_fias_guid, house_number);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_services_catalog_filter_active
+ON services_catalog (type_id, localization_id, category_id)
+WHERE is_active = TRUE;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_company_period_object_active_dates
+ON request_mgmt.company_object_service_period (object_id, date_from, date_to)
+WHERE is_active = TRUE AND is_test = FALSE;
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_fias_request_log_session_created
+ON fias_request_log (session_id, created_at DESC);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_fias_request_log_message
+ON fias_request_log (message_log_id);
+```
+
+Если фактические имена полей отличаются в конкретной таблице, миграция должна использовать реальные имена из схемы проекта.
+
+## 13. Трассировка и отладка
+
+Нужно сохранить преемственность для `http://komunal-dom.ru/admin-uk/dialog-trace/`.
+
+Обязательные данные:
+
+- каждый node пишет start/end/duration;
+- каждый tool/DB/FIAS шаг пишет длительность и статус;
+- каждый ФИАС-вызов отображается в "Полном отчете" отдельной строкой с request/response reference;
+- каждый LLM-вызов пишет:
+  - provider;
+  - model;
+  - prompt slug;
+  - фактический prompt после подстановки;
+  - raw response;
+  - parsed JSON;
+  - error, если JSON не распарсился;
+  - token usage/cost, если доступны;
+- `dialog_logs.metadata` содержит `state_snapshot`;
+- "Карта производительности" показывает все node в порядке выполнения;
+- "Полный отчет" показывает промпты и сырые ответы LLM.
+
+Секреты и персональные данные в trace не пишутся. Для ФИАС и LLM полный raw можно хранить только там, где уже есть контроль доступа админки.
+
+## 14. Интеграция каналов
+
+Все каналы должны приходить к одному сервису:
+
+```text
+Web chat
+Telegram
+External API / phone bridge
+-> BotOrderOrchestrator.handle_message(state, message)
+-> ChatOrderService.create_from_chat(...)
+```
+
+Telegram не должен создавать заявку через отдельный fake-number/TODO path. Он использует тот же `ChatOrderService`, что и Web/API.
+
+## 15. Минимальный план реализации
+
+1. Создать новый сервисный слой бота, не чинить старую связку `MainAgent` точечными правками.
+2. Ввести канонический state schema и валидатор.
+3. Ввести `StateStore` без новой таблицы: `dialog_logs.metadata.state_snapshot` как источник правды и memory только как ускоритель.
+4. Создать новый `ChatOrderService` и перевести активные вызовы на него без старой терминологии в новых модулях.
+5. Добавить `BotOrderOrchestrator` с node pipeline.
+6. Выделить `AddressAgent`, `ServiceSelectionAgent`, `OrderCreationAgent`, `SecurityGuard`.
+7. Полностью исключить старые tag/vector ветки из активного пути.
+8. После переключения импортов перенести устаревшие файлы старого pipeline в каталог `old/` или оставить тонкие compatibility wrappers только там, где это нужно для безопасного релиза.
+9. Из старых файлов брать только полезные части: рабочие промпты, trace hooks, payload creation, ФИАС-интеграцию, проверенные SQL-запросы.
+10. Переписать prompt templates под Lite:
+   - `security-guard-lite`;
+   - `problem-accumulation-lite`;
+   - `address-correction-lite`;
+   - `problem-correction-lite`;
+   - `filter-incident-type-lite`;
+   - `filter-location-type-lite`;
+   - `filter-category-lite`;
+   - `question-generator-lite`;
+   - `question-validator-lite`.
+11. Заменить постоянную LLM typo correction на точечные `address_correction_lite` и `problem_correction_lite`.
+12. Добавить `CatalogProvider` и карту услуг с обязательной инвалидацией по версии справочников.
+13. Добавить индексы.
+14. Свести Web/API/Telegram на общий orchestrator.
+15. Обновить trace/performance report под новые node names.
+16. Протестировать на данных ООО АСПЕКТ.
+
+## 16. Критерии готовности
+
+Решение считается готовым, если:
+
+- адрес собирается и валидируется;
+- дом ищется по `fias_house_guid`;
+- при отсутствии `fias_house_guid` дом ищется локально по `fias_street_guid + house_number_normalized`;
+- корректно различаются статусы `not_found` и `not_serviced`;
+- определяется `service_object_id`;
+- определяется `company_id`;
+- услуга определяется по `service_type_id + localization_id + category_id`;
+- заявка создается через `ChatOrderService`;
+- пользователь получает номер заявки;
+- диалог завершается корректно;
+- Web/API/Telegram используют один pipeline;
+- используется `GigaChat-2`;
+- полный state переносится между шагами как JSON;
+- в LLM передается компактный JSON state или нужный node-срез, без сырой полной истории и лишних справочников;
+- несколько параллельных диалогов не смешивают state;
+- в dialog trace видны фактические промпты, raw ответы и карта производительности.
+
+## 17. Проверки
+
+Все проверки после реализации выполняет Codex: локальные unit/integration-проверки, ручные сценарии через Web/API/Telegram, проверка создания заявок и проверка отчетов трассировки.
+
+Обязательные тестовые сценарии:
+
+1. Web chat: адрес и проблема в первом сообщении, дом обслуживается, услуга определяется без уточнения, заявка создается.
+2. Web chat: адрес без дома, бот задает вопрос по адресу.
+3. Web chat: ФИАС нашел дом, но активной привязки обслуживания нет.
+4. Web chat: ФИАС не нашел дом, локальная база тоже не нашла.
+5. Telegram: тот же сценарий, что Web, заявка создается через `ChatOrderService`.
+6. External API: корректная заявка и номер в ответе API.
+7. Категория не ясна: бот задает один человеческий уточняющий вопрос.
+8. Prompt injection: бот не раскрывает промпт и возвращается к оформлению заявки.
+9. Параллельные диалоги: два session_id одновременно, state не смешивается.
+10. Performance report: видны все node, длительности, промпты и raw responses.
+
+## 18. Открытые вопросы
+
+1. Подтвердить, что в первой реализации не создаем `bot_dialog_state`, а используем `dialog_logs.metadata.state_snapshot` + memory store.
+2. Подтвердить миграционную стратегию переименования: жесткий rename всех импортов или alias на один релиз.
+3. Подтвердить, что после двух неудачных уточнений используется default-категория или просьба переформулировать проблему; перевода на оператора нет.
+4. Проверить фактические маршруты доступности услуг по компании: используется ли `company_service_route` как ограничитель каталога или только как маршрут исполнения после выбора услуги.
+
+## 19. Источники по GigaChat
+
+- Официальная документация модели GigaChat 2 Lite: https://developers.sber.ru/docs/ru/gigachat/models/gigachat-2-lite
+- Официальная документация выбора модели: https://developers.sber.ru/docs/ru/gigachat/guides/selecting-a-model
+- Официальные тарифы для юрлиц: https://developers.sber.ru/docs/ru/gigachat/tariffs/legal-tariffs
+
+## 20. Статус реализации 2026-04-30
+
+Реализовано:
+
+1. Новый активный pipeline бота вынесен в `bot_order/`: `BotOrderOrchestrator`, `AddressAgent`, `ServiceSelectionAgent`, `OrderCreationAgent`, `SecurityGuard`, `StateStore`, `CatalogProvider`, `LiteLLMClient`.
+2. Создание заявок вынесено в новый `work_orders.chat_order_service.ChatOrderService`; старое имя `ChatIntakeService` оставлено только как compatibility alias в `work_orders/intake_service.py`.
+3. Web/API/Telegram переключены на общий `MessageHandlerService -> BotOrderOrchestrator -> ChatOrderService`.
+4. JSON state хранится в `dialog_logs.metadata.state_snapshot`; отдельная таблица `bot_dialog_state` не создавалась.
+5. Все рабочие LLM-вызовы нового pipeline идут через `GigaChat-2`.
+6. ФИАС-вызовы логируются в `fias_request_log`; ID и raw request/response добавляются в metadata диалога и в "Полный отчет".
+7. "Карта производительности" агрегирует performance по всем outbound-сообщениям сессии, а не только по последнему сообщению.
+8. Добавлена миграция `message_handler/migrations/0004_fias_request_log_and_bot_order_indexes.py` с таблицей логов ФИАС и индексами под основные поисковые запросы.
+
+Проверено Codex на сервере:
+
+1. `venv/bin/python -m py_compile` по измененным модулям.
+2. `venv/bin/python manage.py check`.
+3. Сценарий защиты prompt injection: `codex_guard_46dc8a01`, статус `GUARD_BLOCKED`.
+4. Сценарий ФИАС-логирования: `codex_fias_trace_400e3aee`, два ФИАС-вызова `SearchAddressItem` и `SearchAddressItems` видны в full trace.
+5. Полный сценарий заявки: `codex_order_44fd9d10`, адрес `Сочи, Абрикосовая, дом 20`, услуга `13`, создана заявка `1-14` (`work_order_id=171`).
+6. Performance report для `codex_order_44fd9d10` показывает и `bot_order.service_selection`, и `bot_order.order_create`.

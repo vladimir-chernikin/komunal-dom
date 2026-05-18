@@ -92,6 +92,7 @@ class AddressExtractor:
                 reason="Улица не найдена в ФИАС",
                 match_status="not_found",
                 source="fias",
+                fias_candidate_hints=fias_match.get("candidate_hints") or [],
             )
 
         building = local_building or self._find_local_building(
@@ -111,6 +112,7 @@ class AddressExtractor:
                 fias_object_guid=house_guid,
                 street_fias_guid=street_guid,
                 house_number=house_number,
+                fias_candidate_hints=fias_match.get("candidate_hints") or [],
             )
 
         service_object = self._resolve_service_object(building.id, apartment_number)
@@ -304,6 +306,7 @@ class AddressExtractor:
             "house_number": None,
             "fias_level_id": None,
             "fias_address_type": None,
+            "fias_candidate_hints": [],
         }
         result.update(kwargs)
         return result

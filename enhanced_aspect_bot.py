@@ -29,7 +29,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'komunal_dom.settings')
 # Импортируем AI менеджер и унифицированный обработчик сообщений
 from portal.ai_manager import ai_manager
 from message_handler_service import MessageHandlerService
-from main_agent import MainAgent
+from speech_to_text_service import SpeechToTextError, recognize_audio_bytes
 
 # Настройки
 TELEGRAM_TOKEN = config('TELEGRAM_TOKEN')
@@ -86,11 +86,8 @@ class EnhancedAspectBot:
 
         # ИСПРАВЛЕНО: Инициализируем унифицированную систему обработки
         try:
-            # MainAgent - воронка точности
-            self.main_agent = MainAgent()
-
-            # MessageHandlerService - единый обработчик сообщений
-            self.message_handler = MessageHandlerService(main_agent=self.main_agent)
+            self.main_agent = None
+            self.message_handler = MessageHandlerService()
 
             logger.info("Унифицированная система обработки сообщений инициализирована")
         except Exception as e:
@@ -141,10 +138,24 @@ class EnhancedAspectBot:
             session_id = state.session_id
 
         # Отправляем ответ пользователю
+        text = self._repair_mojibake(text)
         await update.message.reply_text(text)
 
         # ИСПРАВЛЕНО (2026-01-06): НЕ логируем здесь - будет залогировано в message_handler
         # чтобы избежать дублирования в БД
+
+    def _repair_mojibake(self, text: str) -> str:
+        """Best-effort repair for UTF-8 text that was accidentally decoded as CP1251."""
+        if not isinstance(text, str) or not text:
+            return text
+        markers = ("Рџ", "Р—", "РЎ", "Рќ", "СЃ", "С‚", "СЋ", "СЏ")
+        if not any(marker in text for marker in markers):
+            return text
+        try:
+            repaired = text.encode("cp1251").decode("utf-8")
+        except UnicodeError:
+            return text
+        return repaired if repaired else text
 
     async def ask_yandexgpt(self, prompt, max_tokens=300):
         """Запрос к YandexGPT API с системным промптом из БД"""
@@ -197,26 +208,24 @@ class EnhancedAspectBot:
         """Обработчик команды /start"""
         user = update.effective_user
         state = self.get_conversation_state(user.id)
-
-        welcome_text = f"""Добрый день, {user.first_name}!
-
-Я {self.bot_name} - AI-ассистент управляющей компании "Аспект".
-
-Я могу помочь вам:
-- Проверить адрес в зоне обслуживания УК
-- Принять и зарегистрировать заявку на обслуживание
-- Определить услугу по описанию проблемы
-
-Просто отправьте мне сообщение с описанием проблемы или адрес для проверки.
-
-Команды:
-/help - справка
-/streets - список улиц на обслуживании
-/service - создать заявку по проблеме
-/address - проверить адрес
-"""
-
-        await update.message.reply_text(welcome_text)
+        state.current_service_id = None
+        state.current_service_name = None
+        state.current_address = None
+        state.address_components = None
+        state.building_id = None
+        state.unit_id = None
+        state.session_id = None
+        message = update.effective_message
+        await self.handle_service_request(
+            update,
+            context,
+            "/start",
+            extra_metadata={
+                "command": "start",
+                "telegram_message_id": getattr(message, "message_id", None),
+            },
+            message_id=f"telegram_start_{getattr(message, 'message_id', 'unknown')}",
+        )
         state.mode = 'ADDRESS_CHECK'
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -302,7 +311,14 @@ class EnhancedAspectBot:
         # Если пользователь хочет проверить адрес - он скажет об этом явно
         return 'SERVICE_REQUEST'
 
-    async def handle_service_request(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    async def handle_service_request(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        text: str,
+        extra_metadata: Optional[Dict] = None,
+        message_id: Optional[str] = None,
+    ):
         """Обработка запроса на создание заявки через MessageHandlerService"""
         user = update.effective_user
         state = self.get_conversation_state(user.id)
@@ -340,17 +356,22 @@ class EnhancedAspectBot:
         # Позволяем MessageHandlerService создать новую сессию для приветствия
         # или продолжить существующую сессию
         try:
+            metadata = {
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+            }
+            if extra_metadata:
+                metadata.update(extra_metadata)
+
             # Обрабатываем сообщение через MessageHandlerService
             result = await self.message_handler.handle_incoming_message(
                 text=text,
                 user_id=str(user.id),
                 channel='telegram',
+                message_id=message_id,
                 session_id=None,  # ИСПРАВЛЕНО: None = автоматическое управление сессиями
-                metadata={
-                    'username': user.username,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name
-                }
+                metadata=metadata,
             )
 
             # ИСПРАВЛЕНО (2026-01-05): Сохраняем session_id для логирования outbound
@@ -358,6 +379,10 @@ class EnhancedAspectBot:
             if session_id:
                 state.session_id = session_id
                 logger.info(f"✅ Session ID сохранен в state: {session_id}")
+
+            if result.get('status') == 'success':
+                await self._reply_and_log(update, result.get('response', ''), session_id)
+                return
 
             # Анализируем результат
             if result.get('status') == 'success':
@@ -679,8 +704,129 @@ class EnhancedAspectBot:
             logger.error(f"Ошибка при проверке адреса: {e}")
             await update.message.reply_text("😔 Ошибка при проверке адреса. Попробуйте позже.")
 
+    async def _route_text_message(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        text: str,
+        *,
+        extra_metadata: Optional[Dict] = None,
+        message_id: Optional[str] = None,
+    ):
+        """Route already-normalized text through the existing Telegram flow."""
+        user = update.effective_user
+        state = self.get_conversation_state(user.id)
+
+        if self.contains_profanity(text):
+            state.warnings_count += 1
+            if state.warnings_count >= 2:
+                await update.message.reply_text("За многократное использование нецензурной лексики диалог будет прекращен.")
+                return
+            await update.message.reply_text("Пожалуйста, избегайте нецензурной лексики в сообщениях.")
+            return
+
+        if self.message_handler:
+            from message_cleaner_service import MessageCleanerService
+            if not hasattr(self, '_message_cleaner'):
+                self._message_cleaner = MessageCleanerService()
+
+            if self._message_cleaner.is_greeting_only(text):
+                logger.info(f"Обнаружено приветствие в _route_text_message: '{text}'")
+                await self.handle_service_request(
+                    update,
+                    context,
+                    text,
+                    extra_metadata=extra_metadata,
+                    message_id=message_id,
+                )
+                return
+
+        await self.handle_service_request(
+            update,
+            context,
+            text,
+            extra_metadata=extra_metadata,
+            message_id=message_id,
+        )
+
+    async def _download_telegram_file_bytes(self, context: ContextTypes.DEFAULT_TYPE, file_id: str) -> bytes:
+        telegram_file = await context.bot.get_file(file_id)
+        if hasattr(telegram_file, "download_as_bytearray"):
+            data = await telegram_file.download_as_bytearray()
+            return bytes(data)
+
+        import io
+
+        buffer = io.BytesIO()
+        await telegram_file.download_to_memory(out=buffer)
+        return buffer.getvalue()
+
+    async def handle_audio_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Recognize Telegram voice/audio and continue through the text pipeline."""
+        message = update.effective_message
+        audio = (
+            getattr(message, "voice", None)
+            or getattr(message, "audio", None)
+            or getattr(message, "document", None)
+        )
+        if not audio:
+            return
+
+        if getattr(message, "voice", None):
+            media_kind = "voice"
+        elif getattr(message, "audio", None):
+            media_kind = "audio"
+        else:
+            media_kind = "document_audio"
+        try:
+            audio_bytes = await self._download_telegram_file_bytes(context, audio.file_id)
+            stt_result = await asyncio.to_thread(
+                recognize_audio_bytes,
+                audio_bytes,
+                audio_format="oggopus" if media_kind == "voice" else None,
+                metadata={
+                    "mime_type": getattr(audio, "mime_type", None),
+                    "file_name": getattr(audio, "file_name", None),
+                    "channel": "telegram",
+                    "media_kind": media_kind,
+                },
+            )
+            recognized_text = (stt_result.get("text") or "").strip()
+            if not recognized_text:
+                await message.reply_text("Не удалось распознать голосовое сообщение. Попробуйте записать короче или отправьте текстом.")
+                return
+
+            await self._route_text_message(
+                update,
+                context,
+                recognized_text,
+                extra_metadata={
+                    "content_type": "audio",
+                    "telegram_audio": {
+                        "media_kind": media_kind,
+                        "file_id": getattr(audio, "file_id", None),
+                        "file_unique_id": getattr(audio, "file_unique_id", None),
+                        "duration": getattr(audio, "duration", None),
+                        "mime_type": getattr(audio, "mime_type", None),
+                        "file_name": getattr(audio, "file_name", None),
+                    },
+                    "stt": stt_result,
+                },
+                message_id=f"telegram_{media_kind}_{getattr(message, 'message_id', 'unknown')}",
+            )
+        except SpeechToTextError as exc:
+            logger.warning("Telegram audio recognition failed: %s", exc, exc_info=True)
+            await message.reply_text("Аудио не распознано. Попробуйте записать сообщение короче или отправьте текстом.")
+        except Exception as exc:
+            logger.error("Telegram audio handling failed: %s", exc, exc_info=True)
+            await message.reply_text("Не удалось обработать аудио. Отправьте, пожалуйста, текстовое сообщение.")
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Основной обработчик сообщений"""
+        text = update.message.text or ""
+        await self._route_text_message(update, context, text)
+        return
+
         user = update.effective_user
         state = self.get_conversation_state(user.id)
         text = update.message.text
@@ -709,6 +855,9 @@ class EnhancedAspectBot:
                 # Обрабатываем через MessageHandlerService для логирования
                 await self.handle_service_request(update, context, text)
                 return
+
+        await self.handle_service_request(update, context, text)
+        return
 
         # Обработка в зависимости от режима
         if state.mode == 'SERVICE_REQUEST':
@@ -849,6 +998,7 @@ def main():
     application.add_handler(CommandHandler("address", bot.address_command))
     application.add_handler(CommandHandler("cancel", bot.cancel_command))
     # ИСПРАВЛЕНО: Убран CallbackQueryHandler - голосовой интерфейс без кнопок
+    application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO | filters.Document.AUDIO, bot.handle_audio_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
     # Добавление обработчика ошибок

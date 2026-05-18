@@ -106,14 +106,14 @@ class UserAdmin(BaseUserAdmin):
     change_list_template = 'admin/auth/user/change_list.html'
     inlines = [UserCompanyMembershipInline]
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
-    search_fields = ('username', 'email', 'first_name', 'last_name')
+    search_fields = ('username', 'email', 'first_name', 'last_name', 'userprofile__max_user_id')
     ordering = ('-date_joined',)
     save_on_top = True
 
     fieldsets = (
         ('Основная информация', {
             'fields': (
-                'username', 'password', 'first_name', 'last_name', 'email',
+                'username', 'password', 'first_name', 'last_name', 'email', 'max_user_id',
                 'is_active', 'is_staff',
                 'primary_company', 'primary_department', 'profile_job_title',
                 'get_phone', 'profile_address', 'get_timezone',
@@ -132,7 +132,7 @@ class UserAdmin(BaseUserAdmin):
         ('Основная информация', {
             'fields': (
                 'username', 'password1', 'password2',
-                'first_name', 'last_name', 'email',
+                'first_name', 'last_name', 'email', 'max_user_id',
                 'is_active', 'is_staff',
                 'primary_company', 'primary_department', 'profile_job_title', 'profile_address',
             ),
@@ -163,7 +163,7 @@ class UserAdmin(BaseUserAdmin):
             form.save_profile(obj)
 
     def get_company(self, obj):
-        """???????? ???????? ???????? ????????????"""
+        """Получаем компанию пользователя"""
         try:
             profile = getattr(obj, 'userprofile', None)
             if profile and profile.primary_company:
@@ -190,9 +190,9 @@ class UserAdmin(BaseUserAdmin):
                     f'<a href="/admin/work_orders/usercompanymembership/?user_id__exact={obj.id}">{membership.company.name}</a>'
                 )
 
-            return mark_safe('<span class="badge bg-secondary">??? ????????</span>')
+            return mark_safe('<span class="badge bg-secondary">Не назначена</span>')
         except Exception:
-            return mark_safe('<span class="badge bg-secondary">??????</span>')
+            return mark_safe('<span class="badge bg-secondary">Ошибка</span>')
 
     get_company.short_description = 'Компания'
 

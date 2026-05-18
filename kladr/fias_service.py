@@ -1,15 +1,18 @@
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 import httpx
 from decouple import config
 
 from address.services import build_full_address, normalize_house_number, normalize_text
+from bot_order.fias_logging import timed_fias_call
 
 logger = logging.getLogger(__name__)
 
 HOUSE_LEVEL_IDS = {10}
 STREET_LEVEL_IDS = {8}
+CITY_LEVEL_IDS = {2, 5, 6}
 
 
 class FiasAddressService:
@@ -23,6 +26,7 @@ class FiasAddressService:
         self.master_token = config("FIAS_API_TOKEN", default="").strip()
         self.address_type = int(config("FIAS_ADDRESS_TYPE", default="1"))
         self.timeout = float(config("FIAS_API_TIMEOUT", default="15"))
+        self.last_candidate_hints: List[Dict[str, Any]] = []
 
     @property
     def is_configured(self) -> bool:
@@ -42,11 +46,25 @@ class FiasAddressService:
         if not self.is_configured:
             raise RuntimeError("FIAS_API_TOKEN is not configured")
 
-        url = f"{self.base_url}/{path.lstrip('/')}"
-        with httpx.Client(timeout=self.timeout, verify=True) as client:
-            response = client.request(method, url, headers=self._headers(), params=params, json=json_body)
-            response.raise_for_status()
-            return response.json() if response.text.strip() else {}
+        clean_path = path.lstrip("/")
+        url = f"{self.base_url}/{clean_path}"
+
+        def perform_request():
+            with httpx.Client(timeout=self.timeout, verify=True) as client:
+                response = client.request(method, url, headers=self._headers(), params=params, json=json_body)
+                response.raise_for_status()
+                return response.json() if response.text.strip() else {}
+
+        return timed_fias_call(
+            perform_request,
+            method=method,
+            endpoint=clean_path,
+            request_payload={
+                "params": params or {},
+                "json_body": json_body or {},
+                "address_type": self.address_type,
+            },
+        )
 
     def search_address_item(self, search_string: str, address_type: Optional[int] = None) -> Dict[str, Any]:
         if not search_string:
@@ -107,14 +125,35 @@ class FiasAddressService:
             result["apartment"] = apartment
         return {key: value for key, value in result.items() if value}
 
-    def resolve_building_match(self, full_address: str, expected_house_number: Optional[str] = None) -> Dict[str, Any]:
+    def resolve_building_match(
+        self,
+        full_address: str,
+        expected_house_number: Optional[str] = None,
+        expected_street: Optional[str] = None,
+        expected_city: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        self.last_candidate_hints = []
         expected = normalize_house_number(expected_house_number)
         direct = self.search_address_item(full_address)
-        if self._is_house_candidate(direct, expected):
+        if self._is_house_candidate(direct, expected) and self._matches_expected_location(
+            direct,
+            expected_street=expected_street,
+            expected_city=expected_city,
+        ):
             return direct
 
         candidates = self.search_address_items(full_address)
-        ranked = [item for item in candidates if self._is_house_candidate(item, expected)]
+        self.last_candidate_hints = self._candidate_hints(candidates)
+        ranked = [
+            item
+            for item in candidates
+            if self._is_house_candidate(item, expected)
+            and self._matches_expected_location(
+                item,
+                expected_street=expected_street,
+                expected_city=expected_city,
+            )
+        ]
         ranked.sort(key=lambda item: self._score_candidate(item, full_address, expected), reverse=True)
         return ranked[0] if ranked else {}
 
@@ -129,7 +168,18 @@ class FiasAddressService:
         if not search_string:
             return {}
         candidates = self.search_address_items(search_string)
-        ranked = [item for item in candidates if item.get("object_level_id") in STREET_LEVEL_IDS]
+        self.last_candidate_hints = self._candidate_hints(candidates)
+        ranked = [
+            item
+            for item in candidates
+            if item.get("object_level_id") in STREET_LEVEL_IDS
+            and self._matches_expected_location(
+                item,
+                expected_street=components.get("street"),
+                expected_city=components.get("city"),
+                require_house=False,
+            )
+        ]
         ranked.sort(key=lambda item: self._score_street_candidate(item, components), reverse=True)
         return ranked[0] if ranked else {}
 
@@ -156,28 +206,37 @@ class FiasAddressService:
     def resolve_building_with_fallback(self, components: Dict[str, Any]) -> Dict[str, Any]:
         search_string = build_full_address(components)
         house_number = normalize_house_number(components.get("house_number"))
-        direct = self.resolve_building_match(search_string, expected_house_number=house_number)
+        direct = self.resolve_building_match(
+            search_string,
+            expected_house_number=house_number,
+            expected_street=components.get("street"),
+            expected_city=components.get("city"),
+        )
+        building_candidate_hints = list(self.last_candidate_hints or [])
         if direct:
             street_guid = self._extract_street_guid(direct)
             return {
-                "house_guid": direct.get("object_guid"),
+                "house_guid": self._extract_house_guid(direct),
                 "street_guid": street_guid,
-                "full_address": direct.get("full_name") or search_string,
+                "full_address": self._extract_house_full_address(direct) or direct.get("full_name") or search_string,
                 "fias_item": direct,
+                "candidate_hints": building_candidate_hints,
             }
 
         street_item = self.resolve_street_match(components)
+        street_candidate_hints = list(self.last_candidate_hints or [])
         street_guid = street_item.get("object_guid")
         if not street_guid:
-            return {}
+            return {"candidate_hints": building_candidate_hints or street_candidate_hints}
 
         by_street = self.resolve_building_by_street_guid(street_guid, house_number)
         if by_street:
             return {
-                "house_guid": by_street.get("object_guid"),
+                "house_guid": self._extract_house_guid(by_street),
                 "street_guid": street_guid,
-                "full_address": by_street.get("full_name") or search_string,
+                "full_address": self._extract_house_full_address(by_street) or by_street.get("full_name") or search_string,
                 "fias_item": by_street,
+                "candidate_hints": building_candidate_hints or street_candidate_hints or self.last_candidate_hints,
             }
 
         return {
@@ -185,6 +244,7 @@ class FiasAddressService:
             "street_guid": street_guid,
             "full_address": search_string,
             "fias_item": {},
+            "candidate_hints": building_candidate_hints or street_candidate_hints or self.last_candidate_hints,
         }
 
     def bind_building_mapping(self, building, fias_item: Dict[str, Any]) -> bool:
@@ -264,11 +324,31 @@ class FiasAddressService:
         }
 
     def _is_house_candidate(self, item: Dict[str, Any], expected_house_number: str) -> bool:
-        if not item or item.get("object_level_id") not in HOUSE_LEVEL_IDS:
+        if not item or not self._extract_house_number(item):
             return False
         if not expected_house_number:
             return True
         return self._extract_house_number(item) == expected_house_number
+
+    def _extract_house_guid(self, item: Dict[str, Any]) -> Optional[str]:
+        hierarchy = item.get("hierarchy") or []
+        for current in reversed(hierarchy):
+            if current.get("object_level_id") in HOUSE_LEVEL_IDS or (current.get("object_type") or "").lower() == "house":
+                return current.get("object_guid")
+        if item.get("object_level_id") in HOUSE_LEVEL_IDS:
+            return item.get("object_guid")
+        return None
+
+    def _extract_house_full_address(self, item: Dict[str, Any]) -> str:
+        hierarchy = item.get("hierarchy") or []
+        parts = []
+        for current in hierarchy:
+            full_name = current.get("full_name") or current.get("name")
+            if full_name:
+                parts.append(full_name)
+            if current.get("object_level_id") in HOUSE_LEVEL_IDS or (current.get("object_type") or "").lower() == "house":
+                break
+        return ", ".join(parts)
 
     def _extract_house_number(self, item: Dict[str, Any]) -> str:
         hierarchy = item.get("hierarchy") or []
@@ -284,6 +364,78 @@ class FiasAddressService:
             if current.get("object_level_id") in STREET_LEVEL_IDS:
                 return current.get("object_guid")
         return None
+
+    def _extract_street_name(self, item: Dict[str, Any]) -> str:
+        hierarchy = item.get("hierarchy") or []
+        for current in reversed(hierarchy):
+            if current.get("object_level_id") in STREET_LEVEL_IDS:
+                return current.get("name") or current.get("full_name") or ""
+        if item.get("object_level_id") in STREET_LEVEL_IDS:
+            return item.get("name") or item.get("full_name") or ""
+        return ""
+
+    def _extract_city_name(self, item: Dict[str, Any]) -> str:
+        hierarchy = item.get("hierarchy") or []
+        for current in reversed(hierarchy):
+            if current.get("object_level_id") in CITY_LEVEL_IDS:
+                return current.get("name") or current.get("full_name") or ""
+        if item.get("object_level_id") in CITY_LEVEL_IDS:
+            return item.get("name") or item.get("full_name") or ""
+        return ""
+
+    def _matches_expected_location(
+        self,
+        item: Dict[str, Any],
+        *,
+        expected_street: Optional[str],
+        expected_city: Optional[str],
+        require_house: bool = True,
+    ) -> bool:
+        if not item:
+            return False
+        if require_house and not self._extract_house_number(item):
+            return False
+        if expected_street and not self._same_address_name(expected_street, self._extract_street_name(item)):
+            return False
+        if expected_city and not self._same_address_name(expected_city, self._extract_city_name(item)):
+            return False
+        return True
+
+    def _same_address_name(self, expected: Optional[str], actual: Optional[str]) -> bool:
+        expected_norm = self._normalize_address_name(expected)
+        actual_norm = self._normalize_address_name(actual)
+        return bool(expected_norm and actual_norm and expected_norm == actual_norm)
+
+    def _normalize_address_name(self, value: Optional[str]) -> str:
+        text = normalize_text(value)
+        text = re.sub(
+            r"\b(город|гор|г|улица|ул|проспект|пр|проезд|пер|переулок|шоссе|бульвар|бул|наб|набережная)\.?\b",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"[-–—]+", " ", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    def _candidate_hints(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        hints: List[Dict[str, Any]] = []
+        seen = set()
+        for item in candidates[:10]:
+            hint = {
+                "full_name": item.get("full_name") or "",
+                "city": self._extract_city_name(item),
+                "street": self._extract_street_name(item),
+                "house": self._extract_house_number(item),
+            }
+            key = tuple(hint.values())
+            if key in seen:
+                continue
+            seen.add(key)
+            hints.append(hint)
+            if len(hints) >= 5:
+                break
+        return hints
 
     def _has_street_guid(self, item: Dict[str, Any], street_guid: str) -> bool:
         hierarchy = item.get("hierarchy") or []

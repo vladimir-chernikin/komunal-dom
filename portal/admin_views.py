@@ -747,17 +747,26 @@ def _get_object_binding_on_date(service_object_id, on_date):
 
 
 def _find_existing_address_entities(components, street_guid, house_guid, house_number, unit_number):
-    from address.models import Building, Unit
+    from kladr.models import Building
+    from portal.models import Unit
 
     building = None
     if house_guid:
-        building = Building.objects.filter(fias_guid=house_guid).first()
+        building = Building.objects.filter(fias_object_guid=house_guid).first()
     if building is None and street_guid and house_number:
-        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+        building = (
+            Building.objects.filter(address_object__fias_object_guid=street_guid, house_number=house_number)
+            .order_by('id')
+            .first()
+        )
 
     unit = None
     if building is not None and unit_number:
-        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number).first()
+        unit = (
+            Unit.objects.filter(building_id=building.id, unit_number__iexact=unit_number)
+            .order_by('unit_id')
+            .first()
+        )
     return building, unit
 
 
@@ -858,7 +867,7 @@ def _validate_import_row_for_batch(address, unit_number, company, planned_date):
     if unit_number_norm:
         if unit is not None and building is not None:
             unit_service_object = (
-                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.id, is_active=True)
+                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.pk, is_active=True)
                 .order_by('service_object_id')
                 .first()
             )
@@ -956,7 +965,7 @@ def _stage_import_batch(uploaded_file, company, user, planned_date):
             final_status=validation['final_status'],
             comment=validation['comment'],
             city_fact=validation['full_address'],
-            source_kladr_check=validation['building_fias_guid'],
+            building_fias_guid=validation['building_fias_guid'],
         )
 
     batch.status = 'validated'
@@ -1081,7 +1090,7 @@ def _import_service_object_for_company(address, company, user, unit_number=None,
             unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
             unit_created = True
 
-        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.pk)
         _, unit_binding_created = _ensure_company_binding(
             company,
             result_service_object,
@@ -1117,7 +1126,11 @@ def director_import_service_objects(request):
     batch = None
     batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
     if batch_id:
-        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+        batch_qs = ImportBatch.objects.filter(id=batch_id)
+        company_scope = workspace.get('company_scope')
+        if company_scope:
+            batch_qs = batch_qs.filter(company_id__in=company_scope)
+        batch = batch_qs.first()
 
     if request.method == 'POST':
         action = request.POST.get('action') or 'upload'
@@ -1158,8 +1171,8 @@ def director_import_service_objects(request):
                     else:
                         row.final_status = 'imported'
                         row.comment = result['message']
-                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
-                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        row.building_fias_guid = result.get('building_fias_guid') or row.building_fias_guid
+                        row.save(update_fields=['final_status', 'comment', 'building_fias_guid'])
                         imported_count += 1
 
                 batch.status = 'failed' if error_count else 'imported'
@@ -1332,7 +1345,7 @@ def _validate_import_row_for_batch(address, unit_number, company, planned_date):
     if unit_number_norm:
         if unit is not None and building is not None:
             unit_service_object = (
-                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.id, is_active=True)
+                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.pk, is_active=True)
                 .order_by('service_object_id')
                 .first()
             )
@@ -1430,7 +1443,7 @@ def _stage_import_batch(uploaded_file, company, user, planned_date):
             final_status=validation['final_status'],
             comment=validation['comment'],
             city_fact=validation['full_address'],
-            source_kladr_check=validation['building_fias_guid'],
+            building_fias_guid=validation['building_fias_guid'],
         )
 
     batch.status = 'validated'
@@ -1553,7 +1566,7 @@ def _import_service_object_for_company(address, company, user, unit_number=None,
             unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
             unit_created = True
 
-        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.pk)
         _, unit_binding_created = _ensure_company_binding(
             company,
             result_service_object,
@@ -1589,7 +1602,11 @@ def director_import_service_objects(request):
     batch = None
     batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
     if batch_id:
-        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+        batch_qs = ImportBatch.objects.filter(id=batch_id)
+        company_scope = workspace.get('company_scope')
+        if company_scope:
+            batch_qs = batch_qs.filter(company_id__in=company_scope)
+        batch = batch_qs.first()
 
     if request.method == 'POST':
         action = request.POST.get('action') or 'upload'
@@ -1630,8 +1647,8 @@ def director_import_service_objects(request):
                     else:
                         row.final_status = 'imported'
                         row.comment = result['message']
-                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
-                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        row.building_fias_guid = result.get('building_fias_guid') or row.building_fias_guid
+                        row.save(update_fields=['final_status', 'comment', 'building_fias_guid'])
                         imported_count += 1
 
                 batch.status = 'failed' if error_count else 'imported'
@@ -1812,7 +1829,7 @@ def _import_service_object_for_company(address, company, user, unit_number=None,
             unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
             unit_created = True
 
-        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.pk)
         _, unit_binding_created = _ensure_company_binding(
             company,
             result_service_object,
@@ -1847,7 +1864,11 @@ def director_import_service_objects(request):
     batch = None
     batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
     if batch_id:
-        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+        batch_qs = ImportBatch.objects.filter(id=batch_id)
+        company_scope = workspace.get('company_scope')
+        if company_scope:
+            batch_qs = batch_qs.filter(company_id__in=company_scope)
+        batch = batch_qs.first()
 
     if request.method == 'POST':
         action = request.POST.get('action') or 'upload'
@@ -1888,8 +1909,8 @@ def director_import_service_objects(request):
                     else:
                         row.final_status = 'imported'
                         row.comment = result['message']
-                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
-                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        row.building_fias_guid = result.get('building_fias_guid') or row.building_fias_guid
+                        row.save(update_fields=['final_status', 'comment', 'building_fias_guid'])
                         imported_count += 1
 
                 batch.status = 'failed' if error_count else 'imported'
@@ -2070,7 +2091,7 @@ def _import_service_object_for_company(address, company, user, unit_number=None,
             unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
             unit_created = True
 
-        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.pk)
         _, unit_binding_created = _ensure_company_binding(
             company,
             result_service_object,
@@ -2105,7 +2126,11 @@ def director_import_service_objects(request):
     batch = None
     batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
     if batch_id:
-        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+        batch_qs = ImportBatch.objects.filter(id=batch_id)
+        company_scope = workspace.get('company_scope')
+        if company_scope:
+            batch_qs = batch_qs.filter(company_id__in=company_scope)
+        batch = batch_qs.first()
 
     if request.method == 'POST':
         action = request.POST.get('action') or 'upload'
@@ -2146,8 +2171,8 @@ def director_import_service_objects(request):
                     else:
                         row.final_status = 'imported'
                         row.comment = result['message']
-                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
-                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        row.building_fias_guid = result.get('building_fias_guid') or row.building_fias_guid
+                        row.save(update_fields=['final_status', 'comment', 'building_fias_guid'])
                         imported_count += 1
 
                 batch.status = 'failed' if error_count else 'imported'
@@ -2205,17 +2230,26 @@ def _get_object_binding_on_date(service_object_id, on_date):
 
 
 def _find_existing_address_entities(components, street_guid, house_guid, house_number, unit_number):
-    from address.models import Building, Unit
+    from kladr.models import Building
+    from portal.models import Unit
 
     building = None
     if house_guid:
-        building = Building.objects.filter(fias_guid=house_guid).first()
+        building = Building.objects.filter(fias_object_guid=house_guid).first()
     if building is None and street_guid and house_number:
-        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+        building = (
+            Building.objects.filter(address_object__fias_object_guid=street_guid, house_number=house_number)
+            .order_by('id')
+            .first()
+        )
 
     unit = None
     if building is not None and unit_number:
-        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number).first()
+        unit = (
+            Unit.objects.filter(building_id=building.id, unit_number__iexact=unit_number)
+            .order_by('unit_id')
+            .first()
+        )
     return building, unit
 
 
@@ -2317,7 +2351,7 @@ def _validate_import_row_for_batch(address, unit_number, company, planned_date):
     if unit_number_norm:
         if unit is not None:
             unit_service_object = (
-                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.id, is_active=True)
+                ServiceObject.objects.filter(building_id=building.id, unit_id=unit.pk, is_active=True)
                 .order_by('service_object_id')
                 .first()
             )
@@ -2415,7 +2449,7 @@ def _stage_import_batch(uploaded_file, company, user, planned_date):
             final_status=validation['final_status'],
             comment=validation['comment'],
             city_fact=validation['full_address'],
-            source_kladr_check=validation['building_fias_guid'],
+            building_fias_guid=validation['building_fias_guid'],
         )
 
     batch.status = 'validated'
@@ -2500,7 +2534,7 @@ def _import_service_object_for_company(address, company, user, unit_number=None,
             unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
             unit_created = True
 
-        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.pk)
         _, unit_binding_created = _ensure_company_binding(
             company,
             result_service_object,
@@ -2548,7 +2582,11 @@ def director_import_service_objects(request):
     batch = None
     batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
     if batch_id:
-        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+        batch_qs = ImportBatch.objects.filter(id=batch_id)
+        company_scope = workspace.get('company_scope')
+        if company_scope:
+            batch_qs = batch_qs.filter(company_id__in=company_scope)
+        batch = batch_qs.first()
 
     if request.method == 'POST':
         action = request.POST.get('action') or 'upload'
@@ -2589,8 +2627,8 @@ def director_import_service_objects(request):
                     else:
                         row.final_status = 'imported'
                         row.comment = result['message']
-                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
-                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        row.building_fias_guid = result.get('building_fias_guid') or row.building_fias_guid
+                        row.save(update_fields=['final_status', 'comment', 'building_fias_guid'])
                         imported_count += 1
 
                 batch.status = 'failed' if error_count else 'imported'
@@ -3770,13 +3808,14 @@ def _ensure_company_binding(company, service_object, comment, on_date):
 
 @transaction.atomic
 def _import_service_object_for_company(address, company, user, unit_number=None, on_date=None):
-    from address.models import Building, Unit
+    from kladr.models import Building
+    from portal.models import Unit
     from address.services import build_full_address, normalize_house_number, normalize_unit_number
     from address_extractor_service import AddressExtractor
 
     service = FiasAddressService()
     if not service.is_configured:
-        raise ValueError('?? ???????? FIAS_API_TOKEN.')
+        raise ValueError('Не настроен FIAS_API_TOKEN.')
 
     extractor = AddressExtractor()
     components = extractor.extract_address_components(address)
@@ -3791,47 +3830,72 @@ def _import_service_object_for_company(address, company, user, unit_number=None,
     import_date = on_date or timezone.localdate()
 
     if not street_guid:
-        raise ValueError('????? ?? ??????? ? ????. ??? ?? ????????.')
+        raise ValueError('Улица не найдена в ФИАС. Дом не сохранен.')
     if not house_number:
-        raise ValueError('?? ??????? ?????????? ????? ????.')
+        raise ValueError('Не удалось определить номер дома.')
 
-    building = Building.objects.filter(pk=validation.get('building_id')).first() if validation.get('building_id') else None
     fias_result = service.resolve_building_with_fallback(components)
-    if building is None and house_guid:
-        building = Building.objects.filter(fias_guid=house_guid).first()
-    if building is None:
-        building = Building.objects.filter(street_fias_guid=street_guid, house_number=house_number).first()
+    fias_item = fias_result.get('fias_item') or {}
+    hierarchy = fias_item.get('hierarchy') or []
+    if not hierarchy and street_guid:
+        street_item = service.get_address_item_by_guid(street_guid) or {}
+        if street_item:
+            hierarchy = street_item.get('hierarchy') or [street_item]
+    street_object = _ensure_address_object_chain_from_fias(hierarchy, user) if hierarchy else None
+    building_fias_object_id = fias_item.get('object_id') if house_guid else None
+    building_fias_level_id = fias_item.get('object_level_id') if house_guid else None
+    building_fias_address_type = fias_item.get('address_type') if house_guid else None
+
+    building = None
+    if house_guid:
+        building = Building.objects.filter(fias_object_guid=house_guid).first()
+    if building is None and street_guid and house_number:
+        building = (
+            Building.objects.filter(address_object__fias_object_guid=street_guid, house_number=house_number)
+            .order_by('id')
+            .first()
+        )
 
     full_address = validation.get('address_full') or fias_result.get('full_address') or build_full_address(components)
     if building is None:
+        if street_object is None:
+            raise ValueError('Не удалось создать адресный объект улицы для дома.')
         building = Building.objects.create(
-            fias_guid=house_guid or None,
-            street_fias_guid=street_guid,
+            address_object=street_object,
             house_number=house_number,
-            full_address=full_address,
             created_by=user,
+            fias_object_id=building_fias_object_id,
+            fias_object_guid=house_guid or None,
+            fias_level_id=building_fias_level_id,
+            fias_address_type=building_fias_address_type,
+            fias_full_name=(fias_result.get('full_address') or full_address)[:500],
         )
         building_created = True
     else:
         building_created = False
         updated = False
+        if street_object is not None and building.address_object_id != street_object.id:
+            building.address_object = street_object
+            updated = True
         for field_name, value in (
-            ('fias_guid', house_guid or building.fias_guid),
-            ('street_fias_guid', street_guid),
             ('house_number', house_number),
-            ('full_address', full_address),
+            ('fias_object_id', building_fias_object_id),
+            ('fias_object_guid', house_guid or None),
+            ('fias_level_id', building_fias_level_id),
+            ('fias_address_type', building_fias_address_type),
+            ('fias_full_name', (fias_result.get('full_address') or full_address)[:500]),
         ):
-            if value and getattr(building, field_name) != value:
+            if value is not None and getattr(building, field_name) != value:
                 setattr(building, field_name, value)
                 updated = True
         if updated:
-            building.save(update_fields=['fias_guid', 'street_fias_guid', 'house_number', 'full_address', 'updated_at'])
+            building.save()
 
     house_service_object, house_created = _get_or_create_service_object(building.id, unit_id=None)
     house_binding, house_binding_created = _ensure_company_binding(
         company,
         house_service_object,
-        '????????? ?? ???????? ????????????',
+        'Загружено из кабинета руководителя',
         import_date,
     )
 
@@ -3840,16 +3904,20 @@ def _import_service_object_for_company(address, company, user, unit_number=None,
     unit_binding_created = False
 
     if unit_number_norm:
-        unit = Unit.objects.filter(building_id=building.id, unit_number=unit_number_norm).first()
+        unit = (
+            Unit.objects.filter(building_id=building.id, unit_number__iexact=unit_number_norm)
+            .order_by('unit_id')
+            .first()
+        )
         if unit is None:
             unit = Unit.objects.create(building_id=building.id, unit_number=unit_number_norm)
             unit_created = True
 
-        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.id)
+        result_service_object, _ = _get_or_create_service_object(building.id, unit_id=unit.unit_id)
         _, unit_binding_created = _ensure_company_binding(
             company,
             result_service_object,
-            '????????? ?? ???????? ???????????? (????????/?????????)',
+            'Загружено из кабинета руководителя (квартира/помещение)',
             import_date,
         )
 
@@ -3859,13 +3927,13 @@ def _import_service_object_for_company(address, company, user, unit_number=None,
         'status': 'created' if created_anything else 'skipped',
         'service_object': result_service_object,
         'binding': house_binding,
-        'building_fias_guid': str(building.fias_guid) if building.fias_guid else '-',
+        'building_fias_guid': str(building.fias_object_guid) if building.fias_object_guid else '-',
         'message': (
-            '??????? ?????? ???? ? ?????? ?????????, ???????? ?????????.'
+            'Созданы объект дома и объект помещения, привязки обновлены.'
             if unit_number_norm and created_anything
-            else '?????? ??? ??? ???????? ? ????? ????????.'
+            else 'Объект уже был привязан к вашей компании.'
             if not created_anything
-            else '?????? ???? ???????? ? ???????? ? ????????.'
+            else 'Объект дома загружен и привязан к компании.'
         ),
     }
 
@@ -3881,7 +3949,11 @@ def director_import_service_objects(request):
     batch = None
     batch_id = request.POST.get('batch_id') or request.GET.get('batch_id')
     if batch_id:
-        batch = ImportBatch.objects.filter(id=batch_id, company_id=workspace['company'].id).first()
+        batch_qs = ImportBatch.objects.filter(id=batch_id)
+        company_scope = workspace.get('company_scope')
+        if company_scope:
+            batch_qs = batch_qs.filter(company_id__in=company_scope)
+        batch = batch_qs.first()
 
     if request.method == 'POST':
         action = request.POST.get('action') or 'upload'
@@ -3890,17 +3962,17 @@ def director_import_service_objects(request):
         if action == 'upload':
             uploaded_file = request.FILES.get('import_file')
             if not uploaded_file:
-                messages.error(request, '???????? XLSX ??? XLS ???? ??? ????????.')
+                messages.error(request, 'Выберите XLSX или XLS файл для загрузки.')
             else:
                 try:
                     batch = _stage_import_batch(uploaded_file, workspace['company'], request.user, planned_date)
                 except ValueError as error:
                     messages.error(request, str(error))
                 else:
-                    messages.success(request, '???? ????????. ??????????? ?????? ??????? ?????.')
+                    messages.success(request, 'Файл проверен. Подтвердите импорт готовых строк.')
         elif action == 'confirm':
             if not batch:
-                messages.error(request, '????? ??????? ?? ??????.')
+                messages.error(request, 'Пакет импорта не найден.')
             else:
                 ready_rows = list(batch.rows.filter(final_status='ready').order_by('row_no', 'id'))
                 imported_count = 0
@@ -3922,15 +3994,15 @@ def director_import_service_objects(request):
                     else:
                         row.final_status = 'imported'
                         row.comment = result['message']
-                        row.source_kladr_check = result.get('building_fias_guid') or row.source_kladr_check
-                        row.save(update_fields=['final_status', 'comment', 'source_kladr_check'])
+                        row.building_fias_guid = result.get('building_fias_guid') or row.building_fias_guid
+                        row.save(update_fields=['final_status', 'comment', 'building_fias_guid'])
                         imported_count += 1
 
                 batch.status = 'failed' if error_count else 'imported'
                 batch.save(update_fields=['status'])
-                messages.success(request, f'????????????? ?????: {imported_count}.')
+                messages.success(request, f'Импортировано строк: {imported_count}.')
                 if error_count:
-                    messages.warning(request, f'????? ? ????????: {error_count}.')
+                    messages.warning(request, f'Строк с ошибками: {error_count}.')
 
     batch_rows = []
     summary = None

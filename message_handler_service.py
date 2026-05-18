@@ -66,12 +66,14 @@ class MessageHandlerService:
             logger.warning("AddressExtractor unavailable in MessageHandlerService")
 
         try:
-            from work_orders.intake_service import ChatIntakeService
+            from work_orders.chat_order_service import ChatOrderService
 
-            self.chat_intake_service = ChatIntakeService()
+            self.chat_order_service = ChatOrderService()
+            self.chat_intake_service = self.chat_order_service
         except ImportError:
+            self.chat_order_service = None
             self.chat_intake_service = None
-            logger.warning("ChatIntakeService unavailable in MessageHandlerService")
+            logger.warning("ChatOrderService unavailable in MessageHandlerService")
 
         logger.info("MessageHandlerService РёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°РЅ")
 
@@ -107,6 +109,16 @@ class MessageHandlerService:
                     'service_detected': Optional[dict]  # Р•СЃР»Рё СѓСЃР»СѓРіР° РѕРїСЂРµРґРµР»РµРЅР°
                 }
         """
+        return await self._handle_incoming_message_bot_order(
+            text=text,
+            user_id=user_id,
+            channel=channel,
+            message_id=message_id,
+            session_id=session_id,
+            metadata=metadata,
+            django_user_id=django_user_id,
+        )
+
         try:
             # РРЎРџР РђР’Р›Р•РќРћ (2026-03-04): РРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј PerformanceTracer РґР»СЏ С‚СЂРµРєРёРЅРіР° РІСЂРµРјРµРЅРё
             from performance_tracer import PerformanceTracer
@@ -462,6 +474,342 @@ class MessageHandlerService:
                 'session_id': session_id if session_id else f"{channel}_{user_id}"
             }
 
+    async def _handle_incoming_message_bot_order(
+        self,
+        text: str,
+        user_id: str,
+        channel: str = 'telegram',
+        message_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        metadata: Optional[Dict] = None,
+        django_user_id: Optional[int] = None
+    ) -> Dict:
+        """New bot order pipeline entrypoint."""
+        from performance_tracer import PerformanceTracer
+        from bot_order.orchestrator import BotOrderOrchestrator
+        from bot_order.utils import is_greeting_only
+
+        original_text = text or ""
+        command_token = original_text.strip().split(maxsplit=1)[0].lower() if original_text.strip() else ""
+        is_start_command = command_token.split("@", 1)[0] == "/start"
+        pipeline_text = "hello" if is_start_command else original_text
+        inbound_metadata = dict(metadata or {})
+        if is_start_command:
+            inbound_metadata.update({
+                "command": "start",
+                "force_new_dialog": True,
+                "pipeline_text": pipeline_text,
+            })
+
+        tracer = PerformanceTracer(session_id=session_id)
+        performance_data = {}
+        inbound_message_id = None
+        result: Dict[str, Any] = {}
+        try:
+            tracer.start("total_request", {"channel": channel, "text_len": len(original_text), "has_session_id": bool(session_id)})
+            if not message_id:
+                message_id = f"{channel}_{uuid.uuid4().hex[:16]}"
+            if is_start_command:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                session_id = f"{channel}_{user_id}_{timestamp}"
+                tracer.session_id = session_id
+            elif not session_id:
+                if is_greeting_only(pipeline_text):
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    session_id = f"{channel}_{user_id}_{timestamp}"
+                else:
+                    session_id = await self._timed_await(
+                        tracer,
+                        "message_handler.session_resolve",
+                        self._find_or_create_active_session(user_id, channel),
+                        {"channel": channel},
+                    )
+                tracer.session_id = session_id
+
+            message_log = await self._timed_await(
+                tracer,
+                "message_handler.log_inbound",
+                self._log_message(
+                    text=original_text,
+                    user_id=user_id,
+                    channel=channel,
+                    message_id=message_id,
+                    session_id=session_id,
+                    direction='inbound',
+                    metadata=inbound_metadata,
+                    django_user_id=django_user_id,
+                    processing_stage='bot_order_inbound',
+                ),
+                {"channel": channel},
+            )
+            inbound_message_id = message_log.get('id') if isinstance(message_log, dict) else None
+
+            if await self._voice_revision_is_superseded(metadata):
+                logger.info(
+                    "Voice revision superseded before bot_order processing | session=%s message_id=%s",
+                    session_id,
+                    inbound_message_id,
+                )
+                tracer.end("total_request", result={"status": "SUPERSEDED_REVISION"})
+                performance_data = tracer.save_to_metadata()
+                return {
+                    'status': 'success',
+                    'response': '',
+                    'raw_result': {'status': 'SUPERSEDED_REVISION', 'response': ''},
+                    'message_log_id': inbound_message_id,
+                    'session_id': session_id,
+                    'service_detected': None,
+                    '_metadata': {},
+                    'performance': performance_data.get('performance', {}),
+                    'dialog_finished': False,
+                    'finish_reason': None,
+                    'close_session': False,
+                    'superseded_revision': True,
+                }
+
+            orchestrator = BotOrderOrchestrator(tracer=tracer)
+            result = await self._timed_await(
+                tracer,
+                "message_handler.bot_order.handle_message",
+                orchestrator.handle_message(
+                    text=pipeline_text,
+                    user_id=user_id,
+                    channel=channel,
+                    session_id=session_id,
+                    message_id=message_id,
+                    message_log_id=inbound_message_id,
+                    django_user_id=django_user_id,
+                    source_metadata=inbound_metadata,
+                ),
+                {"channel": channel},
+            )
+
+            if await self._voice_revision_is_superseded(metadata):
+                logger.info(
+                    "Voice revision superseded after bot_order processing; skipping result save/outbound | "
+                    "session=%s message_id=%s",
+                    session_id,
+                    inbound_message_id,
+                )
+                tracer.end("total_request", result={"status": "SUPERSEDED_REVISION"})
+                performance_data = tracer.save_to_metadata()
+                return {
+                    'status': 'success',
+                    'response': '',
+                    'raw_result': {'status': 'SUPERSEDED_REVISION', 'response': ''},
+                    'message_log_id': inbound_message_id,
+                    'session_id': session_id,
+                    'service_detected': None,
+                    '_metadata': {},
+                    'performance': performance_data.get('performance', {}),
+                    'dialog_finished': False,
+                    'finish_reason': None,
+                    'close_session': False,
+                    'superseded_revision': True,
+                }
+
+            result_metadata = result.get('_metadata', {}) or {}
+            fias_log_ids = result_metadata.get('fias_log_ids', []) or []
+            fias_calls = await self._timed_await(
+                tracer,
+                "message_handler.load_fias_calls",
+                self._load_fias_calls_for_trace(fias_log_ids),
+                {"fias_log_count": len(fias_log_ids)},
+            )
+            if fias_calls:
+                result_metadata = {
+                    **result_metadata,
+                    'fias_calls': fias_calls,
+                }
+                result['_metadata'] = result_metadata
+
+            if inbound_message_id:
+                await self._timed_await(
+                    tracer,
+                    "message_handler.update_inbound_metadata",
+                    self._update_message_metadata(
+                        inbound_message_id,
+                        result_metadata,
+                    ),
+                    {"metadata_keys": sorted(result_metadata.keys())},
+                )
+
+            bot_response = result.get('response') or result.get('message') or self._extract_bot_response(result)
+            tracer.end("total_request", result=result)
+            performance_data = tracer.save_to_metadata()
+
+            outbound_metadata = {
+                'service_result': result,
+                'txtPrb': result_metadata.get('txtPrb'),
+                'established_filters': result_metadata.get('established_filters', {}),
+                'state_snapshot': result_metadata.get('state_snapshot'),
+                'fias_log_ids': fias_log_ids,
+                'fias_calls': fias_calls,
+                'dialog_finished': result_metadata.get('dialog_finished') or result.get('dialog_finished', False),
+                'finish_reason': result_metadata.get('finish_reason') or result.get('finish_reason'),
+                'close_session': result_metadata.get('close_session') or result.get('close_session', False),
+            }
+            if metadata and isinstance(metadata, dict):
+                if 'api_info' in metadata:
+                    outbound_metadata['api_info'] = metadata['api_info']
+                if 'client_system' in metadata:
+                    outbound_metadata['client_system'] = metadata['client_system']
+                for field in ('schema_version', 'source', 'external_channel', 'call', 'turn', 'voice_revision'):
+                    if field in metadata:
+                        outbound_metadata[field] = metadata[field]
+            if performance_data and 'performance' in performance_data:
+                outbound_metadata['performance'] = performance_data['performance']
+
+            if bot_response:
+                await self._log_message(
+                    text=bot_response,
+                    user_id=user_id,
+                    channel=channel,
+                    message_id=f"bot_{uuid.uuid4().hex[:16]}",
+                    session_id=session_id,
+                    direction='outbound',
+                    metadata=outbound_metadata,
+                    service_detected_id=result.get('service_id'),
+                    processing_stage='bot_order_outbound',
+                )
+
+            return {
+                'status': 'success',
+                'response': bot_response,
+                'raw_result': result,
+                'message_log_id': inbound_message_id,
+                'session_id': session_id,
+                'service_detected': result.get('service_id'),
+                '_metadata': result_metadata,
+                'performance': performance_data.get('performance', {}),
+                'is_greeting': result.get('is_greeting', False),
+                'dialog_finished': result_metadata.get('dialog_finished') or result.get('dialog_finished', False),
+                'finish_reason': result_metadata.get('finish_reason') or result.get('finish_reason'),
+                'close_session': result_metadata.get('close_session') or result.get('close_session', False),
+            }
+        except Exception as e:
+            logger.error(f"BotOrder pipeline error: {e}", exc_info=True)
+            try:
+                tracer.end("total_request", error=e)
+                performance_data = tracer.save_to_metadata()
+            except Exception:
+                performance_data = {}
+            return {
+                'status': 'error',
+                'error': str(e),
+                'response': 'Произошла ошибка при обработке заявки. Попробуйте еще раз.',
+                'raw_result': result,
+                'message_log_id': inbound_message_id,
+                'session_id': session_id if session_id else f"{channel}_{user_id}",
+                'performance': performance_data.get('performance', {}),
+            }
+
+    async def _voice_revision_is_superseded(self, metadata: Optional[Dict]) -> bool:
+        if not isinstance(metadata, dict):
+            return False
+        revision_info = metadata.get('voice_revision')
+        if not isinstance(revision_info, dict):
+            return False
+        session_id = str(revision_info.get('session_id') or '').strip()
+        turn_id = str(revision_info.get('turn_id') or '').strip()
+        revision = revision_info.get('revision')
+        if not session_id or not turn_id or revision is None:
+            return False
+        try:
+            revision = int(revision)
+        except (TypeError, ValueError):
+            return False
+
+        from message_handler.voice_revision_guard import is_current_voice_turn
+
+        is_current = await sync_to_async(is_current_voice_turn)(
+            session_id=session_id,
+            turn_id=turn_id,
+            revision=revision,
+        )
+        return not is_current
+
+    async def _timed_await(self, tracer, name: str, awaitable, metadata: Optional[Dict[str, Any]] = None):
+        """Measure one awaited diagnostic step without changing business logic."""
+        if not tracer:
+            return await awaitable
+        tracer.start(name, metadata or {})
+        try:
+            result = await awaitable
+        except Exception as exc:
+            tracer.end(name, error=exc)
+            raise
+        tracer.end(name, result=result)
+        return result
+
+    async def _load_fias_calls_for_trace(self, fias_log_ids: list) -> list:
+        """Load raw FIAS call log rows for dialog trace metadata."""
+        if not fias_log_ids:
+            return []
+
+        def load_sync():
+            from django.db import connection
+            from decimal import Decimal
+
+            def json_safe(value):
+                if isinstance(value, Decimal):
+                    return float(value)
+                if isinstance(value, dict):
+                    return {key: json_safe(item) for key, item in value.items()}
+                if isinstance(value, (list, tuple)):
+                    return [json_safe(item) for item in value]
+                if hasattr(value, 'isoformat'):
+                    return value.isoformat()
+                return value
+
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id,
+                        endpoint,
+                        method,
+                        http_status,
+                        duration_ms,
+                        error_message,
+                        fias_house_guid::text,
+                        fias_street_guid::text,
+                        request_payload,
+                        response_payload,
+                        created_at
+                    FROM fias_request_log
+                    WHERE id = ANY(%s)
+                    ORDER BY id
+                    """,
+                    [list(fias_log_ids)],
+                )
+                rows = cursor.fetchall()
+
+            calls = []
+            for row in rows:
+                calls.append(
+                    {
+                        'id': row[0],
+                        'endpoint': row[1],
+                        'method': row[2],
+                        'http_status': row[3],
+                        'duration_ms': json_safe(row[4]),
+                        'error_message': row[5],
+                        'fias_house_guid': row[6],
+                        'fias_street_guid': row[7],
+                        'request_payload': json_safe(row[8]),
+                        'response_payload': json_safe(row[9]),
+                        'created_at': row[10].isoformat() if row[10] else None,
+                    }
+                )
+            return calls
+
+        try:
+            return await sync_to_async(load_sync)()
+        except Exception as e:
+            logger.warning("Failed to load FIAS calls for trace metadata: %s", e)
+            return []
+
     async def _find_or_create_active_session(self, user_id: str, channel: str) -> str:
         """
         РС‰РµС‚ Р°РєС‚РёРІРЅСѓСЋ СЃРµСЃСЃРёСЋ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ (РЅРµ СЃС‚Р°СЂС€Рµ 1 С‡Р°СЃР°) РёР»Рё СЃРѕР·РґР°РµС‚ РЅРѕРІСѓСЋ
@@ -484,6 +832,47 @@ class MessageHandlerService:
             from datetime import timedelta
 
             def find_session_sync():
+                import json
+
+                def metadata_dialog_finished(metadata):
+                    if isinstance(metadata, str):
+                        try:
+                            metadata = json.loads(metadata)
+                        except Exception:
+                            metadata = {}
+                    if not isinstance(metadata, dict):
+                        return False
+                    if metadata.get('dialog_finished') or metadata.get('close_session'):
+                        return True
+
+                    service_result = metadata.get('service_result')
+                    if isinstance(service_result, str):
+                        try:
+                            service_result = json.loads(service_result)
+                        except Exception:
+                            service_result = {}
+                    if isinstance(service_result, dict):
+                        if service_result.get('dialog_finished') or service_result.get('close_session'):
+                            return True
+                        result_metadata = service_result.get('_metadata') or {}
+                        if isinstance(result_metadata, dict) and (
+                            result_metadata.get('dialog_finished') or result_metadata.get('close_session')
+                        ):
+                            return True
+
+                    state_snapshot = metadata.get('state_snapshot')
+                    if state_snapshot is None and isinstance(service_result, dict):
+                        state_snapshot = (service_result.get('_metadata') or {}).get('state_snapshot')
+                    if isinstance(state_snapshot, str):
+                        try:
+                            state_snapshot = json.loads(state_snapshot)
+                        except Exception:
+                            state_snapshot = {}
+                    if isinstance(state_snapshot, dict):
+                        control = state_snapshot.get('control') or {}
+                        return bool(control.get('is_finished'))
+                    return False
+
                 # РС‰РµРј РїРѕСЃР»РµРґРЅСЋСЋ СЃРµСЃСЃРёСЋ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
                 last_msg = MessageLog.objects.filter(
                     user_id=user_id,
@@ -500,6 +889,9 @@ class MessageHandlerService:
 
                 # Р•СЃР»Рё РїСЂРѕС€Р»Рѕ РјРµРЅСЊС€Рµ 1 С‡Р°СЃР° - РїСЂРѕРґРѕР»Р¶Р°РµРј СЌС‚Сѓ СЃРµСЃСЃРёСЋ
                 if session_age < timedelta(hours=1):
+                    if metadata_dialog_finished(last_msg.metadata):
+                        logger.info(f"РџРѕСЃР»РµРґРЅСЏСЏ СЃРµСЃСЃРёСЏ Р·Р°РІРµСЂС€РµРЅР°: {last_msg.session_id}, СЃРѕР·РґР°РµРј РЅРѕРІСѓСЋ")
+                        return None
                     logger.info(f"РђРєС‚РёРІРЅР°СЏ СЃРµСЃСЃРёСЏ РЅР°Р№РґРµРЅР°: {last_msg.session_id} (РІРѕР·СЂР°СЃС‚: {session_age.seconds // 60} РјРёРЅ)")
                     return last_msg.session_id
 

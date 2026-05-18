@@ -1,0 +1,524 @@
+{
+  "created_at": "2026-05-14T12:55:02.177142",
+  "reason": "Delete A?PECT work orders linked to departments 80/81/84 that belong to ??? ?? ???????-??????",
+  "filter": {
+    "company_id": 1,
+    "department_id__in": [
+      80,
+      81,
+      84
+    ]
+  },
+  "order_ids": [
+    86,
+    87,
+    88,
+    89,
+    90,
+    102,
+    107,
+    110,
+    113,
+    116
+  ],
+  "counts": {
+    "work_orders": 10,
+    "status_history": 17,
+    "sla_instances": 1,
+    "attachments": 0,
+    "children_parent_to_null": 1
+  },
+  "work_orders": [
+    {
+      "model": "work_orders.workorder",
+      "pk": 86,
+      "fields": {
+        "work_order_no": "1-10",
+        "company_sequence_no": 10,
+        "company": 1,
+        "object": 1,
+        "service": 1,
+        "department": 80,
+        "responsible_user": null,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Протекает кран на кухне",
+        "additional_info_text": "Кран постоянно капает, мешает спать",
+        "resolution_text": null,
+        "is_emergency": false,
+        "priority_code": "normal",
+        "current_internal_status": 31,
+        "parent_work_order": null,
+        "created_at": "2026-03-30T11:02:00.965Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 87,
+      "fields": {
+        "work_order_no": "1-6",
+        "company_sequence_no": 6,
+        "company": 1,
+        "object": 2,
+        "service": 3,
+        "department": 81,
+        "responsible_user": 86,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Заменить лампочку в подъезде",
+        "additional_info_text": "На 2 этаже не горит лампочка",
+        "resolution_text": null,
+        "is_emergency": false,
+        "priority_code": "low",
+        "current_internal_status": 33,
+        "parent_work_order": null,
+        "created_at": "2026-03-28T11:02:00.965Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 88,
+      "fields": {
+        "work_order_no": "1-3",
+        "company_sequence_no": 3,
+        "company": 1,
+        "object": 1,
+        "service": 1,
+        "department": 80,
+        "responsible_user": 86,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Уборка снега у подъезда",
+        "additional_info_text": "Сугроб высотой 1 метр",
+        "resolution_text": "Уборка выполнена, снег вывезен. Площадка чистая.",
+        "is_emergency": false,
+        "priority_code": "normal",
+        "current_internal_status": 35,
+        "parent_work_order": null,
+        "created_at": "2026-03-25T11:02:00.965Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 89,
+      "fields": {
+        "work_order_no": "1-5",
+        "company_sequence_no": 5,
+        "company": 1,
+        "object": 1,
+        "service": 1,
+        "department": 80,
+        "responsible_user": 86,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Ремонт двери в подвале",
+        "additional_info_text": "Дверь не закрывается, сквозит",
+        "resolution_text": "Ожидание поставки новой двери",
+        "is_emergency": false,
+        "priority_code": "normal",
+        "current_internal_status": 34,
+        "parent_work_order": null,
+        "created_at": "2026-03-27T11:02:00.965Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 90,
+      "fields": {
+        "work_order_no": "1-2",
+        "company_sequence_no": 2,
+        "company": 1,
+        "object": 2,
+        "service": 3,
+        "department": 81,
+        "responsible_user": 86,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Починить розетку в квартире",
+        "additional_info_text": "Не работает розетка в спальне",
+        "resolution_text": "Заменил розетку, все работает",
+        "is_emergency": false,
+        "priority_code": "normal",
+        "current_internal_status": 36,
+        "parent_work_order": null,
+        "created_at": "2026-03-23T11:02:00.965Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 102,
+      "fields": {
+        "work_order_no": "1-9",
+        "company_sequence_no": 9,
+        "company": 1,
+        "object": 1,
+        "service": 2,
+        "department": 80,
+        "responsible_user": null,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Прорыв трубы в подвале",
+        "additional_info_text": "Потек воды из стояка, заливает подвал",
+        "resolution_text": null,
+        "is_emergency": true,
+        "priority_code": "critical",
+        "current_internal_status": 31,
+        "parent_work_order": null,
+        "created_at": "2026-03-30T10:16:48.716Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 107,
+      "fields": {
+        "work_order_no": "1-7",
+        "company_sequence_no": 7,
+        "company": 1,
+        "object": 7,
+        "service": 5,
+        "department": 80,
+        "responsible_user": 91,
+        "message_log_ref": null,
+        "creation_source": "manual_employee",
+        "resident_user": null,
+        "original_request_text": "Плохая вентиляция в ванной",
+        "additional_info_text": "В ванной постоянно сыро и плесень",
+        "resolution_text": null,
+        "is_emergency": false,
+        "priority_code": "normal",
+        "current_internal_status": 32,
+        "parent_work_order": null,
+        "created_at": "2026-03-30T01:16:48.716Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 110,
+      "fields": {
+        "work_order_no": "1-1",
+        "company_sequence_no": 1,
+        "company": 1,
+        "object": 10,
+        "service": 7,
+        "department": 80,
+        "responsible_user": 93,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Треснула стена в подъезде",
+        "additional_info_text": "На лестничной клетке трещина в стене",
+        "resolution_text": "Работа выполнена некачественно, трещина появилась снова",
+        "is_emergency": false,
+        "priority_code": "normal",
+        "current_internal_status": 38,
+        "parent_work_order": 88,
+        "created_at": "2026-03-20T13:16:48.716Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 113,
+      "fields": {
+        "work_order_no": "1-4",
+        "company_sequence_no": 4,
+        "company": 1,
+        "object": 3,
+        "service": 15,
+        "department": 84,
+        "responsible_user": 95,
+        "message_log_ref": null,
+        "creation_source": "manual_employee",
+        "resident_user": null,
+        "original_request_text": "Проверка газового оборудования",
+        "additional_info_text": "Плановая проверка газа",
+        "resolution_text": "Проверено, утечек нет, оборудование в норме",
+        "is_emergency": true,
+        "priority_code": "critical",
+        "current_internal_status": 35,
+        "parent_work_order": null,
+        "created_at": "2026-03-26T13:16:48.716Z",
+        "is_test": true
+      }
+    },
+    {
+      "model": "work_orders.workorder",
+      "pk": 116,
+      "fields": {
+        "work_order_no": "1-8",
+        "company_sequence_no": 8,
+        "company": 1,
+        "object": 6,
+        "service": 14,
+        "department": 81,
+        "responsible_user": 32,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Мерцает свет в квартире",
+        "additional_info_text": "Свет постоянно моргает",
+        "resolution_text": null,
+        "is_emergency": false,
+        "priority_code": "normal",
+        "current_internal_status": 33,
+        "parent_work_order": null,
+        "created_at": "2026-03-30T09:16:48.716Z",
+        "is_test": true
+      }
+    }
+  ],
+  "status_history": [
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 1,
+      "fields": {
+        "work_order": 90,
+        "status": 35,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T12:23:08.015Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 2,
+      "fields": {
+        "work_order": 90,
+        "status": 33,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T13:23:08.026Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 3,
+      "fields": {
+        "work_order": 90,
+        "status": 35,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T13:53:08.027Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 4,
+      "fields": {
+        "work_order": 88,
+        "status": 35,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T11:23:08.027Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 5,
+      "fields": {
+        "work_order": 88,
+        "status": 33,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T12:23:08.028Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 6,
+      "fields": {
+        "work_order": 88,
+        "status": 35,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T13:23:08.029Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 7,
+      "fields": {
+        "work_order": 89,
+        "status": 31,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T10:23:08.029Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 8,
+      "fields": {
+        "work_order": 89,
+        "status": 34,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T11:23:08.030Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 16,
+      "fields": {
+        "work_order": 107,
+        "status": 31,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T06:23:08.033Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 17,
+      "fields": {
+        "work_order": 107,
+        "status": 33,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T07:23:08.034Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 22,
+      "fields": {
+        "work_order": 110,
+        "status": 31,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T03:23:08.036Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 23,
+      "fields": {
+        "work_order": 110,
+        "status": 38,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T04:23:08.037Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 28,
+      "fields": {
+        "work_order": 113,
+        "status": 35,
+        "changed_by": 1,
+        "changed_at": "2026-03-29T23:23:08.040Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 29,
+      "fields": {
+        "work_order": 113,
+        "status": 33,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T00:23:08.040Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 30,
+      "fields": {
+        "work_order": 113,
+        "status": 35,
+        "changed_by": 1,
+        "changed_at": "2026-03-30T01:23:08.040Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 35,
+      "fields": {
+        "work_order": 116,
+        "status": 31,
+        "changed_by": 1,
+        "changed_at": "2026-03-29T21:23:08.042Z",
+        "is_test": false
+      }
+    },
+    {
+      "model": "work_orders.workorderstatushistory",
+      "pk": 36,
+      "fields": {
+        "work_order": 116,
+        "status": 33,
+        "changed_by": 1,
+        "changed_at": "2026-03-29T22:23:08.044Z",
+        "is_test": false
+      }
+    }
+  ],
+  "sla_instances": [
+    {
+      "model": "work_orders.slainstance",
+      "pk": 51,
+      "fields": {
+        "work_order": 116,
+        "company": 1,
+        "sla_policy": 259,
+        "calendar_type": "24x7",
+        "reaction_due_at": "2026-03-30T09:21:48.716Z",
+        "reaction_stopped_at": "2026-03-29T22:23:08.044Z",
+        "reaction_state": "met",
+        "localization_due_at": "2026-03-30T11:16:48.716Z",
+        "localization_stopped_at": null,
+        "localization_state": "overdue",
+        "completion_due_at": "2026-03-30T14:16:48.716Z",
+        "completion_stopped_at": null,
+        "completion_state": "overdue",
+        "created_at": "2026-04-10T14:37:33.900Z",
+        "updated_at": "2026-04-10T14:37:34.183Z",
+        "is_test": true
+      }
+    }
+  ],
+  "attachments": [],
+  "children_parent_to_null": [
+    {
+      "model": "work_orders.workorder",
+      "pk": 110,
+      "fields": {
+        "work_order_no": "1-1",
+        "company_sequence_no": 1,
+        "company": 1,
+        "object": 10,
+        "service": 7,
+        "department": 80,
+        "responsible_user": 93,
+        "message_log_ref": null,
+        "creation_source": "manual_django_admin",
+        "resident_user": null,
+        "original_request_text": "Треснула стена в подъезде",
+        "additional_info_text": "На лестничной клетке трещина в стене",
+        "resolution_text": "Работа выполнена некачественно, трещина появилась снова",
+        "is_emergency": false,
+        "priority_code": "normal",
+        "current_internal_status": 38,
+        "parent_work_order": 88,
+        "created_at": "2026-03-20T13:16:48.716Z",
+        "is_test": true
+      }
+    }
+  ]
+}

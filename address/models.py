@@ -94,7 +94,7 @@ class ImportRow(models.Model):
     street = models.CharField(max_length=255, blank=True, default="")
     house = models.CharField(max_length=64, blank=True, default="")
     unit_number = models.CharField(max_length=30, blank=True, default="")
-    source_kladr_check = models.CharField(max_length=20, blank=True, default="")
+    building_fias_guid = models.CharField(max_length=20, blank=True, default="")
     house_parse_status = models.CharField(max_length=30, blank=True, default="")
     house_fias_status = models.CharField(max_length=30, blank=True, default="")
     binding_status = models.CharField(max_length=30, blank=True, default="")

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Views для подсистемы управления заявками ЖКХ
 """
 from django.views.generic import TemplateView, DetailView, CreateView, ListView
@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 
 from .models import (
     WorkOrder, WorkOrderStatusRef, UserCompanyMembership,
-    CompanyDepartment, WorkOrderEventLog,
+    CompanyDepartment, CompanyObjectServicePeriod, WorkOrderEventLog,
     WorkOrderStatusHistory, CompanyServiceRoute
 )
 from portal.models import ServicesCatalog, ServiceObject, search_service_objects
@@ -44,6 +44,34 @@ def _active_work_orders(queryset):
 
 def _completed_work_orders(queryset):
     return queryset.filter(current_internal_status__short_code_en__in=COMPLETED_STATUS_CODES)
+
+
+def _get_user_service_object_queryset(user):
+    if user.is_superuser:
+        return ServiceObject.objects.filter(is_active=True).order_by('service_object_id')
+    if not user.is_authenticated:
+        return ServiceObject.objects.none()
+
+    scope = get_user_scope(user)
+    primary_membership = scope.get('primary_membership')
+    company_ids = []
+    if primary_membership:
+        company_ids = [primary_membership.company_id]
+    else:
+        company_ids = list(scope.get('company_ids') or [])
+
+    if not company_ids:
+        return ServiceObject.objects.none()
+
+    object_ids = CompanyObjectServicePeriod.objects.filter(
+        company_id__in=company_ids,
+        is_active=True,
+    ).values_list('object_id', flat=True).distinct()
+
+    return ServiceObject.objects.filter(
+        service_object_id__in=object_ids,
+        is_active=True,
+    ).order_by('service_object_id')
 
 
 def _apply_status_filter(queryset, status_filter):
@@ -289,6 +317,24 @@ class WorkOrderDetailView(LoginRequiredMixin, DetailView):
         context['result_photo_count'] = len(context['result_photos'])
         context['can_upload_result_photo'] = can_upload_result_photo(self.request.user, self.object)
         context['user_role_codes'] = sorted(get_user_role_codes(self.request.user, self.object.company_id))
+        can_self_assign_as_candidate = any(
+            candidate['id'] == self.request.user.id
+            for candidate in context['assignment_candidates']
+        )
+        context['can_take_self'] = (
+            context['active_action_code'] == 'assign'
+            and self.object.responsible_user_id is None
+            and (
+                'direktor_uk' in context['user_role_codes']
+                or can_self_assign_as_candidate
+            )
+        )
+        if context['can_take_self']:
+            context['assignment_candidates'] = [
+                candidate
+                for candidate in context['assignment_candidates']
+                if candidate['id'] != self.request.user.id
+            ]
 
         # Breadcrumbs для возврата на правильный дашборд
         dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
@@ -429,7 +475,9 @@ class ManagementListView(LoginRequiredMixin, TemplateView):
                 work_orders = work_orders.filter(department_id=department_filter)
             if service_filter:
                 work_orders = work_orders.filter(service_id=service_filter)
-            if executor_filter == 'unassigned':
+            if executor_filter == 'mine':
+                work_orders = work_orders.filter(responsible_user=self.request.user)
+            elif executor_filter == 'unassigned':
                 work_orders = work_orders.filter(responsible_user__isnull=True)
             elif executor_filter:
                 work_orders = work_orders.filter(responsible_user_id=executor_filter)
@@ -478,6 +526,8 @@ class ManagementListView(LoginRequiredMixin, TemplateView):
             context['services'] = services
             context['responsible_users'] = responsible_users
             context['departments'] = CompanyDepartment.objects.filter(is_active=True)
+            context['self_assign_company_ids'] = []
+            context['current_user_id'] = self.request.user.id
             dashboard_url, dashboard_title = get_role_dashboard_url(self.request.user)
             context['dashboard_url'] = dashboard_url
             context['dashboard_title'] = dashboard_title
@@ -495,6 +545,13 @@ class ManagementListView(LoginRequiredMixin, TemplateView):
             return context
 
         company_ids = scope['company_ids']
+        self_assign_company_ids = sorted(
+            {
+                membership.company_id
+                for membership in memberships
+                if membership.role_code in {'direktor_uk', 'executor', 'contractor'}
+            }
+        )
         hide_description_priority_columns = bool(
             primary_membership and primary_membership.role_code == 'chief_engineer'
         )
@@ -526,7 +583,9 @@ class ManagementListView(LoginRequiredMixin, TemplateView):
             work_orders = work_orders.filter(department_id=department_filter)
         if service_filter:
             work_orders = work_orders.filter(service_id=service_filter)
-        if executor_filter == 'unassigned':
+        if executor_filter == 'mine':
+            work_orders = work_orders.filter(responsible_user=self.request.user)
+        elif executor_filter == 'unassigned':
             work_orders = work_orders.filter(responsible_user__isnull=True)
         elif executor_filter:
             work_orders = work_orders.filter(responsible_user_id=executor_filter)
@@ -574,6 +633,8 @@ class ManagementListView(LoginRequiredMixin, TemplateView):
         context['hide_description_priority_columns'] = hide_description_priority_columns
         context['services'] = services
         context['responsible_users'] = responsible_users
+        context['self_assign_company_ids'] = self_assign_company_ids
+        context['current_user_id'] = self.request.user.id
 
         # Список подразделений для фильтра
         context['departments'] = CompanyDepartment.objects.filter(
@@ -703,7 +764,11 @@ def api_service_object_search(request):
     if len(search_term) < 2 and not search_term.isdigit():
         return JsonResponse({'results': []})
 
-    objects = search_service_objects(search_term, limit=20)
+    objects = search_service_objects(
+        search_term,
+        queryset=_get_user_service_object_queryset(request.user),
+        limit=20,
+    )
     return JsonResponse(
         {
             'results': [
@@ -1029,3 +1094,4 @@ def api_close_work_order(request, work_order_id):
     )
 
     return JsonResponse({'success': True})
+

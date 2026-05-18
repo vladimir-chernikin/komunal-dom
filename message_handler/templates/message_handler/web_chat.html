@@ -309,6 +309,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let sessionId = `web_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    function resetSessionId() {
+        sessionId = `web_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
     // Функция добавления сообщения в чат
     function addMessage(text, isUser, serviceDetected = null, traceFile = null) {
         const messageDiv = document.createElement('div');
@@ -389,8 +393,8 @@ document.addEventListener('DOMContentLoaded', function() {
             setTyping(false);
 
             if (data.status === 'success') {
-                // Определяем название услуги
-                let serviceName = 'Не определена';
+                // Показываем блок услуги только когда услуга реально выбрана.
+                let serviceName = null;
                 if (data.service_detected) {
                     serviceName = `Услуга #${data.service_detected}`;
                 }
@@ -402,6 +406,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 addMessage(data.response, false, serviceName, traceFile);
+                if (data.close_session) {
+                    resetSessionId();
+                }
             } else {
                 addMessage(`Ошибка: ${data.error || 'Неизвестная ошибка'}`, false);
             }

@@ -1,4 +1,4 @@
-{% extends 'portal/base.html' %}
+﻿{% extends 'portal/base.html' %}
 
 {% block title %}Объекты обслуживания - {{ company.name }}{% endblock %}
 
@@ -94,7 +94,7 @@
                         <tr>
                             <td>{{ object.service_object_id }}</td>
                             <td>{{ object.get_address_display }}</td>
-                            <td>{{ object.get_building.fias_guid|default:"-" }}</td>
+                            <td>{{ object.get_building.fias_object_guid|default:"-" }}</td>
                             <td class="text-end">
                                 <a href="{% url 'admin:portal_serviceobject_change' object.service_object_id %}" class="btn btn-sm btn-outline-primary">Открыть</a>
                             </td>

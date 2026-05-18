@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 from django.db import models
 from django.db.models import Q
 from django.contrib.auth.models import User
@@ -31,6 +31,13 @@ class UserProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name="Пользователь")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='resident', verbose_name="Роль")
+    max_user_id = models.BigIntegerField(
+        blank=True,
+        null=True,
+        unique=True,
+        verbose_name="MAX user ID",
+        help_text="Числовой ID пользователя из initData.user.id мини-приложения MAX.",
+    )
     timezone = models.CharField(max_length=50, choices=TIMEZONE_CHOICES, default='Europe/Moscow', verbose_name="Часовой пояс")
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name="Телефон")
     address = models.TextField(blank=True, null=True, verbose_name="Адрес")
@@ -225,16 +232,15 @@ class ServicesCatalog(models.Model):
 
 
 class Unit(models.Model):
-    """Помещения из адресной схемы address.unit."""
+    """Помещения (unmanaged модель, таблица units)."""
 
-    unit_id = models.IntegerField(primary_key=True, db_column='id', verbose_name="ID помещения")
+    unit_id = models.AutoField(primary_key=True, db_column='unit_id', verbose_name='ID помещения')
     unit_number = models.CharField(max_length=30, blank=True, null=True, verbose_name="Номер помещения")
-    building_id = models.IntegerField(db_column='building_id', verbose_name="ID здания")
-    fias_guid = models.UUIDField(blank=True, null=True, verbose_name="FIAS GUID помещения")
+    building_id = models.IntegerField(verbose_name="ID здания")
 
     class Meta:
         managed = False
-        db_table = 'address"."unit'
+        db_table = 'units'
         verbose_name = "Помещение"
         verbose_name_plural = "Помещения"
         ordering = ['unit_id']
@@ -242,11 +248,10 @@ class Unit(models.Model):
     def __str__(self):
         return self.unit_number or f"Помещение #{self.unit_id}"
 
-
 class ServiceObject(models.Model):
     """Объекты обслуживания (unmanaged модель, таблица service_objects)"""
 
-    service_object_id = models.IntegerField(primary_key=True, verbose_name="ID объекта")
+    service_object_id = models.AutoField(primary_key=True, db_column='service_object_id', verbose_name='ID объекта')
     building_id = models.IntegerField(verbose_name="ID здания")
     unit_id = models.IntegerField(blank=True, null=True, verbose_name="ID помещения")
     is_active = models.BooleanField(default=True, verbose_name="Активен")
@@ -264,9 +269,17 @@ class ServiceObject(models.Model):
         ]
 
     def get_building(self):
-        from address.models import Building
+        from kladr.models import Building
 
-        return Building.objects.filter(pk=self.building_id).first()
+        return (
+            Building.objects.select_related(
+                'address_object__type',
+                'address_object__parent__type',
+                'address_object__parent__parent__type',
+            )
+            .filter(pk=self.building_id)
+            .first()
+        )
 
     def get_unit(self):
         if not self.unit_id:
@@ -298,7 +311,7 @@ class ServiceObject(models.Model):
 
 def search_service_objects(search_term, queryset=None, limit=20):
     """Поиск объектов обслуживания по ID, адресу дома и номеру помещения."""
-    from address.models import Building
+    from kladr.models import Building
 
     search_term = (search_term or '').strip()
     queryset = (queryset or ServiceObject.objects.all()).filter(is_active=True)
@@ -317,7 +330,9 @@ def search_service_objects(search_term, queryset=None, limit=20):
     building_ids = list(
         Building.objects.filter(
             Q(house_number__icontains=search_term)
-            | Q(full_address__icontains=search_term)
+            | Q(address_object__name__icontains=search_term)
+            | Q(address_object__parent__name__icontains=search_term)
+            | Q(address_object__parent__parent__name__icontains=search_term)
         )
         .values_list('id', flat=True)[: limit * 10]
     )

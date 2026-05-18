@@ -1,0 +1,18 @@
+server {
+    listen 80;
+    server_name max.komunal-dom.ru;
+
+    client_max_body_size 100M;
+
+    access_log /var/log/nginx/max.komunal-dom.ru.access.log;
+    error_log /var/log/nginx/max.komunal-dom.ru.error.log;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+
+    location / {
+        root /var/www/komunal-dom_ru/max_app/dist;
+        try_files $uri $uri/ /index.html;
+    }
+}

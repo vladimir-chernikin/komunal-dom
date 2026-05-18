@@ -15,6 +15,7 @@ import json
 import logging
 import uuid
 import os
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +80,10 @@ def send_message(request):
                 'error': 'Пустое сообщение'
             }, status=400)
 
-        # Импортируем MessageHandlerService и MainAgent
+        # Импортируем новый единый обработчик заявок
         from message_handler_service import MessageHandlerService
-        from main_agent import MainAgent
 
-        # Инициализируем сервисы (можно оптимизировать через singleton)
-        main_agent = MainAgent()
-        message_handler = MessageHandlerService(main_agent=main_agent)
+        message_handler = MessageHandlerService()
 
         # Обрабатываем сообщение через MessageHandlerService
         import asyncio
@@ -139,7 +137,9 @@ def send_message(request):
             'status': result.get('status', 'error'),
             'response': result.get('response', ''),
             'service_detected': result.get('service_detected'),
-            'trace_file': os.path.basename(trace_file) if trace_file else None  # ИСПРАВЛЕНО (2026-03-05)
+            'trace_file': os.path.basename(trace_file) if trace_file else None,  # ИСПРАВЛЕНО (2026-03-05)
+            'close_session': result.get('close_session', False),
+            'finish_reason': result.get('finish_reason'),
         }
 
         return JsonResponse(response_data)
@@ -383,7 +383,9 @@ def send_message_external(request):
     """
     # ИСПРАВЛЕНО (2026-03-05): Генерируем request_id для трассировки
     request_id = str(uuid.uuid4())[:8]
+    request_start_perf = time.perf_counter()
     client_ip = get_client_ip(request)
+    logger.warning(f"[PERF API] request_id={request_id} phase=request_start ip={client_ip}")
 
     # ИСПРАВЛЕНО (2026-03-05): Инициализируем переменные для логирования
     token = None
@@ -393,6 +395,110 @@ def send_message_external(request):
     user_id = None
     nomer = None
     message_text = None
+    VOICE_SCHEMA_V2 = 'asterisk_voice_v2'
+    VOICE_SCHEMA_V21 = 'asterisk_voice_v2.1'
+    VOICE_SUPPORTED_SCHEMAS = {VOICE_SCHEMA_V2, VOICE_SCHEMA_V21}
+    VOICE_V21_EVENTS = {'user_message', 'call_ended'}
+    VOICE_CALL_END_REASONS = {'caller_hangup', 'normal', 'timeout', 'unknown'}
+
+    def _voice_schema(payload):
+        return payload.get('schema_version') if isinstance(payload, dict) else None
+
+    def _is_voice_payload(payload):
+        return isinstance(payload, dict) and _voice_schema(payload) in VOICE_SUPPORTED_SCHEMAS
+
+    def _as_positive_int(value):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number > 0 else None
+
+    def _voice_v21_turn(payload):
+        turn = payload.get('turn') if isinstance(payload, dict) else {}
+        if not isinstance(turn, dict):
+            return None
+        revision = _as_positive_int(turn.get('revision'))
+        if not turn.get('turn_id') or revision is None:
+            return None
+        return {
+            'turn_id': str(turn.get('turn_id')).strip(),
+            'revision': revision,
+        }
+
+    def _voice_v2_error(message, status_code=400, payload=None):
+        payload = payload if isinstance(payload, dict) else data
+        if _voice_schema(payload) == VOICE_SCHEMA_V21:
+            return JsonResponse({
+                'status': 'error',
+                'schema_version': VOICE_SCHEMA_V21,
+                'turn': _voice_v21_turn(payload),
+                'response': message,
+                'close_session': True,
+            }, status=status_code)
+        return JsonResponse({
+            'status': 'error',
+            'response': message,
+            'session_id': (payload.get('session_id') if isinstance(payload, dict) else None) or '',
+            'service_detected': None,
+            'close_session': True,
+        }, status=status_code)
+
+    def _validate_voice_payload(payload):
+        schema_version = _voice_schema(payload)
+        if schema_version == VOICE_SCHEMA_V2:
+            required_top = ('schema_version', 'source', 'channel', 'token', 'session_id', 'user_id', 'message')
+        else:
+            required_top = ('schema_version', 'event', 'source', 'channel', 'token', 'session_id', 'user_id')
+        missing = [
+            field for field in required_top
+            if not str(payload.get(field) or '').strip()
+        ]
+        call = payload.get('call')
+        if not isinstance(call, dict):
+            missing.append('call')
+        else:
+            required_call = ('direction', 'client_phone', 'company_phone')
+            missing.extend(
+                f'call.{field}' for field in required_call
+                if not str(call.get(field) or '').strip()
+            )
+        if missing:
+            return 'Missing required field(s): ' + ', '.join(missing)
+        if payload.get('source') != 'asterisk':
+            return 'Invalid source: expected asterisk'
+        if payload.get('channel') != 'voice':
+            return 'Invalid channel: expected voice'
+        if call.get('direction') not in {'inbound', 'outbound'}:
+            return 'Invalid call.direction: expected inbound or outbound'
+        if schema_version == VOICE_SCHEMA_V21:
+            event = payload.get('event')
+            if event not in VOICE_V21_EVENTS:
+                return 'Invalid event: expected user_message or call_ended'
+            if event == 'user_message':
+                if not str(payload.get('message') or '').strip():
+                    return 'Missing required field(s): message'
+                turn = payload.get('turn')
+                if not isinstance(turn, dict):
+                    return 'Missing required field(s): turn'
+                turn_id = str(turn.get('turn_id') or '').strip()
+                revision = _as_positive_int(turn.get('revision'))
+                if not turn_id:
+                    return 'Missing required field(s): turn.turn_id'
+                if revision is None:
+                    return 'Invalid turn.revision: expected positive integer'
+                supersedes_revision = turn.get('supersedes_revision')
+                if supersedes_revision not in (None, ''):
+                    supersedes_revision = _as_positive_int(supersedes_revision)
+                    if supersedes_revision is None:
+                        return 'Invalid turn.supersedes_revision: expected positive integer or null'
+                    if supersedes_revision >= revision:
+                        return 'Invalid turn.supersedes_revision: must be lower than revision'
+            if event == 'call_ended':
+                reason = str(payload.get('reason') or 'unknown').strip() or 'unknown'
+                if reason not in VOICE_CALL_END_REASONS:
+                    return 'Invalid reason: expected caller_hangup, normal, timeout or unknown'
+        return None
 
     # Проверка IP whitelist (если настроен)
     if ALLOWED_IPS:
@@ -413,14 +519,24 @@ def send_message_external(request):
                 client_ip=client_ip,
                 request_data=request_data
             )
-            return JsonResponse({
-                'status': 'error',
-                'error': 'Forbidden - IP not allowed'
-            }, status=403)
+            return _voice_v2_error('Forbidden - IP not allowed', 403, request_data)
 
     try:
         # Парсим JSON из request body
         data = json.loads(request.body)
+        is_voice_payload = _is_voice_payload(data)
+        schema_version = _voice_schema(data)
+        if not is_voice_payload:
+            log_api_error(
+                error_type='validation',
+                status_code=400,
+                error_message='Unsupported external API schema_version',
+                error_details='Expected schema_version=asterisk_voice_v2 or asterisk_voice_v2.1',
+                request_id=request_id,
+                client_ip=client_ip,
+                request_data=data
+            )
+            return _voice_v2_error('Unsupported schema_version: expected asterisk_voice_v2 or asterisk_voice_v2.1', 400, data)
 
         # Проверка API токена в JSON body
         token = data.get('token')
@@ -435,10 +551,7 @@ def send_message_external(request):
                 client_ip=client_ip,
                 request_data=data
             )
-            return JsonResponse({
-                'status': 'error',
-                'error': 'Unauthorized - Missing token'
-            }, status=401)
+            return _voice_v2_error('Unauthorized - Missing token', 401, data)
 
         if token not in API_TOKENS:
             logger.warning(f"Попытка доступа с неверным токеном: {token[:10]}...")
@@ -453,19 +566,54 @@ def send_message_external(request):
                 token_preview=token[:20],
                 request_data=data
             )
-            return JsonResponse({
-                'status': 'error',
-                'error': 'Unauthorized - Invalid token'
-            }, status=401)
+            return _voice_v2_error('Unauthorized - Invalid token', 401, data)
 
         # Токен валиден
         client_system = API_TOKENS[token]
         logger.info(f"[EXTERNAL API] Запрос от {client_system} (token: {token[:10]}...)")
 
-        message_text = data.get('message', '').strip()
-        session_id = data.get('session_id')
-        user_id = data.get('user_id', f'external_{client_system}_user')
-        nomer = data.get('nomer')  # ИСПРАВЛЕНО (2026-03-05): Параметр NOMER для идентификации абонента
+        validation_error = _validate_voice_payload(data)
+        if validation_error:
+            log_api_error(
+                error_type='validation',
+                status_code=400,
+                error_message='Invalid asterisk voice payload',
+                error_details=validation_error,
+                request_id=request_id,
+                client_ip=client_ip,
+                client_system=client_system,
+                token_preview=token[:20],
+                request_data=data
+            )
+            return _voice_v2_error(validation_error, 400, data)
+        call_data = data.get('call') or {}
+        event = data.get('event') if schema_version == VOICE_SCHEMA_V21 else 'user_message'
+        message_text = str(data.get('message') or '').strip()
+        session_id = str(data.get('session_id') or '').strip()
+        user_id = str(data.get('user_id') or '').strip()
+        nomer = str(call_data.get('client_phone') or '').strip()
+
+        if schema_version == VOICE_SCHEMA_V21 and event == 'call_ended':
+            from message_handler.voice_revision_guard import mark_voice_call_ended
+
+            end_result = mark_voice_call_ended(
+                session_id=session_id,
+                user_id=user_id,
+                reason=str(data.get('reason') or 'unknown').strip() or 'unknown',
+                call=call_data,
+                schema_version=VOICE_SCHEMA_V21,
+            )
+            logger.info(
+                f"[EXTERNAL API] asterisk_voice_v2.1 call_ended "
+                f"session={session_id} reason={end_result.get('end_reason')}"
+            )
+            return JsonResponse({
+                'status': 'success',
+                'schema_version': VOICE_SCHEMA_V21,
+                'turn': None,
+                'response': '',
+                'close_session': True,
+            })
 
         if not message_text:
             # Логируем ошибку пустого сообщения
@@ -482,10 +630,7 @@ def send_message_external(request):
                 user_id=user_id,
                 nomer=nomer
             )
-            return JsonResponse({
-                'status': 'error',
-                'error': 'Empty message'
-            }, status=400)
+            return _voice_v2_error('Empty message', 400, data)
 
         if not session_id:
             # Логируем ошибку отсутствующего session_id
@@ -503,18 +648,58 @@ def send_message_external(request):
                 nomer=nomer,
                 message_preview=message_text[:200]
             )
-            return JsonResponse({
-                'status': 'error',
-                'error': 'Missing session_id'
-            }, status=400)
+            return _voice_v2_error('Missing session_id', 400, data)
+
+        turn_data = {}
+        revision_guard_result = None
+        if schema_version == VOICE_SCHEMA_V21:
+            from message_handler.voice_revision_guard import register_voice_turn_revision
+
+            raw_turn = data.get('turn') or {}
+            revision = _as_positive_int(raw_turn.get('revision'))
+            supersedes_revision = _as_positive_int(raw_turn.get('supersedes_revision'))
+            turn_data = {
+                'turn_id': str(raw_turn.get('turn_id') or '').strip(),
+                'revision': revision,
+                'supersedes_revision': supersedes_revision,
+            }
+            revision_guard_result = register_voice_turn_revision(
+                session_id=session_id,
+                turn_id=turn_data['turn_id'],
+                revision=revision,
+                supersedes_revision=supersedes_revision,
+                user_id=user_id,
+                message=message_text,
+                call=call_data,
+                schema_version=VOICE_SCHEMA_V21,
+            )
+            if not revision_guard_result.get('is_current'):
+                logger.info(
+                    f"[EXTERNAL API] asterisk_voice_v2.1 stale revision skipped "
+                    f"session={session_id} turn={turn_data['turn_id']} "
+                    f"revision={revision} latest={revision_guard_result.get('latest_revision')}"
+                )
+                return JsonResponse({
+                    'status': 'success',
+                    'schema_version': VOICE_SCHEMA_V21,
+                    'turn': {
+                        'turn_id': turn_data['turn_id'],
+                        'revision': revision,
+                    },
+                    'response': '',
+                    'close_session': bool(revision_guard_result.get('session_ended')),
+                })
+
+        validated_ms = (time.perf_counter() - request_start_perf) * 1000
+        logger.warning(
+            f"[PERF API] request_id={request_id} phase=validated "
+            f"elapsed_ms={validated_ms:.1f} session={session_id} "
+            f"user={user_id} message_chars={len(message_text)}"
+        )
 
         # Импортируем сервисы
         from message_handler_service import MessageHandlerService
-        from main_agent import MainAgent
-
-        # Инициализируем сервисы
-        main_agent = MainAgent()
-        message_handler = MessageHandlerService(main_agent=main_agent)
+        message_handler = MessageHandlerService()
 
         # Обрабатываем сообщение через MessageHandlerService
         import asyncio
@@ -526,12 +711,60 @@ def send_message_external(request):
         api_metadata = {
             'client_system': client_system  # УБРАЛИ 'channel' - он добавляется в MessageHandlerService
         }
-        if nomer:
-            api_metadata['api_info'] = {'nomer': nomer}
-            logger.info(f"[EXTERNAL API] Передан NOMER: {nomer}")
+        api_metadata.update({
+            'schema_version': schema_version,
+            'source': 'asterisk',
+            'external_channel': 'voice',
+            'event': event,
+            'session_id': session_id,
+            'client_phone': nomer,
+            'company_phone': str(call_data.get('company_phone') or '').strip(),
+            'asterisk_channel_id': str(call_data.get('asterisk_channel_id') or '').strip(),
+            'call': {
+                'direction': call_data.get('direction'),
+                'client_phone': nomer,
+                'company_phone': str(call_data.get('company_phone') or '').strip(),
+                'asterisk_channel_id': str(call_data.get('asterisk_channel_id') or '').strip(),
+            },
+            'api_info': {
+                'nomer': nomer,
+                'client_phone': nomer,
+                'company_phone': str(call_data.get('company_phone') or '').strip(),
+                'call_direction': call_data.get('direction'),
+                'asterisk_channel_id': str(call_data.get('asterisk_channel_id') or '').strip(),
+            },
+            'customer_identifiers': {
+                'telefon': nomer,
+            },
+        })
+        if schema_version == VOICE_SCHEMA_V21:
+            api_metadata.update({
+                'turn': {
+                    'turn_id': turn_data.get('turn_id'),
+                    'revision': turn_data.get('revision'),
+                    'supersedes_revision': turn_data.get('supersedes_revision'),
+                },
+                'voice_revision': {
+                    'session_id': session_id,
+                    'turn_id': turn_data.get('turn_id'),
+                    'revision': turn_data.get('revision'),
+                    'supersedes_revision': turn_data.get('supersedes_revision'),
+                    'latest_revision': (revision_guard_result or {}).get('latest_revision'),
+                },
+            })
+        logger.info(
+            f"[EXTERNAL API] {schema_version} direction={call_data.get('direction')} "
+            f"client_phone={nomer} company_phone={api_metadata['company_phone']} "
+            f"asterisk_channel_id={api_metadata['asterisk_channel_id']}"
+        )
         logger.info(f"[EXTERNAL API] api_metadata: {api_metadata}")
 
         loop_closed = False
+        handler_start_perf = time.perf_counter()
+        logger.warning(
+            f"[PERF API] request_id={request_id} phase=handler_start "
+            f"session={session_id}"
+        )
         try:
             result = loop.run_until_complete(
                 message_handler.handle_incoming_message(
@@ -543,8 +776,20 @@ def send_message_external(request):
                     metadata=api_metadata  # Передаем metadata с NOMER
                 )
             )
+            handler_ms = (time.perf_counter() - handler_start_perf) * 1000
+            logger.warning(
+                f"[PERF API] request_id={request_id} phase=handler_done "
+                f"duration_ms={handler_ms:.1f} status={result.get('status')} "
+                f"service_detected={result.get('service_detected')} "
+                f"response_chars={len(result.get('response') or '')}"
+            )
         except Exception as processing_error:
             # Логируем ошибку обработки сообщения
+            handler_ms = (time.perf_counter() - handler_start_perf) * 1000
+            logger.warning(
+                f"[PERF API] request_id={request_id} phase=handler_error "
+                f"duration_ms={handler_ms:.1f} error={str(processing_error)[:120]}"
+            )
             import traceback
             error_details = traceback.format_exc()
             log_api_error(
@@ -570,13 +815,43 @@ def send_message_external(request):
                 loop.close()
 
         # Формируем ответ для клиента
-        response_data = {
-            'status': result.get('status', 'error'),
-            'response': result.get('response', ''),
-            'service_detected': result.get('service_detected'),
-            'session_id': session_id
-        }
+        if schema_version == VOICE_SCHEMA_V21:
+            response_data = {
+                'status': result.get('status', 'error'),
+                'schema_version': VOICE_SCHEMA_V21,
+                'turn': {
+                    'turn_id': turn_data.get('turn_id'),
+                    'revision': turn_data.get('revision'),
+                },
+                'response': '' if result.get('superseded_revision') else result.get('response', ''),
+                'close_session': False if result.get('superseded_revision') else result.get('close_session', False),
+            }
+        else:
+            response_data = {
+                'status': result.get('status', 'error'),
+                'response': result.get('response', ''),
+                'service_detected': result.get('service_detected'),
+                'session_id': session_id,
+                'close_session': result.get('close_session', False),
+            }
 
+        total_ms = (time.perf_counter() - request_start_perf) * 1000
+        performance = result.get('performance') or {}
+        timings = performance.get('stages') or []
+        stage_summary = ",".join(
+            f"{item.get('name')}:{(item.get('duration_ms') or 0):.0f}"
+            for item in timings[:8]
+            if item.get('duration_ms') is not None
+        )
+        logger.warning(
+            f"[PERF API] request_id={request_id} phase=response_ready "
+            f"total_ms={total_ms:.1f} handler_ms={handler_ms:.1f} "
+            f"tracer_total_ms={(performance.get('total_duration_ms') or 0):.1f} "
+            f"session={session_id} status={response_data['status']} "
+            f"service_detected={result.get('service_detected')} "
+            f"dialog_finished={result.get('dialog_finished')} "
+            f"response_chars={len(response_data['response'])} stages={stage_summary}"
+        )
         logger.info(f"[EXTERNAL API] Ответ: {response_data['status']}")
         return JsonResponse(response_data)
 
@@ -592,10 +867,7 @@ def send_message_external(request):
             client_ip=client_ip,
             request_data={'raw_body': str(request.body)[:500]}
         )
-        return JsonResponse({
-            'status': 'error',
-            'error': 'Invalid JSON format'
-        }, status=400)
+        return _voice_v2_error('Invalid JSON format', 400, {})
 
     except Exception as e:
         logger.error(f"[EXTERNAL API] Ошибка обработки: {e}", exc_info=True)
@@ -610,10 +882,7 @@ def send_message_external(request):
             request_id=request_id,
             client_ip=client_ip
         )
-        return JsonResponse({
-            'status': 'error',
-            'error': 'Internal server error'
-        }, status=500)
+        return _voice_v2_error('Internal server error', 500, data)
 
 
 def get_client_ip(request):
@@ -650,16 +919,76 @@ def get_performance_report(request):
             }, status=400)
 
         # Загружаем performance данные из metadata последнего сообщения
-        messages = MessageLog.objects.filter(
-            session_id=session_id
-        ).order_by('-timestamp')[:10]
+        def merge_session_performance(items):
+            if not items:
+                return None
+            if len(items) == 1:
+                return items[0]['performance']
 
-        performance_data = None
+            merged = {
+                'session_id': session_id,
+                'stages': [],
+                'microservices': [],
+                'llm_calls': [],
+                'total_duration_ms': 0,
+                'microservices_total_ms': 0,
+                'llm_total_cost_rub': 0,
+                'llm_total_tokens': 0,
+            }
+            synthetic_start = 0.0
+            for item in items:
+                perf = item['performance']
+                stages = perf.get('stages') or []
+                min_start = min(
+                    (stage.get('start_time') for stage in stages if stage.get('start_time') is not None),
+                    default=0,
+                )
+                message_prefix = f"{item['direction']}#{item['id']}"
+                block_duration = perf.get('total_duration_ms') or 0
+
+                for stage in stages:
+                    stage_copy = dict(stage)
+                    stage_copy['name'] = f"{message_prefix}.{stage_copy.get('name', 'stage')}"
+                    if stage_copy.get('start_time') is not None:
+                        relative_ms = (stage_copy['start_time'] - min_start) * 1000
+                    else:
+                        relative_ms = 0
+                    stage_copy['start_time'] = synthetic_start + relative_ms / 1000
+                    merged['stages'].append(stage_copy)
+
+                for microservice in perf.get('microservices') or []:
+                    ms_copy = dict(microservice)
+                    ms_copy['name'] = f"{message_prefix}.{ms_copy.get('name', 'microservice')}"
+                    merged['microservices'].append(ms_copy)
+
+                for llm_call in perf.get('llm_calls') or []:
+                    llm_copy = dict(llm_call)
+                    llm_copy['service_name'] = f"{message_prefix}.{llm_copy.get('service_name', 'LLM')}"
+                    merged['llm_calls'].append(llm_copy)
+
+                merged['total_duration_ms'] += block_duration
+                merged['microservices_total_ms'] += perf.get('microservices_total_ms') or 0
+                merged['llm_total_cost_rub'] += perf.get('llm_total_cost_rub') or 0
+                merged['llm_total_tokens'] += perf.get('llm_total_tokens') or 0
+                synthetic_start += block_duration / 1000
+            return merged
+
+        messages = list(MessageLog.objects.filter(
+            session_id=session_id
+        ).order_by('timestamp')[:50])
+
+        performance_items = []
         for msg in messages:
-            if msg.metadata and isinstance(msg.metadata, dict):
-                if 'performance' in msg.metadata:
-                    performance_data = msg.metadata['performance']
-                    break
+            if msg.metadata and isinstance(msg.metadata, dict) and 'performance' in msg.metadata:
+                performance_items.append(
+                    {
+                        'id': msg.id,
+                        'direction': msg.direction,
+                        'performance': msg.metadata['performance'],
+                    }
+                )
+
+        performance_data = merge_session_performance(performance_items)
 
         if performance_data:
             # Генерируем HTML отчет

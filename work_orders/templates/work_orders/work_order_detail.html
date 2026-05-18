@@ -412,15 +412,22 @@
 
                 <div class="d-flex flex-wrap gap-2">
                     {% if active_action_code == 'assign' %}
+                        {% if can_take_self %}
+                        <button type="button" class="btn btn-success" onclick="runAction('assign', false, '{{ user.id }}')">Взять на себя</button>
+                        {% endif %}
                         {% if assignment_candidates and user_role_codes|length %}
                         <select id="responsibleUserSelect" class="form-select" style="max-width: 360px;">
-                            <option value="">Выберите ответственного</option>
+                            <option value="">Назначить сотруднику</option>
                             {% for candidate in assignment_candidates %}
                             <option value="{{ candidate.id }}" {% if candidate.id == user.id %}selected{% endif %}>{{ candidate.label }}</option>
                             {% endfor %}
                         </select>
-                        {% endif %}
+                        <button type="button" class="btn btn-outline-success" onclick="runAction('assign')">
+                            {% if can_take_self %}Назначить сотруднику{% else %}{{ active_action.label }}{% endif %}
+                        </button>
+                        {% elif not can_take_self %}
                         <button type="button" class="btn btn-success" onclick="runAction('assign')">{{ active_action.label }}</button>
+                        {% endif %}
                     {% elif active_action_code == 'start' %}
                         <button type="button" class="btn btn-success" onclick="runAction('start')">{{ active_action.label }}</button>
                     {% elif active_action_code == 'localize' %}
@@ -531,7 +538,7 @@ function refreshSlaRows() {
     document.querySelectorAll('.sla-row').forEach(renderSlaRow);
 }
 
-function buildFormData(action, retryWithoutPhoto) {
+function buildFormData(action, retryWithoutPhoto, responsibleUserId = '') {
     const formData = new FormData();
     const resolutionText = document.getElementById('resolutionText');
     const responsibleUserSelect = document.getElementById('responsibleUserSelect');
@@ -539,7 +546,9 @@ function buildFormData(action, retryWithoutPhoto) {
     if (resolutionText) {
         formData.append('resolution_text', resolutionText.value || '');
     }
-    if (responsibleUserSelect && responsibleUserSelect.value) {
+    if (responsibleUserId) {
+        formData.append('responsible_user_id', responsibleUserId);
+    } else if (responsibleUserSelect && responsibleUserSelect.value) {
         formData.append('responsible_user_id', responsibleUserSelect.value);
     }
     if (retryWithoutPhoto) {
@@ -548,7 +557,7 @@ function buildFormData(action, retryWithoutPhoto) {
     return formData;
 }
 
-function runAction(action, retryWithoutPhoto = false) {
+function runAction(action, retryWithoutPhoto = false, responsibleUserId = '') {
     const url = ACTION_URLS[action];
     if (!url) {
         return;
@@ -559,7 +568,7 @@ function runAction(action, retryWithoutPhoto = false) {
         headers: {
             'X-CSRFToken': getCookie('csrftoken')
         },
-        body: buildFormData(action, retryWithoutPhoto)
+        body: buildFormData(action, retryWithoutPhoto, responsibleUserId)
     })
     .then(async (response) => {
         const data = await response.json();
@@ -579,7 +588,7 @@ function runAction(action, retryWithoutPhoto = false) {
         if (error && error.code === 'photo_confirmation_required') {
             const confirmed = confirm('ФОТО НЕ ПРИВЯЗАНЫ.\nВы точно хотите изменить статус заявки?');
             if (confirmed) {
-                runAction(action, true);
+                runAction(action, true, responsibleUserId);
             }
             return;
         }

@@ -286,6 +286,18 @@ def api_dialog_sessions(request):
                 if not user_info and session.get('django_user_id'):
                     user_info = f"UserID:{session['django_user_id']}"
 
+            elif session['channel'] == 'maxchat':
+                if isinstance(metadata, dict):
+                    max_info = metadata.get('max_info', {})
+                    if isinstance(max_info, dict):
+                        user_info = (
+                            max_info.get('username')
+                            or max_info.get('name')
+                            or max_info.get('first_name')
+                        )
+                if not user_info and session.get('django_user_id'):
+                    user_info = f"UserID:{session['django_user_id']}"
+
             elif session['channel'] == 'api':
                 # Для API - получаем NOMER из metadata
                 if isinstance(metadata, dict):
@@ -295,6 +307,14 @@ def api_dialog_sessions(request):
 
             # Добавляем user_info в сессию
             session['user_info'] = user_info
+            session['channel_label'] = {
+                'telegram': 'ТГ',
+                'maxchat': 'MAX',
+                'web': 'Web',
+                'api': 'API',
+                'test_bot': 'Test',
+                'transcriber': 'Phone',
+            }.get(session['channel'], session['channel'])
 
             # Удаляем sample_metadata (не нужен на фронтенде)
             del session['sample_metadata']

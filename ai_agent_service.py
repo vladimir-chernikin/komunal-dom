@@ -51,8 +51,7 @@ class AIAgentService:
     }
 
     # Цены GigaChat (руб за 1000 токенов)
-    # GigaChat-2: синхронный режим
-    # ИСПРАВЛЕНО (2026-03-10): GigaChat-2 Lite не существует, удален
+    # Текущий API scope не отдает GigaChat-2-Lite; используем доступные модели из /api/v1/models
     GIGACHAT_PRICES = {
         'GigaChat': 0.50,
         'GigaChat-2': 1.50,  # Синхронный режим
@@ -69,7 +68,13 @@ class AIAgentService:
     _yandex_session = None
     _gigachat_client = None
 
-    def __init__(self, provider: str = None, default_model: Optional[str] = None, tracer=None):
+    def __init__(
+        self,
+        provider: str = None,
+        default_model: Optional[str] = None,
+        tracer=None,
+        gigachat_profile: Optional[str] = None,
+    ):
         """
         Инициализация сервиса
 
@@ -77,6 +82,7 @@ class AIAgentService:
             provider: Провайдер по умолчанию (yandexgpt | gigachat), если None - из env (DEFAULT_LLM_PROVIDER)
             default_model: Модель по умолчанию (если None, используется из конфига)
             tracer: PerformanceTracer для трекинга производительности
+            gigachat_profile: профиль GigaChat-конфига: default | alt
         """
         # ИСПРАВЛЕНО (2026-03-10): Читаем провайдера из env если не указан
         if provider is None:
@@ -88,10 +94,11 @@ class AIAgentService:
         self.yandexgpt_default_model = config('YANDEXGPT_MODEL', default='lite')
 
         # Параметры GigaChat
-        self.gigachat_client_id = config('GIGACHAT_CLIENT_ID', default='019b65dd-feb9-756f-a83e-330d88d76fa0')
-        self.gigachat_auth_key = config('GIGACHAT_AUTH_KEY', default='MDE5YjY1ZGQtZmViOS03NTZmLWE4M2UtMzMwZDg4ZDc2ZmEwOjYyODNjZGRiLTBiNGYtNDZhMS04NDVlLWZjOTYyYWE2ZWFiYg==')
-        self.gigachat_scope = config('GIGACHAT_SCOPE', default='GIGACHAT_API_PERS')
-        self.gigachat_default_model = config('GIGACHAT_MODEL', default='GigaChat-2')
+        self.gigachat_profile = (gigachat_profile or config('GIGACHAT_PROFILE', default='default')).strip().lower()
+        self.gigachat_client_id = self._gigachat_config('CLIENT_ID', default='019b65dd-feb9-756f-a83e-330d88d76fa0')
+        self.gigachat_auth_key = self._gigachat_config('AUTH_KEY', default='MDE5YjY1ZGQtZmViOS03NTZmLWE4M2UtMzMwZDg4ZDc2ZmEwOjYyODNjZGRiLTBiNGYtNDZhMS04NDVlLWZjOTYyYWE2ZWFiYg==')
+        self.gigachat_scope = self._gigachat_config('SCOPE', default='GIGACHAT_API_PERS')
+        self.gigachat_default_model = self._gigachat_config('MODEL', default='GigaChat-2')
 
         # Текущий провайдер и модель
         self.provider = provider
@@ -124,10 +131,18 @@ class AIAgentService:
 
         logger.info(
             f"AIAgentService инициализирован: "
-            f"provider={provider}, model={self.default_model}, "
+            f"provider={provider}, model={self.default_model}, gigachat_profile={self.gigachat_profile}, "
             f"yandexgpt={self.yandexgpt_available}, gigachat={self.gigachat_available}, "
             f"embeddings=True (Yandex), connection_pool=True"
         )
+
+    def _gigachat_config(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        if self.gigachat_profile and self.gigachat_profile not in {'default', 'prod', 'primary'}:
+            profiled_key = f"GIGACHAT_{self.gigachat_profile.upper()}_{key}"
+            value = config(profiled_key, default=None)
+            if value not in (None, ''):
+                return value
+        return config(f"GIGACHAT_{key}", default=default)
 
     def _get_default_model(self) -> str:
         """Получить модель по умолчанию для текущего провайдера"""

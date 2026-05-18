@@ -37,6 +37,7 @@ def redirect_legacy_company_route_mapping(request, rest=''):
 
 urlpatterns = [
     path('', include('portal.urls')),  # Главная страница
+    path('api/max-webapp/', include('max_webapp.urls')),
     path('admin/login/', CustomLoginView.as_view(), name='admin_login'),
     re_path(
         r'^admin/work_orders/companyroutemapping/(?P<rest>.*)$',

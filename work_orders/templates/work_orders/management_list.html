@@ -387,6 +387,7 @@
                                         <div class="header-filter">
                                             <select name="executor" class="form-select form-select-sm" onchange="this.form.submit()">
                                                 <option value="">Исполнитель</option>
+                                                <option value="mine" {% if executor_filter == 'mine' %}selected{% endif %}>Мои</option>
                                                 <option value="unassigned" {% if executor_filter == 'unassigned' %}selected{% endif %}>Не назначен</option>
                                                 {% for responsible_user in responsible_users %}
                                                 <option value="{{ responsible_user.id }}" {% if executor_filter == responsible_user.id|stringformat:"s" %}selected{% endif %}>
@@ -454,6 +455,17 @@
                                         {{ work_order.responsible_user.get_full_name|default:work_order.responsible_user.username }}
                                         {% else %}
                                         <span class="text-muted">-</span>
+                                        {% if work_order.current_internal_status.short_code_en == 'new_registered' and work_order.company_id in self_assign_company_ids %}
+                                        <div class="mt-2">
+                                            <button
+                                                type="button"
+                                                class="btn btn-sm btn-outline-success"
+                                                onclick="takeWorkOrderSelf({{ work_order.id }}, event)"
+                                            >
+                                                Взять на себя
+                                            </button>
+                                        </div>
+                                        {% endif %}
                                         {% endif %}
                                     </td>
                                     <td>
@@ -491,6 +503,54 @@
             {% endif %}
         </div>
     </section>
+
+    <script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function takeWorkOrderSelf(workOrderId, event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
+        const formData = new FormData();
+        formData.append('responsible_user_id', '{{ current_user_id }}');
+
+        fetch(`/work_orders/api/${workOrderId}/take/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: formData
+        })
+        .then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) {
+                throw data;
+            }
+            return data;
+        })
+        .then(() => {
+            window.location.reload();
+        })
+        .catch((error) => {
+            alert(error.error || 'Не удалось взять заявку на себя.');
+        });
+    }
+    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">

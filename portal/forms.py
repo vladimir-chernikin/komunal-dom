@@ -230,6 +230,7 @@ class UserAdminExtraFieldsMixin:
         department_map = self._build_department_map()
 
         if profile:
+            self.initial.setdefault('max_user_id', profile.max_user_id or '')
             self.initial.setdefault('profile_job_title', profile.job_title or '')
             self.initial.setdefault('profile_address', profile.address or '')
 
@@ -307,6 +308,13 @@ class UserAdminExtraFieldsMixin:
                 'primary_company',
                 'Сначала выберите основную компанию.',
             )
+        max_user_id = cleaned_data.get('max_user_id')
+        if max_user_id:
+            queryset = UserProfile.objects.filter(max_user_id=max_user_id)
+            if self.instance and self.instance.pk:
+                queryset = queryset.exclude(user_id=self.instance.pk)
+            if queryset.exists():
+                self.add_error('max_user_id', 'Этот MAX user ID уже привязан к другому пользователю.')
         return cleaned_data
 
     def save(self, commit=True):
@@ -324,15 +332,22 @@ class UserAdminExtraFieldsMixin:
             user=user,
             defaults={'role': 'uk_user'},
         )
+        profile.max_user_id = self.cleaned_data.get('max_user_id') or None
         profile.primary_company = self.cleaned_data.get('primary_company')
         profile.primary_department = self.cleaned_data.get('primary_department')
         profile.job_title = self.cleaned_data.get('profile_job_title') or None
         profile.address = self.cleaned_data.get('profile_address') or None
-        profile.save(update_fields=['primary_company', 'primary_department', 'job_title', 'address'])
+        profile.save(update_fields=['max_user_id', 'primary_company', 'primary_department', 'job_title', 'address'])
         return profile
 
 
 class UserAdminAddForm(UserAdminExtraFieldsMixin, UserCreationForm):
+    max_user_id = forms.IntegerField(
+        required=False,
+        min_value=1,
+        label='MAX user ID',
+        help_text='Числовой ID пользователя MAX для входа в мини-приложение.',
+    )
     primary_company = forms.ModelChoiceField(
         queryset=Company.objects.none(),
         required=False,
@@ -384,6 +399,7 @@ class UserAdminAddForm(UserAdminExtraFieldsMixin, UserCreationForm):
             'first_name',
             'last_name',
             'email',
+            'max_user_id',
             'is_active',
             'is_staff',
             'is_superuser',
@@ -407,6 +423,12 @@ class UserAdminAddForm(UserAdminExtraFieldsMixin, UserCreationForm):
 
 
 class UserAdminChangeForm(UserAdminExtraFieldsMixin, UserChangeForm):
+    max_user_id = forms.IntegerField(
+        required=False,
+        min_value=1,
+        label='MAX user ID',
+        help_text='Числовой ID пользователя MAX для входа в мини-приложение.',
+    )
     primary_company = forms.ModelChoiceField(
         queryset=Company.objects.none(),
         required=False,
