@@ -568,3 +568,28 @@ Content-Type: application/json
 - `город Сочи, улица Обррикосовая, дом 20`: LLM-коррекция выбрала `Абрикосовая` по ФИАС-подсказкам, повторная ФИАС-проверка дала `matched`.
 - `Сочи` как уточнение к известным `Абрикосовая 20`: `matched`.
 - 8 параллельных коротких LLM-вызовов: все успешны, total `677 ms`; до OAuth-кэша 7/8 ловили 429 на `/oauth`.
+
+### Полный прогон и JSON 2026-05-18
+
+После внедрения выполнен полный прогон через `MessageHandlerService.handle_incoming_message`:
+
+- `Привет` -> `44.7 ms`, `0` LLM;
+- `Абрикосовая 2 нет света` -> `5959.0 ms`, `11` LLM, `0` ФИАС, ответ `Приняла: нет света. Теперь нужно уточнить город.`;
+- `Сочи` -> `2864.8 ms`, `6` LLM, `1` ФИАС.
+
+Адресная часть исправлена, но скорость полного turn не исправлена достаточно: GigaChat Lite продолжает возвращать JSON-like текст с ключами без кавычек. На turn `Абрикосовая 2 нет света` были retry:
+
+- `DialogGuardAgent.check.retry_json_contract`;
+- `TurnSplitterAgent.analyze.retry_json_contract`;
+- `AddressAgent.slots.retry_json_contract`;
+- `AddressAgent.slots.retry_contract`;
+- `AddressAgent.slots.retry_contract.retry_json_contract`;
+- `ProblemAgent.fragment.retry_contract`.
+
+Текущая стабилизация:
+
+- `parse_json_object()` убирает Markdown fence, извлекает первый объект `{...}`, заменяет типографские кавычки на обычные и вызывает `json.loads`;
+- если парсинг не удался, `LiteLLMClient.json_call()` делает повторный LLM-вызов с требованием строгого JSON;
+- отдельные агенты дополнительно проверяют контракт результата и могут запускать contract retry.
+
+Вывод: это не предотвращение ошибки, а дорогая компенсация. Следующий этап оптимизации - убрать LLM retry для простого JSON-like формата или перейти на structured output/function calling, если текущий GigaChat API/SDK поддерживает это в production-конфигурации.

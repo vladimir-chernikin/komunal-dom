@@ -234,3 +234,25 @@ Prompt `address-syntax-correction-runtime`:
 Оставшийся риск:
 
 - GigaChat Lite в `address-slots-lite` нестабилен на голой строке `Ростов на дону московская 10`: иногда режет `city` до `Ростов`. Второй слой `AddressAgent.syntax_correction` с исходной строкой и ФИАС-подсказками исправляет это в проверенном кейсе, но для максимальной надежности нужен structured output/JSON Schema и, вероятно, отдельный канонизатор адресных слотов.
+
+## Дополнительная Проверка 2026-05-18 После Вопроса По Скорости
+
+Полный прогон через `MessageHandlerService.handle_incoming_message`:
+
+- session `test_bot_codex_speed_full_1ba3cca2_20260518_092255`;
+- turn 1 `Привет`: `44.7 ms`, `0` LLM;
+- turn 2 `Абрикосовая 2 нет света`: `5959.0 ms`, `11` LLM, `0` ФИАС, ответ `Приняла: нет света. Теперь нужно уточнить город.`;
+- turn 3 `Сочи`: `2864.8 ms`, `6` LLM, `1` ФИАС, ответ `Сочи, Абрикосовая 2 - нами не обслуживается.`;
+- адресная логика работает правильно: неполный адрес не идет в ФИАС и не подставляет город;
+- оптимизация скорости неполная: задержку теперь создает не ФИАС, а невалидный JSON от GigaChat Lite и каскад retry.
+
+Разбор `llm_request_log` по этому session:
+
+- `DialogGuardAgent.check`: первичный ответ `{action:continue,...}` без кавычек -> `retry_json_contract`;
+- `TurnSplitterAgent.analyze`: первичный ответ с ключами без кавычек -> `retry_json_contract`;
+- `AddressAgent.slots`: первичный ответ с ключами без кавычек -> `retry_json_contract`;
+- `AddressAgent.slots.retry_contract`: повторил тот же невалидный формат -> еще один `retry_json_contract`;
+- `ProblemAgent.fragment`: JSON в Markdown-блоке, текущий parser это принимает, но `ProblemAgent.fragment.retry_contract` сработал из-за уточнения содержимого `clean_fragment`;
+- `BotOrderOrchestrator.followup_ack`: text-call, не должен быть JSON.
+
+Вывод: текущая стабилизация JSON работает как восстановление после ошибки, но не предотвращает ошибку. Следующий шаг ТЗ по скорости - заменить prompt-only контракт для `DialogGuardAgent`, `TurnSplitterAgent`, `AddressAgent.slots` на более жесткий режим: либо официальный structured output/function calling, если доступно в текущем GigaChat REST/SDK, либо локальный repair-parser для простых JSON-like ответов без повторного LLM-вызова.

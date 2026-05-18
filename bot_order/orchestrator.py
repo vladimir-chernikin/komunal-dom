@@ -104,6 +104,20 @@ class BotOrderOrchestrator:
                     {"previous_stage": previous_stage, "text_len": len(text or "")},
                 ),
             )
+            if (
+                previous_stage == "pre_registration_review"
+                and not guard_result.get("allowed")
+                and self.address_agent._looks_like_address_update(state, text)
+            ):
+                guard_result.update(
+                    {
+                        "allowed": True,
+                        "action": "allow",
+                        "reason": "final_review_address_update_false_positive",
+                        "continue_order_flow": True,
+                        "use_message_for_order": True,
+                    }
+                )
         else:
             guard_result = await self._timed_await(
                 "dialog_guard.check",
@@ -120,20 +134,6 @@ class BotOrderOrchestrator:
             if not guard_result.get("reply_prefix"):
                 guard_result["reply_prefix"] = "Я Елизавета, сотрудник аварийно-диспетчерской службы."
             guard_result["safe_reply"] = "Помогу оформить обращение. По какому адресу хотите оставить обращение?"
-        elif (
-            previous_stage == "pre_registration_review"
-            and not guard_result.get("allowed")
-            and self.address_agent._looks_like_address_update(state, text)
-        ):
-            guard_result.update(
-                {
-                    "allowed": True,
-                    "action": "allow",
-                    "reason": "final_review_address_update_false_positive",
-                    "continue_order_flow": True,
-                    "use_message_for_order": True,
-                }
-            )
         state["guard"] = guard_result
         if not guard_result.get("allowed"):
             self._set_stage(state, "security_guard_blocked")
