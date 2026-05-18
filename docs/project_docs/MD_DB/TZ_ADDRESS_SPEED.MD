@@ -256,3 +256,34 @@ Prompt `address-syntax-correction-runtime`:
 - `BotOrderOrchestrator.followup_ack`: text-call, не должен быть JSON.
 
 Вывод: текущая стабилизация JSON работает как восстановление после ошибки, но не предотвращает ошибку. Следующий шаг ТЗ по скорости - заменить prompt-only контракт для `DialogGuardAgent`, `TurnSplitterAgent`, `AddressAgent.slots` на более жесткий режим: либо официальный structured output/function calling, если доступно в текущем GigaChat REST/SDK, либо локальный repair-parser для простых JSON-like ответов без повторного LLM-вызова.
+
+## Проверка GigaChat JSON/Function Calling 2026-05-18
+
+Временный диагностический скрипт: `runtime/gigachat_json_capability_probe.py`.
+Результат на сервере: `/var/www/komunal-dom_ru/runtime/gigachat_json_capability_probe_result_20260518_100953.json`.
+
+Окружение проверки:
+
+- профиль GigaChat: `alt`;
+- scope: `GIGACHAT_API_B2B`;
+- модель: `GigaChat-2`;
+- установленный SDK `gigachat`: `0.1.43`;
+- в SDK `0.1.43` нет методов `chat_parse()` / `achat_parse()`, поэтому structured output через SDK в текущем окружении недоступен.
+
+Факты по прямому REST `/api/v1/chat/completions`:
+
+- prompt-only платежный JSON: `6/6` HTTP 200, `6/6` распарсились текущим parser, `6/6` прошли Pydantic; часть ответов была в Markdown-блоке, но текущий parser это умеет чистить.
+- реальный `address-slots-lite` на `Абрикосовая 2 нет света`: `6/6` HTTP 200, но `0/6` валидный JSON; модель стабильно вернула JSON-like объект с ключами без кавычек.
+- `response_format={"type":"json_object"}`: HTTP 200, но модель вернула поясняющий текст и значения enum вне схемы; Pydantic не прошел.
+- `response_format` с JSON Schema в OpenAI-совместимом и плоском вариантах: HTTP 400 `Empty schema with json format type is not supported`.
+- `functions + function_call` с сырой Pydantic-схемой и `date: Optional[str]`: HTTP 422 `Type properties.date.type is wrong`.
+- `functions + function_call` с компактной схемой, но `date` через `anyOf string/null`: HTTP 422 `Type properties.date.type is wrong`.
+- `functions + function_call` со схемой без `null`/`anyOf`, где неизвестная дата передается пустой строкой: `2/2` HTTP 200, `finish_reason=function_call`, аргументы пришли как объект в `message.function_call.arguments`, `2/2` прошли Pydantic.
+- OpenAI tools-style (`tools/tool_choice`) не сработал как tool call: HTTP 200, `finish_reason=stop`, обычный текст.
+
+Вывод:
+
+- текущий GigaChat Lite/`GigaChat-2` в нашем REST-режиме не дает надежного native JSON Schema через `response_format`;
+- официальный `function_call` работает и решает проблему "ключи без кавычек", но схема должна быть совместимой с ограничениями GigaChat: без `null`/`anyOf` в `type`; nullable-поля нужно кодировать через строку с пустым значением или отдельный boolean/status;
+- для `DialogGuardAgent`, `TurnSplitterAgent`, `AddressAgent.slots` перспективный путь - перейти на `functions + function_call` с упрощенными схемами, а не пытаться лечить prompt-only JSON повторными LLM retry;
+- для уже существующих prompt-only ответов можно отдельно рассмотреть локальный JSON-like repair-parser для ключей без кавычек, но это должен быть общий слой стабилизации контракта, а не частные regex по адресам.
