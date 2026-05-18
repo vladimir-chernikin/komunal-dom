@@ -69,7 +69,6 @@ class AIAgentService:
     _yandex_session = None
     _gigachat_client = None
     _gigachat_token_cache = {}
-    _gigachat_token_lock = None
 
     def __init__(
         self,
@@ -663,71 +662,60 @@ class AIAgentService:
             logger.debug("Используем общий кешированный токен GigaChat")
             return self._gigachat_token
 
-        if self.__class__._gigachat_token_lock is None:
-            self.__class__._gigachat_token_lock = asyncio.Lock()
+        # Do not use a process-wide asyncio.Lock here: the external API view
+        # creates and closes a separate event loop per HTTP request.
+        rq_uid = str(uuid.uuid4())
 
-        async with self.__class__._gigachat_token_lock:
-            cached = self.__class__._gigachat_token_cache.get(cache_key)
-            now = datetime.now(timezone.utc)
-            if cached and now < cached["expires_at"]:
-                self._gigachat_token = cached["token"]
-                self._gigachat_token_expires = cached["expires_at"]
-                logger.debug("Используем общий кешированный токен GigaChat после ожидания lock")
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "RqUID": rq_uid,
+            "Authorization": f"Basic {self.gigachat_auth_key}"
+        }
+
+        data = {
+            "scope": self.gigachat_scope
+        }
+
+        try:
+            logger.info(f"Запрос OAuth токена GigaChat (RqUID: {rq_uid})")
+
+            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                response = await client.post(
+                    "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+                    headers=headers,
+                    data=data
+                )
+                response.raise_for_status()
+                token_data = response.json()
+
+                self._gigachat_token = token_data["access_token"]
+
+                # GigaChat возвращает expires_at в миллисекундах (Unix timestamp)
+                expires_at_ms = token_data.get("expires_at", 0)
+                if expires_at_ms > 0:
+                    self._gigachat_token_expires = datetime.fromtimestamp(
+                        expires_at_ms / 1000,
+                        tz=timezone.utc
+                    ) - timedelta(minutes=1)
+                else:
+                    self._gigachat_token_expires = datetime.now(timezone.utc) + timedelta(minutes=29)
+
+                self.__class__._gigachat_token_cache[cache_key] = {
+                    "token": self._gigachat_token,
+                    "expires_at": self._gigachat_token_expires,
+                }
+
+                logger.info(
+                    f"OAuth токен GigaChat получен. "
+                    f"Истекает: {self._gigachat_token_expires.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+                )
+
                 return self._gigachat_token
 
-            # Генерируем уникальный RqUID
-            rq_uid = str(uuid.uuid4())
-
-            headers = {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Accept": "application/json",
-                "RqUID": rq_uid,
-                "Authorization": f"Basic {self.gigachat_auth_key}"
-            }
-
-            data = {
-                "scope": self.gigachat_scope
-            }
-
-            try:
-                logger.info(f"Запрос OAuth токена GigaChat (RqUID: {rq_uid})")
-
-                async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
-                    response = await client.post(
-                        "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
-                        headers=headers,
-                        data=data
-                    )
-                    response.raise_for_status()
-                    token_data = response.json()
-
-                    self._gigachat_token = token_data["access_token"]
-
-                    # GigaChat возвращает expires_at в миллисекундах (Unix timestamp)
-                    expires_at_ms = token_data.get("expires_at", 0)
-                    if expires_at_ms > 0:
-                        self._gigachat_token_expires = datetime.fromtimestamp(
-                            expires_at_ms / 1000,
-                            tz=timezone.utc
-                        ) - timedelta(minutes=1)
-                    else:
-                        self._gigachat_token_expires = datetime.now(timezone.utc) + timedelta(minutes=29)
-
-                    self.__class__._gigachat_token_cache[cache_key] = {
-                        "token": self._gigachat_token,
-                        "expires_at": self._gigachat_token_expires,
-                    }
-
-                    logger.info(
-                        f"OAuth токен GigaChat получен. "
-                        f"Истекает: {self._gigachat_token_expires.strftime('%Y-%m-%d %H:%M:%S')} UTC"
-                    )
-
-                    return self._gigachat_token
-
-            except Exception as e:
-                logger.error(f"Ошибка при получении токена GigaChat: {e}")
-                raise
+        except Exception as e:
+            logger.error(f"Ошибка при получении токена GigaChat: {e}")
+            raise
 
     def _update_statistics(self, provider: str, tokens: int, cost: float):
         """Обновить статистику в памяти"""

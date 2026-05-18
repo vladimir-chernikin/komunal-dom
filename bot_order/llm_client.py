@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import threading
 from typing import Any, Dict, Optional
 
 import httpx
@@ -155,8 +156,8 @@ class LiteLLMClient:
             if delay:
                 await asyncio.sleep(delay)
             try:
-                semaphore = self._get_parallel_semaphore()
-                if semaphore is None:
+                semaphore = await self._acquire_parallel_slot()
+                try:
                     return await self._call_llm_once(
                         prompt=prompt,
                         session_id=session_id,
@@ -166,16 +167,9 @@ class LiteLLMClient:
                         max_tokens=max_tokens,
                         temperature=temperature,
                     )
-                async with semaphore:
-                    return await self._call_llm_once(
-                        prompt=prompt,
-                        session_id=session_id,
-                        message_id=message_id,
-                        caller_service=caller_service,
-                        prompt_slug=prompt_slug,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                    )
+                finally:
+                    if semaphore is not None:
+                        semaphore.release()
             except Exception as exc:
                 last_exc = exc
                 if "429" not in str(exc) and "Too Many Requests" not in str(exc):
@@ -202,8 +196,8 @@ class LiteLLMClient:
             if delay:
                 await asyncio.sleep(delay)
             try:
-                semaphore = self._get_parallel_semaphore()
-                if semaphore is None:
+                semaphore = await self._acquire_parallel_slot()
+                try:
                     return await self._function_call_once(
                         system_prompt=system_prompt,
                         user_prompt=user_prompt,
@@ -217,20 +211,9 @@ class LiteLLMClient:
                         max_tokens=max_tokens,
                         temperature=temperature,
                     )
-                async with semaphore:
-                    return await self._function_call_once(
-                        system_prompt=system_prompt,
-                        user_prompt=user_prompt,
-                        function_name=function_name,
-                        function_description=function_description,
-                        parameters=parameters,
-                        session_id=session_id,
-                        message_id=message_id,
-                        caller_service=caller_service,
-                        prompt_slug=prompt_slug,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                    )
+                finally:
+                    if semaphore is not None:
+                        semaphore.release()
             except Exception as exc:
                 last_exc = exc
                 if "429" not in str(exc) and "Too Many Requests" not in str(exc):
@@ -248,8 +231,15 @@ class LiteLLMClient:
             return None
         if cls._parallel_semaphore is None or cls._parallel_limit != limit:
             cls._parallel_limit = limit
-            cls._parallel_semaphore = asyncio.Semaphore(limit)
+            cls._parallel_semaphore = threading.BoundedSemaphore(limit)
         return cls._parallel_semaphore
+
+    async def _acquire_parallel_slot(self):
+        semaphore = self._get_parallel_semaphore()
+        if semaphore is None:
+            return None
+        await asyncio.to_thread(semaphore.acquire)
+        return semaphore
 
     async def _call_llm_once(
         self,

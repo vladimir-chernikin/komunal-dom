@@ -419,3 +419,26 @@ Prompt `address-syntax-correction-runtime`:
 - либо сделать один стабильный async runtime для обработки API-запросов;
 - либо заменить token-lock на loop-safe/thread-safe механизм, например обычный `threading.Lock` вокруг синхронного участка обновления кеша токена, а асинхронный HTTP-вызов выполнять вне чужого loop-bound lock;
 - отдельно проверить `LiteLLMClient._parallel_semaphore`: это тоже class-level `asyncio.Semaphore` и может дать такой же класс ошибки при межзапросном переиспользовании.
+
+## Исправление API Event Loop Regression 2026-05-18
+
+Внедрено:
+
+- `ai_agent_service.py`: удален общий `AIAgentService._gigachat_token_lock` на базе `asyncio.Lock`; кеш токена GigaChat сохранен, при одновременном обновлении токена допускается лишний OAuth-запрос вместо падения между event loop.
+- `bot_order/llm_client.py`: общий `asyncio.Semaphore` заменен на `threading.BoundedSemaphore`; ожидание слота выполняется через `asyncio.to_thread(semaphore.acquire)`, поэтому глобальный лимит параллельных GigaChat-вызовов больше не привязан к event loop конкретного HTTP-запроса.
+
+Проверки:
+
+- `venv/bin/python -m py_compile ai_agent_service.py bot_order/llm_client.py` -> OK.
+- `venv/bin/python manage.py check` -> `System check identified no issues`.
+- API-контрольная сессия `codex_api_eventloop_fix_404afc8e_stt` после рестарта `gunicorn-komunal-dom.service`:
+  - `Привет`: HTTP 200, body `status=success`, `285.8 ms`;
+  - `Абрикосовая 2`: HTTP 200, body `status=success`, `3340.1 ms`, ответ `Уточните населенный пункт.`;
+  - `Сочи`: HTTP 200, body `status=success`, `3276.3 ms`, ответ `Сочи, Абрикосовая 2 - нами не обслуживается.`;
+  - повторный `Сочи`: HTTP 200, body `status=success`, `3157.3 ms`.
+- В журнале после прогона не появилось `bound to a different event loop`.
+
+Оставшийся вопрос производительности:
+
+- ошибка падения исправлена, но задержка осталась LLM-сетевой: `turn_splitter.analyze` около `1.4-1.8 s`, `address_agent.resolve` около `1.1-1.8 s`;
+- следующий оптимизационный шаг: переиспользовать address-слоты из `TurnSplitterAgent`, чтобы не запускать `AddressAgent.slots` повторно на простых адресных репликах.
