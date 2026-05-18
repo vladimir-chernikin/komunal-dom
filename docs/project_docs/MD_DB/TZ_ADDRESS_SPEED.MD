@@ -303,3 +303,46 @@ Prompt `address-syntax-correction-runtime`:
 - `pip index versions gigachat` показал актуальную версию `0.2.1`;
 - PyPI указывает `gigachat 0.2.1`, release date `Apr 27, 2026`;
 - вывод про отсутствие `chat_parse()` относится к установленному SDK `0.1.43`, а не к последней версии `0.2.1`.
+
+## Проверка SDK GigaChat 0.2.1 2026-05-18
+
+Окружение обновлено на сервере:
+
+- `gigachat`: `0.1.43` -> `0.2.1`;
+- `langchain-gigachat`: `0.3.12` -> `0.5.1`, потому что старая версия требовала `gigachat<0.2.0`;
+- после обновления `venv/bin/pip check` -> `No broken requirements found`;
+- `venv/bin/python manage.py check` -> `System check identified no issues`.
+
+Проверка SDK:
+
+- в `gigachat==0.2.1` появились `GigaChat.chat_parse()` и `GigaChat.achat_parse()`;
+- временный скрипт: `runtime/gigachat_sdk_response_format_probe.py`;
+- результат: `/var/www/komunal-dom_ru/runtime/gigachat_sdk_response_format_result_20260518_105902.json`;
+- `sdk_chat_parse_payment_no_null`: `0/5` успешных;
+- `sdk_chat_parse_payment_optional`: `0/3` успешных;
+- `sdk_chat_parse_address_no_null`: `0/5` успешных;
+- причина: API вернул обычный Markdown/текст в `message.content`, а SDK попытался распарсить его как JSON и получил `JSONDecodeError`;
+- пример сырого ответа на платеж: `**Платежная задача:** Оплатить услугу интернета...`;
+- пример сырого ответа на адрес: Markdown-разбор с кодовым блоком и русскими ключами вместо Pydantic-схемы.
+
+Повторная проверка прямого REST после обновления SDK:
+
+- результат: `/var/www/komunal-dom_ru/runtime/gigachat_json_capability_probe_result_20260518_105712.json`;
+- `response_format` с JSON Schema по-прежнему возвращает HTTP 400 `Empty schema with json format type is not supported`;
+- `response_format={"type":"json_object"}` возвращает HTTP 200, но не гарантирует JSON и не проходит Pydantic;
+- официальный `functions + function_call` со схемой без `null/anyOf` по-прежнему работает: `2/2` успешных, аргументы в `message.function_call.arguments`, Pydantic проходит.
+
+Вывод после обновления SDK:
+
+- native `json_schema/response_format` для `GigaChat-2` в нашем контуре нельзя считать рабочим;
+- `chat_parse()` в SDK есть, но не обеспечивает структурированный JSON на проверенных запросах;
+- рабочий путь для критичных JSON-агентов остается `functions + function_call` с GigaChat-совместимой схемой без `null/anyOf`;
+- prompt-only агенты `DialogGuardAgent.check`, `TurnSplitterAgent.analyze`, `AddressAgent.slots`, `ProblemAgent.fragment` остаются источником retry и задержек.
+
+Выгрузка нестабильных промптов из `llm_request_log`:
+
+- временный скрипт: `runtime/extract_unstable_prompts.py`;
+- session: `test_bot_codex_speed_full_1ba3cca2_20260518_092255`;
+- полный Markdown-отчет: `/var/www/komunal-dom_ru/runtime/unstable_prompts_20260518_105903.md`;
+- JSON-отчет: `/var/www/komunal-dom_ru/runtime/unstable_prompts_20260518_105903.json`;
+- выгружено `14` LLM-вызовов: первичные проблемные вызовы и retry.
