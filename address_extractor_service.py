@@ -70,19 +70,9 @@ class AddressExtractor:
             )
 
         search_string = self._build_search_string(address_components)
-        local_building = self._find_local_building_by_text(city=city, street=street, house_number=house_number)
-        if local_building is not None and local_building.street_fias_guid:
-            street_guid = str(local_building.street_fias_guid)
-            house_guid = str(local_building.fias_guid) if local_building.fias_guid else None
-            fias_match = {
-                "street_guid": street_guid,
-                "house_guid": house_guid,
-                "full_address": local_building.full_address,
-            }
-        else:
-            fias_match = self.fias_service.resolve_building_with_fallback(address_components)
-            street_guid = fias_match.get("street_guid")
-            house_guid = fias_match.get("house_guid")
+        fias_match = self.fias_service.resolve_building_with_fallback(address_components)
+        street_guid = fias_match.get("street_guid")
+        house_guid = fias_match.get("house_guid")
 
         if not street_guid:
             return self._result(
@@ -95,7 +85,7 @@ class AddressExtractor:
                 fias_candidate_hints=fias_match.get("candidate_hints") or [],
             )
 
-        building = local_building or self._find_local_building(
+        building = self._find_local_building(
             fias_guid=house_guid,
             street_guid=street_guid,
             house_number=house_number,

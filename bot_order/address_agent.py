@@ -535,7 +535,7 @@ class AddressAgent:
         session_id: str,
         message_log_id: Optional[int],
     ) -> Dict[str, Any]:
-        candidate_hints = await sync_to_async(self._local_candidate_hints)(components)
+        candidate_hints = await sync_to_async(self._local_candidate_hints)(components, validation)
         prompt = self._build_syntax_correction_prompt(
             text=text,
             components=components,
@@ -570,19 +570,6 @@ class AddressAgent:
             "reasoning": result.get("reasoning") or result.get("reason") or result.get("рассуждение") or "",
             "raw": result.get("_raw_response"),
         }
-        candidate_correction = self._single_local_candidate_correction(
-            raw_text=components.get("raw_text") or text or "",
-            candidate_hints=candidate_hints,
-        )
-        if candidate_correction and not self._correction_matches_candidate(correction, candidate_correction):
-            candidate_correction["raw"] = result.get("_raw_response")
-            candidate_correction["reasoning"] = "выбран единственный подходящий обслуживаемый адрес по номеру дома и похожим словам из реплики"
-            candidate_correction["local_candidate"] = True
-            return candidate_correction
-        if candidate_correction:
-            correction.update(candidate_correction)
-            correction["raw"] = result.get("_raw_response")
-            correction["local_candidate"] = True
         return correction
 
     def _build_syntax_correction_prompt(
@@ -597,31 +584,42 @@ class AddressAgent:
         street = str(components.get("street") or "").strip()
         house = str(components.get("house_number") or "").strip()
         raw_text = str(components.get("raw_text") or text or "").strip()
-        parsed_text = ", ".join(part for part in [city, f"{street} {house}".strip()] if part).strip()
         reason = validation.get("reason") or "ФИАС не нашел адрес"
+        fias_hints = validation.get("fias_candidate_hints") or []
         return (
             "Ты быстрый корректор адреса для УК.\n"
-            f"Адрес из реплики: {raw_text}\n"
-            f"Распознанные поля: city={city or 'null'}; street={street or 'null'}; house={house or 'null'}\n"
-            f"Реальные кандидаты обслуживаемых адресов: {json.dumps(candidate_hints or [], ensure_ascii=False)}\n"
-            f"Причина: {reason}\n"
-            "В адресе вероятна синтаксическая или STT-ошибка. Исправь город, улицу или дом, если это следует из реплики. "
-            "Если список кандидатов не пустой, разрешено вернуть только город, улицу и дом из одного кандидата. "
-            "Не возвращай город или улицу вне списка кандидатов. "
-            "Не выбирай случайный адрес. Если уверенности нет, верни null в сомнительных полях и confidence < 0.70.\n"
-            "Ответь только JSON:\n"
+            f"Адрес одной строкой: {raw_text}\n"
+            f"Предыдущий разбор: city={city or 'null'}; street={street or 'null'}; house={house or 'null'}\n"
+            f"ФИАС: {reason}\n"
+            f"ФИАС-подсказки: {json.dumps(fias_hints[:5], ensure_ascii=False)}\n"
+            f"Локальные подсказки по уже найденной ФИАС-улице: {json.dumps(candidate_hints or [], ensure_ascii=False)}\n"
+            "В адресе может быть ошибка распознавания или написания в городе, улице или доме. "
+            "Исправь только очевидную ошибку по смыслу адреса. Не добавляй отсутствующий город, улицу или дом. "
+            "Подсказки используй только если все исправленные части похожи на исходную строку. "
+            "Не выбирай случайный адрес и не смешивай части разных подсказок. Если уверенности нет, верни исходные поля и confidence < 0.70.\n"
+            "Верни только JSON: "
             "{\"city\":string|null,\"street\":string|null,\"house_number\":string|null,"
             "\"confidence\":0.0,\"reasoning\":\"кратко\"}"
         )
 
-    def _local_candidate_hints(self, components: Dict[str, Any], limit: int = 8):
+    def _local_candidate_hints(self, components: Dict[str, Any], validation: Dict[str, Any], limit: int = 8):
         house_number = normalize_house_number(components.get("house_number"))
-        if not house_number:
+        street_guid = validation.get("street_fias_guid")
+        if not house_number or not street_guid:
+            return []
+        if validation.get("match_status") != "not_found":
+            return []
+        if not components.get("city") or not components.get("street"):
             return []
         try:
             from portal.models import ServiceObject
 
-            buildings = list(Building.objects.filter(house_number=house_number).order_by("id")[:50])
+            buildings = list(
+                Building.objects.filter(
+                    street_fias_guid=street_guid,
+                    house_number=house_number,
+                ).order_by("id")[:50]
+            )
             active_building_ids = set(
                 ServiceObject.objects.filter(
                     is_active=True,
@@ -810,21 +808,13 @@ class AddressAgent:
 
     def _should_try_syntax_correction(self, validation: Dict[str, Any], components: Dict[str, Any]) -> bool:
         status = validation.get("match_status")
-        if status not in {"not_found", "incomplete"}:
+        if status != "not_found":
             return False
-        filled = [
-            components.get("city"),
-            components.get("street"),
-            components.get("house_number"),
-        ]
-        if sum(1 for value in filled if value not in (None, "")) >= 2:
-            return True
-        raw_text = str(components.get("raw_text") or "")
-        if not components.get("house_number"):
-            return False
-        has_city_marker = bool(re.search(r"\b(?:город|горд|г)\b\.?", raw_text, flags=re.IGNORECASE))
-        has_street_marker = bool(re.search(r"\b(?:улица|ул)\b\.?", raw_text, flags=re.IGNORECASE))
-        return status == "incomplete" and has_city_marker and has_street_marker
+        return bool(
+            components.get("city")
+            and components.get("street")
+            and components.get("house_number")
+        )
 
     def _syntax_correction_is_safe(
         self,

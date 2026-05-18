@@ -208,3 +208,29 @@ Prompt `address-syntax-correction-runtime`:
 - Локальный поиск по одному номеру дома отсутствует.
 - Невалидный JSON от GigaChat не вызывает каскад из 3-4 retry.
 - В trace видно, почему выбран каждый адресный путь.
+
+## Реализация 2026-05-18
+
+- Перед стартом работ сделан снимок ветки `feature/tz-26-12-critical-fixes`: commit `b9e5d49`.
+- `AddressExtractor.validate_and_match_to_db()` больше не ищет локальный дом по `city+street+house` до ФИАС; сначала всегда вызывается `resolve_building_with_fallback()`.
+- Локальное принятие дома без `fias_house_guid` осталось только через `_find_local_building(fias_guid, street_guid, house_number)`, то есть по `street_fias_guid + normalized_house_number`.
+- `AddressAgent._should_try_syntax_correction()` теперь запускает LLM-коррекцию только при `match_status=not_found` и полном наборе `city+street+house`; статус `incomplete` больше не идет ни в ФИАС, ни в синтаксическую LLM-коррекцию.
+- Удалено автоматическое принятие единственного локального кандидата из syntax correction; это было источником смешивания `Сочи` из одного адреса с `Абрикосовая` из реплики.
+- `AddressAgent.syntax_correction` теперь передает в LLM исходную строку адреса, предыдущий разбор и `fias_candidate_hints`; локальные подсказки разрешены только если ФИАС уже вернул `street_fias_guid`.
+- `address-slots-lite` обновлен в БД: активная версия `id=239`. Добавлен общий контракт для многословных населенных пунктов и разделения `city/street` без частных адресных примеров.
+- `DialogGuardAgent.check` и `TurnSplitterAgent.analyze` запускаются параллельно, если статический guard не заблокировал реплику.
+- `LiteLLMClient` получил лимит параллельности `GIGACHAT_MAX_PARALLEL_REQUESTS` со значением по умолчанию `6`.
+- `AIAgentService` получил общий кэш OAuth-токена GigaChat и async lock, чтобы параллельные LLM-вызовы не создавали пачку запросов `/oauth`.
+
+Проверки:
+
+- `venv/bin/python manage.py check` -> `System check identified no issues`.
+- `Абрикосовая 2` -> `incomplete`, вопрос `Уточните населенный пункт.`, `fias_log_count=0`, syntax correction не запускалась.
+- `Абрикосовая 2 нет света` -> `incomplete`, город не подставлен, `fias_log_count=0`.
+- `город Сочи, улица Обррикосовая, дом 20` -> syntax correction через ФИАС-подсказки исправила улицу на `Абрикосовая`, повторная проверка дала `matched`.
+- `Сочи` при известных `street=Абрикосовая`, `house=20` -> `matched`.
+- Параллельный тест 8 коротких LLM-вызовов после OAuth-кэша: все 8 успешно, total `677 ms`, 429 не было.
+
+Оставшийся риск:
+
+- GigaChat Lite в `address-slots-lite` нестабилен на голой строке `Ростов на дону московская 10`: иногда режет `city` до `Ростов`. Второй слой `AddressAgent.syntax_correction` с исходной строкой и ФИАС-подсказками исправляет это в проверенном кейсе, но для максимальной надежности нужен structured output/JSON Schema и, вероятно, отдельный канонизатор адресных слотов.

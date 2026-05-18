@@ -550,3 +550,21 @@ Content-Type: application/json
 - Поиск локальных кандидатов только по номеру дома запрещен.
 - Для JSON-ответов нужно перейти с prompt-only контроля на structured output: `response_format`/JSON Schema или function calling, если текущий GigaChat API это принимает.
 - Активные prompt templates должны показывать валидный JSON с ключами в двойных кавычках, иначе GigaChat Lite продолжит провоцировать retry и задержки.
+
+### Внедрение 2026-05-18
+
+- Перед изменениями создан и отправлен в GitHub snapshot commit `b9e5d49`.
+- В `address_extractor_service.py` убран предварительный локальный поиск по тексту; теперь полный адрес сначала проходит ФИАС.
+- В `bot_order/address_agent.py` синтаксическая коррекция отключена для `incomplete`, удалено автопринятие единственного локального кандидата и добавлены `fias_candidate_hints` в prompt коррекции.
+- В `bot_order/orchestrator.py` параллельно запускаются `DialogGuardAgent.check` и `TurnSplitterAgent.analyze` после успешного статического guard.
+- В `bot_order/llm_client.py` добавлен semaphore по `GIGACHAT_MAX_PARALLEL_REQUESTS=6`.
+- В `ai_agent_service.py` добавлен общий кэш OAuth-токена GigaChat с async lock; это убрало 429 на `/oauth` при параллельном тесте.
+- Prompt template `address-slots-lite` обновлен до активной версии `id=239`: общий контракт для многословных населенных пунктов и slot value/evidence.
+
+Контрольные результаты:
+
+- `manage.py check` без ошибок.
+- `Абрикосовая 2` и `Абрикосовая 2 нет света`: `incomplete`, вопрос про населенный пункт, ФИАС и syntax correction не запускались.
+- `город Сочи, улица Обррикосовая, дом 20`: LLM-коррекция выбрала `Абрикосовая` по ФИАС-подсказкам, повторная ФИАС-проверка дала `matched`.
+- `Сочи` как уточнение к известным `Абрикосовая 20`: `matched`.
+- 8 параллельных коротких LLM-вызовов: все успешны, total `677 ms`; до OAuth-кэша 7/8 ловили 429 на `/oauth`.

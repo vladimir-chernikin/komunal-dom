@@ -1,3 +1,4 @@
+import asyncio
 import re
 from typing import Any, Dict, Optional
 
@@ -79,18 +80,41 @@ class BotOrderOrchestrator:
                 extra={"is_greeting": True},
             )
 
-        guard_result = await self._timed_await(
-            "dialog_guard.check",
-            self.dialog_guard.check(
-                text=text,
-                state=state,
-                session_id=session_id,
-                message_log_id=message_log_id,
-            ),
-            {"previous_stage": previous_stage, "text_len": len(text or "")},
-        )
         static_guard_result = self.static_guard.check(text)
-        if not static_guard_result.get("allowed"):
+        if static_guard_result.get("allowed"):
+            guard_result, turn_result = await asyncio.gather(
+                self._timed_await(
+                    "dialog_guard.check",
+                    self.dialog_guard.check(
+                        text=text,
+                        state=state,
+                        session_id=session_id,
+                        message_log_id=message_log_id,
+                    ),
+                    {"previous_stage": previous_stage, "text_len": len(text or "")},
+                ),
+                self._timed_await(
+                    "turn_splitter.analyze",
+                    self.turn_splitter.analyze(
+                        text=text,
+                        state=state,
+                        session_id=session_id,
+                        message_log_id=message_log_id,
+                    ),
+                    {"previous_stage": previous_stage, "text_len": len(text or "")},
+                ),
+            )
+        else:
+            guard_result = await self._timed_await(
+                "dialog_guard.check",
+                self.dialog_guard.check(
+                    text=text,
+                    state=state,
+                    session_id=session_id,
+                    message_log_id=message_log_id,
+                ),
+                {"previous_stage": previous_stage, "text_len": len(text or "")},
+            )
             guard_result.update(static_guard_result)
             guard_result["action"] = "block"
             if not guard_result.get("reply_prefix"):
@@ -119,16 +143,6 @@ class BotOrderOrchestrator:
                 state=state,
         )
         use_message_for_order = bool(guard_result.get("use_message_for_order", True))
-        turn_result = await self._timed_await(
-            "turn_splitter.analyze",
-            self.turn_splitter.analyze(
-                text=text,
-                state=state,
-                session_id=session_id,
-                message_log_id=message_log_id,
-            ),
-            {"previous_stage": previous_stage, "text_len": len(text or "")},
-        )
         state["turn"] = turn_result
 
         if previous_stage == "contact_profile_confirm":
