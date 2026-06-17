@@ -17,6 +17,7 @@ TestBotSimulator - тестовый бот-имитатор пользовате
 import asyncio
 import logging
 import random
+import uuid
 from typing import List, Dict, Optional
 from decouple import config
 import sys
@@ -110,7 +111,8 @@ class TestBotSimulator:
         # Генерируем персональные данные
         self.name = random.choice(self.NAMES)
         self.user_id = f"test_user_{random.randint(1000, 9999)}"
-        self.session_id = f"test_session_{random.randint(10000, 99999)}"
+        self.session_id = f"test_session_{random.randint(10000, 99999)}"  # ИСПРАВЛЕНО: session_id остается строкой для логов
+        self.dialog_id = str(uuid.uuid4())  # ИСПРАВЛЕНО (2026-01-05): dialog_id должен быть UUID для DialogLoggerService
 
         # История диалога
         self.dialog_history: List[Dict] = []
@@ -276,8 +278,9 @@ class TestBotSimulator:
             # Добавляем ответ бота в историю
             self.dialog_history.append({'role': 'bot', 'text': bot_response})
 
+            # ИСПРАВЛЕНИЕ (2026-01-12): Проверяем 'success' (строчными) как в message_handler_service
             # Проверяем, успешно ли определена услуга
-            if status == 'SUCCESS' and service_detected:
+            if status == 'success' and service_detected:
                 logger.info("=" * 60)
                 logger.info(f"✅ УСПЕХ: Услуга определена (ID: {service_detected})")
                 logger.info(f"=" * 60)

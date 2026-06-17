@@ -1,0 +1,239 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Логи импорта КЛАДР - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+.card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    padding: 10px 15px;
+    background: #fff;
+    color: #1a1a1a;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 1rem;
+}
+
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #dee2e6;
+}
+
+.table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    padding: 0.6rem 0.75rem;
+}
+
+.table td {
+    font-size: 0.875rem;
+    padding: 0.6rem 0.75rem;
+    vertical-align: middle;
+}
+
+.table-hover tbody tr:hover {
+    background: #f8f9fa;
+}
+
+.badge {
+    font-size: 0.7rem;
+    padding: 0.3em 0.5em;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.pagination .page-link {
+    color: #374151;
+    border-color: #dee2e6;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.pagination .page-item.active .page-link {
+    background: linear-gradient(135deg, #374151 0%, #374151 100%);
+    border-color: #374151;
+}
+
+.pagination .page-link:hover {
+    background: #f8f9fa;
+    border-color: #374151;
+    color: #374151;
+}
+
+.alert-info {
+    background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+    border: 1px solid #7dd3fc;
+    color: #0c4a6e;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Заголовок -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="mb-0">
+                        <i class="fas fa-history text-info"></i>
+                        Логи импорта КЛАДР
+                        <small class="text-muted">- история операций</small>
+                    </h6>
+                </div>
+                <div>
+                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left"></i> Назад
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                Всего операций импорта: <strong>{{ total_count }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица логов -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-list text-primary"></i> История операций
+                </div>
+                <div class="card-body p-0">
+                    {% if page_obj %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Операция</th>
+                                    <th>Файл</th>
+                                    <th class="text-center">Обработано</th>
+                                    <th class="text-center">Успешно</th>
+                                    <th class="text-center">Ошибок</th>
+                                    <th>Начало</th>
+                                    <th>Завершение</th>
+                                    <th>Длительность</th>
+                                    <th class="text-end">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in page_obj %}
+                                <tr>
+                                    <td><code>{{ log.id }}</code></td>
+                                    <td>
+                                        <span class="badge bg-{% if log.operation_type == 'import' %}success{% elif log.operation_type == 'update' %}warning{% elif log.operation_type == 'delete' %}danger{% else %}secondary{% endif %}">
+                                            {{ log.get_operation_type_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <strong>{{ log.file_name|default:"-" }}</strong>
+                                        {% if log.source %}
+                                        <br><small class="text-muted">{{ log.source }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">{{ log.records_processed }}</td>
+                                    <td class="text-center text-success">
+                                        <strong>{{ log.records_successful }}</strong>
+                                    </td>
+                                    <td class="text-center text-danger">
+                                        <strong>{{ log.records_failed }}</strong>
+                                    </td>
+                                    <td>{{ log.started_at|date:"d.m.Y H:i" }}</td>
+                                    <td>
+                                        {% if log.completed_at %}
+                                            {{ log.completed_at|date:"d.m.Y H:i" }}
+                                        {% else %}
+                                            <small class="text-muted">В процессе...</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.completed_at %}
+                                            {% with duration=log.completed_at|timesince:log.started_at %}
+                                                <small>{{ duration }}</small>
+                                            {% endwith %}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <a href="/admin/kladr/dataimportlog/{{ log.id }}/change/" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Пагинация -->
+                    {% if page_obj.has_other_pages %}
+                    <nav aria-label="Навигация" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Назад</a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">Назад</span>
+                            </li>
+                            {% endif %}
+
+                            <li class="page-item active">
+                                <span class="page-link">
+                                    {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
+                                </span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}">Вперед</a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">Вперед</span>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                        <h6 class="text-muted">Логов пока нет</h6>
+                        <p class="text-muted">История операций импорта пуста</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

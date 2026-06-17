@@ -1,0 +1,82 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    /* Компактный интерфейс таблицы */
+    #result_list {
+        font-size: 12px;
+    }
+
+    #result_list th {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 8px !important;
+        white-space: nowrap;
+    }
+
+    #result_list td {
+        font-size: 12px;
+        padding: 6px 8px !important;
+        vertical-align: middle;
+        line-height: 1.4;
+        max-height: 2.8em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Кликабельные строки */
+    #result_list tbody tr.clickable-row {
+        cursor: pointer;
+    }
+
+    #result_list tbody tr.clickable-row:hover {
+        background-color: #f8f9fa !important;
+    }
+
+    /* Чекбоксы и ссылки остаются со своим курсором */
+    #result_list tbody tr.clickable-row input[type="checkbox"],
+    #result_list tbody tr.clickable-row a,
+    #result_list tbody tr.clickable-row button {
+        cursor: auto;
+    }
+
+    /* Компактность для колонок */
+    #result_list col {
+        width: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{{ block.super }}
+
+<script>
+(function() {
+    // Обработка клика по строкам таблицы
+    document.addEventListener('DOMContentLoaded', function() {
+        const table = document.getElementById('result_list');
+        if (table) {
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(function(row) {
+                row.addEventListener('click', function(e) {
+                    // Не кликаем, если кликнули на ссылку или действие
+                    if (e.target.tagName === 'A' ||
+                        e.target.closest('a') ||
+                        e.target.closest('input[type="checkbox"]')) {
+                        return;
+                    }
+
+                    // Находим ссылку на изменение объекта
+                    const link = row.querySelector('a[href*="/change/"]');
+                    if (link) {
+                        window.location.href = link.href;
+                    }
+                });
+            });
+        }
+    });
+})();
+</script>
+{% endblock %}

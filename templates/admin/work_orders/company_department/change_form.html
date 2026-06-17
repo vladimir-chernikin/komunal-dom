@@ -1,0 +1,65 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .department-context-panel {
+        margin: 0 0 16px 0;
+        padding: 14px 18px;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        background: #f8f9fa;
+    }
+
+    .department-context-title {
+        font-size: 13px;
+        color: #6c757d;
+        margin-bottom: 8px;
+    }
+
+    .department-context-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+    }
+
+    .department-context-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .department-context-item strong {
+        color: #212529;
+    }
+
+    .field-department_code .help {
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block form_top %}
+<div class="global-submit-row">
+    <input type="submit" name="_save" value="Сохранить">
+    <a href="{{ department_changelist_url|default:'javascript:history.back()' }}" class="close-form-link">Закрыть</a>
+</div>
+
+<div class="department-context-panel">
+    <div class="department-context-title">Текущий контекст создания и редактирования</div>
+    <div class="department-context-grid">
+        <div class="department-context-item">
+            <span>Компания</span>
+            <strong>{% if department_context_company %}{{ department_context_company.name }}{% else %}Не определена{% endif %}</strong>
+        </div>
+        <div class="department-context-item">
+            <span>Родитель</span>
+            <strong>{% if department_context_parent %}{{ department_context_parent.department_name }}{% else %}Корневой элемент{% endif %}</strong>
+        </div>
+    </div>
+</div>
+
+{% if department_context_company %}
+<input type="hidden" name="_company_scope" value="{{ department_context_company.id }}">
+{% endif %}
+{% endblock %}

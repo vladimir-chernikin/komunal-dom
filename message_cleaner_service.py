@@ -19,6 +19,7 @@ MessageCleanerService - сервис очистки сообщений от му
 import logging
 import re
 from typing import Dict, Optional, Tuple
+import pymorphy2
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class MessageCleanerService:
     1. Базовая очистка - удаление явных приветствий
     2. Удаление стоп-слов в начале сообщения
     3. LLM-очистка (опционально) для сложных случаев
+    4. ИСПРАВЛЕНО (2025-12-25): Коррекция опечаток
     """
 
     # Списки приветствий для очистки
@@ -41,6 +43,22 @@ class MessageCleanerService:
         'доброго времени суток', 'доброго дня'
     ]
 
+    # ИСПРАВЛЕНО (2026-01-12): Частые опечатки в приветствиях
+    COMMON_TYPO_GREETINGS = {
+        'приет': 'привет',
+        'привт': 'привет',
+        'привит': 'привет',
+        'здрасте': 'здравствуйте',
+        'здраствуйте': 'здравствуйте',
+        'дарова': 'привет',
+        'добрай день': 'добрый день',
+        'дрбрый день': 'добрый день',
+    }
+
+    # ИСПРАВЛЕНО (2025-12-25): Частые опечатки и их исправления
+    # ИСПРАВЛЕНО (2026-01-15): УБРАНО - теперь используем LLM для исправления опечаток
+    # Хардкод словаря заменен на YandexGPT Lite (метод _correct_typos)
+
     # Слова-заполнители, не несущие смысла
     FILLER_WORDS = [
         'короче', 'типа', 'как бы', 'вроде', 'примерно',
@@ -49,7 +67,8 @@ class MessageCleanerService:
 
     # Стоп-слова в начале (предлоги, союзы, местоимения)
     PREFIX_STOP_WORDS = [
-        'а', 'но', 'да', 'нет', 'ну', 'же', 'ли', 'ведь',
+        'а', 'но', 'да', 'нет',
+        'ну', 'же', 'ли', 'ведь',
         'просто', 'просто-', 'лишь', 'только', 'честно',
         'вообще', 'в принципе', 'собственно', 'итак'
     ]
@@ -64,9 +83,11 @@ class MessageCleanerService:
         self.ai_agent = ai_agent_service
         logger.info("MessageCleanerService инициализирован")
 
-    def clean_message(self, message_text: str, use_llm: bool = False) -> Tuple[str, Dict]:
+    async def clean_message(self, message_text: str, use_llm: bool = False) -> Tuple[str, Dict]:
         """
         Очистка сообщения от мусора
+
+        ИСПРАВЛЕНО (2026-01-15): Сделан async для LLM-коррекции опечаток
 
         Args:
             message_text: Исходный текст сообщения
@@ -102,6 +123,14 @@ class MessageCleanerService:
         if cleaned_text != original_text.strip():
             metadata['removed_greeting'] = True
 
+        # ИСПРАВЛЕНО (2025-12-25): Шаг 1.5 - Коррекция опечаток
+        # ИСПРАВЛЕНО (2026-01-15): Добавлен await для async _correct_typos
+        cleaned_text = await self._correct_typos(cleaned_text)
+        if cleaned_text != original_text.strip():
+            metadata['typos_corrected'] = True
+            metadata['original'] = original_text.strip()
+            metadata['corrected'] = cleaned_text
+
         # Шаг 2: Удаление слов-заполнителей
         before_filler = cleaned_text
         cleaned_text = self._remove_filler_words(cleaned_text)
@@ -116,7 +145,7 @@ class MessageCleanerService:
 
         # Шаг 4: LLM-очистка (если включено и доступен AI)
         if use_llm and self.ai_agent:
-            cleaned_text = self._llm_clean(cleaned_text, metadata)
+            cleaned_text = await self._llm_clean(cleaned_text, metadata)
 
         # Финальная зачистка
         cleaned_text = cleaned_text.strip()
@@ -260,6 +289,11 @@ class MessageCleanerService:
         """
         Проверка: является ли сообщение только приветствием
 
+        ИСПРАВЛЕНО (2026-01-12): Добавлено распознавание опечаток
+        - "приет" → "привет"
+        - "здрасте" → "здравствуйте"
+        - "дрбрый день" → "добрый день"
+
         Args:
             text: Текст сообщения
 
@@ -274,11 +308,95 @@ class MessageCleanerService:
 
         # Если слов мало и все они приветствия
         if len(words) <= 3:
-            greeting_words = [w for w in words if any(g in w for g in self.GREETINGS)]
+            greeting_words = [w for w in words if self._is_greeting_word(w)]
             if len(greeting_words) == len(words):
                 return True
 
         return False
+
+    def _is_greeting_word(self, word: str) -> bool:
+        """
+        Проверяет является ли слово приветствием (с опечатками)
+
+        ИСПРАВЛЕНО (2026-01-12): Добавлено распознавание опечаток
+
+        Args:
+            word: Слово для проверки
+
+        Returns:
+            bool: True если слово является приветствием
+        """
+        # ИСПРАВЛЕНО (2026-01-12): Проверка частых опечаток
+        if word in self.COMMON_TYPO_GREETINGS:
+            return True
+
+        # Точное совпадение
+        if any(g == word for g in self.GREETINGS):
+            return True
+
+        # Проверка на вхождение (для "привет" внутри "приветики")
+        if any(g in word or word in g for g in self.GREETINGS if len(g) > 4):
+            return True
+
+        # ИСПРАВЛЕНО (2026-01-12): Нечеткое сравнение для частых опечаток
+        # Проверяем расстояние Левенштейна для слов похожей длины
+        for greeting in self.GREETINGS:
+            # ИСПРАВЛЕНИЕ: Более мягкий порог для длины
+            if abs(len(word) - len(greeting)) <= max(3, len(greeting) * 0.4):
+                # Если слова похожей длины - проверяем нечеткое совпадение
+                if self._fuzzy_match(word, greeting, threshold=0.65):
+                    return True
+
+        return False
+
+    def _fuzzy_match(self, s1: str, s2: str, threshold: float = 0.7) -> bool:
+        """
+        Нечеткое сравнение строк на основе расстояния Левенштейна
+
+        ИСПРАВЛЕНО (2026-01-12): Добавлено для распознавания опечаток
+
+        Args:
+            s1: Первая строка
+            s2: Вторая строка
+            threshold: Порог схожести (0.0 - 1.0)
+
+        Returns:
+            bool: True если строки похожи
+        """
+        if not s1 or not s2:
+            return False
+
+        # Простое расстояние Левенштейна
+        len1, len2 = len(s1), len(s2)
+
+        # Если разница в длине слишком большая - не совпадает
+        if abs(len1 - len2) > max(len1, len2) * (1 - threshold):
+            return False
+
+        # Вычисляем расстояние Левенштейна
+        if len1 < len2:
+            s1, s2 = s2, s1
+            len1, len2 = len2, len1
+
+        # s1 всегда длиннее или равен s2
+        previous_row = list(range(len2 + 1))
+
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+
+        distance = previous_row[-1]
+        max_len = max(len1, len2)
+
+        # Нормализуем расстояние
+        similarity = 1 - (distance / max_len) if max_len > 0 else 0
+
+        return similarity >= threshold
 
     def get_meaningful_words(self, text: str) -> list:
         """
@@ -318,34 +436,98 @@ class MessageCleanerService:
 
         return meaningful
 
+    async def _correct_typos(self, text: str) -> str:
+        """
+        ИСПРАВЛЕНО (2026-01-15): Коррекция опечаток через YandexGPT Lite
+
+        Заменяет хардкод словаря на LLM-анализ текста.
+        Исправляет опечатки типа:
+        - "комфорок" → "конфорок"
+        - "тетчет" → "течет"
+        - "не приятно" → "неприятно"
+
+        Args:
+            text: Исходный текст с возможными опечатками
+
+        Returns:
+            str: Исправленный текст
+        """
+        if not text or not self.ai_agent:
+            return text
+
+        # Если текст короткий и без явных опечаток - пропускаем
+        if len(text) < 10:
+            return text
+
+        try:
+            prompt = f"""Ты - корректор русского языка. Исправь опечатки в тексте.
+
+ТЕКСТ С ОПЕЧАТКАМИ:
+{text}
+
+ПРАВИЛА:
+1. Исправь только ЯВНЫЕ опечатки
+2. Сохраняй смысл и стиль сообщения
+3. НЕ меняй сленг и разговорные выражения (если они уместны)
+4. НЕ добавляй и НЕ удаляй слова
+5. Верни ТОЛЬКО исправленный текст, без объяснений
+
+Исправленный текст:"""
+
+            # ИСПРАВЛЕНО (2026-02-24): Передаем service_name для отслеживания
+            response, _ = await self.ai_agent.call_llm(
+                prompt=prompt,
+                provider=None,  # Используем провайдер из env (DEFAULT_LLM_PROVIDER)
+                model=None,  # Используем модель по умолчанию из .env
+                service_name='MessageCleanerService'
+            )
+
+            corrected = response.strip()
+
+            if corrected and corrected != text:
+                logger.info(f"LLM-коррекция: '{text[:50]}...' → '{corrected[:50]}...'")
+                return corrected
+
+            return text
+
+        except Exception as e:
+            logger.warning(f"Ошибка LLM-коррекции опечаток: {e}")
+            return text
+
 
 # Для тестирования
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
+    import asyncio
+    import logging
 
-    cleaner = MessageCleanerService()
+    async def test_cleaner():
+        logging.basicConfig(level=logging.INFO)
 
-    test_messages = [
-        "Привет! У меня течет кран на кухне",
-        "Здравствуйте, добрый день, у меня проблема с отоплением",
-        "Короче, у меня в ванной засор",
-        "Просто вообще-то как бы у меня сломался лифт",
-        "Ну вообще в подъезде нет света",
-        "Добрый вечер. Извините, у меня течет труба в квартире",
-        "привет",
-        "Здравствуйте, подскажите пожалуйста",
-    ]
+        cleaner = MessageCleanerService()
 
-    print("=" * 60)
-    print("ТЕСТИРОВАНИЕ ОЧИСТКИ СООБЩЕНИЙ")
-    print("=" * 60)
+        test_messages = [
+            "Привет! У меня течет кран на кухне",
+            "Здравствуйте, добрый день, у меня проблема с отоплением",
+            "Короче, у меня в ванной засор",
+            "Просто вообще-то как бы у меня сломался лифт",
+            "Ну вообще в подъезде нет света",
+            "Добрый вечер. Извините, у меня течет труба в квартире",
+            "привет",
+            "Здравствуйте, подскажите пожалуйста",
+        ]
 
-    for msg in test_messages:
-        cleaned, meta = cleaner.clean_message(msg)
+        print("=" * 60)
+        print("ТЕСТИРОВАНИЕ ОЧИСТКИ СООБЩЕНИЙ")
+        print("=" * 60)
 
-        print(f"\nИсходное:  '{msg}'")
-        print(f"Очищенное: '{cleaned}'")
-        print(f"Метаданные: {meta}")
+        for msg in test_messages:
+            cleaned, meta = await cleaner.clean_message(msg)
 
-        if cleaner.is_greeting_only(msg):
-            print(">>> ТОЛЬКО ПРИВЕТСТВИЕ")
+            print(f"\nИсходное:  '{msg}'")
+            print(f"Очищенное: '{cleaned}'")
+            print(f"Метаданные: {meta}")
+
+            if cleaner.is_greeting_only(msg):
+                print(">>> ТОЛЬКО ПРИВЕТСТВИЕ")
+
+    asyncio.run(test_cleaner())

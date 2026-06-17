@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>Запись решения</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: #142420;
+        background: #eef5f2;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        padding: 18px;
+        background: #eef5f2;
+      }
+
+      main {
+        display: grid;
+        width: min(100%, 520px);
+        margin: 0 auto;
+        gap: 14px;
+      }
+
+      section {
+        border: 1px solid #d1dfda;
+        border-radius: 8px;
+        background: #fff;
+        padding: 14px;
+        box-shadow: 0 10px 24px rgba(22, 51, 45, 0.08);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        color: #0f2d28;
+        font-size: 24px;
+        line-height: 1.15;
+      }
+
+      p {
+        margin: 0;
+        color: #4a625d;
+        line-height: 1.45;
+      }
+
+      button {
+        width: 100%;
+        min-height: 50px;
+        border: 0;
+        border-radius: 8px;
+        font: inherit;
+        font-weight: 800;
+      }
+
+      button:disabled {
+        opacity: 0.62;
+      }
+
+      .primary {
+        color: #fff;
+        background: #0f766e;
+      }
+
+      .secondary {
+        color: #0f5f58;
+        background: #dff5ef;
+      }
+
+      .danger {
+        color: #fff;
+        background: #b91c1c;
+      }
+
+      .actions {
+        display: grid;
+        gap: 10px;
+      }
+
+      .status {
+        display: grid;
+        gap: 8px;
+      }
+
+      .status strong {
+        color: #0f2d28;
+        font-size: 16px;
+      }
+
+      .meter {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #d8e6e1;
+      }
+
+      .meter span {
+        display: block;
+        width: var(--level, 0%);
+        height: 100%;
+        border-radius: inherit;
+        background: #0f766e;
+        transition: width 120ms linear;
+      }
+
+      pre {
+        max-height: 180px;
+        margin: 0;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #33504a;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .result {
+        display: none;
+      }
+
+      .result.visible {
+        display: grid;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <h1>Запись решения</h1>
+        <p>Запишите голос во внешнем браузере. После отправки вернитесь в MAX, текст добавится в поле решения.</p>
+      </section>
+
+      <section class="status">
+        <strong id="statusText">Готово к записи</strong>
+        <p id="statusHint">Нажмите кнопку, разрешите микрофон браузеру и произнесите решение.</p>
+        <div class="meter" aria-hidden="true"><span id="levelBar"></span></div>
+      </section>
+
+      <section class="actions">
+        <button id="startButton" class="primary" type="button">Начать запись</button>
+        <button id="stopButton" class="danger" type="button" disabled>Остановить и отправить</button>
+        <button id="closeButton" class="secondary" type="button">Вернуться в MAX</button>
+      </section>
+
+      <section id="resultBlock" class="result">
+        <strong>Распознанный текст</strong>
+        <p id="resultText"></p>
+      </section>
+
+      <section>
+        <div class="actions">
+          <button id="copyButton" class="secondary" type="button">Скопировать лог</button>
+        </div>
+        <pre id="logText"></pre>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const BUILD = "2026-05-14-external-recorder-primary-status-fix-v1";
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get("session") || "";
+        const token = params.get("token") || "";
+        const startButton = document.getElementById("startButton");
+        const stopButton = document.getElementById("stopButton");
+        const closeButton = document.getElementById("closeButton");
+        const copyButton = document.getElementById("copyButton");
+        const statusText = document.getElementById("statusText");
+        const statusHint = document.getElementById("statusHint");
+        const levelBar = document.getElementById("levelBar");
+        const resultBlock = document.getElementById("resultBlock");
+        const resultText = document.getElementById("resultText");
+        const logText = document.getElementById("logText");
+        const logs = [];
+        let stream = null;
+        let recorder = null;
+        let audioContext = null;
+        let analyser = null;
+        let levelFrame = 0;
+        let chunks = [];
+
+        function log(message, details = null) {
+          const time = new Intl.DateTimeFormat("ru-RU", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }).format(new Date());
+          const line = `${time} ${message}${details ? ` ${JSON.stringify(details)}` : ""}`;
+          logs.unshift(line);
+          logText.textContent = logs.slice(0, 30).join("\n");
+          console.log("[voice-recorder]", message, details || "");
+        }
+
+        function setStatus(text, hint = "") {
+          statusText.textContent = text;
+          statusHint.textContent = hint;
+        }
+
+        async function sendEvent(event, details = {}, markError = false) {
+          if (!sessionId || !token) {
+            return;
+          }
+          try {
+            await fetch(`/api/max-webapp/voice-sessions/${sessionId}/event/`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                token,
+                event,
+                details,
+                markError,
+              }),
+            });
+          } catch (error) {
+            log("Event send failed", { event, message: error.message });
+          }
+        }
+
+        function pickMimeType() {
+          if (!window.MediaRecorder?.isTypeSupported) {
+            return "";
+          }
+          return (
+            [
+              "audio/webm;codecs=opus",
+              "audio/ogg;codecs=opus",
+              "audio/mp4",
+              "audio/webm",
+            ].find((type) => window.MediaRecorder.isTypeSupported(type)) || ""
+          );
+        }
+
+        function stopStream() {
+          if (levelFrame) {
+            cancelAnimationFrame(levelFrame);
+            levelFrame = 0;
+          }
+          if (audioContext) {
+            audioContext.close().catch(() => {});
+            audioContext = null;
+            analyser = null;
+          }
+          if (stream) {
+            stream.getTracks().forEach((track) => track.stop());
+            stream = null;
+          }
+          levelBar.style.setProperty("--level", "0%");
+        }
+
+        function startLevelMeter() {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext || !stream) {
+            return;
+          }
+          audioContext = new AudioContext();
+          analyser = audioContext.createAnalyser();
+          analyser.fftSize = 512;
+          const source = audioContext.createMediaStreamSource(stream);
+          source.connect(analyser);
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          const tick = () => {
+            analyser.getByteTimeDomainData(data);
+            let peak = 0;
+            data.forEach((value) => {
+              peak = Math.max(peak, Math.abs(value - 128));
+            });
+            levelBar.style.setProperty("--level", `${Math.min(100, peak * 2)}%`);
+            levelFrame = requestAnimationFrame(tick);
+          };
+          tick();
+        }
+
+        async function startRecording() {
+          if (!sessionId || !token) {
+            setStatus("Сессия записи недействительна", "Вернитесь в MAX и нажмите микрофон еще раз.");
+            log("Missing session or token", { hasSession: Boolean(sessionId), hasToken: Boolean(token) });
+            return;
+          }
+          if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+            setStatus("Браузер не поддерживает запись", "Откройте ссылку в Chrome на телефоне.");
+            const details = {
+              mediaDevices: Boolean(navigator.mediaDevices),
+              getUserMedia: Boolean(navigator.mediaDevices?.getUserMedia),
+              mediaRecorder: Boolean(window.MediaRecorder),
+              userAgent: navigator.userAgent,
+            };
+            log("Recording APIs unavailable", details);
+            sendEvent("Внешний браузер не поддерживает запись", details, true);
+            return;
+          }
+
+          startButton.disabled = true;
+          stopButton.disabled = false;
+          chunks = [];
+          setStatus("Запрашиваю микрофон", "Разрешите доступ к микрофону в браузере.");
+          const startedAt = performance.now();
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const elapsedMs = Math.round(performance.now() - startedAt);
+            const mimeType = pickMimeType();
+            recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+            recorder.ondataavailable = (event) => {
+              if (event.data?.size) {
+                chunks.push(event.data);
+              }
+            };
+            recorder.onstop = sendRecording;
+            recorder.start(500);
+            startLevelMeter();
+            setStatus("Идет запись", "Когда закончите, нажмите «Остановить и отправить».");
+            log("Recording started", {
+              build: BUILD,
+              elapsedMs,
+              mimeType: recorder.mimeType,
+              secureContext: window.isSecureContext,
+              userAgent: navigator.userAgent,
+            });
+          } catch (error) {
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            stopStream();
+            setStatus("Микрофон недоступен", "Проверьте, что ссылка открыта во внешнем Chrome и доступ к микрофону разрешен.");
+            const details = {
+              name: error.name,
+              message: error.message,
+              elapsedMs: Math.round(performance.now() - startedAt),
+              secureContext: window.isSecureContext,
+              userAgent: navigator.userAgent,
+            };
+            log("Microphone request failed", details);
+            sendEvent("Внешний браузер не получил микрофон", details, true);
+          }
+        }
+
+        function stopRecording() {
+          stopButton.disabled = true;
+          setStatus("Отправляю запись", "Идет распознавание речи.");
+          if (recorder && recorder.state !== "inactive") {
+            recorder.stop();
+            return;
+          }
+          sendRecording();
+        }
+
+        async function sendRecording() {
+          const mimeType = recorder?.mimeType || chunks[0]?.type || "audio/webm";
+          const extension = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+          const blob = new Blob(chunks, { type: mimeType });
+          recorder = null;
+          stopStream();
+          log("Sending recording", { bytes: blob.size, mimeType });
+          if (blob.size < 1024) {
+            startButton.disabled = false;
+            setStatus("Запись слишком короткая", "Нажмите «Начать запись» и произнесите фразу.");
+            log("Recording too small", { bytes: blob.size });
+            return;
+          }
+
+          try {
+            const formData = new FormData();
+            formData.append("token", token);
+            formData.append("audio", blob, `voice.${extension}`);
+            const response = await fetch(`/api/max-webapp/voice-sessions/${sessionId}/recognize/`, {
+              method: "POST",
+              body: formData,
+            });
+            const raw = await response.text();
+            let payload = null;
+            try {
+              payload = raw ? JSON.parse(raw) : null;
+            } catch {
+              payload = null;
+            }
+            if (!response.ok || !payload?.ok) {
+              throw new Error(payload?.error || raw || `HTTP ${response.status}`);
+            }
+            const text = (payload.session?.text || "").trim();
+            resultText.textContent = text || "Речь не распознана.";
+            resultBlock.classList.add("visible");
+            startButton.disabled = false;
+            setStatus("Готово", "Вернитесь в MAX. Мини-приложение добавит текст автоматически.");
+            log("Recognition complete", { chars: text.length, status: payload.session?.status });
+          } catch (error) {
+            startButton.disabled = false;
+            setStatus("Распознавание не удалось", "Скопируйте лог или попробуйте записать еще раз.");
+            log("Recognition failed", { message: error.message });
+          }
+        }
+
+        startButton.addEventListener("click", startRecording);
+        stopButton.addEventListener("click", stopRecording);
+        closeButton.addEventListener("click", () => {
+          window.close();
+          log("Close requested");
+        });
+        copyButton.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(logs.join("\n"));
+            setStatus("Лог скопирован", "Вернитесь в MAX или отправьте лог для проверки.");
+          } catch (error) {
+            log("Copy failed", { message: error.message });
+          }
+        });
+
+        log("Recorder loaded", {
+          build: BUILD,
+          hasSession: Boolean(sessionId),
+          hasToken: Boolean(token),
+          secureContext: window.isSecureContext,
+          mediaDevices: Boolean(navigator.mediaDevices),
+          getUserMedia: Boolean(navigator.mediaDevices?.getUserMedia),
+          mediaRecorder: Boolean(window.MediaRecorder),
+          origin: window.location.origin,
+          userAgent: navigator.userAgent,
+        });
+      })();
+    </script>
+  </body>
+</html>

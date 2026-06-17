@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ work_order.work_order_no }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <style>
+	        :root {
+	            --bg-primary: #f3f7f4;
+	            --surface-primary: rgba(236, 245, 239, 0.90);
+	            --surface-secondary: rgba(225, 237, 231, 0.92);
+	            --surface-muted: rgba(214, 230, 223, 0.88);
+	            --surface-border: rgba(95, 128, 113, 0.22);
+	            --surface-shadow: rgba(15, 23, 42, 0.10);
+	            --text-primary: #1a1a1a;
+	            --text-secondary: #4b5563;
+	            --accent-color: #059669;
+	            --font-family: 'Inter', sans-serif;
+	        }
+
+	        html[data-theme="dark"] {
+	            color-scheme: dark;
+	            --bg-primary: #0f1419;
+	            --surface-primary: rgba(27, 38, 45, 0.92);
+	            --surface-secondary: rgba(22, 32, 39, 0.94);
+	            --surface-muted: rgba(35, 49, 57, 0.90);
+	            --surface-border: rgba(148, 163, 184, 0.22);
+	            --surface-shadow: rgba(0, 0, 0, 0.32);
+	            --text-primary: #eef4f8;
+	            --text-secondary: #aab7c4;
+	            --accent-color: #34d399;
+	        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+	            margin: 0;
+	            font-family: var(--font-family);
+	            color: var(--text-primary);
+	            background: linear-gradient(180deg, #f3f7f4 0%, #eef4f0 100%);
+            overflow-x: hidden;
+        }
+
+	        .aerial-hero {
+	            position: relative;
+	            min-height: 100vh;
+	            overflow: hidden;
+	            background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+	        }
+
+	        html[data-theme="dark"] body {
+	            background: linear-gradient(180deg, #0f1419 0%, #142129 100%);
+	        }
+
+	        html[data-theme="dark"] .aerial-hero {
+	            background: linear-gradient(135deg, #13252b 0%, #1a302e 48%, #101b20 100%);
+	        }
+
+        .city-3d-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .aerial-content {
+            position: relative;
+            z-index: 2;
+            padding: 2.5rem 0 3rem;
+        }
+
+        .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+	        .crumb-card,
+	        .user-card,
+	        .surface-card {
+	            background: var(--surface-primary);
+	            border: 1px solid var(--surface-border);
+	            border-radius: 18px;
+	            box-shadow: 0 14px 30px var(--surface-shadow);
+	            backdrop-filter: blur(10px);
+	        }
+
+        .crumb-card,
+        .user-card {
+            padding: 1rem 1.25rem;
+        }
+
+        .surface-card {
+            padding: 1.5rem;
+        }
+
+        .top-row .crumb-card {
+            flex: 1 1 auto;
+        }
+
+        .top-row .user-card {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+        }
+
+        .breadcrumb {
+            margin: 0;
+        }
+
+	        .breadcrumb a {
+	            color: var(--accent-color);
+	            text-decoration: none;
+	        }
+
+	        .breadcrumb-item.active {
+	            color: var(--text-secondary);
+	        }
+
+        .page-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1.75rem;
+        }
+
+        .page-title h1 {
+            margin: 0;
+            font-size: 3rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .company-title {
+            margin: 0.6rem 0 0;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+        }
+
+        .user-name {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+	        .status-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.55rem 0.95rem;
+            border-radius: 999px;
+	            background: var(--surface-secondary);
+	            border: 1px solid var(--surface-border);
+	            color: var(--text-secondary);
+	            font-size: 0.95rem;
+	        }
+
+        .info-grid .label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+	        .sla-box {
+	            background: var(--surface-secondary);
+	            border: 1px solid var(--surface-border);
+	            border-radius: 16px;
+	            padding: 1rem 1.15rem;
+	        }
+
+	        .text-muted {
+	            color: var(--text-secondary) !important;
+	        }
+
+	        .text-dark {
+	            color: var(--text-primary) !important;
+	        }
+
+	        .form-control,
+	        .form-select {
+	            background-color: var(--surface-secondary);
+	            border-color: var(--surface-border);
+	            color: var(--text-primary);
+	        }
+
+	        .form-control:focus,
+	        .form-select:focus {
+	            background-color: var(--surface-secondary);
+	            border-color: var(--accent-color);
+	            box-shadow: 0 0 0 0.2rem rgba(52, 211, 153, 0.14);
+	            color: var(--text-primary);
+	        }
+
+	        .photo-frame {
+	            background: var(--surface-muted) !important;
+	            border-color: var(--surface-border) !important;
+	        }
+
+        .photo-thumb {
+            width: 96px;
+            height: 96px;
+            object-fit: cover;
+        }
+
+        textarea.form-control,
+        select.form-select {
+            border-radius: 14px;
+        }
+
+        .btn {
+            border-radius: 12px;
+        }
+
+        @media (max-width: 767px) {
+            .aerial-content {
+                padding: 2.25rem 1rem 2rem;
+            }
+
+            .top-row,
+            .page-title {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .top-row .user-card {
+                justify-content: space-between;
+            }
+
+            .page-title h1 {
+                font-size: 2.2rem;
+                line-height: 1.05;
+            }
+
+            .surface-card,
+            .crumb-card,
+            .user-card {
+                padding: 1.15rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <section class="aerial-hero">
+        {% include 'work_orders/_aerial_city_background.html' %}
+        <div class="container aerial-content">
+            <div class="top-row">
+                <div class="crumb-card">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
+                            <li class="breadcrumb-item active" aria-current="page">{{ work_order.work_order_no }}</li>
+                        </ol>
+                    </nav>
+                </div>
+                <div class="user-card">
+                    <span class="user-name">
+                        <i class="bi bi-person-circle me-1"></i>{{ user.get_full_name|default:user.username }}
+                    </span>
+                    <a href="/logout/" class="btn btn-outline-secondary btn-sm">Выйти</a>
+                </div>
+            </div>
+
+            <div class="page-title">
+                <div>
+                    <h1>{{ work_order.work_order_no }}</h1>
+                    <p class="company-title">
+                        Создана {{ work_order.created_at|date:"d.m.Y H:i" }}
+                        {% if work_order.company %} · {{ work_order.company.name }}{% endif %}
+                    </p>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    {% if work_order.is_emergency %}
+                    <span class="status-chip text-danger">Аварийная</span>
+                    {% endif %}
+                    <span class="status-chip">{{ work_order.get_priority_code_display }}</span>
+                    <span class="status-chip">{{ work_order.current_internal_status.short_name_ru }}</span>
+                </div>
+            </div>
+
+            <div class="surface-card mb-4">
+                <div class="sla-box mb-4">
+                    <div class="section-title mb-2">SLA по заявке</div>
+                    <div class="d-flex flex-column gap-2" id="slaRows">
+                        {% for row in sla_rows %}
+                        <div
+                            class="sla-row"
+                            data-label="{{ row.label }}"
+                            data-state="{{ row.state }}"
+                            data-due-at="{{ row.due_at|default:'' }}"
+                            data-stopped-at="{{ row.stopped_at|default:'' }}"
+                        >
+                            <span class="fw-semibold">{{ row.label }}</span>
+                            <span class="sla-text ms-2">{{ row.text|default:'Расчет...' }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="section-title mb-2">Описание заявки</div>
+                    <div class="fs-5">{{ work_order.original_request_text }}</div>
+                    {% if work_order.additional_info_text %}
+                    <div class="text-muted mt-2">{{ work_order.additional_info_text }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="row gy-3 info-grid">
+                    <div class="col-md-6">
+                        <div class="label">Компания</div>
+                        <div>{{ work_order.company.name }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="label">Подразделение</div>
+                        <div>
+                            {% if work_order.department %}
+                            {{ work_order.department.department_name }}
+                            {% else %}
+                            <span class="text-muted">Не назначено</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="label">Услуга</div>
+                        <div>{{ work_order.service.scenario_name }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="label">Объект</div>
+                        <div>Объект #{{ work_order.object.service_object_id }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="label">Ответственный</div>
+                        <div>
+                            {% if work_order.responsible_user %}
+                            {{ work_order.responsible_user.get_full_name|default:work_order.responsible_user.username }}
+                            {% else %}
+                            <span class="text-muted">Не назначен</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="label">Канал создания</div>
+                        <div>{{ work_order.get_creation_source_display }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="surface-card">
+                <div class="section-title">Исполнение</div>
+
+                <div class="mb-3">
+                    <label for="resolutionText" class="form-label fw-semibold">Решение</label>
+                    <textarea
+                        id="resolutionText"
+                        class="form-control"
+                        rows="5"
+                        placeholder="Опишите выполненные действия, локализацию или итоговое решение"
+                    >{{ work_order.resolution_text|default:'' }}</textarea>
+                </div>
+
+                <div class="mb-4">
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                        {% if can_upload_result_photo %}
+                        <input
+                            type="file"
+                            id="resultPhotoInput"
+                            class="visually-hidden"
+                            accept="image/jpeg,image/png,image/webp"
+                            multiple
+                            onchange="uploadResultPhotos({{ work_order.id }})"
+                        >
+                        <button type="button" class="btn btn-success btn-lg" onclick="document.getElementById('resultPhotoInput').click()">Добавить фото с объекта</button>
+                        {% endif %}
+                        <span class="text-muted small">Сейчас привязано: <span id="resultPhotoCount">{{ result_photo_count }}</span></span>
+                    </div>
+
+                    {% if result_photos %}
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for photo in result_photos %}
+	                        <a
+	                            href="{% url 'work_orders:api_result_photo' work_order.id photo.id %}"
+	                            target="_blank"
+	                            rel="noopener"
+	                            class="photo-frame d-inline-block border rounded overflow-hidden"
+	                            title="{{ photo.file_name }}"
+	                            style="width: 96px; height: 96px;"
+	                        >
+                            <img
+                                src="{% url 'work_orders:api_result_photo' work_order.id photo.id %}"
+                                alt="{{ photo.file_name }}"
+                                class="photo-thumb"
+                            >
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-muted small">Фото с объекта пока не привязаны.</div>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex flex-wrap gap-2">
+                    {% if active_action_code == 'assign' %}
+                        {% if can_take_self %}
+                        <button type="button" class="btn btn-success" onclick="runAction('assign', false, '{{ user.id }}')">Взять на себя</button>
+                        {% endif %}
+                        {% if assignment_candidates and user_role_codes|length %}
+                        <select id="responsibleUserSelect" class="form-select" style="max-width: 360px;">
+                            <option value="">Назначить сотруднику</option>
+                            {% for candidate in assignment_candidates %}
+                            <option value="{{ candidate.id }}" {% if candidate.id == user.id %}selected{% endif %}>{{ candidate.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-outline-success" onclick="runAction('assign')">
+                            {% if can_take_self %}Назначить сотруднику{% else %}{{ active_action.label }}{% endif %}
+                        </button>
+                        {% elif not can_take_self %}
+                        <button type="button" class="btn btn-success" onclick="runAction('assign')">{{ active_action.label }}</button>
+                        {% endif %}
+                    {% elif active_action_code == 'start' %}
+                        <button type="button" class="btn btn-success" onclick="runAction('start')">{{ active_action.label }}</button>
+                    {% elif active_action_code == 'localize' %}
+                        <button type="button" class="btn btn-warning" onclick="runAction('localize')">{{ active_action.label }}</button>
+                    {% elif active_action_code == 'complete' %}
+                        <button type="button" class="btn btn-primary" onclick="runAction('complete')">{{ active_action.label }}</button>
+                    {% endif %}
+
+                    {% if work_order.current_internal_status.short_code_en == 'completed' %}
+                        {% if 'direktor_uk' in user_role_codes or 'chief_engineer' in user_role_codes %}
+                            {% with close_label='Завершить' %}
+                                {% if can_close %}
+                                <button type="button" class="btn btn-dark" onclick="runAction('close')">{{ close_label }}</button>
+                                {% else %}
+                                <button type="button" class="btn btn-outline-secondary" disabled>{{ close_label }}</button>
+                                {% endif %}
+                            {% endwith %}
+                        {% else %}
+                            {% if can_close %}
+                            <button type="button" class="btn btn-dark" onclick="runAction('close')">{{ close_action.label }}</button>
+                            {% else %}
+                            <button type="button" class="btn btn-outline-secondary" disabled>{{ close_action.label }}</button>
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+<script>
+const ACTION_URLS = {
+    assign: '/work_orders/api/{{ work_order.id }}/take/',
+    start: '/work_orders/api/{{ work_order.id }}/start/',
+    localize: '/work_orders/api/{{ work_order.id }}/localize/',
+    complete: '/work_orders/api/{{ work_order.id }}/complete/',
+    close: '/work_orders/api/{{ work_order.id }}/close/'
+};
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function formatDuration(totalSeconds) {
+    const absSeconds = Math.abs(totalSeconds);
+    const hours = Math.floor(absSeconds / 3600);
+    const minutes = Math.floor((absSeconds % 3600) / 60);
+    const seconds = absSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function renderSlaRow(row) {
+    const label = row.dataset.label;
+    const state = row.dataset.state;
+    const dueAt = row.dataset.dueAt ? new Date(row.dataset.dueAt) : null;
+    const stoppedAt = row.dataset.stoppedAt ? new Date(row.dataset.stoppedAt) : null;
+    const textNode = row.querySelector('.sla-text');
+
+    row.classList.remove('text-success', 'text-danger', 'text-muted');
+
+    if (state === 'missing') {
+        row.classList.add('text-muted');
+        textNode.textContent = `${label}: политика SLA не назначена`;
+        return;
+    }
+
+    if (stoppedAt && dueAt) {
+        const deltaSeconds = Math.round((stoppedAt.getTime() - dueAt.getTime()) / 1000);
+        if (deltaSeconds > 0 || state === 'overdue') {
+            row.classList.add('text-danger');
+            textNode.textContent = `${label} - просрочен на ${formatDuration(deltaSeconds)}`;
+        } else {
+            row.classList.add('text-success');
+            textNode.textContent = `${label} - Успех!`;
+        }
+        return;
+    }
+
+    if (!dueAt) {
+        row.classList.add('text-muted');
+        textNode.textContent = `${label}: норматив не задан`;
+        return;
+    }
+
+    const now = new Date();
+    const deltaSeconds = Math.round((dueAt.getTime() - now.getTime()) / 1000);
+    if (deltaSeconds >= 0) {
+        row.classList.add('text-dark');
+        textNode.textContent = `${label}: осталось ${formatDuration(deltaSeconds)}`;
+    } else {
+        row.classList.add('text-danger');
+        textNode.textContent = `${label}: просрочен на ${formatDuration(deltaSeconds)}`;
+    }
+}
+
+function refreshSlaRows() {
+    document.querySelectorAll('.sla-row').forEach(renderSlaRow);
+}
+
+function buildFormData(action, retryWithoutPhoto, responsibleUserId = '') {
+    const formData = new FormData();
+    const resolutionText = document.getElementById('resolutionText');
+    const responsibleUserSelect = document.getElementById('responsibleUserSelect');
+
+    if (resolutionText) {
+        formData.append('resolution_text', resolutionText.value || '');
+    }
+    if (responsibleUserId) {
+        formData.append('responsible_user_id', responsibleUserId);
+    } else if (responsibleUserSelect && responsibleUserSelect.value) {
+        formData.append('responsible_user_id', responsibleUserSelect.value);
+    }
+    if (retryWithoutPhoto) {
+        formData.append('force_without_photo', '1');
+    }
+    return formData;
+}
+
+function runAction(action, retryWithoutPhoto = false, responsibleUserId = '') {
+    const url = ACTION_URLS[action];
+    if (!url) {
+        return;
+    }
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: buildFormData(action, retryWithoutPhoto, responsibleUserId)
+    })
+    .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+            throw data;
+        }
+        return data;
+    })
+    .then((data) => {
+        if (data.redirect_url) {
+            window.location.href = data.redirect_url;
+            return;
+        }
+        window.location.reload();
+    })
+    .catch((error) => {
+        if (error && error.code === 'photo_confirmation_required') {
+            const confirmed = confirm('ФОТО НЕ ПРИВЯЗАНЫ.\nВы точно хотите изменить статус заявки?');
+            if (confirmed) {
+                runAction(action, true, responsibleUserId);
+            }
+            return;
+        }
+        alert(error.error || 'Не удалось выполнить действие.');
+    });
+}
+
+function uploadResultPhotos(workOrderId) {
+    const input = document.getElementById('resultPhotoInput');
+    if (!input || !input.files || !input.files.length) {
+        alert('Сначала выберите фото.');
+        return;
+    }
+
+    const formData = new FormData();
+    Array.from(input.files).forEach((file) => {
+        formData.append('photo', file);
+    });
+
+    fetch(`/work_orders/api/${workOrderId}/upload-result-photo/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: formData
+    })
+    .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+            throw data;
+        }
+        return data;
+    })
+    .then(() => window.location.reload())
+    .catch((error) => {
+        input.value = '';
+        alert(error.error || 'Не удалось загрузить фото.');
+    });
+}
+
+refreshSlaRows();
+window.setInterval(refreshSlaRows, 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+{
+  "afterManualSelect": {
+    "companyValue": "1",
+    "departmentDisabled": false,
+    "departmentOptionCount": 6,
+    "departmentOptions": [
+      {
+        "value": "",
+        "text": "---------"
+      },
+      {
+        "value": "99",
+        "text": "Компания / Внешние службы (ООО УК АСПЕКТ)"
+      },
+      {
+        "value": "98",
+        "text": "Компания / Внутренние службы (ООО УК АСПЕКТ)"
+      },
+      {
+        "value": "97",
+        "text": "Компания (ООО УК АСПЕКТ)"
+      },
+      {
+        "value": "104",
+        "text": "Компания / Внутренние службы / Лифтовая служба (ООО УК АСПЕКТ)"
+      },
+      {
+        "value": "100",
+        "text": "Тест авто-кода Codex (ООО УК АСПЕКТ)"
+      }
+    ],
+    "select2DisabledClass": false
+  },
+  "initialCompany": {
+    "companyValue": "1",
+    "departmentDisabled": false,
+    "departmentOptionCount": 6,
+    "departmentOptions": [
+      {
+        "value": "",
+        "text": "---------"
+      },
+      {
+        "value": "99",
+        "text": "Компания / Внешние службы (ООО УК АСПЕКТ)"
+      },
+      {
+        "value": "98",
+        "text": "Компания / Внутренние службы (ООО УК АСПЕКТ)"
+      },
+      {
+        "value": "97",
+        "text": "Компания (ООО УК АСПЕКТ)"
+      },
+      {
+        "value": "104",
+        "text": "Компания / Внутренние службы / Лифтовая служба (ООО УК АСПЕКТ)"
+      },
+      {
+        "value": "100",
+        "text": "Тест авто-кода Codex (ООО УК АСПЕКТ)"
+      }
+    ],
+    "select2DisabledClass": false
+  }
+}

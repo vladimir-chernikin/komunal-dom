@@ -1,0 +1,100 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Нет привязки к компании - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+.error-container {
+    max-width: 600px;
+    margin: 80px auto;
+    padding: 50px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.error-icon {
+    font-size: 64px;
+    color: #dc3545;
+    margin-bottom: 20px;
+}
+
+.error-title {
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.error-description {
+    color: #6c757d;
+    margin-bottom: 30px;
+    line-height: 1.6;
+}
+
+.btn-primary-custom {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 30px;
+    color: white;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-primary-custom:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+}
+
+.btn-outline-custom {
+    border: 2px solid #667eea;
+    color: #667eea;
+    border-radius: 10px;
+    padding: 12px 30px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-outline-custom:hover {
+    background: #667eea;
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-icon">
+        <i class="fas fa-exclamation-triangle"></i>
+    </div>
+
+    <h1 class="error-title">Нет привязки к компании</h1>
+
+    <div class="error-description">
+        <p>
+            Ваша учетная запись активна, но вы не привязаны ни к одной компании.
+        </p>
+        <p>
+            Для доступа к системе необходимо, чтобы администратор привязал вас к компании и назначил роль.
+        </p>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="mt-4">
+        <a href="/logout/" class="btn btn-outline-custom me-2">
+            <i class="fas fa-sign-out-alt me-2"></i>Выйти
+        </a>
+        <a href="/" class="btn btn-primary-custom">
+            <i class="fas fa-home me-2"></i>На главную
+        </a>
+    </div>
+</div>
+{% endblock %}

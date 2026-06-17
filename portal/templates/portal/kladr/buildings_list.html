@@ -4,22 +4,95 @@
 
 {% block extra_css %}
 <style>
-.table-responsive {
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+.card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    padding: 10px 15px;
+    background: #fff;
+    color: #1a1a1a;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 1rem;
 }
 
 .search-container {
     background: white;
     border-radius: 8px;
-    padding: 1.5rem;
+    padding: 1rem;
     margin-bottom: 1rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    border: 1px solid #dee2e6;
+}
+
+.table-responsive {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #dee2e6;
 }
 
 .building-address {
     font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+    font-size: 0.875rem;
+    vertical-align: middle;
+}
+
+.table-hover tbody tr:hover {
+    background: #f8f9fa;
+}
+
+.btn-group-sm > .btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+}
+
+.badge {
+    font-size: 0.7rem;
+    padding: 0.3em 0.5em;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.pagination .page-link {
+    color: #374151;
+    border-color: #dee2e6;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.pagination .page-item.active .page-link {
+    background: linear-gradient(135deg, #374151 0%, #374151 100%);
+    border-color: #374151;
+}
+
+.pagination .page-link:hover {
+    background: #f8f9fa;
+    border-color: #374151;
+    color: #374151;
+}
+
+.building-address {
+    font-size: 0.75rem;
     color: #6c757d;
 }
 </style>
@@ -27,19 +100,23 @@
 
 {% block content %}
 <div class="container mt-4">
-    <div class="row">
+    <!-- Заголовок -->
+    <div class="row mb-3">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3 mb-0">
-                    <i class="fas fa-building"></i>
-                    Здания
-                </h1>
+            <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-secondary">
+                    <h6 class="mb-0">
+                        <i class="fas fa-building text-success"></i>
+                        Здания
+                        <small class="text-muted">- справочник зданий</small>
+                    </h6>
+                </div>
+                <div>
+                    <a href="{% url 'portal:kladr_management' %}" class="btn btn-outline-secondary btn-sm">
                         <i class="fas fa-arrow-left"></i> Назад
                     </a>
-                    <a href="/admin/kladr/building/add/" class="btn btn-primary">
-                        <i class="fas fa-plus"></i> Добавить здание
+                    <a href="/admin/kladr/building/add/" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> Добавить
                     </a>
                 </div>
             </div>
@@ -52,7 +129,7 @@
             <div class="col-md-5">
                 <label for="search" class="form-label">Поиск</label>
                 <input type="text" class="form-control" id="search" name="search"
-                       value="{{ search }}" placeholder="Номер дома, улица, тип дома...">
+                       value="{{ search }}" placeholder="Номер дома, улица...">
             </div>
             <div class="col-md-4">
                 <label for="street" class="form-label">Улица</label>
@@ -78,9 +155,9 @@
         {% if search or current_street %}
         <div class="mt-2">
             <small class="text-muted">
-                Найдено зданий: <strong>{{ total_count }}</strong>
+                Найдено: <strong>{{ total_count }}</strong>
                 <a href="{% url 'portal:kladr_buildings' %}" class="text-decoration-none ms-2">
-                    <i class="fas fa-times"></i> Сбросить фильтры
+                    <i class="fas fa-times"></i> Сбросить
                 </a>
             </small>
         </div>
@@ -89,11 +166,19 @@
 
     <!-- Таблица зданий -->
     <div class="card">
-        <div class="card-header bg-success text-white">
-            <h5 class="mb-0">
-                <i class="fas fa-list"></i>
-                Список зданий ({{ page_obj.start_index }}-{{ page_obj.end_index }} из {{ total_count }})
-            </h5>
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="fas fa-list text-primary"></i>
+                    Список зданий
+                    <small class="text-muted">(показано {{ page_obj.start_index }}-{{ page_obj.end_index }} из {{ total_count }})</small>
+                </h6>
+                {% if search or current_street %}
+                <a href="{% url 'portal:kladr_buildings' %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-times"></i> Сбросить
+                </a>
+                {% endif %}
+            </div>
         </div>
         <div class="card-body p-0">
             {% if page_obj %}
@@ -101,72 +186,45 @@
                     <table class="table table-hover mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th>ID</th>
-                                <th>Адрес</th>
-                                <th>Номер дома</th>
-                                <th>Тип дома</th>
+                                <th>Улица</th>
+                                <th>Дом</th>
+                                <th>Тип</th>
                                 <th>Подъезды</th>
-                                <th>Этажей</th>
+                                <th>Этажи</th>
                                 <th>Лифт</th>
                                 <th>Площадь</th>
-                                <th>Действия</th>
+                                <th class="text-end">Действия</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for building in page_obj %}
                             <tr>
-                                <td>{{ building.id }}</td>
                                 <td>
                                     <strong>{{ building.address_object.name }}</strong>
-                                    <br>
-                                    <small class="building-address">{{ building.address_object.get_full_address }}</small>
+                                    <br><small class="building-address">{{ building.address_object.get_full_address }}</small>
                                 </td>
-                                <td>
-                                    <span class="badge bg-primary">{{ building.house_number }}</span>
-                                </td>
-                                <td>{{ building.building_type|default:"-" }}</td>
-                                <td>
-                                    {% if building.porch_count %}
-                                        <span class="badge bg-info">{{ building.porch_count }}</span>
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if building.floor_count %}
-                                        <span class="badge bg-secondary">{{ building.floor_count }}</span>
-                                    {% else %}
-                                        <span class="text-muted">-</span>
-                                    {% endif %}
-                                </td>
+                                <td><strong>{{ building.house_number }}</strong></td>
+                                <td><small class="text-muted">{{ building.building_type|default:"-" }}</small></td>
+                                <td>{{ building.porch_count|default:"-" }}</td>
+                                <td>{{ building.floor_count|default:"-" }}</td>
                                 <td>
                                     {% if building.has_elevator %}
-                                        <span class="badge bg-success">Есть</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">Нет</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if building.square_total %}
-                                        {{ building.square_total }} м²
+                                        <span class="badge bg-success">✓</span>
                                     {% else %}
                                         <span class="text-muted">-</span>
                                     {% endif %}
                                 </td>
-                                <td>
+                                <td>{{ building.square_total|default:"-" }}</td>
+                                <td class="text-end">
                                     <div class="btn-group btn-group-sm">
                                         <a href="{% url 'portal:kladr_building_detail' building.id %}"
-                                           class="btn btn-outline-info" title="Просмотр">
+                                           class="btn btn-outline-primary" title="Просмотр">
                                             <i class="fas fa-eye"></i>
                                         </a>
                                         <a href="/admin/kladr/building/{{ building.id }}/change/"
-                                           class="btn btn-outline-primary" title="Редактировать">
+                                           class="btn btn-outline-secondary" title="Редактировать">
                                             <i class="fas fa-edit"></i>
                                         </a>
-                                        <button type="button" class="btn btn-outline-warning"
-                                                title="На карте">
-                                            <i class="fas fa-map-marked-alt"></i>
-                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -177,7 +235,7 @@
 
                 <!-- Пагинация -->
                 {% if page_obj.has_other_pages %}
-                <nav aria-label="Навигация по страницам" class="mt-3">
+                <nav aria-label="Навигация" class="mt-3">
                     <ul class="pagination justify-content-center">
                         {% if page_obj.has_previous %}
                             <li class="page-item">
@@ -228,7 +286,7 @@
             {% else %}
                 <div class="text-center py-5">
                     <i class="fas fa-building fa-3x text-muted mb-3"></i>
-                    <h5 class="text-muted">Здания не найдены</h5>
+                    <h6 class="text-muted">Здания не найдены</h6>
                     <p class="text-muted">Попробуйте изменить параметры поиска или добавьте новые здания.</p>
                     <a href="/admin/kladr/building/add/" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Добавить первое здание

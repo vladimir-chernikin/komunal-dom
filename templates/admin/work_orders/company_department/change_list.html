@@ -1,0 +1,389 @@
+{% extends "admin/change_list.html" %}
+{% load admin_urls i18n %}
+
+{% block object-tools-items %}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .department-tree-shell {
+        margin-top: 12px;
+        font-size: 14px;
+    }
+
+    .department-tree-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 0 0 10px 0;
+    }
+
+    .department-tree-primary-actions,
+    .department-tree-fold-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .department-tree-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        padding: 7px 14px;
+        border-radius: 3px;
+        border: 1px solid #d6dbe1;
+        background: #f3f4f6;
+        color: #34495e;
+        text-decoration: none;
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .department-tree-button:hover {
+        color: #1f6f9f;
+        text-decoration: none;
+    }
+
+    .department-tree-button-primary {
+        background: #2f8f57;
+        border-color: #2f8f57;
+        color: #fff !important;
+    }
+
+    .department-tree-fold-actions button {
+        border: 0;
+        background: transparent;
+        color: #337ab7;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .department-tree-company-switch {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px 0;
+    }
+
+    .department-tree-company-switch select {
+        min-width: 320px;
+    }
+
+    .department-tree-list {
+        border: 1px solid #d8dde3;
+        background: #fff;
+    }
+
+    .department-tree-row {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(360px, 1fr) minmax(220px, auto);
+        align-items: start;
+        gap: 16px;
+        min-height: 54px;
+        padding: 8px 10px;
+        border-bottom: 1px solid #d8dde3;
+        background: linear-gradient(#fff, #f6f7f8);
+    }
+
+    .department-tree-row:last-child {
+        border-bottom: 0;
+    }
+
+    .department-tree-row.is-hidden {
+        display: none;
+    }
+
+    .department-tree-row.is-inactive {
+        opacity: 0.68;
+    }
+
+    .department-tree-node {
+        display: flex;
+        align-items: flex-start;
+        min-width: 0;
+    }
+
+    .department-tree-indent {
+        flex: 0 0 auto;
+        height: 1px;
+    }
+
+    .department-tree-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 18px;
+        width: 18px;
+        height: 18px;
+        margin: 2px 8px 0 0;
+        border: 1px solid #9da8b3;
+        border-radius: 2px;
+        background: #fff;
+        color: #51606d;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .department-tree-toggle.is-leaf {
+        border-color: transparent;
+        background: transparent;
+        cursor: default;
+    }
+
+    .department-tree-content {
+        min-width: 0;
+    }
+
+    .department-tree-name-line {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 7px;
+        min-width: 0;
+    }
+
+    .department-tree-name {
+        color: #2f7194;
+        font-size: 15px;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .department-tree-name:hover {
+        color: #15516f;
+        text-decoration: underline;
+    }
+
+    .department-tree-badge {
+        display: inline-flex;
+        align-items: center;
+        height: 18px;
+        padding: 0 7px;
+        border-radius: 3px;
+        background: #e9ecef;
+        color: #343a40;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .department-tree-badge-muted {
+        color: #777;
+    }
+
+    .department-tree-meta {
+        margin-top: 4px;
+        color: #6f7b86;
+        line-height: 1.45;
+    }
+
+    .department-tree-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding-top: 1px;
+        white-space: nowrap;
+    }
+
+    .department-tree-icon-action {
+        color: #27749a;
+        font-size: 18px;
+        line-height: 1;
+        text-decoration: none;
+        font-weight: 700;
+    }
+
+    .department-tree-icon-action:hover {
+        color: #0b4f70;
+        text-decoration: none;
+    }
+
+    .department-tree-empty {
+        padding: 16px;
+        color: #6f7b86;
+    }
+
+    @media (max-width: 900px) {
+        .department-tree-toolbar,
+        .department-tree-row {
+            grid-template-columns: 1fr;
+        }
+
+        .department-tree-actions {
+            justify-content: flex-start;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block result_list %}
+<div class="department-tree-shell" data-company-id="{% if scoped_company %}{{ scoped_company.id }}{% endif %}">
+    <div class="department-tree-toolbar">
+        <div class="department-tree-primary-actions">
+            {% if department_add_root_url %}
+            <a href="{{ department_add_root_url }}" class="department-tree-button department-tree-button-primary">Создать</a>
+            {% endif %}
+        </div>
+        <div class="department-tree-fold-actions">
+            <button type="button" data-tree-expand-all>⊞ Развернуть все</button>
+            <button type="button" data-tree-collapse-all>⊟ Свернуть все</button>
+        </div>
+    </div>
+    {% if company_scope_options %}
+    <div class="department-tree-company-switch" data-company-switch-url="{{ department_changelist_base_url }}">
+        <label for="id_company_scope"><strong>Компания:</strong></label>
+        <select name="company_scope" id="id_company_scope">
+            {% for company in company_scope_options %}
+            <option value="{{ company.id }}" {% if scoped_company and company.id == scoped_company.id %}selected{% endif %}>
+                {{ company.name }}
+            </option>
+            {% endfor %}
+        </select>
+        <button type="button" class="department-tree-button" data-company-scope-apply>Показать</button>
+    </div>
+    {% endif %}
+
+    <div class="department-tree-list" data-department-tree>
+        {% for row in department_tree_rows %}
+        <div
+            class="department-tree-row{% if not row.object.is_active %} is-inactive{% endif %}"
+            data-node-id="{{ row.object.id }}"
+            data-parent-id="{% if row.object.parent_department_id %}{{ row.object.parent_department_id }}{% endif %}"
+            data-depth="{{ row.depth }}"
+            data-has-children="{% if row.has_children %}1{% else %}0{% endif %}"
+        >
+            <div class="department-tree-node">
+                <span class="department-tree-indent" style="width: {{ row.indent_px }}px;"></span>
+                {% if row.has_children %}
+                <button type="button" class="department-tree-toggle" data-tree-toggle aria-label="Раскрыть или свернуть">−</button>
+                {% else %}
+                <span class="department-tree-toggle is-leaf"></span>
+                {% endif %}
+                <div class="department-tree-content">
+                    <div class="department-tree-name-line">
+                        <a href="{{ row.change_url }}" class="department-tree-name">{{ row.object.department_name }}</a>
+                        <span class="department-tree-badge{% if not row.object.is_active %} department-tree-badge-muted{% endif %}">
+                            {% if row.object.is_active %}Активно{% else %}Неактивно{% endif %}
+                        </span>
+                    </div>
+                    <div class="department-tree-meta">
+                        {% if row.object.parent_department %}
+                        Родитель: {{ row.object.parent_department.department_name }}.
+                        {% else %}
+                        Корневой элемент компании.
+                        {% endif %}
+                        Код: {{ row.object.department_code }}.
+                    </div>
+                </div>
+            </div>
+            <div class="department-tree-actions">
+                <a href="{{ row.change_url }}" class="department-tree-icon-action" title="Изменить">✎</a>
+                <a href="{{ row.add_child_url }}" class="department-tree-icon-action" title="Добавить дочернее">+</a>
+                <a href="{{ row.change_url }}" class="department-tree-icon-action" title="Открыть">◉</a>
+                <a href="{{ row.delete_url }}" class="department-tree-icon-action" title="Удалить">×</a>
+            </div>
+        </div>
+        {% empty %}
+        <div class="department-tree-empty">
+            Подразделения не найдены.
+            {% if department_add_root_url %}<a href="{{ department_add_root_url }}">Создать первое подразделение</a>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const tree = document.querySelector('[data-department-tree]');
+    if (!tree) {
+        return;
+    }
+
+    const rows = Array.from(tree.querySelectorAll('[data-node-id]'));
+    const rowById = new Map(rows.map((row) => [row.dataset.nodeId, row]));
+    const companySwitch = document.querySelector('[data-company-switch-url]');
+
+    if (companySwitch) {
+        companySwitch.querySelector('[data-company-scope-apply]')?.addEventListener('click', function () {
+            const companySelect = companySwitch.querySelector('#id_company_scope');
+            const targetUrl = new URL(companySwitch.dataset.companySwitchUrl, window.location.origin);
+            if (companySelect && companySelect.value) {
+                targetUrl.searchParams.set('company_scope', companySelect.value);
+            }
+            window.location.href = targetUrl.toString();
+        });
+    }
+
+    function childrenOf(nodeId) {
+        return rows.filter((row) => row.dataset.parentId === nodeId);
+    }
+
+    function setToggle(row, collapsed) {
+        const toggle = row.querySelector('[data-tree-toggle]');
+        if (toggle) {
+            toggle.textContent = collapsed ? '+' : '−';
+            row.dataset.collapsed = collapsed ? '1' : '0';
+        }
+    }
+
+    function hideDescendants(row) {
+        childrenOf(row.dataset.nodeId).forEach((child) => {
+            child.classList.add('is-hidden');
+            hideDescendants(child);
+        });
+    }
+
+    function refreshVisibility() {
+        rows.forEach((row) => {
+            const parentId = row.dataset.parentId;
+            if (!parentId) {
+                row.classList.remove('is-hidden');
+                return;
+            }
+            const parent = rowById.get(parentId);
+            if (!parent || parent.classList.contains('is-hidden') || parent.dataset.collapsed === '1') {
+                row.classList.add('is-hidden');
+                hideDescendants(row);
+            } else {
+                row.classList.remove('is-hidden');
+            }
+        });
+    }
+
+    rows.forEach((row) => {
+        setToggle(row, false);
+        const toggle = row.querySelector('[data-tree-toggle]');
+        if (toggle) {
+            toggle.addEventListener('click', function () {
+                setToggle(row, row.dataset.collapsed !== '1');
+                refreshVisibility();
+            });
+        }
+    });
+
+    document.querySelector('[data-tree-expand-all]')?.addEventListener('click', function () {
+        rows.forEach((row) => setToggle(row, false));
+        refreshVisibility();
+    });
+
+    document.querySelector('[data-tree-collapse-all]')?.addEventListener('click', function () {
+        rows.forEach((row) => {
+            if (row.dataset.depth === '0') {
+                setToggle(row, true);
+            }
+        });
+        refreshVisibility();
+    });
+
+    refreshVisibility();
+});
+</script>
+{% endblock %}

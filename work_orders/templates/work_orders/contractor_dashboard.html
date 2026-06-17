@@ -1,0 +1,182 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Кабинет исполнителя{% endblock %}
+
+{% block extra_css %}
+<style>
+/* === 3D CITY DASHBOARD STYLES === */
+:root {
+    --font-family: 'Inter', sans-serif;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+}
+
+body {
+    font-family: var(--font-family);
+    background: #f8f8f8;
+    line-height: 1.6;
+}
+
+.aerial-hero {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+}
+
+.city-3d-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.aerial-content {
+    position: relative;
+    z-index: 2;
+    padding: 3rem 0;
+}
+
+.aerial-hero h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    color: #1a1a1a;
+}
+
+.tiles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+    position: relative;
+    z-index: 3;
+}
+
+.aerial-tile {
+    display: block;
+    text-decoration: none;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-2xl);
+    padding: 1.75rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.aerial-tile:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+}
+
+.tile-icon-wrapper {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+    border-radius: var(--radius-xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.tile-icon {
+    font-size: 1.5rem;
+    color: #059669;
+}
+
+.tile-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 0.5rem;
+}
+
+.companies-section {
+    background: white;
+    padding: 2rem 0;
+}
+
+@media (max-width: 768px) {
+    .aerial-content {
+        padding: 2.25rem 1rem 2rem;
+    }
+
+    .aerial-content .row {
+        --bs-gutter-x: 0;
+    }
+
+    .aerial-hero h1 {
+        font-size: 1.75rem;
+        line-height: 1.12;
+        margin-bottom: 0.85rem;
+    }
+    .tiles-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+    }
+
+    .aerial-tile {
+        padding: 1.5rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="aerial-hero">
+    {% include 'work_orders/_aerial_city_background.html' %}
+
+    <div class="container aerial-content">
+        <div class="row">
+            <div class="col-lg-8">
+                <h1>Здравствуйте, {{ user.get_full_name|default:user.username }}!</h1>
+                <p style="font-size: 1.25rem; opacity: 0.95; margin-bottom: 2rem;">
+                    Кабинет исполнителя для управления заявками
+                </p>
+            </div>
+        </div>
+
+        <div class="tiles-grid">
+            <!-- Обслуживаемые компании - Ссылка на основной dashboard -->
+            <a href="{% url 'work_orders:contractor_dashboard' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-building tile-icon"></i>
+                </div>
+                <div class="tile-title">Обслуживаемые компании</div>
+                <div class="tile-description" style="font-size: 0.95rem; color: #666;">
+                    Список компаний и объекты обслуживания
+                </div>
+            </a>
+
+            <!-- Мои заявки -->
+            <a href="{% url 'work_orders:contractor_dashboard' %}#my-requests" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-user-check tile-icon"></i>
+                </div>
+                <div class="tile-title">Мои заявки</div>
+                <div class="tile-description" style="font-size: 0.95rem; color: #666;">
+                    Заявки в работе
+                </div>
+            </a>
+
+            <!-- Все заявки -->
+            <a href="{% url 'work_orders:contractor_dashboard' %}#available-requests" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-inbox tile-icon"></i>
+                </div>
+                <div class="tile-title">Все заявки</div>
+                <div class="tile-description" style="font-size: 0.95rem; color: #666;">
+                    Доступные заявки для взятия в работу
+                </div>
+            </a>
+        </div>
+    </div>
+</section>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}

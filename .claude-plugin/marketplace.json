@@ -1,0 +1,32 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "komunal-dom-local",
+  "description": "Local marketplace for komunal-dom Claude plugins focused on Django admin UI and schema refactors",
+  "owner": {
+    "name": "Komunal-Dom",
+    "email": "root@komunal-dom.ru"
+  },
+  "plugins": [
+    {
+      "name": "komunal-dom-ui-ops",
+      "description": "Django admin UI workflow, schema refactor planning, and verification hooks for komunal-dom",
+      "category": "development",
+      "source": "./plugins/komunal-dom-ui-ops",
+      "homepage": "https://komunal-dom.ru"
+    },
+    {
+      "name": "frontend-design",
+      "description": "Official frontend-design plugin mirrored locally for stable installation in komunal-dom",
+      "category": "development",
+      "source": "./plugins/frontend-design",
+      "homepage": "https://github.com/anthropics/claude-plugins-official"
+    },
+    {
+      "name": "hookify",
+      "description": "Official hookify plugin mirrored locally for stable installation in komunal-dom",
+      "category": "development",
+      "source": "./plugins/hookify",
+      "homepage": "https://github.com/anthropics/claude-plugins-official"
+    }
+  ]
+}

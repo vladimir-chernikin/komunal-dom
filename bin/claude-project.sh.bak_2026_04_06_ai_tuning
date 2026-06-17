@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd /var/www/komunal-dom_ru
+exec claude \
+  --plugin-dir /var/www/komunal-dom_ru/plugins/komunal-dom-ui-ops \
+  --plugin-dir /var/www/komunal-dom_ru/plugins/frontend-design \
+  --plugin-dir /var/www/komunal-dom_ru/plugins/hookify \
+  $@

@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Кабинет исполнителя</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <style>
+	        :root {
+	            --bg-primary: #f3f7f4;
+	            --surface-primary: rgba(236, 245, 239, 0.90);
+	            --surface-secondary: rgba(225, 237, 231, 0.92);
+	            --surface-muted: rgba(214, 230, 223, 0.88);
+	            --surface-border: rgba(95, 128, 113, 0.22);
+	            --surface-shadow: rgba(15, 23, 42, 0.10);
+	            --text-primary: #1a1a1a;
+	            --text-secondary: #4b5563;
+	            --accent-color: #059669;
+	            --font-family: 'Inter', sans-serif;
+	        }
+
+	        html[data-theme="dark"] {
+	            color-scheme: dark;
+	            --bg-primary: #0f1419;
+	            --surface-primary: rgba(27, 38, 45, 0.92);
+	            --surface-secondary: rgba(22, 32, 39, 0.94);
+	            --surface-muted: rgba(35, 49, 57, 0.90);
+	            --surface-border: rgba(148, 163, 184, 0.22);
+	            --surface-shadow: rgba(0, 0, 0, 0.32);
+	            --text-primary: #eef4f8;
+	            --text-secondary: #aab7c4;
+	            --accent-color: #34d399;
+	        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+	            margin: 0;
+	            font-family: var(--font-family);
+	            color: var(--text-primary);
+	            background: linear-gradient(180deg, #f3f7f4 0%, #eef4f0 100%);
+	            overflow-x: hidden;
+	        }
+
+        .aerial-hero {
+            position: relative;
+	            min-height: 100vh;
+	            overflow: hidden;
+	            background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+	        }
+
+	        html[data-theme="dark"] body {
+	            background: linear-gradient(180deg, #0f1419 0%, #142129 100%);
+	        }
+
+	        html[data-theme="dark"] .aerial-hero {
+	            background: linear-gradient(135deg, #13252b 0%, #1a302e 48%, #101b20 100%);
+	        }
+
+        .city-3d-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .aerial-content {
+            position: relative;
+            z-index: 2;
+            padding: 2.5rem 0 3rem;
+        }
+
+        .aerial-content.container {
+            width: min(100% - 2rem, 1440px);
+            max-width: none;
+        }
+
+        .top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+	        .crumb-card,
+	        .user-card,
+	        .surface-card {
+	            background: var(--surface-primary);
+	            border: 1px solid var(--surface-border);
+	            border-radius: 18px;
+	            box-shadow: 0 14px 30px var(--surface-shadow);
+	            backdrop-filter: blur(10px);
+	        }
+
+        .crumb-card,
+        .user-card {
+            padding: 1rem 1.25rem;
+        }
+
+        .surface-card {
+            padding: 1.5rem;
+        }
+
+        .top-row .crumb-card {
+            flex: 1 1 auto;
+        }
+
+        .top-row .user-card {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+        }
+
+        .breadcrumb {
+            margin: 0;
+        }
+
+	        .breadcrumb a {
+	            color: var(--accent-color);
+	            text-decoration: none;
+	        }
+
+	        .breadcrumb-item.active {
+	            color: var(--text-secondary);
+	        }
+
+        .page-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1.75rem;
+        }
+
+        .page-title h1 {
+            margin: 0;
+            font-size: 3rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .company-title {
+            margin: 0.6rem 0 0;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+        }
+
+        .user-name {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .stat-card {
+            display: block;
+            height: 100%;
+            padding: 1.35rem;
+            border-radius: 20px;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+        }
+
+        .stat-icon {
+            width: 52px;
+            height: 52px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            margin-bottom: 1rem;
+            font-size: 1.3rem;
+        }
+
+        .stat-icon.primary {
+            background: rgba(37, 99, 235, 0.12);
+            color: #2563eb;
+        }
+
+        .stat-icon.warning {
+            background: rgba(245, 158, 11, 0.16);
+            color: #b45309;
+        }
+
+        .stat-value {
+            font-size: 2.2rem;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 0.4rem;
+        }
+
+        .stat-caption {
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+	        .chip {
+	            display: inline-flex;
+	            align-items: center;
+	            padding: 0.45rem 0.8rem;
+	            border-radius: 999px;
+	            background: var(--surface-secondary);
+	            border: 1px solid var(--surface-border);
+	            color: var(--text-secondary);
+	            font-size: 0.95rem;
+	        }
+
+        .section-card {
+            padding: 1.6rem;
+        }
+
+        .section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-head h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+	        .table-hover tbody tr:hover {
+	            background: rgba(16, 185, 129, 0.10);
+	            cursor: pointer;
+	        }
+
+	        .table td, .table th {
+	            vertical-align: middle;
+	            color: var(--text-primary);
+	            border-color: var(--surface-border);
+	        }
+
+	        .table thead th {
+	            background: var(--surface-secondary);
+	            color: var(--text-secondary);
+	            border-color: var(--surface-border);
+	        }
+
+	        .text-muted {
+	            color: var(--text-secondary) !important;
+	        }
+
+        .table-responsive {
+            overflow-x: visible;
+        }
+
+        .preview-table {
+            table-layout: fixed;
+            width: 100%;
+            font-size: 0.94rem;
+        }
+
+        .preview-table th,
+        .preview-table td {
+            padding: 0.66rem 0.5rem;
+            overflow-wrap: anywhere;
+        }
+
+        .preview-table .col-number { width: 17%; }
+        .preview-table .col-date { width: 25%; }
+        .preview-table .col-service { width: 38%; }
+        .preview-table .col-status { width: 20%; }
+        .preview-table .col-action { width: 20%; }
+
+        @media (max-width: 1199px) {
+            .table-responsive {
+                overflow-x: auto;
+            }
+
+            .preview-table {
+                min-width: 620px;
+            }
+        }
+
+        @media (max-width: 991px) {
+            .page-title {
+                flex-direction: column;
+            }
+        }
+
+        @media (max-width: 767px) {
+            .aerial-content {
+                padding: 2.25rem 1rem 2rem;
+            }
+
+            .aerial-content.container {
+                width: min(100% - 1rem, 100%);
+            }
+
+            .top-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .top-row .user-card {
+                justify-content: space-between;
+            }
+
+            .page-title h1 {
+                font-size: 2.2rem;
+                line-height: 1.05;
+            }
+
+            .surface-card,
+            .crumb-card,
+            .user-card {
+                padding: 1.15rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <section class="aerial-hero">
+        {% include 'work_orders/_aerial_city_background.html' %}
+        <div class="container aerial-content">
+            <div class="top-row">
+                <div class="crumb-card">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item active" aria-current="page">Кабинет исполнителя</li>
+                        </ol>
+                    </nav>
+                </div>
+                <div class="user-card">
+                    <span class="user-name">
+                        <i class="bi bi-person-circle me-1"></i>{{ user.get_full_name|default:user.username }}
+                    </span>
+                    <a href="/logout/" class="btn btn-outline-secondary btn-sm">Выйти</a>
+                </div>
+            </div>
+
+            <div class="page-title">
+                <div>
+                    <h1>Кабинет исполнителя</h1>
+                    <p class="company-title">
+                        {% if company %}{{ company.name }}{% endif %}
+                        {% if department %} · {{ department.department_name }}{% endif %}
+                    </p>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{% url 'work_orders:executor_my_requests' %}" class="btn btn-primary">
+                        <i class="bi bi-list-check me-1"></i>Мои заявки
+                    </a>
+                    <a href="{% url 'work_orders:executor_pool' %}" class="btn btn-secondary">
+                        <i class="bi bi-inboxes me-1"></i>Пул подразделения
+                    </a>
+                </div>
+            </div>
+
+            {% if error %}
+            <div class="alert alert-warning surface-card" role="alert">
+                <i class="bi bi-exclamation-triangle me-2"></i>{{ error }}
+            </div>
+            {% else %}
+            <div class="row g-4 mb-4">
+                <div class="col-lg-6">
+                    <a href="{% url 'work_orders:executor_my_requests' %}" class="surface-card stat-card">
+                        <div class="stat-icon primary"><i class="bi bi-person-workspace"></i></div>
+                        <div class="stat-value">{{ my_requests_total }}</div>
+                        <p class="stat-caption">Заявок закреплено за вами</p>
+                        <div class="chip-row">
+                            <span class="chip">Новые: {{ my_requests_new }}</span>
+                            <span class="chip">В работе: {{ my_requests_in_progress }}</span>
+                            <span class="chip">Выполнено: {{ my_requests_completed }}</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-lg-6">
+                    <a href="{% url 'work_orders:executor_pool' %}" class="surface-card stat-card">
+                        <div class="stat-icon warning"><i class="bi bi-collection"></i></div>
+                        <div class="stat-value">{{ pool_total }}</div>
+                        <p class="stat-caption">Заявок доступно в пуле подразделения</p>
+                        <div class="chip-row">
+                            <span class="chip">Новые: {{ pool_new }}</span>
+                            <span class="chip">Готовы к взятию</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-xl-6">
+                    <div class="surface-card section-card h-100">
+                        <div class="section-head">
+                            <h2>Последние мои заявки</h2>
+                            <a href="{% url 'work_orders:executor_my_requests' %}" class="btn btn-sm btn-outline-primary">Открыть список</a>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0 preview-table">
+                                <colgroup>
+                                    <col class="col-number">
+                                    <col class="col-date">
+                                    <col class="col-service">
+                                    <col class="col-status">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>№</th>
+                                        <th>Создана</th>
+                                        <th>Услуга</th>
+                                        <th>Статус</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for work_order in my_requests_preview %}
+                                    <tr onclick="window.location='{% url 'work_orders:work_order_detail' work_order.id %}'">
+                                        <td><strong>{{ work_order.work_order_no }}</strong></td>
+                                        <td>{{ work_order.created_at|date:"d.m.Y H:i" }}</td>
+                                        <td>{{ work_order.service.scenario_name }}</td>
+                                        <td>{{ work_order.current_internal_status.short_name_ru }}</td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">У вас пока нет назначенных заявок</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-6">
+                    <div class="surface-card section-card h-100">
+                        <div class="section-head">
+                            <h2>Последние заявки из пула</h2>
+                            <a href="{% url 'work_orders:executor_pool' %}" class="btn btn-sm btn-outline-primary">Открыть пул</a>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0 preview-table">
+                                <colgroup>
+                                    <col class="col-number">
+                                    <col class="col-date">
+                                    <col class="col-service">
+                                    <col class="col-action">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>№</th>
+                                        <th>Создана</th>
+                                        <th>Услуга</th>
+                                        <th>Действие</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for work_order in pool_requests_preview %}
+                                    <tr onclick="window.location='{% url 'work_orders:work_order_detail' work_order.id %}'">
+                                        <td><strong>{{ work_order.work_order_no }}</strong></td>
+                                        <td>{{ work_order.created_at|date:"d.m.Y H:i" }}</td>
+                                        <td>{{ work_order.service.scenario_name }}</td>
+                                        <td>
+                                            <a href="{% url 'work_orders:work_order_detail' work_order.id %}" class="btn btn-sm btn-primary">Открыть</a>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">В пуле подразделения сейчас нет доступных заявок</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+</body>
+</html>

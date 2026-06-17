@@ -7,6 +7,58 @@
 <h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></h1>
 {% endblock %}
 
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    :root {
+        --komunal-admin-sidebar-expanded: 21.6rem;
+        --komunal-admin-sidebar-collapsed: 4.5rem;
+    }
+
+    @media (min-width: 1280px) {
+        #page > .relative.z-60,
+        #page > .relative.z-60 > .fixed,
+        #page > .relative.z-60 .w-\[288px\] {
+            width: var(--komunal-admin-sidebar-collapsed) !important;
+        }
+
+        #nav-sidebar {
+            overflow: hidden !important;
+            transition: width 160ms ease, box-shadow 160ms ease !important;
+            width: var(--komunal-admin-sidebar-collapsed) !important;
+        }
+
+        #nav-sidebar:hover,
+        #nav-sidebar:focus-within {
+            box-shadow: 14px 0 30px rgba(15, 23, 42, .18);
+            width: var(--komunal-admin-sidebar-expanded) !important;
+        }
+
+        #nav-sidebar #nav-sidebar-inner {
+            width: var(--komunal-admin-sidebar-expanded);
+        }
+
+        #nav-sidebar #nav-sidebar-apps,
+        #nav-sidebar .mt-auto {
+            opacity: 0;
+            transition: opacity 120ms ease;
+        }
+
+        #nav-sidebar:hover #nav-sidebar-apps,
+        #nav-sidebar:focus-within #nav-sidebar-apps,
+        #nav-sidebar:hover .mt-auto,
+        #nav-sidebar:focus-within .mt-auto {
+            opacity: 1;
+        }
+
+        .md\:left-72,
+        .lg\:left-72 {
+            left: var(--komunal-admin-sidebar-expanded) !important;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block nav-global %}{% endblock %}
 
 {% block footer %}

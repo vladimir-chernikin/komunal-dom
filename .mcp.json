@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--browser",
+        "firefox",
+        "--headless",
+        "--isolated",
+        "--no-sandbox",
+        "--output-dir",
+        "/var/www/komunal-dom_ru/tmp_archive/ui_runs/mcp_playwright",
+        "--viewport-size",
+        "1600x1200"
+      ],
+      "env": {}
+    }
+  }
+}

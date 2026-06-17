@@ -1,0 +1,18 @@
+{
+  "name": "komunal-dom-ui-ops",
+  "description": "Project plugin for Django admin form surgery, schema refactor planning, and UI verification in komunal-dom",
+  "version": "0.1.0",
+  "author": {
+    "name": "Komunal-Dom",
+    "url": "https://komunal-dom.ru"
+  },
+  "homepage": "https://komunal-dom.ru",
+  "keywords": [
+    "django",
+    "admin",
+    "jazzmin",
+    "playwright",
+    "forms",
+    "schema"
+  ]
+}

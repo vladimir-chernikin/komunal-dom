@@ -1,0 +1,58 @@
+{% extends "admin/change_list.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+/* Стили для tooltip */
+label[for="action-select"][title]:hover {
+    cursor: help;
+    border-bottom: 1px dotted #999;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Loading RefCategory custom actions...');
+
+    // Функция для замены текста и добавления tooltip
+    function customizeActionsLabel() {
+        // Находим все label с текстом "Действия:"
+        const labels = document.querySelectorAll('label');
+
+        labels.forEach(function(label) {
+            const labelText = label.textContent.trim();
+            console.log('Found label:', labelText);
+
+            if (labelText === 'Действия:' || labelText === 'Action:') {
+                console.log('Changing label text...');
+                label.textContent = 'Быстрые действия:';
+                label.title = 'Применяется к выбранным галочкой категориям';
+                label.style.cursor = 'help';
+
+                // Добавляем обработчик для отображения tooltip (если нет bootstrap)
+                label.onmouseenter = function() {
+                    this.style.borderBottom = '1px dotted #999';
+                };
+                label.onmouseleave = function() {
+                    this.style.borderBottom = '';
+                };
+            }
+        });
+
+        // Находим выпадающий список
+        const actionSelect = document.getElementById('action-select');
+        if (actionSelect) {
+            console.log('Found action select');
+            actionSelect.title = 'Применяется к выбранным галочкой категориям';
+        }
+    }
+
+    // Запускаем сразу
+    customizeActionsLabel();
+
+    // Запускаем ещё раз через небольшую задержку (на случай если DOM ещё не готов)
+    setTimeout(customizeActionsLabel, 100);
+    setTimeout(customizeActionsLabel, 500);
+});
+</script>
+{% endblock %}

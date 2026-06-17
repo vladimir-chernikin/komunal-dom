@@ -1,0 +1,305 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}{{ page_title }} - {{ company.name }}{% endblock %}
+
+
+{% block extra_css %}
+<style>
+.aerial-hero {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+}
+
+.city-3d-background {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.aerial-content {
+    position: relative;
+    z-index: 2;
+    padding: 2.5rem 0 3rem;
+}
+
+.aerial-content .card,
+.aerial-content .alert,
+.aerial-content .breadcrumb,
+.aerial-content .modal-content {
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.aerial-content .breadcrumb {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+}
+
+@media (max-width: 768px) {
+    .aerial-content {
+        padding: 2rem 1rem;
+    }
+
+    .aerial-content .row {
+        --bs-gutter-x: 0;
+    }
+
+    .aerial-content .card-body {
+        padding: 1rem;
+    }
+}
+</style>
+{% endblock %}
+
+
+{% block content %}
+<section class="aerial-hero">
+    {% include 'work_orders/_aerial_city_background.html' %}
+    <div class="container aerial-content">
+<div class="mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'portal:director_residents' %}">Учетные записи</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ page_title }}</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h3 mb-4">
+                <i class="fas {% if edit_mode %}fa-user-pen{% else %}fa-user-plus{% endif %}"></i>
+                {{ page_title }} - {{ company.name }}
+            </h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Данные пользователя</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="account_type" value="{{ account_type }}">
+                        {% if draft_user %}
+                        <input type="hidden" name="draft_user_id" value="{{ draft_user.id }}">
+                        {% endif %}
+
+                        {% if draft_candidate and not draft_user %}
+                        <div class="alert alert-warning mb-4">
+                            Найден черновик пользователя <strong>{{ draft_candidate.username }}</strong> без привязки к компании.
+                            <a
+                                href="?account_type={{ account_type }}&draft_user_id={{ draft_candidate.id }}{% if selected_company_id %}&company={{ selected_company_id }}{% endif %}"
+                                class="btn btn-sm btn-outline-dark ms-2"
+                            >
+                                Подтянуть черновик
+                            </a>
+                        </div>
+                        {% endif %}
+
+                        {% if draft_user %}
+                        <div class="alert alert-info mb-4">
+                            Подтянут черновик <strong>{{ draft_user.username }}</strong>. После сохранения он будет оформлен как
+                            {% if account_type == 'resident' %}житель{% else %}сотрудник{% endif %}.
+                            <a
+                                href="?account_type={{ account_type }}{% if selected_company_id %}&company={{ selected_company_id }}{% endif %}"
+                                class="btn btn-sm btn-outline-secondary ms-2"
+                            >
+                                Отменить
+                            </a>
+                        </div>
+                        {% endif %}
+
+                        <!-- Основная информация -->
+                        <div class="mb-4">
+                            <h6 class="mb-3">Основная информация</h6>
+
+                            <div class="mb-3">
+                                <label for="{{ form.username.id_for_label }}" class="form-label">
+                                    Логин <span class="text-danger">*</span>
+                                </label>
+                                {{ form.username }}
+                                {% if form.username.errors %}
+                                <div class="text-danger">{{ form.username.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">{{ form.username.help_text }}</div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="{{ form.first_name.id_for_label }}" class="form-label">Имя</label>
+                                        {{ form.first_name }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="{{ form.last_name.id_for_label }}" class="form-label">Фамилия</label>
+                                        {{ form.last_name }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="{{ form.email.id_for_label }}" class="form-label">Email</label>
+                                {{ form.email }}
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="{{ form.password.id_for_label }}" class="form-label">
+                                    {{ form.password.label }}{% if form.password.field.required %} <span class="text-danger">*</span>{% endif %}
+                                </label>
+                                {{ form.password }}
+                                {% if form.password.errors %}
+                                <div class="text-danger">{{ form.password.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">{{ form.password.help_text }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Роль и подразделение -->
+                        <div class="mb-4">
+                            <h6 class="mb-3">Роль и подразделение</h6>
+
+                            {% if companies %}
+                            <div class="mb-3">
+                                <label for="company" class="form-label">
+                                    Компания <span class="text-danger">*</span>
+                                </label>
+                                <select name="company" id="company" class="form-select">
+                                    <option value="">-- Выберите компанию --</option>
+                                    {% for item in companies %}
+                                    <option value="{{ item.id }}" {% if selected_company_id == item.id|stringformat:"s" %}selected{% endif %}>{{ item.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Для суперпользователя без привязки компания указывается явно.</div>
+                            </div>
+                            {% endif %}
+
+                            <div class="mb-3">
+                                <label for="{{ form.role.id_for_label }}" class="form-label">
+                                    Роль <span class="text-danger">*</span>
+                                </label>
+                                {{ form.role }}
+                                {% if form.role.errors %}
+                                <div class="text-danger">{{ form.role.errors }}</div>
+                                {% endif %}
+                                <div class="form-text">
+                                    {% if account_type == 'resident' %}
+                                    Добавляется учетная запись жителя с автоматической привязкой к вашей компании.
+                                    {% else %}
+                                    Добавляется сотрудник вашей компании. Выбор чужой компании недоступен.
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="department" class="form-label">Подразделение</label>
+                                <select name="department" id="department" class="form-select">
+                                    <option value="">-- Не указано --</option>
+                                    {% for dept in departments %}
+                                    <option value="{{ dept.id }}" {% if selected_department_id == dept.id|stringformat:"s" %}selected{% endif %}>{% if superuser_without_membership %}{{ dept.company.name }} / {% endif %}{{ dept.department_name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Обязательно для сотрудников (исполнителей, инженеров)</div>
+                            </div>
+                        </div>
+
+                        <!-- Контактная информация -->
+                        <div class="mb-4">
+                            <h6 class="mb-3">Контактная информация</h6>
+
+                            <div class="mb-3">
+                                <label for="{{ form.phone.id_for_label }}" class="form-label">Телефон</label>
+                                {{ form.phone }}
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="{{ form.address.id_for_label }}" class="form-label">Адрес</label>
+                                {{ form.address }}
+                            </div>
+                        </div>
+
+                        <!-- Заметки -->
+                        <div class="mb-4">
+                            <label for="{{ form.notes.id_for_label }}" class="form-label">Заметки</label>
+                            {{ form.notes }}
+                        </div>
+
+                        <!-- Кнопки -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'portal:director_residents' %}" class="btn btn-secondary">Отмена</a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i>
+                                {{ submit_label|default:page_title }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle"></i>
+                        Подсказка
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-3">При добавлении учетной записи:</p>
+                    <ul class="mb-0">
+                        <li>Логин должен быть уникальным</li>
+                        <li>Пароль минимум 8 символов</li>
+                        <li>Email - необязательно</li>
+                        <li>Жителям подразделение можно не указывать</li>
+                        <li>Сотрудникам обязательно укажите подразделение</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    </div>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const companySelect = document.getElementById('company');
+    if (companySelect) {
+        companySelect.addEventListener('change', function() {
+            const url = new URL(window.location.href);
+            if (this.value) {
+                url.searchParams.set('company', this.value);
+            } else {
+                url.searchParams.delete('company');
+            }
+            window.location.href = url.toString();
+        });
+    }
+
+    // Добавляем классы формы Bootstrap
+    const fields = ['username', 'email', 'first_name', 'last_name', 'password', 'phone', 'address', 'role', 'notes'];
+    fields.forEach(field => {
+        const element = document.getElementById('id_' + field);
+        if (element) {
+            element.classList.add('form-control');
+        }
+    });
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "admin/change_list.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+/* Скрываем чекбоксы */
+.action-checkbox-column {
+    display: none !important;
+}
+
+/* Скрываем строку "Выбрано 0 из ..." */
+.footer-controls {
+    display: none !important;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Company: Скрываем чекбоксы и bulk actions...');
+
+    // Скрываем столбец с чекбоксами
+    const actionCheckboxes = document.querySelectorAll('.action-checkbox');
+    actionCheckboxes.forEach(function(checkbox) {
+        checkbox.closest('th').style.display = 'none';
+        checkbox.closest('td').style.display = 'none';
+    });
+
+    // Скрываем заголовок чекбокс-столбца
+    const checkboxHeader = document.querySelector('th.action-checkbox-column');
+    if (checkboxHeader) {
+        checkboxHeader.style.display = 'none';
+    }
+
+    // Скрываем все чекбоксы
+    const allCheckboxes = document.querySelectorAll('input.action-checkbox');
+    allCheckboxes.forEach(function(checkbox) {
+        checkbox.style.display = 'none';
+    });
+
+    // Скрываем блок с actions
+    const actionsDiv = document.querySelector('#changelist-form > div.actions');
+    if (actionsDiv) {
+        actionsDiv.style.display = 'none';
+    }
+
+    // Скрываем футер с "Выбрано 0 из ..."
+    const footerControls = document.querySelector('.footer-controls');
+    if (footerControls) {
+        footerControls.style.display = 'none';
+    }
+
+    console.log('Company: Чекбоксы и bulk actions скрыты');
+});
+</script>
+{% endblock %}

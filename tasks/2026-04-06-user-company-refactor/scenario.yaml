@@ -1,0 +1,165 @@
+id: 2026-04-06-user-company-refactor
+title: User primary company and department refactor on real project entities
+base_url: http://komunal-dom.ru
+repo_root: /var/www/komunal-dom_ru
+artifacts_dir: /var/www/komunal-dom_ru/tmp_archive/ui_runs/2026_04_06_user_company_refactor
+
+runner:
+  mode: playwright
+  headless: true
+  save_screenshots: true
+  save_report_json: true
+
+project_entities:
+  user_model: django.contrib.auth.models.User
+  profile_model: portal.models.UserProfile
+  company_model: nsi.models.Company
+  department_model: work_orders.models.CompanyDepartment
+  membership_model: work_orders.models.UserCompanyMembership
+  user_admin_file: /var/www/komunal-dom_ru/portal/admin.py
+  middleware_file: /var/www/komunal-dom_ru/portal/middleware.py
+  mixins_file: /var/www/komunal-dom_ru/portal/mixins.py
+  auth_views_file: /var/www/komunal-dom_ru/portal/auth_views.py
+  work_orders_views_file: /var/www/komunal-dom_ru/work_orders/views.py
+  admin_template_file: /var/www/komunal-dom_ru/templates/admin/change_form.html
+
+actors:
+  admin:
+    role: superuser
+    credential_source: project_env_or_test_fixture
+  director_single_company:
+    role: direktor_uk
+    credential_source: project_fixture
+  director_multi_company:
+    role: direktor_uk
+    credential_source: project_fixture
+
+fixtures:
+  ensure:
+    - company: BB_TEST_MAIN
+    - company: BB_TEST_SECOND
+    - department:
+        company: BB_TEST_MAIN
+        department_name: Основное подразделение
+        department_code: main_dept
+    - department:
+        company: BB_TEST_SECOND
+        department_name: Дополнительное подразделение
+        department_code: extra_dept
+    - user:
+        username: director_single_company
+        memberships:
+          - company: BB_TEST_MAIN
+            department: Основное подразделение
+            role_code: direktor_uk
+            is_primary: true
+    - user:
+        username: director_multi_company
+        memberships:
+          - company: BB_TEST_MAIN
+            department: Основное подразделение
+            role_code: direktor_uk
+            is_primary: true
+          - company: BB_TEST_SECOND
+            department: Дополнительное подразделение
+            role_code: direktor_uk
+            is_primary: false
+
+steps:
+  - id: login_admin
+    actor: admin
+    action: login
+    url: /admin/login/
+    expect:
+      - page_contains: Административный сайт Django
+
+  - id: open_existing_user_form
+    actor: admin
+    action: open
+    url: /admin/auth/user/1/change/
+    expect:
+      - page_contains: Пользователи
+      - page_contains: Основная компания
+      - page_contains: Основное подразделение
+    screenshot: 01_user_form_open
+
+  - id: verify_close_button_color
+    actor: admin
+    action: assert_css
+    selector: a.global-close-btn
+    expect:
+      - color: rgb(255, 255, 255)
+    screenshot: 02_close_button_white_text
+
+  - id: verify_membership_block_visible
+    actor: admin
+    action: assert_page
+    expect:
+      - page_contains: Членства в компаниях
+    screenshot: 03_membership_block_visible
+
+  - id: save_single_company_values
+    actor: admin
+    action: form_update
+    url: /admin/auth/user/1/change/
+    fields:
+      - label: Основная компания
+        value: BB_TEST_MAIN
+      - label: Основное подразделение
+        value: Основное подразделение
+    submit:
+      button_text: Сохранить
+    expect:
+      - not_page_contains: Traceback
+    screenshot: 04_save_primary_fields
+
+  - id: login_director_single
+    actor: director_single_company
+    action: login
+    url: /login/
+    expect:
+      - not_page_contains: Traceback
+    screenshot: 05_director_single_login
+
+  - id: verify_director_single_scope
+    actor: director_single_company
+    action: open
+    url: /director/
+    expect:
+      - not_page_contains: Вы не привязаны к компании
+      - not_page_contains: Traceback
+    screenshot: 06_director_single_scope
+
+  - id: login_director_multi
+    actor: director_multi_company
+    action: login
+    url: /login/
+    expect:
+      - not_page_contains: Traceback
+    screenshot: 07_director_multi_login
+
+  - id: verify_multi_company_work_orders_scope
+    actor: director_multi_company
+    action: open
+    url: /work-orders/management/
+    expect:
+      - not_page_contains: Traceback
+    screenshot: 08_multi_company_scope
+
+  - id: open_company_form_for_button_regression
+    actor: admin
+    action: open
+    url: /admin/nsi/company/5/change/
+    expect:
+      - page_contains: Компании
+    screenshot: 09_company_form_close_button
+
+final_assertions:
+  - no_server_500: true
+  - no_traceback: true
+  - screenshots_saved: true
+  - report_json_saved: true
+
+output:
+  report_json: /var/www/komunal-dom_ru/tmp_archive/ui_runs/2026_04_06_user_company_refactor/report.json
+  screenshots_dir: /var/www/komunal-dom_ru/tmp_archive/ui_runs/2026_04_06_user_company_refactor/

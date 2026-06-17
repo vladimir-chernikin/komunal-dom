@@ -1,0 +1,147 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+(function () {
+    function getAdminJQuery() {
+        return window.django && window.django.jQuery ? window.django.jQuery : window.jQuery;
+    }
+
+    function getSelectValue(selectElement) {
+        var $ = getAdminJQuery();
+        if ($) {
+            var jqueryValue = $(selectElement).val();
+            if (Array.isArray(jqueryValue)) {
+                return jqueryValue[0] || '';
+            }
+            if (jqueryValue) {
+                return String(jqueryValue);
+            }
+        }
+
+        if (selectElement.value) {
+            return String(selectElement.value);
+        }
+
+        var selectedOption = selectElement.querySelector('option:checked');
+        return selectedOption ? String(selectedOption.value || '') : '';
+    }
+
+    function setSelectDisabled(selectElement, isDisabled) {
+        selectElement.disabled = Boolean(isDisabled);
+
+        var $ = getAdminJQuery();
+        if ($) {
+            $(selectElement).prop('disabled', Boolean(isDisabled)).trigger('change.select2');
+        }
+    }
+
+    function refreshSelectWidget(selectElement) {
+        var $ = getAdminJQuery();
+        if ($) {
+            $(selectElement).trigger('change.select2');
+        }
+    }
+
+    function rebuildTargetDepartmentOptions() {
+        var companySelect = document.getElementById('id_company');
+        var departmentSelect = document.getElementById('id_target_department');
+        if (!companySelect || !departmentSelect) {
+            return;
+        }
+
+        var rawMap = departmentSelect.dataset.departmentsByCompany || '{{ adminform.form.fields.target_department.widget.attrs.departments_by_company_json|default:"{}"|escapejs }}';
+        var selectedCompanyId = getSelectValue(companySelect);
+        var initialValue = departmentSelect.dataset.initialValue || '{{ adminform.form.fields.target_department.widget.attrs.initial_value_text|default:""|escapejs }}';
+        var previousValue = departmentSelect.dataset.currentValue || getSelectValue(departmentSelect) || initialValue;
+        var departmentsByCompany = {};
+
+        if (!departmentSelect.dataset.departmentsByCompany) {
+            departmentSelect.dataset.departmentsByCompany = rawMap;
+        }
+        if (!departmentSelect.dataset.initialValue) {
+            departmentSelect.dataset.initialValue = initialValue;
+        }
+
+        try {
+            departmentsByCompany = JSON.parse(rawMap);
+        } catch (error) {
+            departmentsByCompany = {};
+        }
+
+        var options = departmentsByCompany[selectedCompanyId] || [];
+        departmentSelect.innerHTML = '';
+
+        var emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = selectedCompanyId ? '---------' : 'Сначала выберите компанию';
+        departmentSelect.appendChild(emptyOption);
+
+        options.forEach(function (department) {
+            var option = document.createElement('option');
+            option.value = String(department.id);
+            option.textContent = department.name;
+            if (String(department.id) === String(previousValue)) {
+                option.selected = true;
+            }
+            departmentSelect.appendChild(option);
+        });
+
+        if (!options.some(function (department) { return String(department.id) === String(previousValue); })) {
+            departmentSelect.value = '';
+        }
+
+        if (selectedCompanyId) {
+            setSelectDisabled(departmentSelect, false);
+        } else {
+            setSelectDisabled(departmentSelect, true);
+        }
+
+        departmentSelect.dataset.currentValue = getSelectValue(departmentSelect) || '';
+        refreshSelectWidget(departmentSelect);
+    }
+
+    function bindTargetDepartmentOptions() {
+        var companySelect = document.getElementById('id_company');
+        var departmentSelect = document.getElementById('id_target_department');
+        if (!companySelect || !departmentSelect) {
+            return;
+        }
+        function handleCompanyChange() {
+            departmentSelect.dataset.currentValue = '';
+            rebuildTargetDepartmentOptions();
+            window.setTimeout(rebuildTargetDepartmentOptions, 0);
+        }
+
+        if (departmentSelect.dataset.companyServiceRouteBound !== '1') {
+            departmentSelect.dataset.companyServiceRouteBound = '1';
+
+            companySelect.addEventListener('change', handleCompanyChange);
+
+            departmentSelect.addEventListener('change', function () {
+                departmentSelect.dataset.currentValue = getSelectValue(departmentSelect) || '';
+            });
+        }
+
+        var $ = getAdminJQuery();
+        if ($ && departmentSelect.dataset.companyServiceRouteJqueryBound !== '1') {
+            departmentSelect.dataset.companyServiceRouteJqueryBound = '1';
+            $(companySelect).on('select2:select select2:clear change', handleCompanyChange);
+        }
+
+        rebuildTargetDepartmentOptions();
+        window.setTimeout(rebuildTargetDepartmentOptions, 100);
+        window.setTimeout(rebuildTargetDepartmentOptions, 500);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindTargetDepartmentOptions);
+    } else {
+        bindTargetDepartmentOptions();
+    }
+    window.addEventListener('load', bindTargetDepartmentOptions);
+    window.addEventListener('pageshow', bindTargetDepartmentOptions);
+})();
+</script>
+{% endblock %}

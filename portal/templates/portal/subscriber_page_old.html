@@ -1,0 +1,811 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Личный кабинет жителя{% if company %} - {{ company.name }}{% endif %}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Стили специфичные для страницы жителя */
+
+/* Компактные карточки */
+.compact-card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.compact-card .card-header {
+    padding: 6px 10px;
+    background: #f8f9fa;
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    font-size: 1rem;
+}
+
+.compact-card .card-body {
+    padding: 8px;
+}
+
+.compact-card h5 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+/* Чат */
+.chat-embedded {
+    max-width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    overflow: hidden;
+    border: 1px solid #dee2e6;
+}
+
+.chat-embedded .chat-header {
+    background: linear-gradient(135deg, #111827 0%, #374151 100%);
+    color: white;
+    padding: 6px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-embedded .chat-header h3 {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.chat-embedded .chat-header p {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 0.75rem;
+}
+
+.new-dialog-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out;
+}
+
+.new-dialog-btn:hover {
+    background: #218838;
+}
+
+.chat-embedded .chat-messages {
+    height: 350px;
+    overflow-y: auto;
+    padding: 6px;
+    background: #f8f9fa;
+}
+
+.chat-embedded .message {
+    margin-bottom: 4px;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-embedded .message.user {
+    align-items: flex-end;
+}
+
+.chat-embedded .message.bot {
+    align-items: flex-start;
+}
+
+.chat-embedded .message-bubble {
+    max-width: 70%;
+    padding: 5px 8px;
+    border-radius: 10px;
+    word-wrap: break-word;
+    line-height: 1.3;
+    font-size: 0.875rem;
+}
+
+.chat-embedded .message.user .message-bubble {
+    background: #007bff;
+    color: white;
+    border-bottom-right-radius: 3px;
+}
+
+.chat-embedded .message.bot .message-bubble {
+    background: #e9ecef;
+    color: #333;
+    border-bottom-left-radius: 3px;
+}
+
+.chat-embedded .message-meta {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 2px;
+    padding: 0 3px;
+}
+
+.chat-embedded .chat-input-container {
+    padding: 5px 8px;
+    background: white;
+    border-top: 1px solid #dee2e6;
+}
+
+.chat-embedded .chat-input-form {
+    display: flex;
+    gap: 5px;
+}
+
+.chat-embedded .chat-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    outline: none;
+    height: 26px;
+    line-height: 16px;
+}
+
+.chat-embedded .chat-input:focus {
+    border-color: #007bff;
+}
+
+.chat-embedded .send-button {
+    padding: 4px 10px;
+    background: #0d6efd;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.chat-embedded .send-button:hover {
+    background: #0b5ed7;
+}
+
+.chat-embedded .send-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+.chat-embedded .typing-indicator {
+    display: none;
+    padding: 5px 10px;
+    background: #e9ecef;
+    border-radius: 12px;
+    border-bottom-left-radius: 3px;
+    max-width: 70px;
+    margin-left: 10px;
+    margin-bottom: 8px;
+}
+
+.chat-embedded .typing-indicator.active {
+    display: block;
+}
+
+.chat-embedded .typing-dots {
+    display: flex;
+    gap: 2px;
+}
+
+.chat-embedded .typing-dots span {
+    width: 5px;
+    height: 5px;
+    background: #6c757d;
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+}
+
+.chat-embedded .typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.chat-embedded .typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typing {
+    0%, 60%, 100% {
+        transform: translateY(0);
+    }
+    30% {
+        transform: translateY(-6px);
+    }
+}
+
+.chat-embedded .service-detected {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 4px 8px;
+    border-radius: 5px;
+    margin-top: 4px;
+    font-size: 0.875rem;
+}
+
+.chat-embedded .error-message {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 6px 10px;
+    border-radius: 5px;
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+}
+
+.chat-embedded .chat-status {
+    text-align: center;
+    padding: 6px;
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+/* Таблица */
+.table-sm td {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+.table-sm td:first-child {
+    width: 40%;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.content-container {
+    max-width: 900px;
+}
+
+/* Адаптивность чата */
+@media (max-width: 768px) {
+    .chat-embedded {
+        margin: 0 -0.5rem;
+        border-radius: 0;
+    }
+
+    .chat-messages {
+        height: 300px;
+        padding: 1rem;
+    }
+
+    .message-bubble {
+        max-width: 85%;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+    }
+
+    .chat-input {
+        font-size: 0.9rem;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .send-button {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .content-container {
+        max-width: 100%;
+        padding: 0;
+    }
+
+    .chat-messages {
+        height: 250px;
+    }
+
+    .message-bubble {
+        max-width: 90%;
+        font-size: 0.85rem;
+    }
+
+    .new-dialog-btn {
+        font-size: 0.7rem;
+        padding: 0.3rem 0.6rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-3 content-container">
+    <!-- Заголовок -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="fas fa-user text-primary"></i>
+                    Здравствуйте, {{ user.get_full_name|default:user.username }}!
+                    <small class="text-muted">- личный кабинет{% if company %} {{ company.name }}{% endif %}</small>
+                </h6>
+                {% if company %}
+                <a href="{% url 'work_orders:resident_dashboard' %}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-list"></i> Мои заявки
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if company %}
+    <!-- Информация о компании -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card compact-card">
+                <div class="card-header">
+                    <i class="fas fa-building"></i> Ваша управляющая компания
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ company.name }}</h5>
+                    {% if company.full_name %}
+                    <p class="card-text text-muted small">{{ company.full_name }}</p>
+                    {% endif %}
+                    {% if company.phone %}
+                    <p class="card-text small">
+                        <i class="fas fa-phone"></i> {{ company.phone }}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Чат -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="chat-embedded">
+                <div class="chat-header">
+                    <div>
+                        <h3>Подать заявку</h3>
+                        <p>Опишите проблему</p>
+                    </div>
+                    <button class="new-dialog-btn" id="newDialogBtn">Новый диалог</button>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-status">
+                        Начните диалог. Например: "У меня течет в ванной"
+                    </div>
+                </div>
+
+                <div class="typing-indicator" id="typingIndicator">
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <form class="chat-input-form" id="chatForm" autocomplete="off">
+                        <input
+                            type="text"
+                            class="chat-input"
+                            id="messageInput"
+                            placeholder="Опишите вашу проблему..."
+                            autocomplete="off"
+                            data-lpignore="true"
+                            data-form-type="other"
+                            spellcheck="false"
+                            value=""
+                            required
+                        >
+                        <button type="submit" class="send-button" id="sendButton">
+                            Отправить
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if work_orders %}
+    <!-- Последние заявки -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card compact-card">
+                <div class="card-header">
+                    <i class="fas fa-clipboard-list"></i> Ваши заявки (последние {{ work_orders|length }})
+                    <a href="{% url 'work_orders:resident_dashboard' %}" class="btn btn-sm btn-outline-primary float-end">
+                        Все заявки
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    {% if work_orders %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>№</th>
+                                    <th>Услуга</th>
+                                    <th>Статус</th>
+                                    <th>Дата</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for wo in work_orders %}
+                                <tr>
+                                    <td><strong>{{ wo.work_order_no }}</strong></td>
+                                    <td>{{ wo.service.scenario_name }}</td>
+                                    <td>
+                                        {% if wo.current_external_status.short_code_en == 'new' %}
+                                            <span class="badge bg-secondary">{{ wo.current_external_status.short_name_ru }}</span>
+                                        {% else %}
+                                            <span class="badge bg-success">{{ wo.current_external_status.short_name_ru }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="small">{{ wo.created_at|date:"d.m.Y" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-3 mb-0">У вас пока нет заявок</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Информация -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-address-card text-success"></i> Контактные данные
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td>Адрес</td>
+                            <td class="text-muted">—</td>
+                        </tr>
+                        <tr>
+                            <td>Телефон</td>
+                            <td class="text-muted">—</td>
+                        </tr>
+                        <tr>
+                            <td>Email</td>
+                            <td class="text-muted">{{ user.email|default:"—" }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-history text-info"></i> История заявок
+                </div>
+                <div class="card-body" id="dialogsHistoryCard">
+                    <p class="text-muted text-small mb-0">Загрузка...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Версия для cache-busting
+    const SCRIPT_VERSION = '202601160904';
+
+    const CHAT_CONFIG = {
+        sessionId: 'web_{{ user.id }}_{% if request.session.session_key %}{{ request.session.session_key }}{% else %}{{ user.id }}{% endif %}',
+        apiSendUrl: '{% url "message_handler:send_message" %}',
+        apiHistoryUrl: '{% url "message_handler:get_chat_history" %}',
+        apiDialogsListUrl: '{% url "message_handler:get_dialogs_list" %}',
+        csrfToken: '{{ csrf_token }}'
+    };
+
+    let isChatProcessing = false;
+    let currentSessionId = CHAT_CONFIG.sessionId;
+
+    const chatMessages = document.getElementById('chatMessages');
+    const chatForm = document.getElementById('chatForm');
+    const messageInput = document.getElementById('messageInput');
+    const sendButton = document.getElementById('sendButton');
+    const typingIndicator = document.getElementById('typingIndicator');
+    const newDialogBtn = document.getElementById('newDialogBtn');
+    const dialogsHistoryCard = document.getElementById('dialogsHistoryCard');
+
+    // Инициализация
+    document.addEventListener('DOMContentLoaded', function() {
+        loadChatHistory();
+        loadDialogsList();
+        messageInput.focus();
+    });
+
+    // Очищаем поле ввода при восстановлении страницы из кэша (bfcache)
+    window.addEventListener('pageshow', function(event) {
+        console.log('[DEBUG] pageshow event, persisted:', event.persisted);
+        // Для Microsoft Edge и других Chromium браузеров
+        setTimeout(function() {
+            console.log('[DEBUG] Clearing input, current value:', messageInput.value);
+            messageInput.value = '';
+            messageInput.setAttribute('value', '');
+            messageInput.defaultValue = '';
+        }, 0);
+        messageInput.focus();
+    });
+
+    // Дополнительная очистка перед выгрузкой страницы
+    window.addEventListener('beforeunload', function() {
+        messageInput.value = '';
+    });
+
+    // Кнопка "Новый диалог"
+    newDialogBtn.addEventListener('click', function() {
+        if (!confirm('Начать новый диалог? Текущий диалог будет сохранен в истории.')) {
+            return;
+        }
+
+        // Создаем новый session_id с timestamp
+        const timestamp = Date.now();
+        const userId = '{{ user.id }}';
+        currentSessionId = `web_${userId}_${timestamp}`;
+
+        // Очищаем чат и показываем сообщение
+        chatMessages.innerHTML = '<div class="chat-status">Начните новый диалог. Например: "У меня течет в ванной"</div>';
+
+        // Обновляем список диалогов (чтобы появился новый)
+        loadDialogsList();
+
+        // Фокус на поле ввода
+        messageInput.focus();
+    });
+
+    // Обработка отправки формы
+    chatForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const message = messageInput.value.trim();
+        if (!message || isChatProcessing) return;
+
+        addChatMessage(message, 'user');
+        messageInput.value = '';
+        await sendChatMessage(message);
+    });
+
+    // Добавление сообщения в UI
+    function addChatMessage(text, type, serviceDetected = null) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        bubble.textContent = text;
+
+        const meta = document.createElement('div');
+        meta.className = 'message-meta';
+        meta.textContent = type === 'user' ? 'Вы' : 'Диспетчер';
+
+        messageDiv.appendChild(bubble);
+        messageDiv.appendChild(meta);
+
+        if (serviceDetected) {
+            const serviceDiv = document.createElement('div');
+            serviceDiv.className = 'service-detected';
+            serviceDiv.textContent = `Услуга ID ${serviceDetected}`;
+            messageDiv.appendChild(serviceDiv);
+        }
+
+        chatMessages.appendChild(messageDiv);
+        scrollChatToBottom();
+    }
+
+    function showTypingIndicator() {
+        typingIndicator.classList.add('active');
+        scrollChatToBottom();
+    }
+
+    function hideTypingIndicator() {
+        typingIndicator.classList.remove('active');
+    }
+
+    function showChatError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        chatMessages.appendChild(errorDiv);
+        scrollChatToBottom();
+
+        setTimeout(() => {
+            errorDiv.remove();
+        }, 5000);
+    }
+
+    async function sendChatMessage(message) {
+        isChatProcessing = true;
+        sendButton.disabled = true;
+        showTypingIndicator();
+
+        try {
+            const response = await fetch(CHAT_CONFIG.apiSendUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': CHAT_CONFIG.csrfToken
+                },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: currentSessionId
+                })
+            });
+
+            const data = await response.json();
+
+            hideTypingIndicator();
+
+            if (data.status === 'success') {
+                addChatMessage(data.response, 'bot', data.service_detected);
+            } else {
+                showChatError(data.error || 'Ошибка при отправке');
+            }
+
+        } catch (error) {
+            hideTypingIndicator();
+            console.error('Ошибка:', error);
+            showChatError('Ошибка соединения');
+        } finally {
+            isChatProcessing = false;
+            sendButton.disabled = false;
+            messageInput.focus();
+        }
+    }
+
+    async function loadChatHistory() {
+        try {
+            const response = await fetch(`${CHAT_CONFIG.apiHistoryUrl}?session_id=${currentSessionId}&limit=50`);
+            const data = await response.json();
+
+            if (data.status === 'success' && data.messages.length > 0) {
+                chatMessages.innerHTML = '';
+                data.messages.forEach(msg => {
+                    const type = msg.direction === 'inbound' ? 'user' : 'bot';
+                    addChatMessage(msg.text, type);
+                });
+            }
+
+        } catch (error) {
+            console.error('Ошибка загрузки истории:', error);
+        }
+    }
+
+    // Загрузить список всех диалогов
+    async function loadDialogsList() {
+        try {
+            const response = await fetch(CHAT_CONFIG.apiDialogsListUrl);
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                renderDialogsList(data.dialogs);
+            } else {
+                dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Ошибка загрузки истории</p>';
+            }
+
+        } catch (error) {
+            console.error('Ошибка загрузки списка диалогов:', error);
+            dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Ошибка загрузки истории</p>';
+        }
+    }
+
+    // Отобразить список диалогов
+    function renderDialogsList(dialogs) {
+        if (!dialogs || dialogs.length === 0) {
+            // Проверяем, есть ли текущий диалог (возможно новый без сообщений)
+            const now = new Date();
+            const hasCurrentDialog = currentSessionId && currentSessionId !== CHAT_CONFIG.sessionId;
+
+            if (hasCurrentDialog) {
+                // Показываем только новый диалог
+                let html = '<div class="table-responsive"><table class="table table-sm mb-0">';
+                html += '<thead><tr><th>Дата</th><th>Время</th><th>Фраза</th><th>Действие</th></tr></thead><tbody>';
+                html += `
+                    <tr>
+                        <td class="text-muted">${now.toLocaleDateString('ru-RU')}</td>
+                        <td class="text-muted">${now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}</td>
+                        <td class="text-muted" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Новый диалог</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 2px 6px;" disabled>Текущий</button>
+                        </td>
+                    </tr>
+                `;
+                html += '</tbody></table></div>';
+                dialogsHistoryCard.innerHTML = html;
+            } else {
+                dialogsHistoryCard.innerHTML = '<p class="text-muted text-small mb-0">Заявок пока нет</p>';
+            }
+            return;
+        }
+
+        // Проверяем, есть ли текущий session_id в списке
+        const currentExists = dialogs.some(d => d.session_id === currentSessionId);
+
+        // Если текущего диалога нет в списке, добавляем его
+        if (!currentExists && currentSessionId) {
+            const now = new Date();
+            const newDialog = {
+                session_id: currentSessionId,
+                date: now.toLocaleDateString('ru-RU'),
+                time: now.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}),
+                preview: 'Новый диалог',
+                message_count: 0
+            };
+            dialogs.unshift(newDialog); // Добавляем в начало
+        }
+
+        let html = '<div class="table-responsive"><table class="table table-sm mb-0">';
+        html += '<thead><tr><th>Дата</th><th>Время</th><th>Фраза</th><th>Действие</th></tr></thead><tbody>';
+
+        dialogs.forEach(dialog => {
+            const isCurrent = dialog.session_id === currentSessionId;
+            const btnText = isCurrent ? 'Текущий' : 'Открыть';
+            const btnDisabled = isCurrent ? 'disabled' : '';
+            const preview = dialog.preview || '—';
+
+            html += `
+                <tr>
+                    <td class="text-muted">${dialog.date}</td>
+                    <td class="text-muted">${dialog.time}</td>
+                    <td class="text-muted" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${preview}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" style="font-size: 0.7rem; padding: 2px 6px;" onclick="loadOldDialog('${dialog.session_id}')" ${btnDisabled}>${btnText}</button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table></div>';
+        dialogsHistoryCard.innerHTML = html;
+    }
+
+    // Загрузить старый диалог
+    async function loadOldDialog(sessionId) {
+        if (!sessionId || sessionId === currentSessionId) {
+            return;
+        }
+
+        if (!confirm('Загрузить старый диалог?')) {
+            return;
+        }
+
+        currentSessionId = sessionId;
+        chatMessages.innerHTML = '<div class="chat-status">Загрузка диалога...</div>';
+
+        try {
+            const response = await fetch(`${CHAT_CONFIG.apiHistoryUrl}?session_id=${sessionId}&limit=50`);
+            const data = await response.json();
+
+            if (data.status === 'success' && data.messages.length > 0) {
+                chatMessages.innerHTML = '';
+                data.messages.forEach(msg => {
+                    const type = msg.direction === 'inbound' ? 'user' : 'bot';
+                    addChatMessage(msg.text, type);
+                });
+
+                // Обновляем список диалогов
+                loadDialogsList();
+            } else {
+                chatMessages.innerHTML = '<div class="chat-status">Не удалось загрузить диалог</div>';
+            }
+
+        } catch (error) {
+            console.error('Ошибка загрузки диалога:', error);
+            chatMessages.innerHTML = '<div class="chat-status">Ошибка загрузки диалога</div>';
+        }
+    }
+
+    function scrollChatToBottom() {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+</script>
+{% endblock %}

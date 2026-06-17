@@ -1,102 +1,71 @@
 """
-Менеджер AI промптов для Telegram бота
+Legacy compatibility layer for the old enhanced Telegram bot.
+
+This module no longer reads prompts from the deleted AIPrompt table.
+Only minimal hardcoded fallback copy remains here.
 """
-import os
-import django
-from django.conf import settings
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'komunal_dom.settings')
-django.setup()
+HARD_FALLBACK_PREFIX = "¤"
 
-from portal.models import AIPrompt
+LEGACY_SYSTEM_PROMPT = (
+    "Ты - вежливый помощник управляющей компании 'Аспект'. "
+    "Проверяешь адреса и кратко консультируешь клиентов."
+)
+
+
+def _hardcoded(text):
+    return f"{HARD_FALLBACK_PREFIX} {text}"
 
 
 class AIManager:
-    """Управление AI промптами и ответами бота"""
-
-    def __init__(self):
-        self.prompts_cache = {}
-        self.load_prompts()
+    """Compatibility wrapper without database-backed prompts."""
 
     def load_prompts(self):
-        """Загружает все активные промпты в кэш"""
-        try:
-            active_prompts = AIPrompt.objects.filter(is_active=True)
-            self.prompts_cache = {p.prompt_id: p.content for p in active_prompts}
-            print(f"Загружено {len(self.prompts_cache)} промптов")
-        except Exception as e:
-            print(f"Ошибка загрузки промптов: {e}")
-            self.prompts_cache = {}
+        return None
 
     def get_prompt(self, prompt_id, default=""):
-        """Получить промпт по ID"""
-        return self.prompts_cache.get(prompt_id, default)
+        return default
 
     def format_address_response(self, address, found, building_info="", additional_info=""):
-        """Формирует ответ для проверки адреса"""
-        template = self.get_prompt('address_check_template')
-        if not template:
-            # Формируем базовый ответ если шаблон не найден
-            if found:
-                return f"✅ Адрес '{address}' найден в зоне обслуживания УК 'Аспект'{building_info}"
-            else:
-                return f"❌ Адрес '{address}' не входит в зону обслуживания УК 'Аспект'"
-
-        # Заменяем переменные в шаблоне
-        response = template.format(
-            address=address,
-            if_found="{if_found}" if found else "",
-            endif="{endif}" if found else "",
-            building_info=building_info,
-            additional_info=additional_info
+        if found:
+            return _hardcoded(
+                f"Адрес '{address}' найден в зоне обслуживания УК 'Аспект'{building_info}"
+            )
+        return _hardcoded(
+            f"Адрес '{address}' не входит в зону обслуживания УК 'Аспект'."
         )
 
-        # Очищаем служебные теги
-        response = response.replace("{if_found}", "").replace("{endif}", "").replace("{else}", "")
-
-        return response
-
     def get_greeting_message(self):
-        """Получить приветственное сообщение"""
-        return self.get_prompt('greeting_main',
-            "Здравствуйте! Я помощник УК 'Аспект'. Отправьте мне ваш адрес для проверки.")
+        return _hardcoded(
+            "Здравствуйте. Я помощник УК 'Аспект'. Отправьте адрес для проверки."
+        )
 
     def get_address_not_found_message(self, address):
-        """Получить сообщение о ненайденном адресе"""
-        template = self.get_prompt('address_not_found')
-        if template:
-            return template
-        return f"К сожалению, адрес '{address}' не найден в нашей базе данных зоны обслуживания."
+        return _hardcoded(
+            f"Адрес '{address}' не найден в базе зоны обслуживания."
+        )
 
     def get_farewell_message(self):
-        """Получить прощальное сообщение"""
-        return self.get_prompt('farewell_main',
-            "Благодарю за обращение! С уважением, УК 'Аспект'")
+        return _hardcoded("Благодарю за обращение.")
 
     def get_error_message(self):
-        """Получить сообщение об ошибке"""
-        return self.get_prompt('error_handling',
-            "Произошла техническая неполадка. Пожалуйста, повторите запрос позже.")
+        return _hardcoded(
+            "Произошла техническая ошибка. Повторите запрос позже."
+        )
 
     def get_profanity_warning(self):
-        """Получить предупреждение о ругательствах"""
-        return self.get_prompt('profanity_warning',
-            "Прошу вас быть вежливым в общении.")
+        return _hardcoded("Пожалуйста, соблюдайте корректный тон общения.")
 
     def get_default_response(self):
-        """Получить ответ по умолчанию"""
-        return self.get_prompt('default_response',
-            "Я Сигизмунд Лазоревич, помощник УК 'Аспект'. Отправьте мне ваш адрес для проверки.")
+        return _hardcoded(
+            "Опишите проблему или отправьте адрес для проверки."
+        )
 
     def get_system_prompt(self):
-        """Получить системный промпт для AI"""
-        return self.get_prompt('system_main',
-            "Ты - вежливый помощник управляющей компании 'Аспект'. Проверяешь адреса и консультируешь клиентов.")
+        return LEGACY_SYSTEM_PROMPT
 
     def reload_prompts(self):
-        """Перезагрузить промпты из базы данных"""
-        self.load_prompts()
+        return None
 
 
-# Глобальный экземпляр менеджера
 ai_manager = AIManager()

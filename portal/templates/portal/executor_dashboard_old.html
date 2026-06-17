@@ -1,0 +1,1065 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Кабинет исполнителя - УК "Аспект"{% endblock %}
+
+{% block extra_js %}
+<script>
+function takeRequest(requestId) {
+    if (!confirm('Взять эту заявку в работу?')) {
+        return;
+    }
+
+    fetch('{% url "portal:executor_take_request" 0 %}'.replace('0', requestId), {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Ошибка: ' + error.message);
+    });
+}
+
+function markArrived(requestId) {
+    if (!confirm('Подтвердить прибытие на место?')) {
+        return;
+    }
+
+    fetch('{% url "portal:executor_arrived_request" 0 %}'.replace('0', requestId), {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Ошибка соединения: ' + error);
+    });
+}
+
+function uploadPhoto(requestId) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment'; // Камера телефона
+
+    input.onchange = function() {
+        if (this.files && this.files[0]) {
+            const formData = new FormData();
+            formData.append('photo', this.files[0]);
+
+            fetch('{% url "portal:executor_upload_photo" 0 %}'.replace('0', requestId), {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('Ошибка: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Ошибка: ' + error.message);
+            });
+        }
+    };
+
+    input.click();
+}
+
+function completeRequest(requestId) {
+    if (!confirm('Завершить заявку?')) {
+        return;
+    }
+
+    fetch('{% url "portal:executor_complete_request" 0 %}'.replace('0', requestId), {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error('HTTP ' + response.status + ': ' + text.substring(0, 200));
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Ошибка: ' + error.message);
+    });
+}
+
+function showReport(requestId) {
+    // Открываем отчет в новом окне
+    const reportUrl = '{% url "portal:executor_report" 0 %}'.replace('0', requestId);
+    window.open(reportUrl, '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes');
+}
+
+// Форматирование времени "4:32" (для обратного отсчета)
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Форматирование времени опоздания "2 мин опоздание" или "1 ч 2 мин опоздание"
+function formatLateTime(seconds) {
+    if (seconds < 60) {
+        const secs = seconds % 60;
+        return `0:${secs.toString().padStart(2, '0')} опоздание`;
+    } else if (seconds < 3600) {
+        const mins = Math.floor(seconds / 60);
+        return `${mins} мин опоздание`;
+    } else {
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        return `${hours} ч ${mins} мин опоздание`;
+    }
+}
+
+// Обновление всех таймеров
+function updateTimers() {
+    document.querySelectorAll('[data-remaining]').forEach(el => {
+        // Если есть флаг full-text - обновляем только цифры в тексте
+        const isFullText = el.dataset.fullText === 'true';
+        const originalText = el.textContent;
+
+        let remaining = parseInt(el.dataset.remaining);
+        const isLate = el.dataset.isLate === 'true';  // Опоздание - увеличиваем время
+        const isAtScene = el.dataset.isAtScene === 'true';  // В работе - увеличиваем время
+
+        console.log('Timer:', remaining, 'isLate:', isLate, 'isAtScene:', isAtScene, 'isFullText:', isFullText, 'element:', el);
+
+        if (isAtScene) {
+            // В работе - увеличиваем время и форматируем как "В работе X:Y"
+            remaining++;
+            el.dataset.remaining = remaining;
+            const mins = Math.floor(remaining / 60);
+            const secs = remaining % 60;
+            el.textContent = `В работе ${mins}:${secs.toString().padStart(2, '0')}`;
+        } else if (isLate) {
+            // Опоздание - увеличиваем время и форматируем как "X мин опоздание"
+            remaining++;
+            el.dataset.remaining = remaining;
+            el.textContent = formatLateTime(remaining);
+        } else if (isFullText) {
+            // Полный текст с "До прибытия" - обновляем только таймер
+            if (remaining > 0) {
+                remaining--;
+                el.dataset.remaining = remaining;
+                const mins = Math.floor(remaining / 60);
+                const secs = remaining % 60;
+                el.textContent = `До прибытия ${mins}:${secs.toString().padStart(2, '0')}`;
+            } else {
+                // Время вышло - перезагружаем страницу
+                location.reload();
+            }
+        } else {
+            // Обычный таймер - уменьшаем время
+            if (remaining > 0) {
+                remaining--;
+                el.dataset.remaining = remaining;
+                el.textContent = formatTime(remaining);
+            } else {
+                // Время вышло - перезагружаем страницу для показа следующего этапа
+                location.reload();
+            }
+        }
+    });
+}
+
+// Запуск таймеров при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+    const timers = document.querySelectorAll('[data-remaining]');
+    if (timers.length > 0) {
+        setInterval(updateTimers, 1000);
+    }
+});
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Компактные карточки */
+.card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    padding: 10px 15px;
+    background: #fff;
+    color: #1a1a1a;
+    border-bottom: 1px solid #e8e8e8;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 1rem;
+}
+
+/* Таблицы для ПК */
+.table-sm td {
+    padding: 0.5rem 0.6rem;
+    font-size: 0.875rem;
+    vertical-align: middle;
+}
+
+.table-sm th {
+    padding: 0.6rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Карточки заявок для мобильных */
+.request-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    background: white;
+    transition: box-shadow 0.2s;
+}
+
+.request-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.request-card-header {
+    padding: 0.75rem 1rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e8e8e8;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.request-card-body {
+    padding: 1rem;
+}
+
+.request-card-row {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.request-card-row:last-child {
+    margin-bottom: 0;
+}
+
+.request-card-icon {
+    width: 24px;
+    text-align: center;
+    margin-right: 0.75rem;
+    color: #374151;
+    flex-shrink: 0;
+}
+
+.request-card-content {
+    flex: 1;
+}
+
+.request-card-label {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-bottom: 0.1rem;
+}
+
+.request-card-value {
+    font-size: 0.95rem;
+    color: #1a1a1a;
+    font-weight: 500;
+}
+
+.request-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.request-card-actions .btn {
+    flex: 1;
+    font-size: 0.875rem;
+}
+
+/* Цвета статусов */
+.status-new {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.status-in_work {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.status-done {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.status-cancelled {
+    background-color: #6c757d;
+    color: white;
+}
+
+.status-overdue {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Badge счетчики */
+.badge-count {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    margin-left: 0.5rem;
+}
+
+/* Мигание аварийного бейджа */
+@keyframes blink-fast {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.badge-blink {
+    animation: blink-fast 0.5s ease-in-out infinite;
+}
+
+/* Фильтры */
+.btn-group .btn {
+    font-size: 0.875rem;
+    padding: 0.4rem 0.8rem;
+}
+
+/* Поиск */
+.form-control-sm {
+    font-size: 0.875rem;
+}
+
+/* Пустое состояние */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.4;
+}
+
+.empty-state p {
+    font-size: 1rem;
+    margin: 0;
+}
+
+/* Кнопки действий - компактные прямоугольные */
+.action-buttons .btn {
+    width: 60px;
+    height: 40px;
+    text-align: center;
+    padding: 0.3rem 0.3rem !important;
+    font-size: 0.7rem !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.1;
+}
+
+.action-buttons .btn i {
+    font-size: 0.9rem;
+    margin-bottom: 1px;
+}
+
+.action-buttons .badge {
+    width: 60px;
+    height: 40px;
+    font-size: 0.7rem !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.1;
+    padding: 0.3rem 0.3rem !important;
+}
+
+/* Мобильные кнопки действий - прямоугольные */
+.mobile-action-buttons .btn,
+.mobile-action-buttons .badge {
+    width: 65px;
+    height: 45px;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem !important;
+    line-height: 1.1;
+}
+
+.mobile-action-buttons .btn i {
+    font-size: 1.1rem;
+    margin-bottom: 2px;
+}
+
+/* Адаптивность */
+@media (max-width: 991px) {
+    .request-card {
+        margin-bottom: 1rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .request-card {
+        padding: 0.75rem;
+    }
+
+    .request-card-header {
+        padding: 0.6rem 0.75rem;
+    }
+
+    .request-card-body {
+        padding: 0.75rem;
+    }
+
+    .table-sm td {
+        padding: 0.4rem 0.3rem;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .request-card-icon {
+        width: 20px;
+        margin-right: 0.5rem;
+    }
+
+    .request-card-label {
+        font-size: 0.7rem;
+    }
+
+    .request-card-value {
+        font-size: 0.85rem;
+    }
+
+    .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Заголовок -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <h6 class="mb-0">
+                <i class="fas fa-tools text-primary"></i> Кабинет исполнителя
+                {% if user.get_full_name %}
+                    <small class="text-muted">({{ user.get_full_name }})</small>
+                {% endif %}
+            </h6>
+        </div>
+    </div>
+
+    <!-- Фильтры и поиск -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body py-2">
+                    <form class="row g-2 align-items-center" method="get">
+                        <div class="col-auto">
+                            <div class="btn-group flex-wrap">
+                                <a class="btn btn-sm {% if not status %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% if q %}?q={{ q }}{% else %}.{% endif %}">
+                                    Все <span class="badge bg-light text-dark ms-1">{{ all_requests_count }}</span>
+                                </a>
+                                <a class="btn btn-sm {% if status == 'new' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?status=new{% if q %}&q={{ q }}{% endif %}">
+                                    Новые <span class="badge bg-light text-dark ms-1">{{ status_new_count }}</span>
+                                </a>
+                                <a class="btn btn-sm {% if status == 'in_work' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?status=in_work{% if q %}&q={{ q }}{% endif %}">
+                                    Взятые <span class="badge bg-light text-dark ms-1">{{ status_in_work_count }}</span>
+                                </a>
+                                <a class="btn btn-sm {% if status == 'done' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?status=done{% if q %}&q={{ q }}{% endif %}">
+                                    Выполнены <span class="badge bg-light text-dark ms-1">{{ status_done_count }}</span>
+                                </a>
+                                <a class="btn btn-sm {% if status == 'cancelled' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?status=cancelled{% if q %}&q={{ q }}{% endif %}">
+                                    Отменены <span class="badge bg-light text-dark ms-1">{{ status_cancelled_count }}</span>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <input name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Поиск" class="form-control form-control-sm search-input-sm">
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-secondary" type="submit">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Мои заявки -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <h6 class="mb-2">
+                <i class="fas fa-user-check text-primary"></i>
+                Мои заявки
+                <span class="badge bg-primary badge-count">{{ my_requests|length }}</span>
+            </h6>
+        </div>
+    </div>
+
+    {% if my_requests %}
+        <!-- ТАБЛИЦА (только на ПК/tablet) -->
+        <div class="d-none d-md-block mb-4">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th width="60">ID</th>
+                                    <th width="130">Дата</th>
+                                    <th>Жилец</th>
+                                    <th width="120">Телефон</th>
+                                    <th>Адрес</th>
+                                    <th>Описание</th>
+                                    <th width="100">Категория</th>
+                                    <th width="100">Срочность</th>
+                                    <th width="100">Статус</th>
+                                    <th width="120">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in my_requests %}
+                                <tr>
+                                    <td>#{{ r.id }}</td>
+                                    <td>{{ r.created_at_formatted }}</td>
+                                    <td>{{ r.user_name|default:"—" }}</td>
+                                    <td>{{ r.user_phone|default:"—" }}</td>
+                                    <td>
+                                        {{ r.address_formatted }}
+                                        {% if r.address_details_str %}
+                                        <div class="text-muted small">{{ r.address_details_str }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td title="{{ r.description }}">{{ r.description|truncatewords:10 }}</td>
+                                    <td>{{ r.category_badge|safe }}</td>
+                                    <td>
+                                        {% if r.urgency_level == 'emergency' %}
+                                        <span class="badge bg-danger">S1</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if r.urgency_level == 'emergency' %}
+                                            {% if r.is_at_scene %}
+                                                <span class="badge bg-success" style="font-size: 0.875rem;">
+                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-at-scene="true">{{ r.status_display }}</span>
+                                                </span>
+                                            {% elif r.is_late %}
+                                                <span class="badge status-overdue" style="font-size: 0.875rem;">
+                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-late="true">{{ r.status_display }}</span>
+                                                </span>
+                                            {% elif r.remaining_seconds > 0 %}
+                                                <span class="badge status-in_work" style="font-size: 0.875rem;">
+                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-full-text="true">{{ r.status_display }}</span>
+                                                </span>
+                                            {% else %}
+                                                <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}" style="font-size: 0.875rem;">
+                                                    {{ r.status_display }}
+                                                </span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %}">
+                                                {{ r.status_display }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if r.can_mark_arrived %}
+                                        <button class="btn btn-sm btn-success" onclick="markArrived({{ r.id }})">
+                                            <i class="fas fa-map-marker-alt"></i> Прибыл
+                                        </button>
+                                        {% elif r.assigned_to == request.user.id and r.status != 'done' %}
+                                            <div class="action-buttons d-flex flex-column gap-1">
+                                                {% if r.photo_path %}
+                                                    <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
+                                                        <i class="fas fa-image"></i> Фото
+                                                    </a>
+                                                    <button class="btn btn-sm btn-success" onclick="completeRequest({{ r.id }})">
+                                                        Выполнить
+                                                    </button>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-primary" onclick="uploadPhoto({{ r.id }})">
+                                                        <i class="fas fa-camera"></i> Фото
+                                                    </button>
+                                                    <button class="btn btn-sm btn-success" onclick="completeRequest({{ r.id }})">
+                                                        Выполнить
+                                                    </button>
+                                                {% endif %}
+                                            </div>
+                                        {% elif r.assigned_to == request.user.id and r.status == 'done' %}
+                                            <div class="d-flex flex-column gap-1">
+                                                <div class="action-buttons">
+                                                    {% if r.photo_path %}
+                                                    <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-sm btn-primary">
+                                                        <i class="fas fa-image"></i> Фото
+                                                    </a>
+                                                    {% else %}
+                                                    <button class="btn btn-sm btn-primary" onclick="uploadPhoto({{ r.id }})">
+                                                        <i class="fas fa-camera"></i> Фото
+                                                    </button>
+                                                    {% endif %}
+                                                </div>
+                                                <button class="btn btn-sm btn-info" onclick="showReport({{ r.id }})" style="width: 60px; height: 40px; font-size: 0.7rem;">
+                                                    <i class="fas fa-file-alt"></i> Отчет
+                                                </button>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- КАРТОЧКИ (только на мобильном) -->
+        <div class="d-md-none">
+            {% for r in my_requests %}
+            <div class="request-card">
+                <div class="request-card-header">
+                    <strong>#{{ r.id }}</strong>
+                    {% if r.urgency_level == 'emergency' %}
+                        {% if r.is_at_scene %}
+                            <span class="badge bg-success fs-6">
+                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-at-scene="true">{{ r.status_display }}</span>
+                            </span>
+                        {% elif r.is_late %}
+                            <span class="badge status-overdue fs-6">
+                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-late="true">{{ r.status_display }}</span>
+                            </span>
+                        {% elif r.remaining_seconds > 0 %}
+                            <span class="badge status-in_work fs-6">
+                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-full-text="true">{{ r.status_display }}</span>
+                            </span>
+                        {% else %}
+                            <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
+                                {{ r.status_display }}
+                            </span>
+                        {% endif %}
+                    {% else %}
+                        <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% endif %} fs-6">
+                            {{ r.status_display }}
+                        </span>
+                    {% endif %}
+                </div>
+                <div class="request-card-body">
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-calendar"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-value">{{ r.created_at_formatted }}</div>
+                        </div>
+                    </div>
+
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-user"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-value">{{ r.user_name|default:"—" }}</div>
+                        </div>
+                    </div>
+
+                    {% if r.user_phone %}
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-phone"></i></div>
+                        <div class="request-card-content">
+                            <a href="tel:{{ r.user_phone }}" class="btn btn-sm btn-outline-primary w-100">
+                                <i class="fas fa-phone-alt"></i> {{ r.user_phone }}
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-map-marker-alt"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-value">
+                                {{ r.address_formatted }}
+                                {% if r.address_details_str %}
+                                <div class="text-muted small">{{ r.address_details_str }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-info-circle"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-label">Проблема</div>
+                            <div class="request-card-value">{{ r.description }}</div>
+                        </div>
+                    </div>
+
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-tag"></i></div>
+                        <div class="request-card-content">
+                            {{ r.category_badge|safe }}
+                        </div>
+                    </div>
+
+                    {% if r.photo_path %}
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-camera"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-label">Фото выполненной работы</div>
+                            <a href="/{{ r.photo_path }}" target="_blank">
+                                <img src="/{{ r.photo_path }}" alt="Фото" style="max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 0.5rem;">
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="request-card-actions">
+                        {% if r.can_mark_arrived %}
+                        <button class="btn btn-success btn-lg w-100" onclick="markArrived({{ r.id }})" style="font-size: 1.1rem; padding: 0.75rem; font-weight: 600;">
+                            <i class="fas fa-map-marker-alt"></i> ПРИБЫЛ НА МЕСТО
+                        </button>
+                        {% elif r.assigned_to == request.user.id and r.status == 'done' %}
+                            <div class="d-grid gap-2">
+                                <div class="mobile-action-buttons">
+                                    {% if r.photo_path %}
+                                    <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none">
+                                        <i class="fas fa-image"></i> ФОТО
+                                    </a>
+                                    {% else %}
+                                    <button class="btn btn-primary btn-lg" onclick="uploadPhoto({{ r.id }})">
+                                        <i class="fas fa-camera"></i> ФОТО
+                                    </button>
+                                    {% endif %}
+                                </div>
+                                <button class="btn btn-info btn-lg" onclick="showReport({{ r.id }})">
+                                    <i class="fas fa-file-alt"></i> ОТЧЕТ
+                                </button>
+                            </div>
+                        {% elif r.assigned_to == request.user.id and r.status != 'done' %}
+                            {% if r.photo_path %}
+                            <div class="d-grid gap-2 mobile-action-buttons">
+                                <a href="/{{ r.photo_path }}" target="_blank" class="btn btn-primary btn-lg text-center text-decoration-none">
+                                    <i class="fas fa-image"></i> ФОТО
+                                </a>
+                                <button class="btn btn-success btn-lg" onclick="completeRequest({{ r.id }})">
+                                    ВЫПОЛНИТЬ
+                                </button>
+                            </div>
+                            {% else %}
+                            <div class="d-grid gap-2 mobile-action-buttons">
+                                <button class="btn btn-primary btn-lg" onclick="uploadPhoto({{ r.id }})">
+                                    <i class="fas fa-camera"></i> СФОТОГРАФИРОВАТЬ
+                                </button>
+                                <button class="btn btn-success btn-lg" onclick="completeRequest({{ r.id }})">
+                                    ВЫПОЛНИТЬ
+                                </button>
+                            </div>
+                            {% endif %}
+                        {% endif %}
+                        {% if r.user_phone %}
+                        <a href="tel:{{ r.user_phone }}" class="btn btn-primary">
+                            <i class="fas fa-phone-alt"></i> Позвонить
+                        </a>
+                        {% endif %}
+                        <a href="https://yandex.ru/maps/?text={{ r.address_formatted|urlencode }}" target="_blank" class="btn btn-outline-success">
+                            <i class="fas fa-route"></i> Маршрут
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-inbox"></i>
+            <p>У вас пока нет заявок</p>
+        </div>
+    {% endif %}
+
+    <!-- Доступные заявки -->
+    <div class="row mb-3 mt-4">
+        <div class="col-12">
+            <h6 class="mb-2">
+                <i class="fas fa-clipboard-list text-success"></i>
+                Доступные заявки
+                <span class="badge bg-success badge-count">{{ available_requests|length }}</span>
+            </h6>
+        </div>
+    </div>
+
+    {% if available_requests %}
+        <!-- ТАБЛИЦА (только на ПК/tablet) -->
+        <div class="d-none d-md-block">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th width="60">ID</th>
+                                    <th width="130">Дата</th>
+                                    <th>Жилец</th>
+                                    <th width="120">Телефон</th>
+                                    <th>Адрес</th>
+                                    <th>Описание</th>
+                                    <th width="100">Категория</th>
+                                    <th width="100">Срочность</th>
+                                    <th width="100">Статус</th>
+                                    <th width="100">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in available_requests %}
+                                <tr>
+                                    <td>#{{ r.id }}</td>
+                                    <td>{{ r.created_at_formatted }}</td>
+                                    <td>{{ r.user_name|default:"—" }}</td>
+                                    <td>{{ r.user_phone|default:"—" }}</td>
+                                    <td>
+                                        {{ r.address_formatted }}
+                                        {% if r.address_details_str %}
+                                        <div class="text-muted small">{{ r.address_details_str }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td title="{{ r.description }}">{{ r.description|truncatewords:10 }}</td>
+                                    <td>{{ r.category_badge|safe }}</td>
+                                    <td>
+                                        {% if r.urgency_level == 'emergency' %}
+                                            {% if r.is_overdue %}
+                                                <span class="badge bg-danger">S1</span>
+                                            {% elif r.remaining_seconds > 0 and r.status == 'new' and r.assigned_to is None %}
+                                                <span class="badge bg-danger badge-blink">
+                                                    S1 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-danger">S1</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
+                                            {% if r.is_late %}
+                                                <span class="badge status-overdue" style="font-size: 0.875rem;">
+                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-late="true">{{ r.status_display }}</span>
+                                                </span>
+                                            {% elif r.is_take_deadline %}
+                                                <span class="badge bg-danger badge-blink" style="font-size: 0.875rem;">
+                                                    <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                                                </span>
+                                            {% elif r.remaining_seconds > 0 %}
+                                                <span class="badge bg-danger" style="font-size: 0.875rem;">
+                                                    До прибытия: <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                                                </span>
+                                            {% else %}
+                                                <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}" style="font-size: 0.875rem;">
+                                                    {{ r.status_display }}
+                                                </span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %}">
+                                                {{ r.status_display }}
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-success" onclick="takeRequest({{ r.id }})">
+                                            <i class="fas fa-hand-paper"></i> Взять
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- КАРТОЧКИ (только на мобильном) -->
+        <div class="d-md-none">
+            {% for r in available_requests %}
+            <div class="request-card">
+                <div class="request-card-header">
+                    <strong>#{{ r.id }}</strong>
+                    {% if r.urgency_level == 'emergency' %}
+                        {% if r.is_overdue %}
+                            <span class="badge bg-danger fs-6">S1</span>
+                        {% elif r.remaining_seconds > 0 and r.status == 'new' and r.assigned_to is None %}
+                            <span class="badge bg-danger badge-blink fs-6">
+                                S1 <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                            </span>
+                        {% else %}
+                            <span class="badge bg-danger fs-6">S1</span>
+                        {% endif %}
+                    {% endif %}
+                    {% if r.urgency_level == 'emergency' and r.assigned_to is None %}
+                        {% if r.is_late %}
+                            <span class="badge status-overdue fs-6">
+                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}" data-is-late="true">{{ r.status_display }}</span>
+                            </span>
+                        {% elif r.is_take_deadline %}
+                            <span class="badge bg-danger badge-blink fs-6">
+                                <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                            </span>
+                        {% elif r.remaining_seconds > 0 %}
+                            <span class="badge bg-danger fs-6">
+                                До прибытия: <span class="badge-timer" data-remaining="{{ r.remaining_seconds }}">{{ r.remaining_time_formatted }}</span>
+                            </span>
+                        {% else %}
+                            <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
+                                {{ r.status_display }}
+                            </span>
+                        {% endif %}
+                    {% else %}
+                        <span class="badge {% if r.status == 'new' %}status-new{% elif r.status == 'in_work' %}status-in_work{% elif r.status == 'done' %}status-done{% elif r.status == 'cancelled' %}status-cancelled{% elif r.status == 'overdue' %}status-overdue{% endif %} fs-6">
+                            {{ r.status_display }}
+                        </span>
+                    {% endif %}
+                </div>
+                <div class="request-card-body">
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-calendar"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-value">{{ r.created_at_formatted }}</div>
+                        </div>
+                    </div>
+
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-user"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-value">{{ r.user_name|default:"—" }}</div>
+                        </div>
+                    </div>
+
+                    {% if r.user_phone %}
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-phone"></i></div>
+                        <div class="request-card-content">
+                            <a href="tel:{{ r.user_phone }}" class="btn btn-sm btn-outline-primary w-100">
+                                <i class="fas fa-phone-alt"></i> {{ r.user_phone }}
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-map-marker-alt"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-value">
+                                {{ r.address_formatted }}
+                                {% if r.address_details_str %}
+                                <div class="text-muted small">{{ r.address_details_str }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-info-circle"></i></div>
+                        <div class="request-card-content">
+                            <div class="request-card-label">Проблема</div>
+                            <div class="request-card-value">{{ r.description }}</div>
+                        </div>
+                    </div>
+
+                    <div class="request-card-row">
+                        <div class="request-card-icon"><i class="fas fa-tag"></i></div>
+                        <div class="request-card-content">
+                            {{ r.category_badge|safe }}
+                        </div>
+                    </div>
+
+                    <div class="request-card-actions">
+                        <button class="btn btn-success" onclick="takeRequest({{ r.id }})">
+                            <i class="fas fa-hand-paper"></i> Взять
+                        </button>
+                        {% if r.user_phone %}
+                        <a href="tel:{{ r.user_phone }}" class="btn btn-primary">
+                            <i class="fas fa-phone-alt"></i> Позвонить
+                        </a>
+                        {% endif %}
+                        <a href="https://yandex.ru/maps/?text={{ r.address_formatted|urlencode }}" target="_blank" class="btn btn-outline-success">
+                            <i class="fas fa-route"></i> Маршрут
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-check-circle"></i>
+            <p>Нет доступных заявок</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

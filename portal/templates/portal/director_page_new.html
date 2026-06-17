@@ -1,0 +1,330 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Кабинет директора - {{ company.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* === 3D CITY DASHBOARD STYLES === */
+:root {
+    --bg-primary: #f8f8f8;
+    --bg-secondary: #ffffff;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666666;
+    --accent-color: #1a1a1a;
+    --shadow-lg: 0 10px 25px rgba(0,0,0,0.15);
+    --font-family: 'Inter', sans-serif;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    overflow-x: hidden;
+}
+
+/* === HERO С 3D ГОРОДОМ === */
+.aerial-hero {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+}
+
+.city-3d-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.aerial-content {
+    position: relative;
+    z-index: 2;
+    padding: 3rem 0;
+    color: white;
+}
+
+.aerial-hero h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    color: #1a1a1a;
+}
+
+.aerial-hero .subtitle {
+    font-size: 1.25rem;
+    opacity: 0.95;
+    margin-bottom: 2rem;
+    max-width: 600px;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.2);
+    color: #2a2a2a;
+}
+
+/* Сетка плиток */
+.tiles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+    position: relative;
+    z-index: 3;
+}
+
+.aerial-tile {
+    display: block;
+    text-decoration: none;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-2xl);
+    padding: 1.75rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.aerial-tile::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 5px;
+    background: linear-gradient(90deg, #10b981, #059669);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.aerial-tile:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+}
+
+.aerial-tile:hover::before {
+    opacity: 1;
+}
+
+.tile-icon-wrapper {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+    border-radius: var(--radius-xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.25rem;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.tile-icon {
+    font-size: 1.5rem;
+    color: #059669;
+}
+
+.tile-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.tile-description {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.tile-badge {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.4rem 0.8rem;
+    background: #ecfdf5;
+    color: #059669;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* === АДАПТИВНОСТЬ === */
+@media (max-width: 768px) {
+    .aerial-hero {
+        min-height: auto;
+    }
+
+    .aerial-content {
+        padding: 2.25rem 1rem 2rem;
+    }
+
+    .aerial-content .row {
+        --bs-gutter-x: 0;
+    }
+
+    .aerial-hero h1 {
+        font-size: 1.75rem;
+        line-height: 1.12;
+        margin-bottom: 0.85rem;
+    }
+
+    .aerial-hero .subtitle {
+        font-size: 1.05rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .aerial-hero .subtitle ul {
+        padding-left: 1.2rem;
+        margin-bottom: 0;
+    }
+
+    .tiles-grid {
+        grid-template-columns: minmax(0, 1fr);
+        margin-top: 1.5rem;
+        gap: 1rem;
+    }
+
+    .aerial-tile {
+        padding: 1.5rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- HERO С 3D ГОРОДОМ -->
+<section class="aerial-hero">
+    <!-- ФОН: SVG 3D город -->
+    {% include 'work_orders/_aerial_city_background.html' %}
+
+    <!-- КОНТЕНТ -->
+    <div class="container aerial-content">
+        <div class="row">
+            <div class="col-lg-8">
+                <h1>Здравствуйте, {{ user.get_full_name|default:user.username }}!</h1>
+                <p class="subtitle">
+                    Ваш персональный кабинет для управления {{ company.name }}.
+                    <ul class="mt-3" style="opacity: 0.95;">
+                        <li><i class="fas fa-building"></i> {{ company.name }}</li>
+                        <li><i class="fas fa-users"></i> {{ total_users }} пользователей в системе</li>
+                    </ul>
+                </p>
+            </div>
+        </div>
+
+        <!-- ПЛИТКИ (4 штуки, без Файлов) -->
+        <div class="tiles-grid">
+            <!-- Создать заявку -->
+            <a href="{% url 'work_orders:work_order_create' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-plus-circle tile-icon"></i>
+                </div>
+                <div class="tile-title">Создать заявку</div>
+                <div class="tile-description">
+                    Создать новую заявку на обслуживание или ремонт
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-bolt"></i> Быстрое создание
+                </span>
+            </a>
+
+            <!-- Все заявки -->
+            <a href="{% url 'work_orders:management_list' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-clipboard-list tile-icon"></i>
+                </div>
+                <div class="tile-title">Все заявки</div>
+                <div class="tile-description">
+                    Просмотр и управление всеми заявками системы
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-check-circle"></i> Полный контроль
+                </span>
+            </a>
+
+            <!-- Жители ТСЖ -->
+            <a href="{% url 'portal:director_residents' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-users tile-icon"></i>
+                </div>
+                <div class="tile-title">Жители ТСЖ</div>
+                <div class="tile-description">
+                    Управление данными жителей и лицевых счетов
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-user-friends"></i> {{ resident_count }} жителей
+                </span>
+            </a>
+
+            <!-- Подразделения -->
+            <a href="{% url 'portal:director_departments' %}" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-sitemap tile-icon"></i>
+                </div>
+                <div class="tile-title">Подразделения</div>
+                <div class="tile-description">
+                    Управление структурой и отделами компании
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-building"></i> Организация
+                </span>
+            </a>
+
+            <!-- Квитанции и оплата -->
+            <a href="#" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-file-invoice-dollar tile-icon"></i>
+                </div>
+                <div class="tile-title">Квитанции и оплата</div>
+                <div class="tile-description">
+                    Просмотр истории, формирование квитанций, онлайн-оплата услуг ЖКХ
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-check-circle"></i> Скоро
+                </span>
+            </a>
+
+            <!-- Контакты УК -->
+            <a href="#" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-phone-alt tile-icon"></i>
+                </div>
+                <div class="tile-title">Контакты УК</div>
+                <div class="tile-description">
+                    Телефоны, адрес, часы работы, экстренные службы
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-clock"></i> 9:00–18:00
+                </span>
+            </a>
+
+            <!-- Документы -->
+            <a href="#" class="aerial-tile">
+                <div class="tile-icon-wrapper">
+                    <i class="fas fa-folder-open tile-icon"></i>
+                </div>
+                <div class="tile-title">Документы</div>
+                <div class="tile-description">
+                    Правила пользования, тарифы, образцы заявлений, справки
+                </div>
+                <span class="tile-badge">
+                    <i class="fas fa-download"></i> Библиотека
+                </span>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Font Awesome -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+{% endblock %}

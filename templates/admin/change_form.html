@@ -1,0 +1,131 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+(function () {
+    function localizeAdminErrorNote() {
+        document.querySelectorAll('.errornote').forEach(function (node) {
+            if ((node.textContent || '').trim() === 'Please correct the errors below.') {
+                node.textContent = 'Пожалуйста, исправьте ошибки ниже.';
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', localizeAdminErrorNote);
+    } else {
+        localizeAdminErrorNote();
+    }
+    window.addEventListener('load', localizeAdminErrorNote);
+})();
+</script>
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    /* Hide legacy action areas from both Unfold and Jazzmin. */
+    #submit-row,
+    #jazzy-actions,
+    .object-tools {
+        display: none !important;
+    }
+
+    /* Let the main form body use the freed width. */
+    #content-main,
+    #content-main > form {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+
+    .change-form .row > .col-12.col-lg-9 {
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+    }
+
+    .change-form .row > .col-12.col-lg-3 {
+        display: none !important;
+    }
+
+    .global-submit-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 12px;
+        width: 100%;
+        margin: 0 0 20px 0;
+        padding: 12px 16px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        box-sizing: border-box;
+    }
+
+    .global-submit-row input[type="submit"],
+    .global-submit-row .close-form-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 148px;
+        padding: 10px 20px;
+        border-radius: 6px;
+        border: none;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.2;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background-color 0.2s ease-in-out;
+    }
+
+    .global-submit-row input[type="submit"] {
+        background: #28a745;
+        color: #fff;
+    }
+
+    .global-submit-row input[type="submit"]:hover {
+        background: #218838;
+    }
+
+    .global-submit-row .close-form-link,
+    .global-submit-row .close-form-link:link,
+    .global-submit-row .close-form-link:visited,
+    .global-submit-row .close-form-link:active,
+    .global-submit-row .close-form-link:focus,
+    .global-submit-row .close-form-link *,
+    .global-submit-row .close-form-link *:link,
+    .global-submit-row .close-form-link *:visited,
+    .global-submit-row .close-form-link *:active,
+    .global-submit-row .close-form-link *:focus {
+        background: #6c757d;
+        color: #fff !important;
+        -webkit-text-fill-color: #fff !important;
+        text-shadow: none !important;
+    }
+
+    .global-submit-row .close-form-link:hover,
+    .global-submit-row .close-form-link:hover * {
+        background: #5a6268;
+        color: #fff !important;
+        -webkit-text-fill-color: #fff !important;
+    }
+</style>
+{% endblock %}
+
+{% block form_top %}
+{% url opts|admin_urlname:'changelist' as changelist_url %}
+<div class="global-submit-row">
+    <input type="submit" name="_save" value="Сохранить">
+    {% if changelist_url %}
+    <a href="{{ changelist_url }}" class="close-form-link">Закрыть</a>
+    {% else %}
+    <a href="javascript:history.back()" class="close-form-link">Закрыть</a>
+    {% endif %}
+</div>
+{% endblock %}
+
+
+{% block submit_buttons_bottom %}{% endblock %}
+{% block object-tools %}{% endblock %}

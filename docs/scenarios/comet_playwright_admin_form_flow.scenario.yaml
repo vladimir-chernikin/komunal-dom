@@ -1,0 +1,53 @@
+version: 1
+name: admin_form_ui_verification
+base_url: https://komunal-dom.ru
+credentials:
+ admin_username: ${ADMIN_USERNAME}
+ admin_password: ${ADMIN_PASSWORD}
+artifacts:
+ dir: tmp_archive/ui_runs/${RUN_ID}
+steps:
+ - id: login
+ action: login
+ url: /admin/login/
+ fields:
+ username: ${ADMIN_USERNAME}
+ password: ${ADMIN_PASSWORD}
+ submit_selector: input[type='submit'], button[type='submit']
+ expect:
+ url_contains: /admin/
+ - id: open_entity
+ action: goto
+ url: /admin/nsi/company/5/change/
+ expect:
+ selectors:
+ - form
+ - body
+ screenshot: 01-company-before.png
+ - id: assert_button_row
+ action: assert
+ selectors_present:
+ - input[name='_save'], button[name='_save']
+ - a[href*='javascript:history.back'], a.close-form, button[data-role='close-form']
+ selectors_absent:
+ - input[name='_continue']
+ - input[name='_addanother']
+ - .submit-row .deletelink
+ - .object-tools
+ - id: assert_top_layout
+ action: assert
+ css_expect:
+ - selector: .compact-submit-row, .global-submit-row
+ property: display
+ equals: flex
+ - selector: .compact-submit-row, .global-submit-row
+ property: justify-content
+ contains: flex-start
+ screenshot: 02-company-after.png
+ - id: smoke_other_form
+ action: goto
+ url: /admin/auth/user/1/change/
+ expect:
+ selectors:
+ - form
+ screenshot: 03-user-after.png

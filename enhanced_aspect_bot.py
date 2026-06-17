@@ -29,7 +29,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'komunal_dom.settings')
 # Импортируем AI менеджер и унифицированный обработчик сообщений
 from portal.ai_manager import ai_manager
 from message_handler_service import MessageHandlerService
-from main_agent import MainAgent
+from speech_to_text_service import SpeechToTextError, recognize_audio_bytes
 
 # Настройки
 TELEGRAM_TOKEN = config('TELEGRAM_TOKEN')
@@ -59,6 +59,7 @@ class ServiceBotState:
         self.last_address = None
         self.warnings_count = 0
         self.last_question_time = None
+        self.session_id = None  # ИСПРАВЛЕНО (2026-01-05): Текущая сессия для логирования outbound
 
         # Поля для обслуживания заявок
         self.current_service_id = None
@@ -85,11 +86,8 @@ class EnhancedAspectBot:
 
         # ИСПРАВЛЕНО: Инициализируем унифицированную систему обработки
         try:
-            # MainAgent - воронка точности
-            self.main_agent = MainAgent()
-
-            # MessageHandlerService - единый обработчик сообщений
-            self.message_handler = MessageHandlerService(main_agent=self.main_agent)
+            self.main_agent = None
+            self.message_handler = MessageHandlerService()
 
             logger.info("Унифицированная система обработки сообщений инициализирована")
         except Exception as e:
@@ -110,6 +108,54 @@ class EnhancedAspectBot:
             if word in text_lower:
                 return True
         return False
+
+    async def _reply_and_log(
+        self,
+        update: Update,
+        text: str,
+        session_id: str = None,
+        metadata: Dict = None
+    ):
+        """
+        Отправляет ответ пользователю
+
+        ИСПРАВЛЕНО (2026-01-06):
+        - НЕ логирует здесь - дублирование!
+        - Логирование происходит в message_handler_service.py (строка 234)
+        - handle_incoming_message() логирует ВСЕ outbound сообщения
+
+        Args:
+            update: Telegram Update объект
+            text: Текст ответа
+            session_id: ID сессии (берется из state если не передан)
+            metadata: Метаданные для логирования (txtPrb, filters, etc)
+        """
+        user = update.effective_user
+        state = self.get_conversation_state(user.id)
+
+        # Получаем session_id из state если не передан
+        if not session_id:
+            session_id = state.session_id
+
+        # Отправляем ответ пользователю
+        text = self._repair_mojibake(text)
+        await update.message.reply_text(text)
+
+        # ИСПРАВЛЕНО (2026-01-06): НЕ логируем здесь - будет залогировано в message_handler
+        # чтобы избежать дублирования в БД
+
+    def _repair_mojibake(self, text: str) -> str:
+        """Best-effort repair for UTF-8 text that was accidentally decoded as CP1251."""
+        if not isinstance(text, str) or not text:
+            return text
+        markers = ("Рџ", "Р—", "РЎ", "Рќ", "СЃ", "С‚", "СЋ", "СЏ")
+        if not any(marker in text for marker in markers):
+            return text
+        try:
+            repaired = text.encode("cp1251").decode("utf-8")
+        except UnicodeError:
+            return text
+        return repaired if repaired else text
 
     async def ask_yandexgpt(self, prompt, max_tokens=300):
         """Запрос к YandexGPT API с системным промптом из БД"""
@@ -162,26 +208,24 @@ class EnhancedAspectBot:
         """Обработчик команды /start"""
         user = update.effective_user
         state = self.get_conversation_state(user.id)
-
-        welcome_text = f"""Добрый день, {user.first_name}!
-
-Я {self.bot_name} - AI-ассистент управляющей компании "Аспект".
-
-Я могу помочь вам:
-- Проверить адрес в зоне обслуживания УК
-- Принять и зарегистрировать заявку на обслуживание
-- Определить услугу по описанию проблемы
-
-Просто отправьте мне сообщение с описанием проблемы или адрес для проверки.
-
-Команды:
-/help - справка
-/streets - список улиц на обслуживании
-/service - создать заявку по проблеме
-/address - проверить адрес
-"""
-
-        await update.message.reply_text(welcome_text)
+        state.current_service_id = None
+        state.current_service_name = None
+        state.current_address = None
+        state.address_components = None
+        state.building_id = None
+        state.unit_id = None
+        state.session_id = None
+        message = update.effective_message
+        await self.handle_service_request(
+            update,
+            context,
+            "/start",
+            extra_metadata={
+                "command": "start",
+                "telegram_message_id": getattr(message, "message_id", None),
+            },
+            message_id=f"telegram_start_{getattr(message, 'message_id', 'unknown')}",
+        )
         state.mode = 'ADDRESS_CHECK'
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -267,7 +311,14 @@ class EnhancedAspectBot:
         # Если пользователь хочет проверить адрес - он скажет об этом явно
         return 'SERVICE_REQUEST'
 
-    async def handle_service_request(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    async def handle_service_request(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        text: str,
+        extra_metadata: Optional[Dict] = None,
+        message_id: Optional[str] = None,
+    ):
         """Обработка запроса на создание заявки через MessageHandlerService"""
         user = update.effective_user
         state = self.get_conversation_state(user.id)
@@ -278,41 +329,60 @@ class EnhancedAspectBot:
             # Слова отмены/отказа
             denial_words = ['нет', 'неправ', 'не та', 'другая', 'не то', 'ошиб', 'неверно']
             if any(word in text_lower for word in denial_words):
-                # Сбрасываем состояние и просим описать заново
+                # ИСПРАВЛЕНО (2025-12-25): Умный вопрос от AI агента вместо хардкода
                 state.mode = 'ADDRESS_CHECK'
                 state.current_service_id = None
                 state.current_service_name = None
                 state.current_address = None
                 state.address_components = None
 
-                await update.message.reply_text(
-                    "Понял! Опишите вашу проблему другими словами, и я попробую определить услугу заново."
-                )
+                # ИСПРАВЛЕНО (2025-12-25): Используем AI агента для умного вопроса
+                clarification = await self._ask_ai_clarification(text, state)
+
+                # ИСПРАВЛЕНО (2026-01-05): Логируем outbound
+                await self._reply_and_log(update, clarification, state.session_id)
                 return
 
         if not self.message_handler:
-            await update.message.reply_text(
+            await self._reply_and_log(
+                update,
                 "К сожалению, система определения услуг временно недоступна.\n"
-                "Пожалуйста, позвоните напрямую в УК."
+                "Пожалуйста, позвоните напрямую в УК.",
+                state.session_id
             )
             return
 
-        # Генерируем session_id
-        session_id = f"telegram_{user.id}"
-
+        # ИСПРАВЛЕНО (2025-12-28): НЕ передаем фиксированный session_id
+        # Позволяем MessageHandlerService создать новую сессию для приветствия
+        # или продолжить существующую сессию
         try:
+            metadata = {
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+            }
+            if extra_metadata:
+                metadata.update(extra_metadata)
+
             # Обрабатываем сообщение через MessageHandlerService
             result = await self.message_handler.handle_incoming_message(
                 text=text,
                 user_id=str(user.id),
                 channel='telegram',
-                session_id=session_id,
-                metadata={
-                    'username': user.username,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name
-                }
+                message_id=message_id,
+                session_id=None,  # ИСПРАВЛЕНО: None = автоматическое управление сессиями
+                metadata=metadata,
             )
+
+            # ИСПРАВЛЕНО (2026-01-05): Сохраняем session_id для логирования outbound
+            session_id = result.get('session_id')
+            if session_id:
+                state.session_id = session_id
+                logger.info(f"✅ Session ID сохранен в state: {session_id}")
+
+            if result.get('status') == 'success':
+                await self._reply_and_log(update, result.get('response', ''), session_id)
+                return
 
             # Анализируем результат
             if result.get('status') == 'success':
@@ -321,7 +391,7 @@ class EnhancedAspectBot:
                 # Проверяем, была ли это только проверка приветствия
                 if result.get('is_greeting'):
                     # Просто отвечаем на приветствие, ничего не делаем
-                    await update.message.reply_text(response)
+                    await self._reply_and_log(update, response, session_id)
                     return
 
                 # Если услуга определена успешно (SUCCESS)
@@ -337,95 +407,155 @@ class EnhancedAspectBot:
                     state.address_components = address_components
                     state.confidence = result['raw_result'].get('confidence', 0.8)
 
-                    # ИСПРАВЛЕНО: Голосовой интерфейс - без кнопок!
-                    # Сначала подтверждаем услугу, потом запрашиваем адрес
+                    # ИСПРАВЛЕНО (2025-12-25): ИСПОЛЬЗУЕМ сообщение от MainAgent!
+                    # КРИТИЧЕСКИ ВАЖНО: НЕ добавлять "Ответьте да или нет" - это закрытый вопрос!
+                    # КРИТИЧЕСКИ ВАЖНО: НЕ добавлять "опишите проблему другими словами" - запрещенная фраза!
                     state.mode = 'CONFIRMATION'
 
-                    confirm_text = f"Правильно ли я понял, что у вас: {service_name}? Ответьте да или нет, или опишите проблему другими словами."
+                    # Используем ИЗНАЧАЛЬНОЕ сообщение от MainAgent (без изменений!)
+                    # ИСПРАВЛЕНИЕ (2026-01-12): Заглушка тоже должна быть открытым вопросом по правилу 7
+                    confirm_text = result['raw_result'].get('message', f"Поняла вас: {service_name}. Опишите подробнее детали.")
 
-                    await update.message.reply_text(confirm_text)
+                    # ИСПРАВЛЕНО (2026-01-06): Объединяем _metadata и _ai_metadata
+                    raw_result = result.get('raw_result', {})
+                    metadata = raw_result.get('_metadata', {})
+                    ai_metadata = raw_result.get('_ai_metadata', {})
+
+                    # Если есть _ai_metadata - добавляем к metadata
+                    if ai_metadata:
+                        metadata = {**metadata, **ai_metadata}
+
+                    await self._reply_and_log(update, confirm_text, session_id, metadata)
                     return
 
                 # Если нужна детализация (AMBIGUOUS)
                 elif result.get('raw_result', {}).get('status') == 'AMBIGUOUS':
-                    # Отправляем уточняющий вопрос
-                    await update.message.reply_text(response)
+                    # ИСПРАВЛЕНО (2026-01-06): Объединяем _metadata и _ai_metadata
+                    raw_result = result.get('raw_result', {})
+                    metadata = raw_result.get('_metadata', {})
+                    ai_metadata = raw_result.get('_ai_metadata', {})
+
+                    # Если есть _ai_metadata - добавляем к metadata
+                    if ai_metadata:
+                        metadata = {**metadata, **ai_metadata}
+
+                    await self._reply_and_log(update, response, session_id, metadata)
                     return
 
                 # Обычный ответ
-                await update.message.reply_text(response)
+                # ИСПРАВЛЕНО (2026-01-06): Добавляем metadata для всех ответов
+                metadata = result.get('raw_result', {}).get('_metadata', {})
+                await self._reply_and_log(update, response, session_id, metadata)
 
             else:
                 # Ошибка обработки
-                await update.message.reply_text(
-                    f"Произошла ошибка: {result.get('error', 'Неизвестная ошибка')}"
+                await self._reply_and_log(
+                    update,
+                    f"Произошла ошибка: {result.get('error', 'Неизвестная ошибка')}",
+                    state.session_id
                 )
 
         except Exception as e:
             logger.error(f"Ошибка при обработке заявки: {e}")
-            await update.message.reply_text(
+            await self._reply_and_log(
+                update,
                 "Произошла ошибка при обработке запроса.\n"
-                "Пожалуйста, попробуйте еще раз или позвоните в УК."
+                "Пожалуйста, попробуйте еще раз или позвоните в УК.",
+                state.session_id
             )
 
     async def handle_address_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-        """Обработка ввода адреса для заявки"""
+        """Обработка ввода адреса для заявки с поддержкой ввода по частям"""
         user = update.effective_user
         state = self.get_conversation_state(user.id)
 
-        # ИСПРАВЛЕНО: AddressExtractor теперь интегрирован в MainAgent
-        # При повторном вызове с адресом, MainAgent извлечет адрес из сообщения
+        # ИСПРАВЛЕНО (2026-01-11): Добавлен ввод адреса по частям для голосового интерфейса
+        # Пользователь может сказать: "на Мира" → "дом 25" → "квартира 5"
+        # КРИТИЧЕСКИ ВАЖНО: Накапливаем компоненты адреса между сообщениями!
+
         if not self.message_handler:
             await update.message.reply_text("Система временно недоступна")
             return
 
         try:
-            # Обрабатываем сообщение с адресом через MessageHandlerService
-            result = await self.message_handler.handle_incoming_message(
-                text=text,
-                user_id=str(user.id),
-                channel='telegram',
-                session_id=f"telegram_{user.id}",
-                metadata={
-                    'username': user.username,
-                    'first_name': user.first_name,
-                    'is_address_input': True  # Флаг что это ввод адреса
-                }
+            # Шаг 1: Извлекаем адресные компоненты из текущего сообщения
+            # ИСПРАВЛЕНО (2026-03-13): Используем новый AddressExtractor на Django ORM
+            from address_extractor_service import AddressExtractor
+            extractor = AddressExtractor()
+
+            # Объединяем с сохраненными компонентами (накопление по частям!)
+            previous_components = state.address_components or {}
+            current_components = extractor.extract_address_components(
+                text,
+                context_memory=previous_components  # Передаем память для объединения
             )
 
-            # Анализируем результат
-            if result.get('status') == 'success':
-                raw_result = result.get('raw_result', {})
+            logger.info(f"Адрес накопление: было={previous_components}, стало={current_components}")
 
-                # Если адрес найден в raw_result
-                address_components = raw_result.get('address_components', {})
-                address_string = raw_result.get('address_string', '')
+            # Шаг 2: Проверяем что получилось
+            # ИСПРАВЛЕНИЕ (2026-01-11): Добавлена проверка города!
+            # КРИТИЧЕСКИ ВАЖНО: Город должен быть определен ПЕРВЫМ
+            has_city = bool(current_components.get('city'))
+            has_street = bool(current_components.get('street'))
+            has_house = bool(current_components.get('house_number'))
+            has_apartment = bool(current_components.get('apartment_number'))
 
-                # Сохраняем адрес
-                if address_components:
-                    state.address_components = address_components
-                    state.current_address = address_string or text
+            # Шаг 3: Сохраняем накопленные компоненты
+            state.address_components = current_components
 
-                    # Переходим к подтверждению
-                    state.mode = 'CONFIRMATION'
+            # Формируем строку адреса для отображения
+            address_parts = []
+            if has_city:
+                address_parts.append(f"г. {current_components['city']}")
+            if has_street:
+                address_parts.append(f"ул. {current_components['street']}")
+            if has_house:
+                address_parts.append(f"д. {current_components['house_number']}")
+            if has_apartment:
+                address_parts.append(f"кв. {current_components['apartment_number']}")
+            address_string = ', '.join(address_parts) if address_parts else text
 
-                    # ИСПРАВЛЕНО: Голосовой интерфейс - без кнопок!
-                    confirm_text = f"Проверьте информацию:\n\n"
-                    confirm_text += f"Услуга: {state.current_service_name}\n"
-                    if address_string:
-                        confirm_text += f"Адрес: {address_string}\n"
-                    confirm_text += f"\nВсе верно? Ответьте да или нет."
+            # Шаг 4: Проверяем полноту адреса
+            # ИСПРАВЛЕНИЕ (2026-01-11): Сначала проверяем город!
+            if not has_city:
+                # Город НЕ указан - спрашиваем город
+                await update.message.reply_text(
+                    "Какой город? Пожалуйста, назовите населенный пункт."
+                )
+                return
 
-                    await update.message.reply_text(confirm_text)
-                    return
+            if has_street and has_house:
+                # Адрес ПОЛНЫЙ (есть город + улица + дом) - переходим к подтверждению
+                state.current_address = address_string
+                state.mode = 'CONFIRMATION'
 
-            # Если адрес не распознан - просим уточнить
-            await update.message.reply_text(
-                "Не удалось распознать адрес.\n\n"
-                "Пожалуйста, укажите адрес в формате:\n"
-                "ул. Название, д. Номер, кв. Номер\n\n"
-                "Например: ул. Ленина, д. 5, кв. 10"
-            )
+                # ИСПРАВЛЕНО (2025-12-25): Голосовой интерфейс - открытые вопросы!
+                confirm_text = f"Проверьте информацию:\n\n"
+                confirm_text += f"Услуга: {state.current_service_name}\n"
+                confirm_text += f"Адрес: {address_string}\n"
+                confirm_text += f"\nВсе верно?"
+
+                await update.message.reply_text(confirm_text)
+                return
+
+            # Шаг 5: Адрес НЕ полный - спрашиваем следующую часть
+            # ИСПРАВЛЕНИЕ (2026-01-11): Голосовой интерфейс - естественные вопросы!
+            if not has_street and not has_house:
+                # Есть город, но нет улицы и дома
+                await update.message.reply_text(
+                    f"Город {current_components['city']}. Какой адрес?\n\n"
+                    "Пожалуйста, скажите улицу и номер дома."
+                )
+            elif has_street and not has_house:
+                # Есть улица, нет дома
+                await update.message.reply_text(
+                    f"Улица {current_components['street']}. Какой номер дома?"
+                )
+            elif has_house and not has_street:
+                # Есть дом, нет улицы (редкий случай)
+                await update.message.reply_text(
+                    f"Дом {current_components['house_number']}. Какая улица?"
+                )
 
         except Exception as e:
             logger.error(f"Ошибка при обработке адреса: {e}")
@@ -474,33 +604,31 @@ class EnhancedAspectBot:
     async def show_streets(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Показывает список улиц на обслуживании"""
         try:
-            from django.db import connection
+            # ИСПРАВЛЕНО (2026-03-13): Используем Django ORM + новую модель
+            from kladr.models import KladrAddressObject
 
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT DISTINCT ao.name, ao.type_name
-                    FROM kladr_address_objects ao
-                    JOIN buildings b ON ao.ao_id = b.parent_ao_id
-                    ORDER BY ao.name
-                    LIMIT 50
-                """)
+            # НОВАЯ МОДЕЛЬ: Django ORM
+            streets_qs = KladrAddressObject.objects.filter(
+                type__level=5,  # Только улицы
+                building__isnull=False  # Есть здания
+            ).distinct().order_by('name')[:50]
 
-                streets = cursor.fetchall()
+            streets = [(obj.name, obj.type.short_name) for obj in streets_qs]
 
-                if streets:
-                    text = "📍 **Улицы в зоне обслуживания УК 'Аспект':**\n\n"
-                    for i, (name, type_name) in enumerate(streets, 1):
-                        text += f"{i}. {type_name} {name}\n"
+            if streets:
+                text = "📍 **Улицы в зоне обслуживания УК 'Аспект':**\n\n"
+                for i, (name, type_name) in enumerate(streets, 1):
+                    text += f"{i}. {type_name} {name}\n"
 
-                    text += f"\nВсего: {len(streets)} улиц\n\n"
-                    text += "Отправьте адрес для проверки (например: ул. Ленина, д. 5)"
+                text += f"\nВсего: {len(streets)} улиц\n\n"
+                text += "Отправьте адрес для проверки (например: ул. Ленина, д. 5)"
 
-                    if len(text) > 4000:
-                        text = text[:3950] + "...\n\n(и еще улицы)"
+                if len(text) > 4000:
+                    text = text[:3950] + "...\n\n(и еще улицы)"
 
-                    await update.message.reply_text(text, parse_mode='Markdown')
-                else:
-                    await update.message.reply_text("📍 Улицы не найдены в базе данных")
+                await update.message.reply_text(text, parse_mode='Markdown')
+            else:
+                await update.message.reply_text("📍 Улицы не найдены в базе данных")
 
         except Exception as e:
             logger.error(f"Ошибка при получении списка улиц: {e}")
@@ -509,38 +637,35 @@ class EnhancedAspectBot:
     async def check_address_with_ai(self, update: Update, context: ContextTypes.DEFAULT_TYPE, address_text):
         """Проверяет адрес с использованием AI и базы КЛАДР"""
         try:
-            # Проверяем есть ли адрес в КЛАДР
-            from django.db import connection
+            # ИСПРАВЛЕНО (2026-03-13): Используем Django ORM + новую модель
+            from kladr.models import KladrAddressObject
+            from django.db.models import Count, Q
 
-            with connection.cursor() as cursor:
-                # Нормализуем и ищем адрес
-                normalized_address = address_text.strip().lower()
+            normalized_address = address_text.strip().lower()
 
-                # Ищем улицы
-                cursor.execute("""
-                    SELECT DISTINCT ao.name, ao.type_name, COUNT(*) as building_count
-                    FROM kladr_address_objects ao
-                    LEFT JOIN buildings b ON ao.ao_id = b.parent_ao_id
-                    WHERE LOWER(ao.name) LIKE %s
-                       OR LOWER(ao.name || ' ' || b.house_number) LIKE %s
-                    GROUP BY ao.ao_id, ao.name, ao.type_name
-                    ORDER BY building_count DESC, ao.name
-                    LIMIT 10
-                """, [f'%{normalized_address}%', f'%{normalized_address}%'])
+            # НОВАЯ МОДЕЛЬ: Django ORM с поиском по улице или адресу
+            streets_qs = KladrAddressObject.objects.filter(
+                type__level=5  # Только улицы
+            ).annotate(
+                building_count=Count('building')
+            ).filter(
+                Q(name__icontains=normalized_address) |
+                Q(building__house_number__icontains=normalized_address)
+            ).distinct().order_by('-building_count', 'name')[:10]
 
-                results = cursor.fetchall()
+            results = [(obj.name, obj.type.short_name, obj.building_count) for obj in streets_qs]
 
-                if results:
-                    text = f"🔍 **Результаты поиска адреса:**\n\n"
+            if results:
+                text = f"🔍 **Результаты поиска адреса:**\n\n"
 
-                    for name, type_name, count in results[:5]:
-                        text += f"📍 {type_name} {name}"
-                        if count > 0:
-                            text += f" ({count} домов)"
-                        text += "\n"
+                for name, type_name, count in results[:5]:
+                    text += f"📍 {type_name} {name}"
+                    if count > 0:
+                        text += f" ({count} домов)"
+                    text += "\n"
 
-                    # Используем AI для детального анализа
-                    ai_prompt = f"""
+                # Используем AI для детального анализа
+                ai_prompt = f"""
 Проанализируй адрес: "{address_text}"
 
 Найденные варианты в базе:
@@ -552,15 +677,15 @@ class EnhancedAspectBot:
 3. Какие рекомендации?
 """
 
-                    ai_response = await self.ask_yandexgpt(ai_prompt, 200)
+                ai_response = await self.ask_yandexgpt(ai_prompt, 200)
 
-                    if ai_response:
-                        text += f"\n\n🤖 **Анализ AI:**\n{ai_response}"
+                if ai_response:
+                    text += f"\n\n🤖 **Анализ AI:**\n{ai_response}"
 
-                    await update.message.reply_text(text, parse_mode='Markdown')
-                else:
-                    # Если не найдено, используем только AI
-                    ai_prompt = f"""
+                await update.message.reply_text(text, parse_mode='Markdown')
+            else:
+                # Если не найдено, используем только AI
+                ai_prompt = f"""
 Пользователь ищет адрес: "{address_text}"
 
 Это адрес в г. Россия? Проверь правильность написания.
@@ -570,17 +695,138 @@ class EnhancedAspectBot:
 3. Это вообще адрес?
 """
 
-                    ai_response = await self.ask_yandexgpt(ai_prompt, 250)
+                ai_response = await self.ask_yandexgpt(ai_prompt, 250)
 
-                    text = f"🔍 **Анализ адреса:**\n\n{ai_response}"
-                    await update.message.reply_text(text, parse_mode='Markdown')
+                text = f"🔍 **Анализ адреса:**\n\n{ai_response}"
+                await update.message.reply_text(text, parse_mode='Markdown')
 
         except Exception as e:
             logger.error(f"Ошибка при проверке адреса: {e}")
             await update.message.reply_text("😔 Ошибка при проверке адреса. Попробуйте позже.")
 
+    async def _route_text_message(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        text: str,
+        *,
+        extra_metadata: Optional[Dict] = None,
+        message_id: Optional[str] = None,
+    ):
+        """Route already-normalized text through the existing Telegram flow."""
+        user = update.effective_user
+        state = self.get_conversation_state(user.id)
+
+        if self.contains_profanity(text):
+            state.warnings_count += 1
+            if state.warnings_count >= 2:
+                await update.message.reply_text("За многократное использование нецензурной лексики диалог будет прекращен.")
+                return
+            await update.message.reply_text("Пожалуйста, избегайте нецензурной лексики в сообщениях.")
+            return
+
+        if self.message_handler:
+            from message_cleaner_service import MessageCleanerService
+            if not hasattr(self, '_message_cleaner'):
+                self._message_cleaner = MessageCleanerService()
+
+            if self._message_cleaner.is_greeting_only(text):
+                logger.info(f"Обнаружено приветствие в _route_text_message: '{text}'")
+                await self.handle_service_request(
+                    update,
+                    context,
+                    text,
+                    extra_metadata=extra_metadata,
+                    message_id=message_id,
+                )
+                return
+
+        await self.handle_service_request(
+            update,
+            context,
+            text,
+            extra_metadata=extra_metadata,
+            message_id=message_id,
+        )
+
+    async def _download_telegram_file_bytes(self, context: ContextTypes.DEFAULT_TYPE, file_id: str) -> bytes:
+        telegram_file = await context.bot.get_file(file_id)
+        if hasattr(telegram_file, "download_as_bytearray"):
+            data = await telegram_file.download_as_bytearray()
+            return bytes(data)
+
+        import io
+
+        buffer = io.BytesIO()
+        await telegram_file.download_to_memory(out=buffer)
+        return buffer.getvalue()
+
+    async def handle_audio_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Recognize Telegram voice/audio and continue through the text pipeline."""
+        message = update.effective_message
+        audio = (
+            getattr(message, "voice", None)
+            or getattr(message, "audio", None)
+            or getattr(message, "document", None)
+        )
+        if not audio:
+            return
+
+        if getattr(message, "voice", None):
+            media_kind = "voice"
+        elif getattr(message, "audio", None):
+            media_kind = "audio"
+        else:
+            media_kind = "document_audio"
+        try:
+            audio_bytes = await self._download_telegram_file_bytes(context, audio.file_id)
+            stt_result = await asyncio.to_thread(
+                recognize_audio_bytes,
+                audio_bytes,
+                audio_format="oggopus" if media_kind == "voice" else None,
+                metadata={
+                    "mime_type": getattr(audio, "mime_type", None),
+                    "file_name": getattr(audio, "file_name", None),
+                    "channel": "telegram",
+                    "media_kind": media_kind,
+                },
+            )
+            recognized_text = (stt_result.get("text") or "").strip()
+            if not recognized_text:
+                await message.reply_text("Не удалось распознать голосовое сообщение. Попробуйте записать короче или отправьте текстом.")
+                return
+
+            await self._route_text_message(
+                update,
+                context,
+                recognized_text,
+                extra_metadata={
+                    "content_type": "audio",
+                    "telegram_audio": {
+                        "media_kind": media_kind,
+                        "file_id": getattr(audio, "file_id", None),
+                        "file_unique_id": getattr(audio, "file_unique_id", None),
+                        "duration": getattr(audio, "duration", None),
+                        "mime_type": getattr(audio, "mime_type", None),
+                        "file_name": getattr(audio, "file_name", None),
+                    },
+                    "stt": stt_result,
+                },
+                message_id=f"telegram_{media_kind}_{getattr(message, 'message_id', 'unknown')}",
+            )
+        except SpeechToTextError as exc:
+            logger.warning("Telegram audio recognition failed: %s", exc, exc_info=True)
+            await message.reply_text("Аудио не распознано. Попробуйте записать сообщение короче или отправьте текстом.")
+        except Exception as exc:
+            logger.error("Telegram audio handling failed: %s", exc, exc_info=True)
+            await message.reply_text("Не удалось обработать аудио. Отправьте, пожалуйста, текстовое сообщение.")
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Основной обработчик сообщений"""
+        text = update.message.text or ""
+        await self._route_text_message(update, context, text)
+        return
+
         user = update.effective_user
         state = self.get_conversation_state(user.id)
         text = update.message.text
@@ -594,6 +840,24 @@ class EnhancedAspectBot:
             else:
                 await update.message.reply_text("Пожалуйста, избегайте нецензурной лексики в сообщениях.")
                 return
+
+        # ИСПРАВЛЕНО (2026-01-12): Проверка приветствий ПЕРЕД определением режима
+        # КРИТИЧЕСКИ ВАЖНО: Приветствия должны обрабатываться через MessageHandlerService
+        # чтобы они логировались и создавали новую сессию
+        if self.message_handler:
+            from message_cleaner_service import MessageCleanerService
+            if not hasattr(self, '_message_cleaner'):
+                self._message_cleaner = MessageCleanerService()
+
+            # Проверяем: является ли сообщение только приветствием?
+            if self._message_cleaner.is_greeting_only(text):
+                logger.info(f"Обнаружено приветствие в handle_message: '{text}'")
+                # Обрабатываем через MessageHandlerService для логирования
+                await self.handle_service_request(update, context, text)
+                return
+
+        await self.handle_service_request(update, context, text)
+        return
 
         # Обработка в зависимости от режима
         if state.mode == 'SERVICE_REQUEST':
@@ -628,18 +892,17 @@ class EnhancedAspectBot:
                     return
 
             elif any(word in text_lower for word in denial_words):
-                # Отрицание - сбрасываем и просим описать заново
+                # ИСПРАВЛЕНО (2025-12-25): Умный вопрос от AI агента вместо хардкода
                 state.mode = 'ADDRESS_CHECK'
                 state.current_service_id = None
                 state.current_service_name = None
-                await update.message.reply_text(
-                    "Понял! Опишите вашу проблему другими словами, и я попробую определить услугу заново."
-                )
+                clarification = await self._ask_ai_clarification(text, state)
+                await update.message.reply_text(clarification)
             else:
-                # Не понял ответа
-                await update.message.reply_text(
-                    "Пожалуйста, ответьте да или нет, или опишите проблему другими словами."
-                )
+                # ИСПРАВЛЕНО (2026-02-04): Вместо хардкода "да или нет" используем AI
+                # Хардкод нарушал архитектуру - вопросы должны генерироваться через LLM
+                clarification = await self._ask_ai_clarification(text, state)
+                await update.message.reply_text(clarification)
 
         elif state.mode == 'ADDRESS_CHECK':
             # Автоопределение типа сообщения
@@ -654,6 +917,45 @@ class EnhancedAspectBot:
         else:
             # По умолчанию - проверка адреса
             await self.check_address_with_ai(update, context, text)
+
+    async def _ask_ai_clarification(self, text: str, state: ServiceBotState) -> str:
+        """
+        ИСПРАВЛЕНО (2025-12-25): Спрашивает у AI агента как уточнить
+        ИСПРАВЛЕНО (2026-01-06): Убрано использование state.last_user_message
+
+        УБРАНО: Хардкод с перечислениями "(кран, труба, батарея)"
+        ДОБАВЛЕНО: AI генерация вопросов без перечислений
+        """
+        # ИСПРАВЛЕНО (2026-01-06): Не используем state.last_user_message - нет такого атрибута
+        context = f"Текущее сообщение пользователя: {text}"
+
+        prompt = f"""Ты - опытный диспетчер управляющей компании.
+
+{context}
+
+Задай ОДИН уточняющий вопрос чтобы понять проблему пользователя.
+
+ПРИМЕРЫ:
+- "Где именно течет?" (если упоминалась вода/течь)
+- "Что именно сломалось?" (если поломка)
+- "Откуда запах?" (если запах)
+
+КРИТИЧЕСКИ ВАЖНО:
+- НЕ используй перечисления в скобках!
+- Вопрос должен быть КОНКРЕТНЫМ
+- Верни только вопрос без дополнительных слов
+
+Вопрос:"""
+
+        if not self.message_handler or not self.message_handler.main_agent:
+            return "Уточните, пожалуйста: что именно случилось?"
+
+        try:
+            response, _ = await self.message_handler.main_agent.ai_agent._call_yandex_gpt(prompt)
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Ошибка AI генерации вопроса: {e}")
+            return "Уточните, пожалуйста: что именно сломалось, течет или не работает?"
 
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик ошибок"""
@@ -696,6 +998,7 @@ def main():
     application.add_handler(CommandHandler("address", bot.address_command))
     application.add_handler(CommandHandler("cancel", bot.cancel_command))
     # ИСПРАВЛЕНО: Убран CallbackQueryHandler - голосовой интерфейс без кнопок
+    application.add_handler(MessageHandler(filters.VOICE | filters.AUDIO | filters.Document.AUDIO, bot.handle_audio_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
     # Добавление обработчика ошибок

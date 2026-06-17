@@ -1,0 +1,170 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{# Специфика для WorkOrder: tabs и компактный layout #}
+{% block bodyclass %}{{ block.super }} compact-work-order-form{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    /* TABS - навигация */
+    .form-tabs {
+        display: flex !important;
+        gap: 2px !important;
+        margin-bottom: 0 !important;
+        border-bottom: 2px solid #ddd !important;
+        background: #f8f8f8 !important;
+        padding: 10px 15px 0 15px !important;
+    }
+
+    .form-tab {
+        padding: 8px 20px !important;
+        background: #e0e0e0 !important;
+        border: 1px solid #ccc !important;
+        border-bottom: none !important;
+        border-radius: 4px 4px 0 0 !important;
+        cursor: pointer !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s !important;
+    }
+
+    .form-tab:hover {
+        background: #d0d0d0 !important;
+    }
+
+    .form-tab.active {
+        background: #fff !important;
+        border-bottom: 2px solid #fff !important;
+        margin-bottom: -2px !important;
+        color: #0d6efd !important;
+    }
+
+    /* TAB CONTENT - скрываем неактивные */
+    .form-tab-content {
+        display: none !important;
+    }
+
+    .form-tab-content.active {
+        display: block !important;
+    }
+
+    /* Скрываем заголовки fieldsets */
+    .compact-form-container .module > h2 {
+        display: none !important;
+    }
+
+    /* Уменьшаем шрифт лейблов и расстояния между полями */
+    .compact-form-container .form-row {
+        padding-bottom: 8px !important;
+        margin-bottom: 8px !important;
+    }
+
+    .compact-form-container label {
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        color: #495057 !important;
+        margin-bottom: 2px !important;
+    }
+
+    .compact-form-container .fieldBox {
+        padding-top: 2px !important;
+    }
+
+    /* Compact для inline таблиц (история статусов) */
+    .compact-form-container .inline-group {
+        margin-top: 15px !important;
+    }
+
+    .compact-form-container .inline-group thead th {
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        padding: 8px !important;
+        background: #f8f9fa !important;
+        border-bottom: 2px solid #dee2e6 !important;
+        text-align: left !important;
+    }
+
+    .compact-form-container .inline-group tbody td {
+        font-size: 13px !important;
+        padding: 6px 8px !important;
+        border-bottom: 1px solid #dee2e6 !important;
+    }
+
+    .compact-form-container .inline-group tbody tr:hover {
+        background: #f8f9fa !important;
+    }
+</style>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Найти все fieldsets
+    const fieldsets = document.querySelectorAll('.compact-form-container .module');
+    if (fieldsets.length < 2) return;
+
+    // Создаем tabs навигацию
+    const tabsNav = document.createElement('div');
+    tabsNav.className = 'form-tabs';
+
+    // Получаем названия из fieldset h2
+    const tabNames = [];
+    fieldsets.forEach((fieldset, index) => {
+        const h2 = fieldset.querySelector('h2');
+        const name = h2 ? h2.textContent.trim() : `Tab ${index + 1}`;
+        tabNames.push(name);
+
+        // Создаем tab button
+        const tab = document.createElement('div');
+        tab.className = 'form-tab' + (index === 0 ? ' active' : '');
+        tab.textContent = name;
+        tab.dataset.index = index;
+        tabsNav.appendChild(tab);
+    });
+
+    // Вставляем tabs перед первым fieldset
+    const container = document.querySelector('.compact-form-container');
+    if (container) {
+        container.insertBefore(tabsNav, fieldsets[0]);
+
+        // Оборачиваем каждый fieldset в tab content
+        fieldsets.forEach((fieldset, index) => {
+            fieldset.classList.add('form-tab-content');
+            fieldset.classList.add('active');
+            if (index !== 0) {
+                fieldset.classList.remove('active');
+            }
+        });
+
+        // Tab switching
+        tabsNav.addEventListener('click', function(e) {
+            if (e.target.classList.contains('form-tab')) {
+                const index = parseInt(e.target.dataset.index);
+
+                // Update tabs
+                document.querySelectorAll('.form-tab').forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
+
+                // Update content
+                fieldsets.forEach((fieldset, i) => {
+                    if (i === index) {
+                        fieldset.classList.add('active');
+                    } else {
+                        fieldset.classList.remove('active');
+                    }
+                });
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
+
+{# Добавляем compact-container вокруг полей #}
+{% block field_sets %}
+<div class="compact-form-container">
+    {{ block.super }}
+</div>
+{% endblock %}

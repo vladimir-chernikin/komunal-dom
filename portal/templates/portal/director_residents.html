@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title|default:"Учетные записи" }} - {{ company.name }}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #f8f8f8;
+            --bg-secondary: #ffffff;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --accent-color: #3B82F6;
+            --font-family: 'Inter', sans-serif;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--font-family);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .aerial-hero {
+            position: relative;
+            min-height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+        }
+        
+        .city-3d-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .aerial-content {
+            position: relative;
+            z-index: 2;
+            padding: 3rem 0;
+            color: white;
+        }
+        
+        .aerial-hero h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            color: #1a1a1a;
+        }
+        
+        .aerial-hero .breadcrumb {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+        }
+        
+        .aerial-hero .breadcrumb a {
+            color: #3B82F6;
+            text-decoration: none;
+        }
+        
+        .stats-container {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .stat-card {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .stat-card h5 {
+            color: #666;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stat-card h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+        
+        .table-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+        }
+        
+        .table-container h5 {
+            color: #1a1a1a;
+            font-weight: 600;
+        }
+        .table-hover tbody tr:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .table-hover tbody tr:hover td {
+            color: #3B82F6;
+        }
+
+        @media (max-width: 768px) {
+            .aerial-content {
+                padding: 2rem 1rem;
+            }
+
+            .aerial-content .row {
+                --bs-gutter-x: 0;
+            }
+
+            .stats-container {
+                flex-direction: column;
+            }
+
+            .stat-card,
+            .table-container {
+                padding: 1.25rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <section class="aerial-hero">
+        {% include 'work_orders/_aerial_city_background.html' %}
+        
+        <div class="container aerial-content">
+            <div class="row">
+                <div class="col-12">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="{{ dashboard_url }}">{{ dashboard_title }}</a></li>
+                            <li class="breadcrumb-item active" aria-current="page">{{ page_breadcrumb|default:"Учетные записи" }}</li>
+                        </ol>
+                    </nav>
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2><i class="fas fa-users"></i> {{ page_title|default:"Учетные записи" }} - {{ company.name }}</h2>
+                        <div class="d-flex gap-2">
+                            <a href="{% url 'portal:director_add_resident' %}?account_type=resident" class="btn btn-success">
+                                <i class="fas fa-house-user"></i>
+                                Создать жителя
+                            </a>
+                            <a href="{% url 'portal:director_add_resident' %}?account_type=employee" class="btn btn-outline-success">
+                                <i class="fas fa-user-tie"></i>
+                                Создать сотрудника
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Статистика -->
+            <div class="stats-container">
+                <div class="stat-card">
+                    <h5 class="text-info">Жители</h5>
+                    <h2 class="text-info">{{ total_residents }}</h2>
+                </div>
+                <div class="stat-card">
+                    <h5 class="text-warning">Сотрудники</h5>
+                    <h2 class="text-warning">{{ total_staff }}</h2>
+                </div>
+            </div>
+            
+            <!-- Жители -->
+            <div class="table-container">
+                <h5><i class="fas fa-home"></i> Жители ({{ total_residents }})</h5>
+                {% if residents %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Пользователь</th>
+                                <th>Email</th>
+                                <th>Роль</th>
+                                <th>Подразделение</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for membership in residents %}
+                            <tr>
+                                <td>
+                                    <a href="{% url 'portal:director_edit_resident' membership.id %}" class="fw-bold text-decoration-none">{{ membership.display_name }}</a>
+                                </td>
+                                <td>{{ membership.user.email|default:"-" }}</td>
+                                <td>
+                                    <span class="badge bg-info">
+                                        {% if membership.role_code == 'resident' %}Житель{% endif %}
+                                    </span>
+                                </td>
+                                <td>{{ membership.department.department_name|default:"-" }}</td>
+                                <td>
+                                    <a href="{% url 'portal:director_edit_resident' membership.id %}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Жителей не найдено</p>
+                {% endif %}
+            </div>
+            
+            <!-- Сотрудники -->
+            <div class="table-container">
+                <h5><i class="fas fa-tools"></i> Сотрудники ({{ total_staff }})</h5>
+                {% if staff %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Пользователь</th>
+                                <th>Email</th>
+                                <th>Роль</th>
+                                <th>Подразделение</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for membership in staff %}
+                            <tr>
+                                <td>
+                                    <a href="{% url 'portal:director_edit_resident' membership.id %}" class="fw-bold text-decoration-none">{{ membership.display_name }}</a>
+                                </td>
+                                <td>{{ membership.user.email|default:"-" }}</td>
+                                <td>
+                                    <span class="badge bg-warning text-dark">
+                                        {% if membership.role_code == 'direktor_uk' %}Директор УК
+                                        {% elif membership.role_code == 'chief_engineer' %}Главный инженер
+                                        {% elif membership.role_code == 'executor' %}Исполнитель
+                                        {% else %}{{ membership.role_code }}
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>{{ membership.department.department_name|default:"-" }}</td>
+                                <td>
+                                    <a href="{% url 'portal:director_edit_resident' membership.id %}" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Сотрудников не найдено</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</body>
+</html>

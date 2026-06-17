@@ -1,0 +1,275 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}Вход в систему - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+.login-page-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 72px);
+    padding: clamp(2rem, 6vw, 5rem) 1rem;
+    overflow: hidden;
+    background:
+        linear-gradient(180deg, rgba(243, 247, 244, 0.92) 0%, rgba(235, 244, 239, 0.94) 100%),
+        linear-gradient(135deg, #87ceeb 0%, #b0e0e6 48%, #98d8aa 100%);
+}
+
+.login-page-shell::before,
+.login-page-shell::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+}
+
+.login-page-shell::before {
+    inset: auto 0 0;
+    height: 38%;
+    background:
+        linear-gradient(160deg, transparent 0 58%, rgba(29, 47, 55, 0.16) 59% 100%),
+        linear-gradient(24deg, rgba(30, 48, 55, 0.14) 0 28%, transparent 29% 100%);
+    opacity: 0.72;
+}
+
+.login-page-shell::after {
+    right: clamp(1.5rem, 8vw, 7rem);
+    top: clamp(2.5rem, 8vw, 6rem);
+    width: clamp(54px, 8vw, 92px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.92) 0 9%, transparent 10%),
+        conic-gradient(from -42deg, #fff1a4, #ffc84b, #f39a3c, #ffd967, #fff4b8, #ffbd42, #f58b32, #ffe082, #fff1a4);
+    border: 1px solid rgba(180, 103, 34, 0.24);
+    box-shadow: 0 16px 28px rgba(24, 32, 45, 0.15);
+}
+
+.login-container {
+    max-width: 450px;
+    width: min(100%, 450px);
+    margin: 0 auto;
+    padding: clamp(1.6rem, 4vw, 2.5rem);
+    position: relative;
+    z-index: 1;
+    background: rgba(248, 251, 247, 0.92);
+    border: 1px solid rgba(95, 128, 113, 0.20);
+    border-radius: 14px;
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.14);
+    backdrop-filter: blur(12px);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.login-header h2 {
+    color: #10251e;
+    margin-bottom: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.login-header p {
+    color: #42584d;
+    margin: 0;
+}
+
+.login-form .form-group {
+    margin-bottom: 20px;
+}
+
+.login-form label {
+    font-weight: 600;
+    color: #10251e;
+    margin-bottom: 8px;
+}
+
+.login-form .form-control {
+    border-radius: 10px;
+    padding: 12px 15px;
+    border: 1px solid rgba(76, 101, 89, 0.28);
+    background: rgba(255, 255, 255, 0.82);
+    color: #142820;
+}
+
+.login-form .form-control:focus {
+    border-color: #059669;
+    box-shadow: 0 0 0 0.2rem rgba(5, 150, 105, 0.15);
+}
+
+.login-form .form-control::placeholder {
+    color: #6b7d74;
+}
+
+.btn-login {
+    background: #c9eadb;
+    border: 1px solid rgba(4, 120, 87, 0.34);
+    border-radius: 10px;
+    padding: 12px 30px;
+    color: #064e3b;
+    font-weight: 700;
+    width: 100%;
+    transition: all 0.3s ease;
+}
+
+.btn-login:hover {
+    transform: translateY(-2px);
+    background: #b9e1cf;
+    border-color: rgba(4, 120, 87, 0.48);
+    color: #043f30;
+    box-shadow: 0 10px 22px rgba(5, 150, 105, 0.16);
+}
+
+.alert {
+    border-radius: 10px;
+}
+
+.login-container a {
+    color: #047857;
+    font-weight: 600;
+}
+
+html[data-theme="dark"] .login-page-shell {
+    background:
+        radial-gradient(circle at 72% 18%, rgba(191, 219, 254, 0.16) 0 5%, transparent 6%),
+        linear-gradient(180deg, #0c1624 0%, #142536 52%, #163326 100%);
+}
+
+html[data-theme="dark"] .login-page-shell::before {
+    background:
+        linear-gradient(160deg, transparent 0 58%, rgba(5, 12, 18, 0.58) 59% 100%),
+        linear-gradient(24deg, rgba(5, 12, 18, 0.52) 0 28%, transparent 29% 100%);
+    opacity: 0.94;
+}
+
+html[data-theme="dark"] .login-page-shell::after {
+    display: none;
+}
+
+html[data-theme="dark"] .login-container {
+    background: rgba(27, 38, 45, 0.90);
+    border-color: rgba(148, 163, 184, 0.22);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+}
+
+html[data-theme="dark"] .login-header h2 {
+    color: #eef4f8;
+}
+
+html[data-theme="dark"] .login-header p,
+html[data-theme="dark"] .login-container .text-muted {
+    color: #aab7c4;
+}
+
+html[data-theme="dark"] .login-form label {
+    color: #d7e1e8;
+}
+
+html[data-theme="dark"] .login-form .form-control {
+    background: rgba(22, 32, 39, 0.94);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: #eef4f8;
+}
+
+html[data-theme="dark"] .login-form .form-control::placeholder {
+    color: #8fa0ad;
+}
+
+html[data-theme="dark"] .login-form .form-control:focus {
+    border-color: #34d399;
+    box-shadow: 0 0 0 0.2rem rgba(52, 211, 153, 0.16);
+}
+
+html[data-theme="dark"] .btn-login {
+    background: rgba(52, 211, 153, 0.14);
+    border-color: rgba(52, 211, 153, 0.36);
+    color: #dffbed;
+}
+
+html[data-theme="dark"] .btn-login:hover {
+    background: rgba(52, 211, 153, 0.22);
+    border-color: rgba(52, 211, 153, 0.54);
+    color: #ffffff;
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22);
+}
+
+html[data-theme="dark"] .login-container a {
+    color: #86efac;
+}
+
+@media (max-width: 576px) {
+    .login-page-shell {
+        align-items: flex-start;
+        min-height: calc(100vh - 64px);
+        padding-top: 2rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="login-page-shell">
+    <div class="login-container">
+        <div class="login-header">
+            <h2>Вход в систему</h2>
+            <p>Система управления услугами ЖКХ</p>
+            <p class="mb-0 mt-2">Это единственная пользовательская точка входа.</p>
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="post" action="{{ request.get_full_path }}" class="login-form">
+            {% csrf_token %}
+
+            <div class="form-group">
+                <label for="id_username">Логин</label>
+                <input type="text"
+                       class="form-control"
+                       name="username"
+                       id="id_username"
+                       placeholder="Введите логин"
+                       required
+                       autofocus>
+            </div>
+
+            <div class="form-group">
+                <label for="id_password">Пароль</label>
+                <input type="password"
+                       class="form-control"
+                       name="password"
+                       id="id_password"
+                       placeholder="Введите пароль"
+                       required>
+            </div>
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {% for error in form.non_field_errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <button type="submit" class="btn btn-login">
+                <i class="fas fa-sign-in-alt me-2"></i>Войти
+            </button>
+        </form>
+
+        <div class="text-center mt-4">
+            <a href="/" class="text-decoration-none">
+                <i class="fas fa-arrow-left me-2"></i>На главную
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}

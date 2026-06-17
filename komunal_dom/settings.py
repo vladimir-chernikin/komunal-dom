@@ -27,6 +27,27 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
+# CSRF settings
+CSRF_TRUSTED_ORIGINS = [
+    'http://komunal-dom.ru',
+    'https://komunal-dom.ru',
+    'http://www.komunal-dom.ru',
+    'https://www.komunal-dom.ru',
+    'http://localhost',
+    'http://127.0.0.1',
+]
+CSRF_COOKIE_SECURE = False  # True для HTTPS только
+CSRF_COOKIE_HTTPONLY = False  # Разрешить JavaScript доступ к cookie
+CSRF_COOKIE_SAMESITE = 'Lax'  # Защита от CSRF
+
+# Session settings
+SESSION_COOKIE_SECURE = False  # True для HTTPS только
+SESSION_COOKIE_HTTPONLY = True  # Защита от XSS
+SESSION_COOKIE_SAMESITE = 'Lax'  # Защита от CSRF
+
+# Debug prompts - добавлять объяснение к вопросам
+TST_PROMPT = config('TST_PROMPT', default=0, cast=int)
+
 ALLOWED_HOSTS = ['komunal-dom.ru', 'www.komunal-dom.ru', 'localhost', '127.0.0.1', '*']
 
 
@@ -34,6 +55,7 @@ ALLOWED_HOSTS = ['komunal-dom.ru', 'www.komunal-dom.ru', 'localhost', '127.0.0.1
 
 INSTALLED_APPS = [
     'jazzmin',
+    'unfold',  # Django Unfold — современный админский интерфейс
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -42,10 +64,14 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crispy_forms',
     'crispy_bootstrap5',
-    'file_manager',
-    'portal',
-    'kladr',
-    'message_handler',  # Логирование сообщений из всех каналов
+    'nsi.apps.NsiConfig',  # НСИ - Normativno-Spravochnaya Informatsiya (справочники)
+    'portal.apps.PortalConfig',
+    'address.apps.AddressConfig',
+    'kladr.apps.KladrConfig',
+    'message_handler.apps.MessageHandlerConfig',  # Логирование сообщений из всех каналов
+    'llm_tester.apps.LlmTesterConfig',  # LLM Tester - тестирование промптов
+    'database_viewer.apps.DatabaseViewerConfig',  # СУБД SQL интерфейс
+    'work_orders.apps.WorkOrdersConfig',  # Управление заявками ЖКХ
 ]
 
 MIDDLEWARE = [
@@ -56,7 +82,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'portal.middleware.AdminAccessMiddleware',
+    'komunal_dom.middleware.SubdomainMiddleware',  # Обработка поддоменов
+    'portal.middleware.CompanyMembershipMiddleware',  # Добавление компании в request (ДО защиты admin)
+    'portal.middleware.DjangoAdminProtectionMiddleware',  # Защита Django Admin (только superuser)
+    'portal.middleware.DarkThemeInjectionMiddleware',  # Единая темная тема для пользовательских HTML-страниц
 ]
 
 ROOT_URLCONF = 'komunal_dom.urls'
@@ -76,6 +105,9 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST'),
         'PORT': config('DB_PORT'),
+        'OPTIONS': {
+            'options': '-c search_path=public,request_mgmt'
+        }
     }
 }
 
@@ -118,6 +150,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'portal.context_processors.admin_stats',
             ],
         },
     },
@@ -133,6 +166,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 # Настройки для Crispy Forms
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
@@ -151,9 +185,9 @@ import os
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 
 # Настройки аутентификации
-LOGIN_URL = '/admin/login/'
-LOGOUT_URL = '/admin/logout/'
-LOGIN_REDIRECT_URL = '/dashboard/'
+LOGIN_URL = '/login/'  # Единая точка входа
+LOGOUT_URL = '/logout/'
+LOGIN_REDIRECT_URL = '/subscribers/'
 
 # Настройки Jazzmin Admin
 JAZZMIN_SETTINGS = {
@@ -161,14 +195,14 @@ JAZZMIN_SETTINGS = {
     'site_title': 'УК "Аспект"',
     'site_header': 'Панель управления',
     'site_logo': None,  # Убираем логотип файлом
-    'site_brand': '🏢 УК "Аспект"',
+    'site_brand': 'УК "Аспект"',
 
     # Язык
     'language': 'ru',
 
     # Цветовая тема
     'theme': 'light',
-    'welcome_sign': '🏠',
+    'welcome_sign': '',  # Скрыть username в верхнем меню
 
     # Кнопки
     'button_classes': {
@@ -195,4 +229,18 @@ JAZZMIN_SETTINGS = {
     # Настройка
     'default_model_permissions': ['add', 'change', 'view', 'delete'],
     'list_per_page': 25,
+
+    # Кастомные ссылки в меню пользователя
+    'usermenu_links': [
+        {
+            'name': 'СУБД SQL',
+            'url': '/db-sql/',
+            'icon': 'fas fa-database',
+        },
+        {
+            'name': 'Кабинет директора',
+            'url': '/director/',
+            'icon': 'fas fa-user-tie',
+        },
+    ],
 }

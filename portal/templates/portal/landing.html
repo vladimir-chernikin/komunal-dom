@@ -1,0 +1,133 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+.hero-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 88px 0 72px;
+}
+
+.entry-card {
+    max-width: 760px;
+    margin: -48px auto 40px;
+    padding: 40px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+    position: relative;
+    z-index: 10;
+}
+
+.entry-card h2 {
+    margin-bottom: 16px;
+    color: #1f2937;
+}
+
+.entry-card p {
+    color: #6b7280;
+    margin-bottom: 24px;
+    font-size: 1.05rem;
+}
+
+.entry-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.btn-entry {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 28px;
+    color: white;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.btn-entry:hover {
+    color: white;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.35);
+}
+
+.company-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 28px;
+}
+
+.company-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    background: #f8fafc;
+}
+
+.company-card strong {
+    display: block;
+    color: #111827;
+    margin-bottom: 6px;
+}
+
+.company-card span {
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+
+@media (max-width: 768px) {
+    .hero-section {
+        padding: 64px 0 56px;
+    }
+
+    .entry-card {
+        margin: -32px 16px 28px;
+        padding: 24px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="container text-center">
+        <h1 class="display-4 fw-bold mb-3">Единая точка входа</h1>
+        <p class="lead mb-0">Авторизация сотрудников и жителей выполняется только через страницу входа.</p>
+    </div>
+</div>
+
+<div class="container">
+    <div class="entry-card">
+        <h2>Вход в систему</h2>
+        <p>
+            Главная страница больше не содержит отдельную форму авторизации.
+            Для входа используйте единственный адрес:
+            <a href="{% url 'portal:custom_login' %}">{{ request.scheme }}://{{ request.get_host }}{% url 'portal:custom_login' %}</a>
+        </p>
+
+        <div class="entry-actions">
+            <a class="btn-entry" href="{% url 'portal:custom_login' %}">
+                <i class="fas fa-sign-in-alt me-2"></i>Перейти ко входу
+            </a>
+        </div>
+
+        {% if companies %}
+            <div class="company-grid">
+                {% for company in companies %}
+                    <div class="company-card">
+                        <strong>{{ company.name }}</strong>
+                        {% if company.domain %}
+                            <span>{{ company.domain }}</span>
+                        {% else %}
+                            <span>Домен не указан</span>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

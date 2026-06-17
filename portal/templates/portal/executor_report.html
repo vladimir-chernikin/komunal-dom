@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Заявка #{{ request_id }}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #f8f8f8;
+            --bg-secondary: #ffffff;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --accent-color: #F59E0B;
+            --font-family: 'Inter', sans-serif;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--font-family);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .aerial-hero {
+            position: relative;
+            min-height: 600px;
+            overflow: hidden;
+            background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+        }
+        
+        .city-3d-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .aerial-content {
+            position: relative;
+            z-index: 2;
+            padding: 3rem 0;
+            color: white;
+        }
+        
+        .aerial-hero h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            color: #1a1a1a;
+        }
+        
+        .aerial-hero .breadcrumb {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+        }
+        
+        .aerial-hero .breadcrumb a {
+            color: #F59E0B;
+            text-decoration: none;
+        }
+        
+        .content-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #F59E0B;
+        }
+        
+        .info-row {
+            display: flex;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            width: 200px;
+            flex-shrink: 0;
+            color: #666;
+        }
+        
+        .info-value {
+            flex: 1;
+            color: #1a1a1a;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+        
+        .status-new { background: #6c757d; color: white; }
+        .status-in_work { background: #007bff; color: white; }
+        .status-done { background: #28a745; color: white; }
+        
+        .timeline {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .timeline-item {
+            display: flex;
+            margin-bottom: 1rem;
+            align-items: flex-start;
+        }
+        
+        .timeline-time {
+            font-weight: 600;
+            width: 120px;
+            flex-shrink: 0;
+            color: #F59E0B;
+        }
+        
+        .timeline-content {
+            flex: 1;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .stat-box {
+            background: rgba(245, 158, 11, 0.1);
+            padding: 1.5rem;
+            border-radius: 15px;
+            text-align: center;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #F59E0B;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            font-size: 0.875rem;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .photo-container {
+            margin-top: 1.5rem;
+        }
+        
+        .photo-container img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 15px;
+            border: 1px solid #ddd;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }
+        
+        .no-photo {
+            color: #999;
+            font-style: italic;
+            padding: 2rem;
+            text-align: center;
+            background: rgba(245, 158, 11, 0.1);
+            border-radius: 15px;
+        }
+        
+        .description-box {
+            background: rgba(245, 158, 11, 0.05);
+            padding: 1.5rem;
+            border-radius: 15px;
+            border-left: 4px solid #F59E0B;
+        }
+    </style>
+</head>
+<body>
+    <section class="aerial-hero">
+        <!-- SVG 3D ГОРОД -->
+        <svg class="city-3d-background" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#87CEEB"/>
+                    <stop offset="50%" style="stop-color:#B0E0E6"/>
+                    <stop offset="100%" style="stop-color:#98D8AA"/>
+                </linearGradient>
+                
+                <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#98D8AA"/>
+                    <stop offset="100%" style="stop-color:#7CB887"/>
+                </linearGradient>
+                
+                <filter id="buildingShadowFilter">
+                    <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+                    <feOffset dx="3" dy="3"/>
+                </filter>
+                
+                <radialGradient id="treeGradient">
+                    <stop offset="0%" style="stop-color:#4ADE80"/>
+                    <stop offset="100%" style="stop-color:#166534"/>
+                </radialGradient>
+            </defs>
+            
+            <rect width="1200" height="600" fill="url(#skyGradient)"/>
+            <rect x="0" y="350" width="1200" height="250" fill="url(#groundGradient)"/>
+        </svg>
+        
+        <div class="container aerial-content">
+            <div class="row">
+                <div class="col-12">
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item"><a href="/executor/">Кабинет исполнителя</a></li>
+                            <li class="breadcrumb-item active" aria-current="page">Заявка #{{ request_id }}</li>
+                        </ol>
+                    </nav>
+                    
+                    <h2>Заявка #{{ request_id }}</h2>
+                </div>
+            </div>
+            
+            <div class="content-container">
+                <!-- Основная информация -->
+                <div class="section-title">Основная информация</div>
+                <div class="info-row">
+                    <div class="info-label">Статус:</div>
+                    <div class="info-value">
+                        <span class="status-badge status-{{ status }}">
+                            {% if status == 'new' %}Новая
+                            {% elif status == 'in_work' %}В работе
+                            {% elif status == 'done' %}Выполнена
+                            {% else %}{{ status }}
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">Создана:</div>
+                    <div class="info-value">{{ created_at|date:"d.m.Y H:i" }}</div>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">Обновлена:</div>
+                    <div class="info-value">{{ updated_at|date:"d.m.Y H:i" }}</div>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">Заявитель:</div>
+                    <div class="info-value">
+                        {{ user_name }}
+                        {% if user_phone %}
+                        <br><small>{{ user_phone }}</small>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="info-row">
+                    <div class="info-label">Адрес:</div>
+                    <div class="info-value">
+                        {{ street_name }}, д. {{ house_number }}
+                        {% if apartment %}, кв. {{ apartment }}{% endif %}
+                        {% if address_details %}, под. {{ address_details }}{% endif %}
+                    </div>
+                </div>
+
+                <!-- Описание -->
+                {% if description %}
+                <div class="section-title" style="margin-top: 2rem;">Описание</div>
+                <div class="description-box">
+                    {{ description }}
+                </div>
+                {% endif %}
+                
+                <!-- Таймлайн -->
+                <div class="section-title" style="margin-top: 2rem;">История</div>
+                <ul class="timeline">
+                    <li class="timeline-item">
+                        <div class="timeline-time">{{ created_at|date:"H:i" }}</div>
+                        <div class="timeline-content">Заявка создана</div>
+                    </li>
+                    {% if arrived_at %}
+                    <li class="timeline-item">
+                        <div class="timeline-time">{{ arrived_at|date:"H:i" }}</div>
+                        <div class="timeline-content">Исполнитель прибыл на место</div>
+                    </li>
+                    {% endif %}
+                    {% if status == 'done' %}
+                    <li class="timeline-item">
+                        <div class="timeline-time">{{ updated_at|date:"H:i" }}</div>
+                        <div class="timeline-content">Заявка выполнена</div>
+                    </li>
+                    {% endif %}
+                </ul>
+                
+                <!-- Статистика -->
+                <div class="section-title" style="margin-top: 2rem;">Время выполнения</div>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-value">{% if minutes_to_arrive %}{{ minutes_to_arrive }}{% else %}—{% endif %}</div>
+                        <div class="stat-label">Время реакции (мин)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">{% if minutes_work %}{{ minutes_work }}{% else %}—{% endif %}</div>
+                        <div class="stat-label">Время выполнения (мин)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">{{ minutes_total }}</div>
+                        <div class="stat-label">Общее время (мин)</div>
+                    </div>
+                </div>
+                
+                <!-- Фото -->
+                {% if photo_path %}
+                <div class="section-title" style="margin-top: 2rem;">Фото</div>
+                <div class="photo-container">
+                    <img src="{{ photo_path }}" alt="Фото заявки">
+                </div>
+                {% endif %}
+                
+                <!-- Кнопка возврата -->
+                <div style="margin-top: 2rem; text-align: center;">
+                    <a href="/executor/" class="btn btn-primary">
+                        <i class="fas fa-arrow-left"></i> Вернуться в кабинет
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</body>
+</html>

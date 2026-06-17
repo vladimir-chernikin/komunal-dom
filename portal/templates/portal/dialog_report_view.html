@@ -1,0 +1,145 @@
+{% extends 'portal/base.html' %}
+
+{% block title %}{{ filename }} - Отчет - УК "Аспект"{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Стиль специфичный для страницы просмотра отчета */
+.file-content {
+    max-height: calc(100vh - 300px);
+    overflow-y: auto;
+}
+
+.report-preview-box {
+    background-color: #f8f9fa;
+    color: #1f2933;
+    line-height: 1.6;
+    font-size: 0.92rem;
+}
+
+.dialog-report-page .card {
+    border: 1px solid rgba(43, 77, 82, 0.18);
+}
+
+.dialog-report-page .file-meta {
+    color: #5b6f7a;
+}
+
+.dialog-report-page .report-preview-box code {
+    color: inherit;
+}
+
+[data-theme="dark"] .dialog-report-page .card {
+    background: rgba(28, 43, 53, 0.94);
+    border-color: rgba(103, 232, 197, 0.18);
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+}
+
+[data-theme="dark"] .dialog-report-page .card-header {
+    background: #15232c !important;
+    color: #f2fbf8 !important;
+    border-bottom: 1px solid rgba(103, 232, 197, 0.16);
+}
+
+[data-theme="dark"] .dialog-report-page .report-preview-box {
+    background: #192831;
+    color: #dcefed;
+    border-top: 1px solid rgba(103, 232, 197, 0.08);
+    text-shadow: none;
+}
+
+[data-theme="dark"] .dialog-report-page .report-preview-box code {
+    color: #e7f6f2;
+}
+
+[data-theme="dark"] .dialog-report-page .file-meta {
+    color: #b8cbd0 !important;
+}
+
+[data-theme="dark"] .dialog-report-page h1 {
+    color: #f4fbf8;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .file-content {
+        max-height: calc(100vh - 250px);
+    }
+
+    .h3 {
+        font-size: 1.3rem;
+    }
+
+    .pre-wrap {
+        font-size: 0.75rem;
+        padding: 0.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .container {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+
+    .file-content {
+        max-height: calc(100vh - 200px);
+        font-size: 11px;
+    }
+
+    .btn-outline-secondary {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.8rem;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 dialog-report-page">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h3 mb-1">
+                        <i class="fas fa-file-alt"></i>
+                        {{ filename }}
+                    </h1>
+                    <small class="text-muted file-meta">
+                        <i class="fas fa-hdd"></i> {{ file_size }}
+                        <span class="mx-2">|</span>
+                        <i class="fas fa-clock"></i>
+                        {% load tz %}
+                        {% timezone "Europe/Moscow" %}
+                            {{ file_modified|date:"d.m.Y H:i:s" }}
+                        {% endtimezone %}
+                    </small>
+                </div>
+                <div>
+                    <a href="{% url 'portal:dialog_trace' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Назад к списку
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-code"></i>
+                        Содержимое файла
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="file-content">
+                        <pre class="pre-wrap m-0 p-4 report-preview-box"><code>{{ content }}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

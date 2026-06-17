@@ -2,8 +2,52 @@
 
 {% block title %}Административная панель - УК "Аспект"{% endblock %}
 
+
+{% block extra_css %}
+<style>
+.aerial-hero {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 50%, #98D8AA 100%);
+}
+
+.city-3d-background {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.aerial-content {
+    position: relative;
+    z-index: 2;
+    padding: 2.5rem 0 3rem;
+}
+
+.aerial-content .card,
+.aerial-content .alert,
+.aerial-content .breadcrumb,
+.aerial-content .modal-content {
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.aerial-content .breadcrumb {
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+}
+</style>
+{% endblock %}
+
+
 {% block content %}
-<div class="container mt-4">
+<section class="aerial-hero">
+    {% include 'work_orders/_aerial_city_background.html' %}
+    <div class="container aerial-content">
+<div class="mt-4">
     <div class="row">
         <div class="col-12">
             <h1 class="h3 mb-4">
@@ -49,48 +93,8 @@
                     {% endfor %}
                 </div>
                 <div class="card-footer">
-                    <a href="{% url 'portal:user_management' %}" class="btn btn-outline-primary btn-sm">
-                        <i class="fas fa-user-cog"></i> Управление
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Статистика файлов -->
-        <div class="col-md-4 mb-4">
-            <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-folder"></i>
-                        Файлы
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <div class="row text-center">
-                        <div class="col-6">
-                            <h4 class="text-success">{{ file_stats.total }}</h4>
-                            <small>Всего файлов</small>
-                        </div>
-                        <div class="col-6">
-                            <h4 class="text-info">{{ file_stats.unique_users }}</h4>
-                            <small>Пользователей</small>
-                        </div>
-                    </div>
-                    <hr>
-                    <div class="text-center">
-                        <h6>Общий размер:</h6>
-                        <h5 class="text-primary">
-                            {% if file_stats.total_size > 1024*1024 %}
-                                {{ file_stats.total_size|floatformat:1 }} МБ
-                            {% else %}
-                                {{ file_stats.total_size|floatformat:0 }} КБ
-                            {% endif %}
-                        </h5>
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <a href="{% url 'file_manager:all_files' %}" class="btn btn-outline-success btn-sm">
-                        <i class="fas fa-folder-open"></i> Все файлы
+                    <a href="/admin/auth/user/" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-user-cog"></i> Управление пользователями
                     </a>
                 </div>
             </div>
@@ -155,12 +159,6 @@
                             </a>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <a href="{% url 'file_manager:file_list' %}" class="btn btn-success w-100">
-                                <i class="fas fa-folder"></i>
-                                Файловый менеджер
-                            </a>
-                        </div>
-                        <div class="col-md-3 mb-2">
                             <a href="/admin/portal/userprofile/" class="btn btn-info w-100">
                                 <i class="fas fa-user-edit"></i>
                                 Профили пользователей
@@ -209,4 +207,6 @@
         </div>
     </div>
 </div>
+    </div>
+</section>
 {% endblock %}
