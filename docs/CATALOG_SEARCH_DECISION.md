@@ -65,3 +65,10 @@ source_hash, embedding, updated_at)` и расширение `pgvector`. Раз�
   категории/услуги.
 - векторный поиск включён без сравнения точности и 95-го процентиля задержки.
 - изменение справочника видно части процессов в старой версии, части — в новой.
+
+## Официальные источники, проверенные 2026-07-22
+
+- [GigaChat: выбор модели](https://developers.sber.ru/docs/ru/gigachat/guides/selecting-a-model) — `GigaChat-2` предназначена для быстрых простых задач и соответствует выбранному Lite-варианту.
+- [GigaChat: создание векторных представлений](https://developers.sber.ru/docs/ru/gigachat/api/reference/rest/post-embeddings) — доступны Embeddings, Embeddings-2 и EmbeddingsGigaR, запросы тарифицируются отдельно.
+- [Redis Search](https://redis.io/docs/latest/develop/ai/search-and-query/) — векторный поиск является возможностью поискового модуля, которого на текущем Redis-сервере нет.
+- [pgvector](https://github.com/pgvector/pgvector) — точный поиск работает без приближённого индекса; HNSW/IVFFlat меняют скорость на полноту результата и нужны при существенно большем объёме.
