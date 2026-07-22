@@ -29,13 +29,32 @@ CREATE TABLE service_objects (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE services (
+CREATE TABLE service_categories (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    parent_id bigint REFERENCES services(id),
     external_key text UNIQUE,
     name text NOT NULL,
+    llm_description text,
+    is_default boolean NOT NULL DEFAULT false,
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX service_categories_one_default
+    ON service_categories (is_default)
+    WHERE is_default;
+
+CREATE TABLE services (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    category_id bigint NOT NULL REFERENCES service_categories(id),
+    external_key text UNIQUE,
+    name text NOT NULL,
+    service_type text NOT NULL,
+    localization text NOT NULL,
+    route_name text,
     description text,
     llm_description text,
+    is_internal boolean NOT NULL DEFAULT false,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
@@ -104,21 +123,25 @@ ALTER TABLE prompt_templates
     ADD CONSTRAINT prompt_templates_active_version_fk
     FOREIGN KEY (active_version_id) REFERENCES prompt_versions(id);
 
-CREATE TABLE work_order_statuses (
+CREATE TABLE request_statuses (
     code text PRIMARY KEY,
     name text NOT NULL,
     is_final boolean NOT NULL DEFAULT false,
     sort_order integer NOT NULL DEFAULT 0
 );
 
-CREATE TABLE work_orders (
+CREATE TABLE requests (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     number text NOT NULL UNIQUE,
     organization_id bigint NOT NULL REFERENCES organizations(id),
-    object_id bigint NOT NULL REFERENCES service_objects(id),
+    object_id bigint REFERENCES service_objects(id),
     service_id bigint NOT NULL REFERENCES services(id),
     requester_contact_id bigint REFERENCES contacts(id),
-    status_code text NOT NULL REFERENCES work_order_statuses(code),
+    status_code text NOT NULL REFERENCES request_statuses(code),
+    raw_address_text text NOT NULL,
+    address_resolution_status text NOT NULL CHECK (
+        address_resolution_status IN ('service_object_confirmed', 'known_organization_claimed', 'unresolved')
+    ),
     contact_name text NOT NULL,
     contact_phone text NOT NULL,
     problem_text text NOT NULL,
@@ -128,35 +151,27 @@ CREATE TABLE work_orders (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE work_order_events (
+CREATE TABLE request_history (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    work_order_id bigint NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    request_id bigint NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
     event_type text NOT NULL,
-    from_status text REFERENCES work_order_statuses(code),
-    to_status text REFERENCES work_order_statuses(code),
+    from_status text REFERENCES request_statuses(code),
+    to_status text REFERENCES request_statuses(code),
     actor_user_id bigint,
     comment text,
     data jsonb NOT NULL DEFAULT '{}'::jsonb,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE work_order_files (
+CREATE TABLE request_files (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    work_order_id bigint NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+    request_id bigint NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
     storage_key text NOT NULL UNIQUE,
     original_name text NOT NULL,
     content_type text,
     size_bytes bigint NOT NULL,
     uploaded_by bigint,
     created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE work_order_links (
-    from_work_order_id bigint NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
-    to_work_order_id bigint NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
-    link_type text NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (from_work_order_id, to_work_order_id, link_type)
 );
 
 CREATE TABLE app_users (
@@ -234,7 +249,7 @@ CREATE TABLE dialog_state_checkpoints (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     session_id text NOT NULL REFERENCES dialog_sessions(id) ON DELETE CASCADE,
     turn_id bigint REFERENCES dialog_turns(id) ON DELETE CASCADE,
-    phase text NOT NULL CHECK (phase IN ('before_turn', 'after_turn', 'order_created')),
+    phase text NOT NULL CHECK (phase IN ('before_turn', 'after_turn', 'request_created')),
     state_version integer NOT NULL,
     state jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -323,17 +338,20 @@ CREATE TABLE data_import_errors (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE work_order_events
-    ADD CONSTRAINT work_order_events_actor_fk
+ALTER TABLE request_history
+    ADD CONSTRAINT request_history_actor_fk
     FOREIGN KEY (actor_user_id) REFERENCES app_users(id) ON DELETE SET NULL;
-ALTER TABLE work_order_files
-    ADD CONSTRAINT work_order_files_uploader_fk
+ALTER TABLE request_files
+    ADD CONSTRAINT request_files_uploader_fk
     FOREIGN KEY (uploaded_by) REFERENCES app_users(id) ON DELETE SET NULL;
 
 CREATE INDEX dialog_trace_session_turn_idx ON dialog_trace_events(session_id, turn_id, step_no);
 CREATE INDEX dialog_checkpoint_session_created_idx ON dialog_state_checkpoints(session_id, created_at DESC);
 CREATE INDEX llm_calls_session_created_idx ON llm_calls(session_id, created_at DESC);
 CREATE INDEX integration_calls_session_created_idx ON integration_calls(session_id, created_at DESC);
-CREATE INDEX work_orders_object_created_idx ON work_orders(object_id, created_at DESC);
+CREATE INDEX requests_object_created_idx ON requests(object_id, created_at DESC);
+CREATE INDEX requests_unresolved_address_idx
+    ON requests(organization_id, created_at DESC)
+    WHERE address_resolution_status <> 'service_object_confirmed';
 
 COMMIT;

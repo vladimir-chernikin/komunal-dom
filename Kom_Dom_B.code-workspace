@@ -1,0 +1,14 @@
+{
+  "folders": [
+    {
+      "name": "Kom_Dom_B",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.git": true,
+      "**/__pycache__": true
+    }
+  }
+}
