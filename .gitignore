@@ -1,5 +1,7 @@
 .env
 .venv/
+venv/
+*.egg-info/
 node_modules/
 dist/
 build/
@@ -10,4 +12,3 @@ __pycache__/
 coverage.xml
 var/*
 !var/.gitkeep
-
