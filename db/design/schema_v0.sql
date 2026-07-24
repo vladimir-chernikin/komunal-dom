@@ -3,8 +3,6 @@
 
 BEGIN;
 
-CREATE EXTENSION IF NOT EXISTS vector;
-
 CREATE TABLE organizations (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     parent_id bigint REFERENCES organizations(id),
