@@ -3,6 +3,8 @@
 
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE organizations (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     parent_id bigint REFERENCES organizations(id),
@@ -29,36 +31,94 @@ CREATE TABLE service_objects (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE service_categories (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    external_key text UNIQUE,
-    name text NOT NULL,
-    llm_description text,
-    is_default boolean NOT NULL DEFAULT false,
+CREATE TABLE request_types (
+    id smallint PRIMARY KEY,
+    code text NOT NULL UNIQUE,
+    name text NOT NULL UNIQUE,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX service_categories_one_default
-    ON service_categories (is_default)
-    WHERE is_default;
+INSERT INTO request_types (id, code, name) VALUES
+    (1, 'incident', 'Инцидент'),
+    (2, 'request', 'Запрос');
+
+CREATE TABLE request_localizations (
+    id smallint PRIMARY KEY,
+    code text NOT NULL UNIQUE,
+    name text NOT NULL UNIQUE,
+    ai_description text NOT NULL,
+    sort_order smallint NOT NULL DEFAULT 0,
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE request_categories (
+    id smallint PRIMARY KEY,
+    external_key text UNIQUE,
+    name text NOT NULL,
+    ai_description text NOT NULL,
+    synonyms text[] NOT NULL DEFAULT '{}',
+    exclusion_hints text[] NOT NULL DEFAULT '{}',
+    operator_notes text,
+    sort_order smallint NOT NULL DEFAULT 0,
+    catalog_revision bigint NOT NULL DEFAULT 1,
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE services (
-    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    category_id bigint NOT NULL REFERENCES service_categories(id),
+    id integer PRIMARY KEY,
+    category_id smallint NOT NULL REFERENCES request_categories(id),
+    request_type_id smallint NOT NULL REFERENCES request_types(id),
+    localization_id smallint NOT NULL REFERENCES request_localizations(id),
     external_key text UNIQUE,
     name text NOT NULL,
-    service_type text NOT NULL,
-    localization text NOT NULL,
-    route_name text,
-    description text,
-    llm_description text,
+    description text NOT NULL DEFAULT '',
+    ai_description text NOT NULL,
+    synonyms text[] NOT NULL DEFAULT '{}',
+    exclusion_hints text[] NOT NULL DEFAULT '{}',
+    route_code text,
     is_internal boolean NOT NULL DEFAULT false,
+    catalog_revision bigint NOT NULL DEFAULT 1,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE catalog_embeddings (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    category_id smallint REFERENCES request_categories(id) ON DELETE CASCADE,
+    service_id integer REFERENCES services(id) ON DELETE CASCADE,
+    model text NOT NULL,
+    dimensions smallint,
+    source_text text NOT NULL,
+    source_hash char(64) NOT NULL,
+    embedding vector,
+    status text NOT NULL CHECK (status IN ('pending', 'ready', 'error')),
+    error_code text,
+    catalog_revision bigint NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (num_nonnulls(category_id, service_id) = 1),
+    CHECK (
+        (status = 'ready' AND embedding IS NOT NULL AND dimensions IS NOT NULL)
+        OR status <> 'ready'
+    )
+);
+
+CREATE UNIQUE INDEX catalog_embeddings_category_model_key
+    ON catalog_embeddings(category_id, model)
+    WHERE category_id IS NOT NULL;
+CREATE UNIQUE INDEX catalog_embeddings_service_model_key
+    ON catalog_embeddings(service_id, model)
+    WHERE service_id IS NOT NULL;
+CREATE INDEX catalog_embeddings_ready_idx
+    ON catalog_embeddings(status, model)
+    WHERE status = 'ready';
 
 CREATE TABLE object_services (
     object_id bigint NOT NULL REFERENCES service_objects(id),
@@ -135,7 +195,10 @@ CREATE TABLE requests (
     number text NOT NULL UNIQUE,
     organization_id bigint NOT NULL REFERENCES organizations(id),
     object_id bigint REFERENCES service_objects(id),
-    service_id bigint NOT NULL REFERENCES services(id),
+    request_type_id smallint NOT NULL REFERENCES request_types(id),
+    category_id smallint NOT NULL REFERENCES request_categories(id),
+    localization_id smallint NOT NULL REFERENCES request_localizations(id),
+    service_id integer NOT NULL REFERENCES services(id),
     requester_contact_id bigint REFERENCES contacts(id),
     status_code text NOT NULL REFERENCES request_statuses(code),
     raw_address_text text NOT NULL,

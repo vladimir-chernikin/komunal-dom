@@ -1,0 +1,19 @@
+[Unit]
+Description=Kom_Dom_B FastAPI bootstrap API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/Kom_Dom_B
+EnvironmentFile=/Kom_Dom_B/.env
+ExecStart=/Kom_Dom_B/venv/bin/uvicorn www.backend.app.main:app --app-dir /Kom_Dom_B --host 127.0.0.1 --port 8100 --workers 1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

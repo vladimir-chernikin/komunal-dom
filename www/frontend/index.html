@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход в Коммуналку — План Б</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="brand" aria-labelledby="product-title">
+      <div class="mark" aria-hidden="true">КБ</div>
+      <p class="eyebrow">Коммуналка · План Б</p>
+      <h1 id="product-title">Рабочее место управляющей компании</h1>
+      <p class="lead">
+        Единый портал для обращений, справочников и прозрачной отладки
+        диалогов.
+      </p>
+      <ul class="features">
+        <li>Обращения жителей в одном журнале</li>
+        <li>Одинаковые формы списков и карточек</li>
+        <li>Движение данных по диалогу в стиле n8n</li>
+      </ul>
+    </section>
+
+    <section class="login-card" aria-labelledby="login-title">
+      <p class="status"><span></span> Технический контур запущен</p>
+      <h2 id="login-title">Вход в Коммуналку</h2>
+      <p class="hint">
+        Пока это безопасная заглушка: введённые данные никуда не отправляются
+        и не проверяются.
+      </p>
+      <form id="login-form">
+        <label for="login">Логин</label>
+        <input id="login" name="login" autocomplete="username" placeholder="Введите логин">
+
+        <label for="password">Пароль</label>
+        <input id="password" name="password" type="password"
+               autocomplete="current-password" placeholder="Введите пароль">
+
+        <button type="submit">Войти</button>
+      </form>
+      <p id="login-result" class="result" role="status" aria-live="polite"></p>
+      <p class="version">План Б · этап переноса</p>
+    </section>
+  </main>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

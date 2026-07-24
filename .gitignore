@@ -10,5 +10,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 coverage.xml
-var/*
-!var/.gitkeep
+media/*
+!media/.gitkeep
+test/.artifacts/
